@@ -592,9 +592,10 @@ impl Translation for RuntimeTranslation {
     }
 
     fn modal_copy_multiple_title(&self, count: usize) -> String {
+        let element = self.pluralize(count, "element");
         self.format(
             "modal_copy_multiple_title",
-            &[("count", &count.to_string())],
+            &[("count", &count.to_string()), ("element", element)],
         )
     }
 
@@ -603,9 +604,10 @@ impl Translation for RuntimeTranslation {
     }
 
     fn modal_move_multiple_title(&self, count: usize) -> String {
+        let element = self.pluralize(count, "element");
         self.format(
             "modal_move_multiple_title",
-            &[("count", &count.to_string())],
+            &[("count", &count.to_string()), ("element", element)],
         )
     }
 
@@ -622,9 +624,10 @@ impl Translation for RuntimeTranslation {
     }
 
     fn modal_delete_multiple_title(&self, count: usize) -> String {
+        let element = self.pluralize(count, "element");
         self.format(
             "modal_delete_multiple_title",
-            &[("count", &count.to_string())],
+            &[("count", &count.to_string()), ("element", element)],
         )
     }
 
@@ -641,9 +644,10 @@ impl Translation for RuntimeTranslation {
     }
 
     fn modal_copy_multiple_prompt(&self, count: usize) -> String {
+        let element = self.pluralize(count, "element");
         self.format(
             "modal_copy_multiple_prompt",
-            &[("count", &count.to_string())],
+            &[("count", &count.to_string()), ("element", element)],
         )
     }
 
@@ -652,9 +656,10 @@ impl Translation for RuntimeTranslation {
     }
 
     fn modal_move_multiple_prompt(&self, count: usize) -> String {
+        let element = self.pluralize(count, "element");
         self.format(
             "modal_move_multiple_prompt",
-            &[("count", &count.to_string())],
+            &[("count", &count.to_string()), ("element", element)],
         )
     }
 

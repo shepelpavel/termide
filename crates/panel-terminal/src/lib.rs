@@ -1224,13 +1224,32 @@ impl Panel for Terminal {
             && mouse.row >= inner_y_min
             && mouse.row <= inner_y_max;
 
+        // Handle scroll events first - they should work even when cursor is near border
+        match mouse.kind {
+            MouseEventKind::ScrollUp => {
+                self.screen
+                    .write()
+                    .expect("Terminal screen lock poisoned")
+                    .scroll_view_up(3);
+                return vec![];
+            }
+            MouseEventKind::ScrollDown => {
+                self.screen
+                    .write()
+                    .expect("Terminal screen lock poisoned")
+                    .scroll_view_down(3);
+                return vec![];
+            }
+            _ => {}
+        }
+
         // Check if selection is active
         let selection_active = {
             let screen = self.screen.read().expect("Terminal screen lock poisoned");
             screen.selection_start.is_some()
         };
 
-        // If mouse is outside and selection is not active - ignore
+        // If mouse is outside and selection is not active - ignore other events
         if !is_inside && !selection_active {
             return vec![];
         }
@@ -1282,21 +1301,8 @@ impl Panel for Terminal {
                     let _ = self.send_mouse_to_pty(&mouse, panel_area);
                 }
             }
-            // Mouse wheel scrolling - for viewing history
-            MouseEventKind::ScrollUp => {
-                // On scroll up - show history
-                self.screen
-                    .write()
-                    .expect("Terminal screen lock poisoned")
-                    .scroll_view_up(3);
-            }
-            MouseEventKind::ScrollDown => {
-                // On scroll down - return to current
-                self.screen
-                    .write()
-                    .expect("Terminal screen lock poisoned")
-                    .scroll_view_down(3);
-            }
+            // Scroll events are handled above (before boundary check)
+            MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {}
             // Other mouse events send to PTY
             _ => {
                 let _ = self.send_mouse_to_pty(&mouse, panel_area);

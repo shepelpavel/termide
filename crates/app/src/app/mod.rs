@@ -199,6 +199,9 @@ impl App {
                     // Check channel for filesystem update events
                     self.check_fs_update();
 
+                    // Check async git status results for FileManager panels
+                    self.check_fm_git_status_async();
+
                     // Check pending git diff updates (debounced)
                     self.check_pending_git_diff_updates();
 
@@ -392,6 +395,19 @@ impl App {
                     .needs_redraw()
                 {
                     self.state.needs_redraw = true;
+                }
+            }
+        }
+    }
+
+    /// Check async git status results for FileManager panels
+    fn check_fm_git_status_async(&mut self) {
+        for group in &mut self.layout_manager.panel_groups {
+            for panel in group.panels_mut() {
+                if let Some(fm) = panel.as_file_manager_mut() {
+                    if fm.check_git_status_async() {
+                        self.state.needs_redraw = true;
+                    }
                 }
             }
         }

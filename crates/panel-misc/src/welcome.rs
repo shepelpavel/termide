@@ -9,8 +9,8 @@ use termide_panel_editor::Editor;
 use termide_theme::Theme;
 
 // Embed help files at compile time
-const HELP_EN: &str = include_str!("../../../help/en.txt");
-const HELP_RU: &str = include_str!("../../../help/ru.txt");
+const HELP_EN: &str = include_str!("../help/en.txt");
+const HELP_RU: &str = include_str!("../help/ru.txt");
 
 /// Get help text based on current locale from i18n system
 fn get_help_text() -> &'static str {

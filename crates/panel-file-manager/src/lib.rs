@@ -22,7 +22,7 @@ use std::sync::mpsc;
 
 use termide_config::{constants, Config, FileManagerSettings};
 use termide_core::{CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel};
-use termide_git::{get_git_status, GitStatus, GitStatusCache};
+use termide_git::{get_git_status_async, GitStatus, GitStatusAsyncResult, GitStatusCache};
 use termide_modal::{ActiveModal, ConfirmModal, InputModal};
 use termide_state::{DirSizeResult, PendingAction};
 use termide_theme::Theme;
@@ -54,6 +54,8 @@ pub struct FileManager {
     selected_items: HashSet<usize>,
     /// Git status cache for the current directory
     git_status_cache: Option<GitStatusCache>,
+    /// Channel receiver for async git status loading
+    git_status_receiver: Option<mpsc::Receiver<GitStatusAsyncResult>>,
     /// Channel receiver for directory size calculation results (needs to be passed to AppState)
     pub dir_size_receiver: Option<mpsc::Receiver<DirSizeResult>>,
     /// Starting index for drag selection
@@ -115,6 +117,7 @@ impl FileManager {
             last_click_index: None,
             selected_items: HashSet::new(),
             git_status_cache: None,
+            git_status_receiver: None,
             dir_size_receiver: None,
             drag_start_index: None,
             drag_mode: None,
@@ -253,8 +256,10 @@ impl FileManager {
         // Update displayed title (will be truncated during rendering if needed)
         self.display_title = self.current_path.display().to_string();
 
-        // Load git statuses for the current directory
-        self.git_status_cache = get_git_status(&self.current_path);
+        // Start async git status loading (non-blocking)
+        // Git status will be applied when check_git_status_async() is called
+        self.git_status_cache = None;
+        self.git_status_receiver = Some(get_git_status_async(self.current_path.clone()));
 
         // Add parent directory if not at root
         if self.current_path.parent().is_some() {
@@ -344,26 +349,7 @@ impl FileManager {
             log::warn!("Failed to read directory: {}", self.current_path.display());
         }
 
-        // Add virtual entries for deleted files (tracked by git but removed from filesystem)
-        if let Some(cache) = &self.git_status_cache {
-            for deleted_name in cache.get_deleted_files() {
-                // Skip if already in entries (shouldn't happen, but safety check)
-                if self.entries.iter().any(|e| e.name == deleted_name) {
-                    continue;
-                }
-                self.entries.push(FileEntry {
-                    name: deleted_name,
-                    is_dir: false, // Assume file (git doesn't track empty dirs)
-                    is_hidden: false,
-                    is_symlink: false,
-                    is_executable: false,
-                    is_readonly: false, // Don't show "R" attribute for deleted
-                    git_status: GitStatus::Deleted,
-                    size: None,
-                    modified: None,
-                });
-            }
-        }
+        // Note: deleted files are added when async git status completes (apply_git_statuses)
 
         // Sort: directories first, then files
         self.entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
@@ -473,6 +459,85 @@ impl FileManager {
     /// Format file size in human-readable format (public method for external use)
     pub fn format_size_static(bytes: u64) -> String {
         utils::format_size(bytes)
+    }
+
+    /// Check for async git status results and update entries if available.
+    /// Returns true if git status was updated.
+    pub fn check_git_status_async(&mut self) -> bool {
+        let result = if let Some(ref rx) = self.git_status_receiver {
+            rx.try_recv().ok()
+        } else {
+            None
+        };
+
+        if let Some(git_result) = result {
+            // Verify the result is for the current directory
+            if git_result.dir == self.current_path {
+                self.git_status_cache = git_result.cache;
+                self.git_status_receiver = None;
+
+                // Re-apply git statuses to entries
+                self.apply_git_statuses();
+                return true;
+            }
+            // Result is for a different directory - discard it
+            self.git_status_receiver = None;
+        }
+        false
+    }
+
+    /// Apply git statuses from cache to entries
+    fn apply_git_statuses(&mut self) {
+        for entry in &mut self.entries {
+            if entry.name == ".." {
+                continue;
+            }
+
+            entry.git_status = if entry.is_dir {
+                self.git_status_cache
+                    .as_ref()
+                    .map(|cache| cache.get_directory_status(&entry.name))
+                    .unwrap_or(GitStatus::Unmodified)
+            } else {
+                self.git_status_cache
+                    .as_ref()
+                    .map(|cache| cache.get_status(&entry.name))
+                    .unwrap_or(GitStatus::Unmodified)
+            };
+        }
+
+        // Also add deleted files that weren't in the directory listing
+        if let Some(cache) = &self.git_status_cache {
+            for deleted_name in cache.get_deleted_files() {
+                // Skip if already in entries
+                if self.entries.iter().any(|e| e.name == deleted_name) {
+                    continue;
+                }
+                self.entries.push(FileEntry {
+                    name: deleted_name,
+                    is_dir: false,
+                    is_hidden: false,
+                    is_symlink: false,
+                    is_executable: false,
+                    is_readonly: false,
+                    git_status: GitStatus::Deleted,
+                    size: None,
+                    modified: None,
+                });
+            }
+
+            // Re-sort if we added deleted files
+            self.entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+            });
+        }
+    }
+
+    /// Check if git status is still loading
+    pub fn is_git_status_loading(&self) -> bool {
+        self.git_status_receiver.is_some()
     }
 }
 

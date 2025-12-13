@@ -7,7 +7,6 @@ use std::path::PathBuf;
 
 use super::App;
 use crate::PanelExt;
-use termide_core::Panel;
 use termide_panel_misc::WelcomePanel as Welcome;
 
 impl App {
@@ -59,15 +58,8 @@ impl App {
         let _ = self.layout_manager.close_active_panel(terminal_width);
         self.auto_save_session();
 
-        // Reload all FileManager panels to update git statuses
-        // This is needed for example when closing .gitignore editor
-        for group in &mut self.layout_manager.panel_groups {
-            for panel in group.panels_mut() {
-                if let Some(fm) = panel.as_file_manager_mut() {
-                    let _ = fm.reload();
-                }
-            }
-        }
+        // Note: FileManager reload removed - FS watcher handles git status updates
+        // when files change. Cascade reload caused O(n*m) delays on panel close.
 
         // Add Welcome panel if needed
         // Check if no panel groups remain (all panels closed)

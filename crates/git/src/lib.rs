@@ -7,6 +7,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::mpsc;
 use std::sync::OnceLock;
 
 pub mod diff;
@@ -105,54 +106,38 @@ pub fn find_repo_root(path: &Path) -> Option<PathBuf> {
     }
 }
 
-/// Get git status for directory.
+/// Get git status for directory (synchronous version for compatibility).
 pub fn get_git_status(dir: &Path) -> Option<GitStatusCache> {
     if !is_available() {
         return None;
     }
 
-    let is_repo = Command::new("git")
-        .arg("rev-parse")
-        .arg("--is-inside-work-tree")
+    // Single git command to check repo and get root path
+    let output = Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
         .current_dir(dir)
         .output()
-        .ok()
-        .map(|output| output.status.success())
-        .unwrap_or(false);
+        .ok()?;
 
-    if !is_repo {
-        return None;
+    if !output.status.success() {
+        return None; // Not a git repository
     }
 
-    let repo_root = Command::new("git")
-        .arg("rev-parse")
-        .arg("--show-toplevel")
-        .current_dir(dir)
-        .output()
+    let repo_root = String::from_utf8(output.stdout)
         .ok()
-        .and_then(|output| {
-            if output.status.success() {
-                String::from_utf8(output.stdout)
-                    .ok()
-                    .map(|s| PathBuf::from(s.trim()))
-            } else {
-                None
-            }
-        })
-        .unwrap_or_else(|| dir.to_path_buf());
+        .map(|s| PathBuf::from(s.trim()))?;
 
     let relative_path = dir
         .strip_prefix(&repo_root)
         .unwrap_or(Path::new(""))
         .to_path_buf();
 
-    let ignored = get_ignored_files(&repo_root);
+    // Single git status command - parse both status and ignored files
     let mut status_map = HashMap::new();
+    let mut ignored_files = HashSet::new();
 
     if let Ok(output) = Command::new("git")
-        .arg("status")
-        .arg("--porcelain=v1")
-        .arg("--ignored")
+        .args(["status", "--porcelain=v1", "--ignored"])
         .current_dir(&repo_root)
         .output()
     {
@@ -167,7 +152,11 @@ pub fn get_git_status(dir: &Path) -> Option<GitStatusCache> {
                     let file_path = &line[3..];
 
                     let status = match status_code {
-                        "!!" => GitStatus::Ignored,
+                        "!!" => {
+                            // Also add to ignored_files for parent directory checks
+                            ignored_files.insert(PathBuf::from(file_path));
+                            GitStatus::Ignored
+                        }
                         " M" | "M " | "MM" => GitStatus::Modified,
                         "A " | " A" | "AM" | "AA" => GitStatus::Added,
                         " D" | "D " | "DD" => GitStatus::Deleted,
@@ -183,33 +172,28 @@ pub fn get_git_status(dir: &Path) -> Option<GitStatusCache> {
 
     Some(GitStatusCache {
         status_map,
-        ignored_files: ignored,
+        ignored_files,
         relative_path,
     })
 }
 
-fn get_ignored_files(repo_root: &Path) -> HashSet<PathBuf> {
-    let mut ignored = HashSet::new();
+/// Result type for async git status loading.
+pub struct GitStatusAsyncResult {
+    /// Directory path this result is for
+    pub dir: PathBuf,
+    /// Git status cache (None if not a git repo or error)
+    pub cache: Option<GitStatusCache>,
+}
 
-    if let Ok(output) = Command::new("git")
-        .arg("status")
-        .arg("--porcelain=v1")
-        .arg("--ignored")
-        .current_dir(repo_root)
-        .output()
-    {
-        if output.status.success() {
-            if let Ok(stdout) = String::from_utf8(output.stdout) {
-                for line in stdout.lines() {
-                    if let Some(file_path) = line.strip_prefix("!! ") {
-                        ignored.insert(PathBuf::from(file_path));
-                    }
-                }
-            }
-        }
-    }
-
-    ignored
+/// Load git status asynchronously in a background thread.
+/// Returns a receiver that will receive the result when complete.
+pub fn get_git_status_async(dir: PathBuf) -> mpsc::Receiver<GitStatusAsyncResult> {
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let cache = get_git_status(&dir);
+        let _ = tx.send(GitStatusAsyncResult { dir, cache });
+    });
+    rx
 }
 
 /// Git status cache for directory.
