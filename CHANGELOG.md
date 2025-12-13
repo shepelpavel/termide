@@ -5,6 +5,16 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2025-12-14
+
+### Fixed
+- Terminal scroll not working during user input wait (scroll events now bypass modal check)
+- i18n placeholders showing '{}' instead of values (all 9 language files updated with named placeholders)
+
+### Changed
+- Removed duplicate `/i18n/` folder from project root (was unused copy)
+- Moved `/help/` files to `crates/panel-misc/help/` for better code organization
+
 ## [0.5.1] - 2025-12-13
 
 ### Changed
