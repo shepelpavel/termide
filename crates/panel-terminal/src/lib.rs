@@ -1265,16 +1265,22 @@ impl Panel for Terminal {
                 }
             }
             MouseEventKind::Up(MouseButton::Left) => {
-                // Finalize selection (using clamped coordinates)
-                {
+                // Finalize selection and copy only if dragged (not single click)
+                let should_copy = {
                     let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
-                    if screen.selection_start.is_some() {
+                    if let Some(start) = screen.selection_start {
                         screen.selection_end = Some((inner_row, inner_col));
+                        // Copy only if selection is non-empty (actual drag occurred)
+                        start != (inner_row, inner_col)
+                    } else {
+                        false
                     }
-                }
+                };
 
-                // Copy selected text to CLIPBOARD
-                let _ = self.copy_selection_to_clipboard();
+                // Copy selected text to CLIPBOARD only if dragged
+                if should_copy {
+                    let _ = self.copy_selection_to_clipboard();
+                }
 
                 // Clear selection after copying
                 {
