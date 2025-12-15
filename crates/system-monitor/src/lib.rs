@@ -249,7 +249,7 @@ impl DiskSpaceInfoExt for DiskSpaceInfo {
                 .unwrap_or(device)
                 .to_uppercase();
             format!(
-                "{}: {}/{} {} ({}%)",
+                "{}: {}/{}{} ({}%)",
                 device_name,
                 used_gb,
                 total_gb,
@@ -258,7 +258,7 @@ impl DiskSpaceInfoExt for DiskSpaceInfo {
             )
         } else {
             format!(
-                "{}/{} {} ({}%)",
+                "{}/{}{} ({}%)",
                 used_gb,
                 total_gb,
                 t.size_gigabytes(),
