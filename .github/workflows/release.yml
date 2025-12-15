@@ -94,7 +94,7 @@ jobs:
           cp target/${{ matrix.target }}/release/termide package/
           cp README.md LICENSE package/
           mkdir -p package/help
-          cp help/*.txt package/help/
+          cp crates/panel-misc/help/*.txt package/help/
           cd package
           tar czvf ../termide-${{ github.ref_name }}-${{ matrix.target }}.tar.gz *
           cd ..
