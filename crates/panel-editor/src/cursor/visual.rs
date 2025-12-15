@@ -3,6 +3,7 @@
 //! This module provides cursor movement that accounts for word wrapping.
 
 use termide_buffer::{Cursor, TextBuffer};
+use unicode_segmentation::UnicodeSegmentation;
 
 use crate::word_wrap;
 
@@ -58,7 +59,7 @@ pub fn move_up(
     let visual_offset = preferred_column.unwrap_or_else(|| {
         if let Some(line_text) = buffer.line(cursor.line) {
             let line_text = line_text.trim_end_matches('\n');
-            let line_len = line_text.chars().count();
+            let line_len = line_text.graphemes(true).count();
             let cursor_col = cursor.column.min(line_len);
             let (_visual_rows, wrap_points) =
                 word_wrap::get_line_wrap_points(line_text, content_width, use_smart_wrap);
@@ -74,7 +75,7 @@ pub fn move_up(
     // Try to move within current line first
     if let Some(line_text) = buffer.line(cursor.line) {
         let line_text = line_text.trim_end_matches('\n');
-        let line_len = line_text.chars().count();
+        let line_len = line_text.graphemes(true).count();
         let cursor_col = cursor.column.min(line_len);
 
         let (_visual_rows, wrap_points) =
@@ -98,7 +99,7 @@ pub fn move_up(
 
         if let Some(line_text) = buffer.line(new_line) {
             let line_text = line_text.trim_end_matches('\n');
-            let line_len = line_text.chars().count();
+            let line_len = line_text.graphemes(true).count();
 
             if line_len == 0 {
                 return Some(Cursor::at(new_line, 0));
@@ -133,7 +134,7 @@ pub fn move_down(
     let visual_offset = preferred_column.unwrap_or_else(|| {
         if let Some(line_text) = buffer.line(cursor.line) {
             let line_text = line_text.trim_end_matches('\n');
-            let line_len = line_text.chars().count();
+            let line_len = line_text.graphemes(true).count();
             let cursor_col = cursor.column.min(line_len);
             let (_visual_rows, wrap_points) =
                 word_wrap::get_line_wrap_points(line_text, content_width, use_smart_wrap);
@@ -149,7 +150,7 @@ pub fn move_down(
     // Try to move within current line first
     if let Some(line_text) = buffer.line(cursor.line) {
         let line_text = line_text.trim_end_matches('\n');
-        let line_len = line_text.chars().count();
+        let line_len = line_text.graphemes(true).count();
         let cursor_col = cursor.column.min(line_len);
 
         let (total_visual_rows, wrap_points) =
@@ -174,7 +175,7 @@ pub fn move_down(
 
         if let Some(line_text) = buffer.line(new_line) {
             let line_text = line_text.trim_end_matches('\n');
-            let line_len = line_text.chars().count();
+            let line_len = line_text.graphemes(true).count();
 
             if line_len == 0 {
                 return Some(Cursor::at(new_line, 0));
@@ -209,7 +210,7 @@ pub fn move_to_visual_line_start(
 ) -> usize {
     if let Some(line_text) = buffer.line(cursor.line) {
         let line_text = line_text.trim_end_matches('\n');
-        let line_len = line_text.chars().count();
+        let line_len = line_text.graphemes(true).count();
         let cursor_col = cursor.column.min(line_len);
 
         let (_visual_rows, wrap_points) =
@@ -238,7 +239,7 @@ pub fn move_to_visual_line_end(
 ) -> usize {
     if let Some(line_text) = buffer.line(cursor.line) {
         let line_text = line_text.trim_end_matches('\n');
-        let line_len = line_text.chars().count();
+        let line_len = line_text.graphemes(true).count();
         let cursor_col = cursor.column.min(line_len);
 
         let (_visual_rows, wrap_points) =

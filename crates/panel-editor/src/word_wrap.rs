@@ -4,16 +4,17 @@
 //! including smart wrapping (breaking at word boundaries) and hard wrapping
 //! (breaking at fixed column width).
 
-use termide_buffer::{calculate_wrap_point, calculate_wrap_points_for_line, TextBuffer};
+use termide_buffer::{calculate_wrap_point, TextBuffer};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 /// Calculate wrap points for a single line of text.
 ///
 /// Returns (visual_row_count, wrap_points) where wrap_points contains
-/// the grapheme indices where the line should wrap.
+/// the grapheme indices where each new visual line starts.
 ///
 /// Uses display width and grapheme clusters for proper Unicode handling.
+/// This function iterates exactly like rendering does to ensure consistency.
 pub fn get_line_wrap_points(
     line_text: &str,
     content_width: usize,
@@ -33,39 +34,33 @@ pub fn get_line_wrap_points(
         return (1, Vec::new()); // No wrapping needed
     }
 
-    if use_smart_wrap {
-        // Use smart wrapping from termide-buffer (grapheme-aware)
-        let wrap_points = calculate_wrap_points_for_line(line_text, content_width);
-        let visual_rows = wrap_points.len() + 1;
-        (visual_rows, wrap_points)
-    } else {
-        // Simple wrapping using display width (hard break at content_width)
-        let wrap_points = calculate_simple_wrap_points(line_text, content_width);
-        let visual_rows = wrap_points.len() + 1;
-        (visual_rows, wrap_points)
-    }
-}
-
-/// Calculate simple (hard) wrap points based on display width.
-///
-/// Returns grapheme indices where the line should wrap.
-fn calculate_simple_wrap_points(line_text: &str, content_width: usize) -> Vec<usize> {
+    // Iterate exactly like rendering does to ensure wrap points match
     let graphemes: Vec<&str> = line_text.graphemes(true).collect();
+    let line_len = graphemes.len();
     let mut wrap_points = Vec::new();
-    let mut current_width = 0;
+    let mut grapheme_offset = 0;
 
-    for (idx, grapheme) in graphemes.iter().enumerate() {
-        let w = grapheme.width();
-
-        if current_width + w > content_width && idx > 0 {
-            wrap_points.push(idx);
-            current_width = w;
+    while grapheme_offset < line_len {
+        let chunk_end = if use_smart_wrap {
+            calculate_wrap_point(&graphemes, grapheme_offset, content_width, line_len)
         } else {
-            current_width += w;
+            calculate_simple_wrap_point(&graphemes, grapheme_offset, content_width)
+        };
+
+        // Push chunk_end as start of NEXT visual line (not grapheme_offset!)
+        if chunk_end > grapheme_offset && chunk_end < line_len {
+            wrap_points.push(chunk_end);
+        }
+
+        // Prevent infinite loop
+        if chunk_end == grapheme_offset {
+            grapheme_offset += 1;
+        } else {
+            grapheme_offset = chunk_end;
         }
     }
 
-    wrap_points
+    (wrap_points.len() + 1, wrap_points)
 }
 
 /// Calculate simple wrap point for a single visual line (iterative version).

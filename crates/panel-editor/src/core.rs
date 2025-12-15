@@ -531,8 +531,9 @@ impl Editor {
             // Calculate visual offset (position within current visual row)
             let visual_offset = if self.render_cache.content_width > 0 {
                 if let Some(line_text) = self.buffer.line(self.cursor.line) {
+                    use unicode_segmentation::UnicodeSegmentation;
                     let line_text = line_text.trim_end_matches('\n');
-                    let line_len = line_text.chars().count();
+                    let line_len = line_text.graphemes(true).count();
                     let cursor_col = self.cursor.column.min(line_len);
                     let (_visual_rows, wrap_points) = word_wrap::get_line_wrap_points(
                         line_text,

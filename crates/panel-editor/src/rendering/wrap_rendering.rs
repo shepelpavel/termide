@@ -337,13 +337,10 @@ fn render_visual_line<H: LineHighlighter>(
         }
     }
 
-    // Check cursor at end of line
-    if is_cursor_line
-        && cursor.column >= char_offset
-        && cursor.column <= chunk_end
-        && (cursor.column == chunk_end || (chunk_end == line_len && cursor.column >= line_len))
-    {
-        render_context.cursor_viewport_pos = Some((visual_row, cursor.column - char_offset));
+    // Check cursor at end of PHYSICAL line only
+    // Wrap points are handled by the next visual line's main loop
+    if is_cursor_line && chunk_end == line_len && cursor.column >= line_len {
+        render_context.cursor_viewport_pos = Some((visual_row, visual_col));
     }
 
     // Fill remainder with cursor line background
