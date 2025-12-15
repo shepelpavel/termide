@@ -27,6 +27,7 @@ tree-sitter-highlight = "0.24"
 regex = "1.12"
 notify = { version = "6.1", default-features = false, features = ["macos_kqueue"] }
 notify-debouncer-mini = "0.4"
+ignore = "0.4"
 sysinfo = "0.31"
 chrono = { version = "0.4", features = ["serde"] }
 portable-pty = "0.8"

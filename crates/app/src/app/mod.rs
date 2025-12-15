@@ -282,7 +282,7 @@ impl App {
                     let is_git_repo = repo_root.is_some();
                     let new_root = repo_root.unwrap_or_else(|| current_path.clone());
 
-                    // Watch new root
+                    // Watch new root (now fast - respects .gitignore)
                     if is_git_repo {
                         if !watcher.is_watching_repo(&new_root) {
                             let _ = watcher.watch_repository(new_root.clone());
@@ -319,6 +319,8 @@ impl App {
         let mut git_repos: HashSet<std::path::PathBuf> = HashSet::new();
         let mut fs_paths: HashSet<std::path::PathBuf> = HashSet::new();
 
+        let mut gitignore_changed_repos: Vec<std::path::PathBuf> = Vec::new();
+
         for event in events {
             match event {
                 WatchEvent::GitCommit(repo_root) => {
@@ -330,7 +332,16 @@ impl App {
                 WatchEvent::FileChanged(path) => {
                     fs_paths.insert(path);
                 }
+                WatchEvent::GitignoreChanged(repo_root) => {
+                    gitignore_changed_repos.push(repo_root);
+                }
             }
+        }
+
+        // Handle .gitignore changes - reinitialize watcher
+        for repo_root in gitignore_changed_repos {
+            watcher.unwatch_repository(&repo_root);
+            let _ = watcher.watch_repository(repo_root);
         }
 
         // Process git events
@@ -363,12 +374,21 @@ impl App {
         }
     }
 
-    /// Check async git status results for FileManager panels
+    /// Check async git status results for FileManager panels and update spinners
     fn check_fm_git_status_async(&mut self) {
+        const SPINNER_INTERVAL: std::time::Duration = std::time::Duration::from_millis(125);
+
         for group in &mut self.layout_manager.panel_groups {
             for panel in group.panels_mut() {
                 if let Some(fm) = panel.as_file_manager_mut() {
+                    // Check for async git status results
                     if fm.check_git_status_async() {
+                        self.state.needs_redraw = true;
+                    }
+
+                    // Update spinner if git status is still loading
+                    if fm.is_git_status_loading() && fm.spinner_elapsed() >= SPINNER_INTERVAL {
+                        fm.advance_spinner();
                         self.state.needs_redraw = true;
                     }
                 }

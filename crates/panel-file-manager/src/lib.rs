@@ -77,6 +77,10 @@ pub struct FileManager {
     cached_theme: Theme,
     /// Cached config for rendering
     cached_config: FileManagerSettings,
+    /// Spinner frame for git loading indicator
+    spinner_frame: usize,
+    /// Last spinner update time
+    last_spinner_update: std::time::Instant,
 }
 
 #[derive(Debug, Clone)]
@@ -126,6 +130,8 @@ impl FileManager {
             last_reload_time: None,
             cached_theme: Theme::default(),
             cached_config: FileManagerSettings::default(),
+            spinner_frame: 0,
+            last_spinner_update: std::time::Instant::now(),
         };
         let _ = fm.load_directory();
         fm
@@ -262,6 +268,9 @@ impl FileManager {
         if !preserve_selection {
             self.git_status_cache = None;
         }
+        // Reset spinner state for new loading animation
+        self.spinner_frame = 0;
+        self.last_spinner_update = std::time::Instant::now();
         self.git_status_receiver = Some(get_git_status_async(self.current_path.clone()));
 
         // Add parent directory if not at root
@@ -549,6 +558,22 @@ impl FileManager {
     pub fn is_git_status_loading(&self) -> bool {
         self.git_status_receiver.is_some()
     }
+
+    /// Advance spinner to next frame
+    pub fn advance_spinner(&mut self) {
+        self.spinner_frame = (self.spinner_frame + 1) % constants::SPINNER_FRAMES_COUNT;
+        self.last_spinner_update = std::time::Instant::now();
+    }
+
+    /// Get time since last spinner update
+    pub fn spinner_elapsed(&self) -> std::time::Duration {
+        self.last_spinner_update.elapsed()
+    }
+
+    /// Get current spinner character
+    fn get_spinner_char(&self) -> &'static str {
+        constants::SPINNER_FRAMES[self.spinner_frame]
+    }
 }
 
 impl Panel for FileManager {
@@ -557,7 +582,11 @@ impl Panel for FileManager {
     }
 
     fn title(&self) -> String {
-        self.display_title.clone()
+        if self.is_git_status_loading() {
+            format!("{} {}", self.get_spinner_char(), self.display_title)
+        } else {
+            self.display_title.clone()
+        }
     }
 
     fn prepare_render(&mut self, theme: &termide_theme::Theme, config: &Config) {

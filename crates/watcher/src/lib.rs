@@ -6,9 +6,11 @@
 //! - Separate debounce: 300ms for files, 1000ms for git
 
 use anyhow::{Context, Result};
+use ignore::WalkBuilder;
 use notify::{RecommendedWatcher, RecursiveMode};
 use notify_debouncer_mini::{new_debouncer, DebouncedEvent, Debouncer};
 use std::collections::{HashMap, HashSet};
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::{Duration, Instant};
@@ -32,15 +34,20 @@ pub enum WatchEvent {
     },
     /// Git commit occurred (for all: update git status/diff)
     GitCommit(PathBuf),
+    /// .gitignore changed - watcher needs reinitialization
+    GitignoreChanged(PathBuf),
 }
 
 /// Internal event from debouncer callback.
 #[derive(Debug, Clone)]
+#[allow(clippy::enum_variant_names)]
 enum InternalEvent {
     /// Regular filesystem change
     FsChange { changed_path: PathBuf },
     /// Git-related change (needs additional debounce)
     GitChange { repo_root: PathBuf },
+    /// .gitignore changed
+    GitignoreChange { repo_root: PathBuf },
 }
 
 /// Unified watcher for filesystem and git changes.
@@ -52,14 +59,16 @@ enum InternalEvent {
 #[derive(Debug)]
 pub struct UnifiedWatcher {
     debouncer: Debouncer<RecommendedWatcher>,
-    /// Git repos: repo_root -> reference count (Recursive mode)
-    watched_repos: HashMap<PathBuf, usize>,
+    /// Git repos: repo_root -> (reference_count, watched_paths)
+    watched_repos: HashMap<PathBuf, (usize, HashSet<PathBuf>)>,
     /// Non-git dirs: dir_path -> reference count (NonRecursive mode)
     watched_dirs: HashMap<PathBuf, usize>,
     /// Receiver for internal events from debouncer callback
     internal_rx: Receiver<InternalEvent>,
     /// Pending git events waiting for 1000ms debounce
     pending_git: HashMap<PathBuf, Instant>,
+    /// Pending gitignore changes waiting for debounce
+    pending_gitignore: HashMap<PathBuf, Instant>,
     /// Pending fs changes to emit
     pending_fs: HashSet<PathBuf>,
 }
@@ -87,6 +96,7 @@ impl UnifiedWatcher {
             watched_dirs: HashMap::new(),
             internal_rx,
             pending_git: HashMap::new(),
+            pending_gitignore: HashMap::new(),
             pending_fs: HashSet::new(),
         })
     }
@@ -94,6 +104,19 @@ impl UnifiedWatcher {
     /// Process raw event from debouncer, classify and send to internal channel.
     fn process_raw_event(event: &DebouncedEvent, tx: &Sender<InternalEvent>) {
         let path = &event.path;
+
+        // Check if this is a .gitignore change
+        if path.file_name() == Some(OsStr::new(".gitignore")) {
+            // Find repo root by walking up to .git directory
+            if let Some(repo_root) = Self::find_repo_root(path) {
+                let _ = tx.send(InternalEvent::GitignoreChange { repo_root });
+            }
+            // Also emit as regular fs change so FileManager updates
+            let _ = tx.send(InternalEvent::FsChange {
+                changed_path: path.clone(),
+            });
+            return;
+        }
 
         // Check if this is a .git/ event
         if Self::is_git_path(path) {
@@ -109,6 +132,17 @@ impl UnifiedWatcher {
             let _ = tx.send(InternalEvent::FsChange {
                 changed_path: path.clone(),
             });
+        }
+    }
+
+    /// Find repository root by walking up from a path.
+    fn find_repo_root(path: &Path) -> Option<PathBuf> {
+        let mut current = path.parent()?;
+        loop {
+            if current.join(".git").exists() {
+                return Some(current.to_path_buf());
+            }
+            current = current.parent()?;
         }
     }
 
@@ -141,31 +175,55 @@ impl UnifiedWatcher {
         None
     }
 
-    /// Start watching a git repository root recursively.
+    /// Start watching a git repository root recursively, respecting .gitignore.
+    /// Uses ignore crate to walk directories, skipping gitignored paths.
+    /// This is much faster than notify's RecursiveMode::Recursive which watches ALL directories.
     /// Increments reference count if already watching.
     pub fn watch_repository(&mut self, repo_root: PathBuf) -> Result<()> {
         // Increment reference count if already watching
-        if let Some(count) = self.watched_repos.get_mut(&repo_root) {
+        if let Some((count, _)) = self.watched_repos.get_mut(&repo_root) {
             *count += 1;
             return Ok(());
         }
 
         let watcher = self.debouncer.watcher();
-        watcher.watch(&repo_root, RecursiveMode::Recursive)?;
+        let mut watched_paths = HashSet::new();
 
-        self.watched_repos.insert(repo_root, 1);
+        // Walk directory tree respecting .gitignore
+        // This watches ~100 dirs instead of ~7000 (skips target/, node_modules/, etc.)
+        for entry in WalkBuilder::new(&repo_root)
+            .hidden(false) // don't skip hidden files (we need .git/)
+            .git_ignore(true) // respect .gitignore
+            .git_global(true) // respect global gitignore
+            .git_exclude(true) // respect .git/info/exclude
+            .build()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_some_and(|ft| ft.is_dir()))
+        {
+            let path = entry.into_path();
+            if watcher.watch(&path, RecursiveMode::NonRecursive).is_ok() {
+                watched_paths.insert(path);
+            }
+        }
+
+        self.watched_repos.insert(repo_root, (1, watched_paths));
         Ok(())
     }
 
     /// Stop watching a git repository (decrement reference count).
     /// Only unwatches when count reaches 0.
     pub fn unwatch_repository(&mut self, repo_root: &Path) {
-        if let Some(count) = self.watched_repos.get_mut(repo_root) {
+        if let Some((count, _)) = self.watched_repos.get_mut(repo_root) {
             *count = count.saturating_sub(1);
             if *count == 0 {
-                self.watched_repos.remove(repo_root);
-                let watcher = self.debouncer.watcher();
-                let _ = watcher.unwatch(repo_root);
+                // Remove and get the watched paths
+                if let Some((_, watched_paths)) = self.watched_repos.remove(repo_root) {
+                    let watcher = self.debouncer.watcher();
+                    // Unwatch all paths that were watched for this repo
+                    for path in watched_paths {
+                        let _ = watcher.unwatch(&path);
+                    }
+                }
             }
         }
     }
@@ -222,6 +280,10 @@ impl UnifiedWatcher {
                     // Update timestamp for git debounce
                     self.pending_git.insert(repo_root, Instant::now());
                 }
+                InternalEvent::GitignoreChange { repo_root } => {
+                    // Update timestamp for gitignore debounce
+                    self.pending_gitignore.insert(repo_root, Instant::now());
+                }
             }
         }
 
@@ -240,6 +302,19 @@ impl UnifiedWatcher {
         for repo_root in ready_git {
             self.pending_git.remove(&repo_root);
             events.push(WatchEvent::GitCommit(repo_root));
+        }
+
+        // Emit gitignore events that have been debounced for 1000ms
+        let ready_gitignore: Vec<PathBuf> = self
+            .pending_gitignore
+            .iter()
+            .filter(|(_, timestamp)| now.duration_since(**timestamp) >= git_debounce)
+            .map(|(path, _)| path.clone())
+            .collect();
+
+        for repo_root in ready_gitignore {
+            self.pending_gitignore.remove(&repo_root);
+            events.push(WatchEvent::GitignoreChanged(repo_root));
         }
 
         // Emit filesystem events (already debounced by notify at 300ms)
