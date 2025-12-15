@@ -486,6 +486,13 @@ impl FileManager {
         false
     }
 
+    /// Refresh git status without full directory reload.
+    /// Used when git watcher detects repository changes (e.g., after commits).
+    fn refresh_git_status(&mut self) {
+        // Start async git status request for current directory
+        self.git_status_receiver = Some(get_git_status_async(self.current_path.clone()));
+    }
+
     /// Apply git statuses from cache to entries
     fn apply_git_statuses(&mut self) {
         for entry in &mut self.entries {
@@ -1086,9 +1093,25 @@ impl Panel for FileManager {
                     CommandResult::NeedsRedraw(false)
                 }
             }
+            // Handle git status updates from git watcher
+            PanelCommand::OnGitUpdate { repo_paths } => {
+                // Check if current directory is within one of the updated repositories
+                if self.is_watched_root_git_repo {
+                    if let Some(watched) = &self.watched_root {
+                        let should_update = repo_paths
+                            .iter()
+                            .any(|p| watched.starts_with(p) || p.starts_with(watched));
+                        if should_update {
+                            // Refresh git status without full directory reload
+                            self.refresh_git_status();
+                            return CommandResult::NeedsRedraw(false);
+                        }
+                    }
+                }
+                CommandResult::None
+            }
             // Commands not applicable to FileManager
             PanelCommand::GetRepoRoot
-            | PanelCommand::OnGitUpdate { .. }
             | PanelCommand::CheckPendingGitDiff
             | PanelCommand::CheckGitDiffReceiver
             | PanelCommand::CheckExternalModification

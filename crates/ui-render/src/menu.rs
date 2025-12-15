@@ -115,8 +115,8 @@ pub fn render_menu(frame: &mut Frame, area: Rect, params: &MenuRenderParams) {
         RamUnit::Megabytes => t.size_megabytes(),
     };
 
-    // CPU indicator with fixed width - single format! instead of nested
-    let cpu_text = format!("CPU {:<4}%", params.cpu_usage);
+    // CPU indicator
+    let cpu_text = format!("CPU {}% ", params.cpu_usage);
     let cpu_color = resource_color(params.cpu_usage, params.theme);
 
     // RAM indicator
