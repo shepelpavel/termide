@@ -115,8 +115,8 @@ pub fn render_menu(frame: &mut Frame, area: Rect, params: &MenuRenderParams) {
         RamUnit::Megabytes => t.size_megabytes(),
     };
 
-    // CPU indicator with fixed width
-    let cpu_text = format!("{:<9}", format!("CPU {}%", params.cpu_usage));
+    // CPU indicator with fixed width - single format! instead of nested
+    let cpu_text = format!("CPU {:<4}%", params.cpu_usage);
     let cpu_color = resource_color(params.cpu_usage, params.theme);
 
     // RAM indicator
@@ -137,25 +137,25 @@ pub fn render_menu(frame: &mut Frame, area: Rect, params: &MenuRenderParams) {
         spans.push(Span::raw(" ".repeat(remaining)));
     }
 
+    // Pre-compute styles to avoid repeated Style::default() calls
+    let hint_style = Style::default().fg(Color::DarkGray);
+    let cpu_style = Style::default().fg(cpu_color);
+    let ram_style = Style::default().fg(ram_color);
+    let clock_style = Style::default()
+        .fg(params.theme.fg)
+        .add_modifier(Modifier::BOLD);
+
     // Add hint
-    spans.push(Span::styled(
-        format!(" {} ", hint),
-        Style::default().fg(Color::DarkGray),
-    ));
+    spans.push(Span::styled(format!(" {} ", hint), hint_style));
 
     // Add CPU indicator
-    spans.push(Span::styled(cpu_text, Style::default().fg(cpu_color)));
+    spans.push(Span::styled(cpu_text, cpu_style));
 
     // Add RAM indicator
-    spans.push(Span::styled(ram_text, Style::default().fg(ram_color)));
+    spans.push(Span::styled(ram_text, ram_style));
 
     // Add clock
-    spans.push(Span::styled(
-        clock_text,
-        Style::default()
-            .fg(params.theme.fg)
-            .add_modifier(Modifier::BOLD),
-    ));
+    spans.push(Span::styled(clock_text, clock_style));
 
     let menu =
         Paragraph::new(Line::from(spans)).style(Style::default().bg(params.theme.accented_bg));

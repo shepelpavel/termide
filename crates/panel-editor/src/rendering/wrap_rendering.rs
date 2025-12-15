@@ -57,7 +57,7 @@ pub fn render_content_word_wrap<H: LineHighlighter>(
             text_style
         };
 
-        if let Some(line_text) = buffer.line(line_idx) {
+        if let Some(line_text) = buffer.line_cow(line_idx) {
             let line_text = line_text.trim_end_matches('\n');
             let graphemes: Vec<&str> = line_text.graphemes(true).collect();
             let line_len = graphemes.len();

@@ -319,11 +319,13 @@ impl TerminalScreen {
     pub fn scroll_view_up(&mut self, lines: usize) {
         let max_offset = self.scrollback.len();
         self.scroll_offset = (self.scroll_offset + lines).min(max_offset);
+        self.dirty = true; // Invalidate cache to force re-render
     }
 
     /// Scroll view down (to current)
     pub fn scroll_view_down(&mut self, lines: usize) {
         self.scroll_offset = self.scroll_offset.saturating_sub(lines);
+        self.dirty = true; // Invalidate cache to force re-render
     }
 
     /// Reset scroll to current screen

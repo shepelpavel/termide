@@ -590,8 +590,8 @@ impl HighlightCache {
                 }
                 Ok(HighlightEvent::HighlightStart(highlight)) => {
                     if !current_text.is_empty() {
-                        segments.push((current_text.clone(), current_style));
-                        current_text.clear();
+                        // Use take() instead of clone() + clear() to avoid allocation
+                        segments.push((std::mem::take(&mut current_text), current_style));
                     }
                     current_style = self
                         .syntax_highlighter
@@ -599,8 +599,8 @@ impl HighlightCache {
                 }
                 Ok(HighlightEvent::HighlightEnd) => {
                     if !current_text.is_empty() {
-                        segments.push((current_text.clone(), current_style));
-                        current_text.clear();
+                        // Use take() instead of clone() + clear() to avoid allocation
+                        segments.push((std::mem::take(&mut current_text), current_style));
                     }
                     current_style = Style::default();
                 }

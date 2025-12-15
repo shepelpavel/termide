@@ -23,13 +23,15 @@ pub fn perform_search(buffer: &TextBuffer, search: &mut SearchState) {
         search.query.to_lowercase()
     };
 
-    // Search through all lines
+    // Search through all lines - use line_cow for zero-copy when possible
     for line_idx in 0..buffer.line_count() {
-        if let Some(line_text) = buffer.line(line_idx) {
+        if let Some(line_text) = buffer.line_cow(line_idx) {
+            // For case-sensitive: use Cow directly (may avoid allocation)
+            // For case-insensitive: must allocate for lowercase
             let search_text = if search.case_sensitive {
-                line_text.to_string()
+                line_text
             } else {
-                line_text.to_lowercase()
+                std::borrow::Cow::Owned(line_text.to_lowercase())
             };
 
             // Find all occurrences in line

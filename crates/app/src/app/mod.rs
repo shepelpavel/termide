@@ -384,17 +384,26 @@ impl App {
             }
         }
 
-        // Process collected updates using handle_command
-        for update in updates {
-            for panel in self.layout_manager.iter_all_panels_mut() {
+        // Early return if no updates - avoid panel iteration overhead
+        if updates.is_empty() {
+            return;
+        }
+
+        // Deduplicate paths to avoid redundant panel updates
+        let unique_paths: std::collections::HashSet<_> =
+            updates.iter().map(|u| u.changed_path.as_path()).collect();
+
+        // Process updates - iterate panels only once for all unique paths
+        for panel in self.layout_manager.iter_all_panels_mut() {
+            for path in &unique_paths {
                 // Use OnFsUpdate command - panel decides if it needs to update
                 if panel
-                    .handle_command(PanelCommand::OnFsUpdate {
-                        changed_path: &update.changed_path,
-                    })
+                    .handle_command(PanelCommand::OnFsUpdate { changed_path: path })
                     .needs_redraw()
                 {
                     self.state.needs_redraw = true;
+                    // Panel already marked for redraw, no need to check more paths for this panel
+                    break;
                 }
             }
         }

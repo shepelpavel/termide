@@ -64,10 +64,10 @@ impl StatusBar {
         );
 
         // Fill entire line with background color from theme
+        // Pre-compute style outside loop to avoid per-pixel allocation
+        let bg_style = Style::default().bg(params.theme.accented_bg);
         for x in area.left()..area.right() {
-            buf[(x, area.top())]
-                .set_char(' ')
-                .set_style(Style::default().bg(params.theme.accented_bg));
+            buf[(x, area.top())].set_char(' ').set_style(bg_style);
         }
 
         // Render status bar text

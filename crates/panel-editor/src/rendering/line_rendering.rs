@@ -287,8 +287,8 @@ pub fn render_content_no_wrap<H: LineHighlighter>(
         // Handle different types of virtual lines
         match virtual_line {
             git::VirtualLine::Real(line_idx) => {
-                // Render real line
-                if let Some(line_text) = buffer.line(line_idx) {
+                // Render real line - use line_cow for zero-copy when possible
+                if let Some(line_text) = buffer.line_cow(line_idx) {
                     let line_text = line_text.trim_end_matches('\n');
                     let is_cursor_line = line_idx == cursor.line;
 

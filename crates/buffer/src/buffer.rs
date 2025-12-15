@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use ropey::Rope;
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -160,6 +161,23 @@ impl TextBuffer {
     pub fn line(&self, index: usize) -> Option<String> {
         if index < self.line_count() {
             Some(self.rope.line(index).to_string())
+        } else {
+            None
+        }
+    }
+
+    /// Get line as Cow<str> - zero-copy when line is contiguous in memory
+    ///
+    /// This is more efficient than `line()` for read-only access since it
+    /// avoids String allocation when the line is stored contiguously.
+    /// Use this in hot paths like rendering.
+    #[inline]
+    pub fn line_cow(&self, index: usize) -> Option<Cow<'_, str>> {
+        if index < self.line_count() {
+            let slice = self.rope.line(index);
+            // Try to get direct reference (zero-copy)
+            // Falls back to String allocation only for non-contiguous chunks
+            Some(Cow::from(slice))
         } else {
             None
         }

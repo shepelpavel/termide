@@ -118,11 +118,13 @@ pub fn render_expanded_panel(
     block.render(area, buf);
 
     // Clear inner area before rendering content
+    // Optimization: Single operation per cell instead of reset() + set_style()
     let clear_style = Style::default().bg(theme.bg);
     for y in inner.y..inner.y + inner.height {
         for x in inner.x..inner.x + inner.width {
-            buf[(x, y)].reset();
-            buf[(x, y)].set_style(clear_style);
+            let cell = buf.cell_mut((x, y)).expect("cell in bounds");
+            cell.set_char(' ');
+            cell.set_style(clear_style);
         }
     }
 

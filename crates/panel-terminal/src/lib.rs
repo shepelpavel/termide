@@ -679,10 +679,11 @@ impl Terminal {
         Ok(())
     }
 
-    /// Get lines for display using copy-out pattern with caching.
+    /// Get lines for display with zero-copy rendering under lock.
     ///
-    /// Optimization: Uses dirty flag to skip re-rendering when terminal
-    /// content hasn't changed. Returns Arc-wrapped lines for O(1) cache hits.
+    /// Optimization: Renders directly from screen buffer under lock,
+    /// eliminating Vec<Vec<Cell>> cloning (~77KB per dirty frame).
+    /// Uses dirty flag to skip re-rendering when content hasn't changed.
     ///
     /// Returns: (lines_arc, cursor_position, cursor_shown)
     fn get_display_lines(
@@ -712,68 +713,34 @@ impl Terminal {
             }
         }
 
-        // === PHASE 1: Quick data copy under lock ===
-        let (
-            visible_buffer,
-            scrollback_slice,
-            cursor_pos,
-            visible_rows,
-            cols,
-            cursor_visible,
-            has_selection,
-            selection_start,
-            selection_end,
-        ) = {
-            let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
-            // Clear dirty flag since we're about to render
-            screen.dirty = false;
+        // === PHASE 1: Render directly under lock (zero-copy) ===
+        let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
+        // Clear dirty flag since we're about to render
+        screen.dirty = false;
 
-            let visible_rows = screen.rows;
-            let scroll_offset = screen.scroll_offset;
-            let use_alt_screen = screen.use_alt_screen;
+        let visible_rows = screen.rows;
+        let cols = screen.cols;
+        let cursor_pos = screen.cursor;
+        let cursor_visible = screen.cursor_visible;
+        let scroll_offset = screen.scroll_offset;
+        let use_alt_screen = screen.use_alt_screen;
+        let has_selection = screen.selection_start.is_some() && screen.selection_end.is_some();
+        let selection_start = screen.selection_start;
+        let selection_end = screen.selection_end;
 
-            // Determine what to copy based on scroll state
-            let (visible_buffer, scrollback_slice) = if scroll_offset > 0 && !use_alt_screen {
-                // Viewing history - need both scrollback and buffer data
+        // Determine view bounds based on scroll state
+        let (view_start, total_scrollback, scrollback_slice) =
+            if scroll_offset > 0 && !use_alt_screen {
                 let total_scrollback = screen.scrollback.len();
                 let total_lines = total_scrollback + visible_rows;
                 let view_end = total_lines.saturating_sub(scroll_offset);
                 let view_start = view_end.saturating_sub(visible_rows);
-
-                // Copy only the visible portion
-                let mut combined: Vec<Vec<Cell>> = Vec::with_capacity(visible_rows);
-                for i in 0..visible_rows {
-                    let source_idx = view_start + i;
-                    if source_idx < total_scrollback {
-                        combined.push(screen.scrollback[source_idx].clone());
-                    } else {
-                        let buf_idx = source_idx - total_scrollback;
-                        if buf_idx < screen.active_buffer().len() {
-                            combined.push(screen.active_buffer()[buf_idx].clone());
-                        }
-                    }
-                }
-                (combined, true)
+                (view_start, total_scrollback, true)
             } else {
-                // Normal view - copy active buffer
-                (screen.active_buffer().iter().cloned().collect(), false)
+                (0, 0, false)
             };
 
-            (
-                visible_buffer,
-                scrollback_slice,
-                screen.cursor,
-                visible_rows,
-                screen.cols,
-                screen.cursor_visible,
-                screen.selection_start.is_some() && screen.selection_end.is_some(),
-                screen.selection_start,
-                screen.selection_end,
-            )
-        };
-        // Lock released here - PTY writer can proceed
-
-        // === PHASE 2: Expensive rendering without lock ===
+        // Pre-allocate output structures
         let mut lines = Vec::with_capacity(visible_rows);
         let mut current_text = String::with_capacity(cols);
 
@@ -817,7 +784,27 @@ impl Terminal {
             }
         };
 
-        for (row_idx, row) in visible_buffer.iter().enumerate() {
+        // Render directly from screen buffer (zero-copy)
+        for row_idx in 0..visible_rows {
+            // Get row reference without cloning
+            let row: &[Cell] = if scrollback_slice {
+                let source_idx = view_start + row_idx;
+                if source_idx < total_scrollback {
+                    &screen.scrollback[source_idx]
+                } else {
+                    let buf_idx = source_idx - total_scrollback;
+                    if buf_idx < screen.active_buffer().len() {
+                        &screen.active_buffer()[buf_idx]
+                    } else {
+                        continue;
+                    }
+                }
+            } else if row_idx < screen.active_buffer().len() {
+                &screen.active_buffer()[row_idx]
+            } else {
+                continue;
+            };
+
             let mut spans = Vec::with_capacity(8); // Pre-allocate for typical line
             current_text.clear();
             // Use direct style value instead of Option for faster comparison
