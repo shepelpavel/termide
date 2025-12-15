@@ -73,8 +73,8 @@ priority = "optional"
 assets = [
     ["README.md", "usr/share/doc/termide/", "644"],
     ["LICENSE", "usr/share/doc/termide/", "644"],
-    ["help/en.txt", "usr/share/termide/help/", "644"],
-    ["help/ru.txt", "usr/share/termide/help/", "644"],
+    ["crates/panel-misc/help/en.txt", "usr/share/termide/help/", "644"],
+    ["crates/panel-misc/help/ru.txt", "usr/share/termide/help/", "644"],
 ]
 
 [package.metadata.generate-rpm]
@@ -84,8 +84,8 @@ summary = "Cross-platform terminal IDE, file manager and virtual terminal"
 assets = [
     { source = "README.md", dest = "/usr/share/doc/termide/README.md", mode = "644", doc = true },
     { source = "LICENSE", dest = "/usr/share/doc/termide/LICENSE", mode = "644", doc = true },
-    { source = "help/en.txt", dest = "/usr/share/termide/help/en.txt", mode = "644" },
-    { source = "help/ru.txt", dest = "/usr/share/termide/help/ru.txt", mode = "644" },
+    { source = "crates/panel-misc/help/en.txt", dest = "/usr/share/termide/help/en.txt", mode = "644" },
+    { source = "crates/panel-misc/help/ru.txt", dest = "/usr/share/termide/help/ru.txt", mode = "644" },
 ]
 auto-req = "no"
 
