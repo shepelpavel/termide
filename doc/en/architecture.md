@@ -29,7 +29,7 @@ TermIDE is a terminal-based IDE built with Rust using the `ratatui` TUI framewor
 
 #### 1.1 LayoutManager
 
-**Location:** `src/layout_manager.rs`
+**Location:** `crates/layout/src/lib.rs`
 
 The `LayoutManager` is the heart of the accordion layout system. It manages:
 
@@ -49,7 +49,7 @@ Focus is a simple `usize` index indicating which panel group is currently active
 
 #### 1.2 PanelGroup
 
-**Location:** `src/panels/panel_group.rs`
+**Location:** `crates/layout/src/panel_group.rs`
 
 A `PanelGroup` represents a vertical stack of panels with accordion behavior.
 
@@ -99,7 +99,7 @@ This ensures panels always have enough space to be usable.
 
 #### 2.1 Panel Trait
 
-**Location:** `src/panels/mod.rs`
+**Location:** `crates/core/src/lib.rs`
 
 All panels implement the `Panel` trait, which defines the interface for interactive terminal panels:
 
@@ -140,7 +140,7 @@ pub trait Panel {
 
 #### 2.2 Panel Implementations
 
-**FileManager** (`src/panels/file_manager/mod.rs`)
+**FileManager** (`crates/panel-file-manager/src/lib.rs`)
 - Browse files and directories
 - File operations (create, delete, copy, move)
 - Git status integration
@@ -148,7 +148,7 @@ pub trait Panel {
 - Batch operations
 - Drag-and-drop selection
 
-**Editor** (`src/panels/editor.rs`)
+**Editor** (`crates/panel-editor/src/lib.rs`)
 - Text editing with undo/redo
 - Syntax highlighting via tree-sitter (15+ languages)
 - Search and replace with interactive modals
@@ -156,20 +156,20 @@ pub trait Panel {
 - File saving
 - Configurable tab size
 
-**TerminalPty** (`src/panels/terminal_pty.rs`)
+**Terminal** (`crates/panel-terminal/src/lib.rs`)
 - Full PTY (pseudo-terminal) support
 - Shell integration
 - Scrollback buffer
 - ANSI color support
 - Resize handling
 
-**Log** (`src/panels/debug.rs`)
+**Log** (`crates/panel-misc/src/log.rs`)
 - Application state inspection
 - Log viewer
 - Panel information
 - System resource monitoring
 
-**Welcome** (`src/panels/welcome.rs`)
+**Welcome** (`crates/panel-misc/src/welcome.rs`)
 - Shows when no panels are open
 - Displays help text
 - Auto-closes when other panel opens
@@ -178,7 +178,7 @@ pub trait Panel {
 
 #### 3.1 Event Loop
 
-**Location:** `src/app/mod.rs`
+**Location:** `crates/app/src/app/mod.rs`
 
 Main event loop structure:
 
@@ -206,7 +206,7 @@ while !state.should_quit {
 
 #### 3.2 Key Handler
 
-**Location:** `src/app/key_handler.rs`
+**Location:** `crates/app/src/app/key_handler.rs`
 
 Handles keyboard input with priority:
 
@@ -216,11 +216,11 @@ Handles keyboard input with priority:
 4. **Active panel** (via `panel.handle_key()`)
 
 **Cyrillic Support:**
-Keyboard layout translation via `crate::keyboard::translate_hotkey()` allows hotkeys to work with Russian keyboard layout.
+Keyboard layout translation via `termide_keyboard::translate_hotkey()` allows hotkeys to work with Russian keyboard layout.
 
 #### 3.3 Mouse Handler
 
-**Location:** `src/app/mouse_handler.rs`
+**Location:** `crates/app/src/app/mouse_handler.rs`
 
 Handles mouse input:
 
@@ -238,7 +238,7 @@ Handles mouse input:
 
 #### 3.4 Modal Handler
 
-**Location:** `src/app/modal_handler.rs` and `src/app/modal/`
+**Location:** `crates/app/src/app/modal_handler.rs` and `crates/modal/src/`
 
 Handles interactive modal dialogs:
 
@@ -255,7 +255,7 @@ When modal is open, keyboard input goes to modal first. Escape closes modal.
 
 #### 4.1 Main Rendering
 
-**Location:** `src/ui/layout.rs`
+**Location:** `crates/ui-render/src/layout.rs`
 
 Rendering flow:
 
@@ -287,7 +287,7 @@ fn render_layout_with_accordion(frame, layout_manager, state) {
 
 #### 4.2 Panel Rendering
 
-**Location:** `src/ui/panel_rendering.rs`
+**Location:** `crates/ui-render/src/panel.rs`
 
 **Expanded Panel:**
 - Border with `[X][▼]` buttons and title
@@ -306,7 +306,7 @@ Borders and buttons are drawn by `panel_rendering.rs`, then panel's `render()` m
 
 #### 5.1 AppState
 
-**Location:** `src/state.rs`
+**Location:** `crates/state/src/lib.rs`
 
 Central state container:
 
@@ -329,7 +329,7 @@ Most state is single-threaded (TUI runs on main thread). File system watcher use
 
 #### 5.2 Configuration
 
-**Location:** `src/config.rs`
+**Location:** `crates/config/src/lib.rs`
 
 User configuration loaded from TOML:
 
@@ -351,7 +351,7 @@ pub struct Config {
 
 ### 6. Theme System
 
-**Location:** `src/theme.rs`
+**Location:** `crates/theme/src/lib.rs`
 
 **Built-in Themes:** 12 themes (Dracula, Nord, Monokai, etc.)
 
@@ -376,21 +376,28 @@ pub struct Theme {
 
 ### 7. Internationalization
 
-**Location:** `src/i18n/`
+**Location:** `crates/i18n/`
 
-Language support via compile-time string constants:
+Language support via TOML-based translation files loaded at compile time:
 
-```rust
-pub struct I18n {
-    pub menu_files: &'static str,
-    pub menu_terminal: &'static str,
-    // ... all UI strings
-}
+```
+crates/i18n/
+├── src/
+│   ├── lib.rs      # Translation trait and runtime
+│   └── runtime.rs  # Language detection and loading
+└── i18n/           # Translation files
+    ├── en.toml     # English
+    ├── ru.toml     # Russian
+    ├── de.toml     # German
+    ├── es.toml     # Spanish
+    ├── fr.toml     # French
+    ├── hi.toml     # Hindi
+    ├── pt.toml     # Portuguese
+    ├── th.toml     # Thai
+    └── zh.toml     # Chinese
 ```
 
-**Languages:**
-- English (`en.rs`)
-- Russian (`ru.rs`)
+**Languages:** 9 supported (English, Russian, German, Spanish, French, Hindi, Portuguese, Thai, Chinese)
 
 **Detection:**
 1. `config.language` setting
@@ -485,6 +492,37 @@ pub struct I18n {
 - FS watcher uses separate thread
 - Debouncing prevents excessive updates
 
+### 8. Session Management
+
+**Location:** `crates/session/src/lib.rs`
+
+Session persistence allows saving and restoring panel layouts:
+
+**Storage Location:**
+- Linux: `~/.local/share/termide/sessions/<project_path>/session.toml`
+- macOS: `~/Library/Application Support/termide/sessions/<project_path>/session.toml`
+
+**Features:**
+- Automatic session save on exit
+- Panel layout restoration on startup
+- Session switching via menu (switch between different projects)
+- Session retention with automatic cleanup of old sessions
+
+**Session File Format:**
+```toml
+[[panel_groups]]
+expanded_index = 0
+horizontal_weight = 100
+
+[[panel_groups.panels]]
+panel_type = "file_manager"
+state = { current_path = "/home/user/project" }
+
+[[panel_groups.panels]]
+panel_type = "editor"
+state = { file_path = "/home/user/project/main.rs", cursor_line = 42 }
+```
+
 ## Future Architecture Considerations
 
 **Potential Improvements:**
@@ -498,12 +536,7 @@ pub struct I18n {
    - User-defined panel types
    - Script integration (Lua, Python)
 
-3. **Session Management**
-   - Save/restore panel layout
-   - Project workspaces
-   - Recent files/directories
-
-4. **Network Panels**
+3. **Network Panels**
    - SSH terminal panels
    - Remote file browsers
    - Collaborative editing

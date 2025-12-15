@@ -54,6 +54,7 @@
     Ctrl+C       Copy to system clipboard
     Ctrl+V       Paste from system clipboard
     Ctrl+X       Cut to system clipboard
+    Ctrl+D       Duplicate line or selection
     Ctrl+Y       Redo
     Ctrl+Z       Undo
     Ctrl+F       Find text (interactive modal)

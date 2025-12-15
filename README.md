@@ -380,22 +380,45 @@ export TERMIDE_LANG=ru  # Set Russian UI
 
 ### Project Structure
 
-```
-src/
-├── app/           # Application core and event handling
-├── config.rs      # Configuration management
-├── constants.rs   # Application constants
-├── i18n/          # Internationalization (en, ru)
-├── panels/        # Panel implementations (file manager, editor, terminal)
-├── state.rs       # Application state management
-├── system_monitor.rs  # CPU/RAM monitoring
-├── theme.rs       # Theme system and built-in themes
-└── ui/            # UI components (menus, modals, status bar)
+TermIDE uses a Cargo workspace with modular crates:
 
-themes/            # Built-in theme definitions (TOML files)
+```
+crates/
+├── app/              # Application core, event handling, panel management
+├── app-core/         # Core application traits and types
+├── app-event/        # Event handling logic
+├── app-modal/        # Modal dialog handling
+├── app-panel/        # Panel management operations
+├── app-session/      # Session save/restore
+├── app-watcher/      # File system watcher integration
+├── buffer/           # Text buffer implementation
+├── clipboard/        # System clipboard integration
+├── config/           # Configuration management
+├── core/             # Core Panel trait and types
+├── git/              # Git integration
+├── highlight/        # Syntax highlighting (tree-sitter)
+├── i18n/             # Internationalization (9 languages)
+├── keyboard/         # Keyboard handling and layout translation
+├── layout/           # Panel layout and accordion system
+├── logger/           # Logging system
+├── modal/            # Modal dialog implementations
+├── panel-editor/     # Text editor panel
+├── panel-file-manager/ # File manager panel
+├── panel-misc/       # Welcome and Log panels
+├── panel-terminal/   # Terminal emulator panel
+├── session/          # Session persistence
+├── state/            # Application state management
+├── system-monitor/   # CPU/RAM/Disk monitoring
+├── text-search/      # Search and replace functionality
+├── theme/            # Theme system and built-in themes
+├── ui/               # UI utilities and path formatting
+├── ui-render/        # UI rendering (menu, status bar, panels)
+└── watcher/          # File system event watcher
+
+themes/               # Built-in theme definitions (TOML files)
 doc/
-├── en/            # English documentation
-└── ru/            # Russian documentation
+├── en/               # English documentation
+└── ru/               # Russian documentation
 ```
 
 ### Building
