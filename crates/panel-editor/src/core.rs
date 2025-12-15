@@ -21,6 +21,24 @@ use crate::{
     text_editing, word_wrap,
 };
 
+/// Convert screen column to grapheme index, accounting for display widths.
+///
+/// Used for mouse click position conversion.
+fn screen_col_to_grapheme_idx(text: &str, target_col: usize) -> usize {
+    use unicode_segmentation::UnicodeSegmentation;
+    use unicode_width::UnicodeWidthStr;
+
+    let mut col = 0;
+    for (idx, g) in text.graphemes(true).enumerate() {
+        let w = g.width();
+        if col + w > target_col {
+            return idx;
+        }
+        col += w;
+    }
+    text.graphemes(true).count()
+}
+
 /// Editor panel with syntax highlighting
 pub struct Editor {
     // === Core editing state ===
@@ -1861,7 +1879,7 @@ impl Panel for Editor {
         let rel_x = (mouse.column - content_x) as usize;
         let rel_y = (mouse.row - content_y) as usize;
 
-        let (buffer_line, wrapped_offset) = if self.config.word_wrap {
+        let (buffer_line, wrapped_offset, chunk_end) = if self.config.word_wrap {
             word_wrap::visual_row_to_buffer_position(
                 &self.buffer,
                 rel_y,
@@ -1870,17 +1888,47 @@ impl Panel for Editor {
                 self.render_cache.use_smart_wrap,
             )
         } else {
-            (self.viewport.top_line + rel_y, 0)
-        };
-
-        let buffer_col = if self.config.word_wrap {
-            wrapped_offset + rel_x
-        } else {
-            self.viewport.left_column + rel_x
+            let line_len = self
+                .buffer
+                .line(self.viewport.top_line + rel_y)
+                .map(|s| {
+                    use unicode_segmentation::UnicodeSegmentation;
+                    s.trim_end_matches('\n').graphemes(true).count()
+                })
+                .unwrap_or(0);
+            (self.viewport.top_line + rel_y, 0, line_len)
         };
 
         let max_line = self.buffer.line_count().saturating_sub(1);
         let target_line = buffer_line.min(max_line);
+
+        // Get line text for screen→grapheme conversion
+        let line_text = self
+            .buffer
+            .line(target_line)
+            .map(|s| s.trim_end_matches('\n').to_string())
+            .unwrap_or_default();
+
+        // Convert screen column to grapheme index
+        let buffer_col = if self.config.word_wrap {
+            // wrapped_offset is grapheme index where this visual line starts
+            // chunk_end is grapheme index where this visual line ends (exclusive)
+            // rel_x is screen column within this visual line
+            // Get only the text for this visual line and convert rel_x to grapheme offset
+            use unicode_segmentation::UnicodeSegmentation;
+            let visual_line_len = chunk_end.saturating_sub(wrapped_offset);
+            let segment: String = line_text
+                .graphemes(true)
+                .skip(wrapped_offset)
+                .take(visual_line_len)
+                .collect();
+            let grapheme_in_segment = screen_col_to_grapheme_idx(&segment, rel_x);
+            wrapped_offset + grapheme_in_segment
+        } else {
+            // Without wrap: convert absolute screen col to grapheme idx
+            screen_col_to_grapheme_idx(&line_text, self.viewport.left_column + rel_x)
+        };
+
         let line_len = self.buffer.line_len_graphemes(target_line);
         let target_col = buffer_col.min(line_len);
 
