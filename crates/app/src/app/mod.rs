@@ -81,27 +81,14 @@ impl App {
         );
         termide_logger::info("Application started");
 
-        // Initialize git watcher for automatic status updates
-        match termide_git::create_git_watcher() {
-            Ok((watcher, receiver)) => {
-                state.git_watcher = Some(watcher);
-                state.git_watcher_receiver = Some(receiver);
-                termide_logger::info("Git watcher initialized");
+        // Initialize unified watcher for filesystem and git events
+        match termide_watcher::create_watcher() {
+            Ok(watcher) => {
+                state.watcher = Some(watcher);
+                termide_logger::info("Unified watcher initialized");
             }
             Err(e) => {
-                termide_logger::error(format!("Failed to initialize git watcher: {}", e));
-            }
-        }
-
-        // Initialize filesystem watcher for automatic directory updates
-        match termide_watcher::create_fs_watcher() {
-            Ok((watcher, receiver)) => {
-                state.fs_watcher = Some(watcher);
-                state.fs_watcher_receiver = Some(receiver);
-                termide_logger::info("FS watcher initialized");
-            }
-            Err(e) => {
-                termide_logger::error(format!("Failed to initialize FS watcher: {}", e));
+                termide_logger::error(format!("Failed to initialize watcher: {}", e));
             }
         }
 
@@ -193,11 +180,8 @@ impl App {
                     // Check channel for directory size calculation results
                     self.check_dir_size_update();
 
-                    // Check channel for git status update events
-                    self.check_git_status_update();
-
-                    // Check channel for filesystem update events
-                    self.check_fs_update();
+                    // Check unified watcher for git and filesystem events
+                    self.check_watcher_events();
 
                     // Check async git status results for FileManager panels
                     self.check_fm_git_status_async();
@@ -272,79 +256,28 @@ impl App {
         }
     }
 
-    /// Check channel for git status update events
-    fn check_git_status_update(&mut self) {
-        use termide_core::PanelCommand;
-
-        // Lazy registration: register Editor file repositories with GitWatcher
-        // Uses handle_command with GetRepoRoot to avoid downcasting
-        if let Some(watcher) = &mut self.state.git_watcher {
-            for panel in self.layout_manager.iter_all_panels_mut() {
-                // Use handle_command to get repo root without downcasting
-                if let termide_core::CommandResult::RepoRoot(Some(repo_root)) =
-                    panel.handle_command(PanelCommand::GetRepoRoot)
-                {
-                    if !watcher.is_watching(&repo_root) {
-                        let _ = watcher.watch_repository(repo_root);
-                    }
-                }
-            }
-        }
-
-        // Collect all pending updates first to avoid borrowing conflicts
-        let mut updates = Vec::new();
-        if let Some(rx) = &self.state.git_watcher_receiver {
-            while let Ok(update) = rx.try_recv() {
-                updates.push(update);
-            }
-        }
-
-        // Process collected updates using handle_command
-        // IMPORTANT: Deduplicate to avoid O(updates × editors) git commands.
-        if !updates.is_empty() {
-            // Collect unique repo paths as Vec for slice conversion
-            let repo_paths: Vec<_> = updates
-                .iter()
-                .map(|u| u.repo_path.as_path())
-                .collect::<std::collections::HashSet<_>>()
-                .into_iter()
-                .collect();
-
-            // Update each panel at most once using handle_command
-            for panel in self.layout_manager.iter_all_panels_mut() {
-                if panel
-                    .handle_command(PanelCommand::OnGitUpdate {
-                        repo_paths: &repo_paths,
-                    })
-                    .needs_redraw()
-                {
-                    self.state.needs_redraw = true;
-                }
-            }
-        }
-    }
-
-    /// Check channel for filesystem update events
-    fn check_fs_update(&mut self) {
+    /// Check unified watcher for git and filesystem events
+    fn check_watcher_events(&mut self) {
+        use std::collections::HashSet;
         use termide_core::{CommandResult, PanelCommand};
         use termide_git::find_repo_root;
+        use termide_watcher::WatchEvent;
 
-        // Lazy registration: register all panel directories with watcher using handle_command
-        if let Some(watcher) = &mut self.state.fs_watcher {
-            for panel in self.layout_manager.iter_all_panels_mut() {
-                // Use GetFsWatchInfo to check watch state without downcasting
-                if let CommandResult::FsWatchInfo {
-                    watched_root,
-                    current_path,
-                    is_git_repo: _,
-                } = panel.handle_command(PanelCommand::GetFsWatchInfo)
-                {
-                    // Skip if already watching
-                    if watched_root.is_some() {
-                        continue;
-                    }
+        let Some(watcher) = &mut self.state.watcher else {
+            return;
+        };
 
-                    // Determine the new watched root (only called once per directory change)
+        // Lazy registration: register panel directories with watcher
+        for panel in self.layout_manager.iter_all_panels_mut() {
+            // Use GetFsWatchInfo to check watch state
+            if let CommandResult::FsWatchInfo {
+                watched_root,
+                current_path,
+                is_git_repo: _,
+            } = panel.handle_command(PanelCommand::GetFsWatchInfo)
+            {
+                if watched_root.is_none() {
+                    // Determine the new watched root
                     let repo_root = find_repo_root(&current_path);
                     let is_git_repo = repo_root.is_some();
                     let new_root = repo_root.unwrap_or_else(|| current_path.clone());
@@ -364,45 +297,66 @@ impl App {
                         is_git_repo,
                     });
                 }
+            }
 
-                // Also handle Editor panels via GetRepoRoot
-                if let CommandResult::RepoRoot(Some(repo_root)) =
-                    panel.handle_command(PanelCommand::GetRepoRoot)
-                {
-                    if !watcher.is_watching_repo(&repo_root) {
-                        let _ = watcher.watch_repository(repo_root);
-                    }
+            // Also handle Editor panels via GetRepoRoot
+            if let CommandResult::RepoRoot(Some(repo_root)) =
+                panel.handle_command(PanelCommand::GetRepoRoot)
+            {
+                if !watcher.is_watching_repo(&repo_root) {
+                    let _ = watcher.watch_repository(repo_root);
                 }
             }
         }
 
-        // Collect all pending updates first to avoid borrowing conflicts
-        let mut updates = Vec::new();
-        if let Some(rx) = &self.state.fs_watcher_receiver {
-            while let Ok(update) = rx.try_recv() {
-                updates.push(update);
-            }
-        }
-
-        // Early return if no updates - avoid panel iteration overhead
-        if updates.is_empty() {
+        // Poll events from unified watcher
+        let events = watcher.poll_events();
+        if events.is_empty() {
             return;
         }
 
-        // Deduplicate paths to avoid redundant panel updates
-        let unique_paths: std::collections::HashSet<_> =
-            updates.iter().map(|u| u.changed_path.as_path()).collect();
+        // Separate git and fs events
+        let mut git_repos: HashSet<std::path::PathBuf> = HashSet::new();
+        let mut fs_paths: HashSet<std::path::PathBuf> = HashSet::new();
 
-        // Process updates - iterate panels only once for all unique paths
+        for event in events {
+            match event {
+                WatchEvent::GitCommit(repo_root) => {
+                    git_repos.insert(repo_root);
+                }
+                WatchEvent::DirectoryChanged { changed, .. } => {
+                    fs_paths.insert(changed);
+                }
+                WatchEvent::FileChanged(path) => {
+                    fs_paths.insert(path);
+                }
+            }
+        }
+
+        // Process git events
+        if !git_repos.is_empty() {
+            let repo_paths: Vec<&std::path::Path> = git_repos.iter().map(|p| p.as_path()).collect();
+
+            for panel in self.layout_manager.iter_all_panels_mut() {
+                if panel
+                    .handle_command(PanelCommand::OnGitUpdate {
+                        repo_paths: &repo_paths,
+                    })
+                    .needs_redraw()
+                {
+                    self.state.needs_redraw = true;
+                }
+            }
+        }
+
+        // Process filesystem events
         for panel in self.layout_manager.iter_all_panels_mut() {
-            for path in &unique_paths {
-                // Use OnFsUpdate command - panel decides if it needs to update
+            for path in &fs_paths {
                 if panel
                     .handle_command(PanelCommand::OnFsUpdate { changed_path: path })
                     .needs_redraw()
                 {
                     self.state.needs_redraw = true;
-                    // Panel already marked for redraw, no need to check more paths for this panel
                     break;
                 }
             }

@@ -40,7 +40,7 @@ impl App {
             if let Some(fm) = panel.as_file_manager_mut() {
                 // Unwatch the filesystem root for this FileManager
                 if let Some(watched_root) = fm.take_watched_root() {
-                    if let Some(watcher) = &mut self.state.fs_watcher {
+                    if let Some(watcher) = &mut self.state.watcher {
                         if termide_git::find_repo_root(&watched_root).is_some() {
                             watcher.unwatch_repository(&watched_root);
                         } else {

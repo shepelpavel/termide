@@ -68,11 +68,9 @@ pub struct FileManager {
     previous_dir_name: Option<String>,
     /// Flag indicating we're navigating down into a subdirectory (cursor should reset to 0)
     navigating_down: bool,
-    /// Currently watched root path (repo_root for git, or directory itself for non-git)
+    /// Git repository root (None = not in git repo)
     /// Used for reference counting when navigating between directories
-    watched_root: Option<PathBuf>,
-    /// Whether the watched root is a git repository (cached to avoid repeated filesystem checks)
-    is_watched_root_git_repo: bool,
+    git_root: Option<PathBuf>,
     /// Last reload time for debouncing rapid reload_directory() calls
     last_reload_time: Option<std::time::Instant>,
     /// Cached theme for rendering
@@ -124,8 +122,7 @@ impl FileManager {
             dragged_items: HashSet::new(),
             previous_dir_name: None,
             navigating_down: false,
-            watched_root: None,
-            is_watched_root_git_repo: false,
+            git_root: None,
             last_reload_time: None,
             cached_theme: Theme::default(),
             cached_config: FileManagerSettings::default(),
@@ -139,27 +136,31 @@ impl FileManager {
         self.current_path.clone()
     }
 
-    /// Get the currently watched root path
+    /// Get the git repository root (None if not in a git repo)
+    pub fn git_root(&self) -> Option<&PathBuf> {
+        self.git_root.as_ref()
+    }
+
+    /// Get the currently watched root path (git_root or current_path for non-git)
     pub fn watched_root(&self) -> Option<&PathBuf> {
-        self.watched_root.as_ref()
+        self.git_root.as_ref()
     }
 
     /// Set the watched root path and whether it's a git repository
     pub fn set_watched_root(&mut self, root: Option<PathBuf>, is_git_repo: bool) {
-        self.watched_root = root;
-        self.is_watched_root_git_repo = is_git_repo;
+        self.git_root = if is_git_repo { root } else { None };
     }
 
-    /// Check if the watched root is a git repository (cached value)
+    /// Check if the watched root is a git repository
     pub fn is_watched_root_git_repo(&self) -> bool {
-        self.is_watched_root_git_repo
+        self.git_root.is_some()
     }
 
     /// Check if absolute path is in a gitignored directory
     /// Uses cached git_status_cache to avoid spawning git processes
     pub fn is_path_ignored(&self, absolute_path: &std::path::Path) -> bool {
-        // Need repo root (watched_root) and git_status_cache
-        let repo_root = match self.watched_root.as_ref() {
+        // Need repo root (git_root) and git_status_cache
+        let repo_root = match self.git_root.as_ref() {
             Some(root) => root,
             None => return false,
         };
@@ -180,7 +181,7 @@ impl FileManager {
 
     /// Take the watched root (for cleanup when closing)
     pub fn take_watched_root(&mut self) -> Option<PathBuf> {
-        self.watched_root.take()
+        self.git_root.take()
     }
 
     /// Navigate to a specific directory
@@ -199,10 +200,9 @@ impl FileManager {
 
     /// Load the contents of the current directory
     pub fn load_directory(&mut self) -> Result<()> {
-        // Invalidate watched_root when navigating to a new directory
-        // This triggers re-registration with fs_watcher in check_fs_update()
-        self.watched_root = None;
-        self.is_watched_root_git_repo = false;
+        // Invalidate git_root when navigating to a new directory
+        // This triggers re-registration with watcher in check_watcher_events()
+        self.git_root = None;
         self.load_directory_inner(false)
     }
 
@@ -1056,13 +1056,15 @@ impl Panel for FileManager {
 
     fn handle_command(&mut self, cmd: PanelCommand<'_>) -> CommandResult {
         match cmd {
+            // Return git repository root (enables registration with watcher)
+            PanelCommand::GetRepoRoot => CommandResult::RepoRoot(self.git_root.clone()),
             PanelCommand::GetFsWatchInfo => CommandResult::FsWatchInfo {
-                watched_root: self.watched_root.clone(),
+                watched_root: self.git_root.clone(),
                 current_path: self.current_path.clone(),
-                is_git_repo: self.is_watched_root_git_repo,
+                is_git_repo: self.git_root.is_some(),
             },
             PanelCommand::SetFsWatchRoot { root, is_git_repo } => {
-                self.set_watched_root(root, is_git_repo);
+                self.git_root = if is_git_repo { root } else { None };
                 CommandResult::None
             }
             PanelCommand::OnFsUpdate { changed_path } => {
@@ -1071,7 +1073,7 @@ impl Panel for FileManager {
                 // For git repos: reload on any change within current directory tree
                 // (needed for git status color updates)
                 // For non-git dirs: reload only for direct children
-                let should_reload = if self.is_watched_root_git_repo {
+                let should_reload = if self.git_root.is_some() {
                     // Git repo: any change within current directory tree updates git status
                     // But skip gitignored paths (like target/) to avoid unnecessary reloads
                     changed_path.starts_with(current) && !self.is_path_ignored(changed_path)
@@ -1093,26 +1095,23 @@ impl Panel for FileManager {
                     CommandResult::NeedsRedraw(false)
                 }
             }
-            // Handle git status updates from git watcher
+            // Handle git status updates from unified watcher
             PanelCommand::OnGitUpdate { repo_paths } => {
                 // Check if current directory is within one of the updated repositories
-                if self.is_watched_root_git_repo {
-                    if let Some(watched) = &self.watched_root {
-                        let should_update = repo_paths
-                            .iter()
-                            .any(|p| watched.starts_with(p) || p.starts_with(watched));
-                        if should_update {
-                            // Refresh git status without full directory reload
-                            self.refresh_git_status();
-                            return CommandResult::NeedsRedraw(false);
-                        }
+                if let Some(git_root) = &self.git_root {
+                    let should_update = repo_paths
+                        .iter()
+                        .any(|p| git_root.starts_with(p) || p.starts_with(git_root));
+                    if should_update {
+                        // Refresh git status without full directory reload
+                        self.refresh_git_status();
+                        return CommandResult::NeedsRedraw(false);
                     }
                 }
                 CommandResult::None
             }
             // Commands not applicable to FileManager
-            PanelCommand::GetRepoRoot
-            | PanelCommand::CheckPendingGitDiff
+            PanelCommand::CheckPendingGitDiff
             | PanelCommand::CheckGitDiffReceiver
             | PanelCommand::CheckExternalModification
             | PanelCommand::Resize { .. }
@@ -1239,13 +1238,28 @@ mod tests {
     }
 
     #[test]
+    fn test_handle_command_get_repo_root() {
+        let (mut fm, _temp_dir) = create_file_manager_in_temp();
+
+        // GetRepoRoot returns None when not in git repo
+        let result = fm.handle_command(PanelCommand::GetRepoRoot);
+        assert!(matches!(result, CommandResult::RepoRoot(None)));
+
+        // Set git_root and verify it's returned
+        fm.git_root = Some(PathBuf::from("/test/repo"));
+        let result = fm.handle_command(PanelCommand::GetRepoRoot);
+        if let CommandResult::RepoRoot(Some(root)) = result {
+            assert_eq!(root, PathBuf::from("/test/repo"));
+        } else {
+            panic!("Expected RepoRoot result");
+        }
+    }
+
+    #[test]
     fn test_handle_command_not_applicable() {
         let (mut fm, _temp_dir) = create_file_manager_in_temp();
 
         // Commands not applicable to FileManager should return None
-        let result = fm.handle_command(PanelCommand::GetRepoRoot);
-        assert!(matches!(result, CommandResult::None));
-
         let result = fm.handle_command(PanelCommand::GetModificationStatus);
         assert!(matches!(result, CommandResult::None));
 

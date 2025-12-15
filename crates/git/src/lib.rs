@@ -11,10 +11,8 @@ use std::sync::mpsc;
 use std::sync::OnceLock;
 
 pub mod diff;
-pub mod watcher;
 
 pub use diff::{load_original_async, GitDiffAsyncResult, GitDiffCache, LineStatus};
-pub use watcher::{create_git_watcher, GitStatusUpdate, GitWatcher};
 
 /// Get git status for a specific file relative to repo root.
 pub fn file_status(repo_root: &Path, file_path: &Path) -> GitStatus {

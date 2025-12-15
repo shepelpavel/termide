@@ -261,7 +261,7 @@ impl App {
 
     /// Handle WatchPath event - register path with file watcher
     fn event_watch_path(&mut self, path: PathBuf) {
-        if let Some(watcher) = &mut self.state.fs_watcher {
+        if let Some(watcher) = &mut self.state.watcher {
             if path.is_dir() {
                 // Check if it's a git repo
                 if termide_git::find_repo_root(&path).is_some() {
@@ -297,7 +297,7 @@ impl App {
 
     /// Handle UnwatchPath event - unregister path from file watcher
     fn event_unwatch_path(&mut self, path: PathBuf) {
-        if let Some(watcher) = &mut self.state.fs_watcher {
+        if let Some(watcher) = &mut self.state.watcher {
             if termide_git::find_repo_root(&path).is_some() {
                 watcher.unwatch_repository(&path);
             } else {

@@ -10,11 +10,10 @@ use std::sync::mpsc;
 
 use termide_config::constants::DEFAULT_MAIN_PANEL_WIDTH;
 use termide_config::Config;
-use termide_git::{GitStatusUpdate, GitWatcher};
 use termide_panel_editor::EditorConfig;
 use termide_system_monitor::SystemMonitor;
 use termide_theme::Theme;
-use termide_watcher::{DirectoryUpdate, FileSystemWatcher};
+use termide_watcher::UnifiedWatcher;
 
 // Import core traits
 use termide_app_core::{ModalManager, StateManager};
@@ -47,14 +46,8 @@ pub struct AppState {
     pub pending_action: Option<PendingAction>,
     /// Receiver channel for background directory size calculation results
     pub dir_size_receiver: Option<mpsc::Receiver<DirSizeResult>>,
-    /// Receiver channel for git status update events
-    pub git_watcher_receiver: Option<mpsc::Receiver<GitStatusUpdate>>,
-    /// Git watcher instance (kept alive for cleanup)
-    pub git_watcher: Option<GitWatcher>,
-    /// Receiver channel for filesystem update events
-    pub fs_watcher_receiver: Option<mpsc::Receiver<DirectoryUpdate>>,
-    /// Filesystem watcher instance (kept alive for cleanup)
-    pub fs_watcher: Option<FileSystemWatcher>,
+    /// Unified watcher for filesystem and git changes
+    pub watcher: Option<UnifiedWatcher>,
     /// Current theme
     pub theme: &'static Theme,
     /// Application configuration
@@ -105,10 +98,7 @@ impl AppState {
             active_modal: None,
             pending_action: None,
             dir_size_receiver: None,
-            git_watcher_receiver: None,
-            git_watcher: None,
-            fs_watcher_receiver: None,
-            fs_watcher: None,
+            watcher: None,
             theme,
             config,
             system_monitor: SystemMonitor::new(),
