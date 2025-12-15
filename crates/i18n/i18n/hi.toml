@@ -116,6 +116,7 @@ menu_navigate_hint = "←→ नेविगेट | Enter चुनें | Esc
 menu_open_hint = "Alt+M मेनू"
 menu_preferences = "प्राथमिकताएं"
 menu_quit = "बाहर निकलें"
+menu_sessions = "सत्र"
 menu_terminal = "टर्मिनल"
 modal_cancel = "रद्द करें"
 modal_create_dir_title = "डायरेक्टरी बनाएं"
@@ -128,6 +129,8 @@ modal_yes = "हाँ"
 panel_file_manager = "फ़ाइल प्रबंधक"
 panel_terminal = "टर्मिनल"
 panel_welcome = "स्वागत है"
+sessions_current = "(वर्तमान)"
+sessions_title = "सत्र बदलें"
 size_bytes = "B"
 size_gigabytes = "GB"
 size_kilobytes = "KB"
@@ -150,6 +153,7 @@ status_shell = "शेल:"
 status_tab = "टैब:"
 status_terminal = "टर्मिनल:"
 terminal_exit_confirm = "प्रक्रिया अभी चल रही है। टर्मिनल बंद करें?"
+time_just_now = "अभी"
 ui_cancel = "रद्द करें"
 ui_close = "बंद करें"
 ui_continue = "जारी रखें"
@@ -207,8 +211,18 @@ status_items_deleted = "{count} आइटम हटाए गए"
 status_items_deleted_with_errors = "हटाए गए: {success}, त्रुटियां: {errors}"
 status_operation_skipped = "ऑपरेशन '{name}' छोड़ा गया"
 terminal_exited = "प्रक्रिया कोड {code} के साथ समाप्त हुई"
+time_days_ago = "{count} दिन पहले"
+time_hours_ago = "{count} घंटे पहले"
+time_minutes_ago = "{count} मिनट पहले"
+time_months_ago = "{count} महीने पहले"
+time_weeks_ago = "{count} सप्ताह पहले"
 
 [plurals]
 # Hindi has simple plural (same form for 1 and many in most cases)
-file = { one = "", other = "ें" }
+day = { one = "", other = "" }
 element = { one = "आइटम", other = "आइटम" }
+file = { one = "", other = "ें" }
+hour = { one = "", other = "" }
+minute = { one = "", other = "" }
+month = { one = "", other = "" }
+week = { one = "", other = "" }

@@ -116,6 +116,7 @@ menu_navigate_hint = "←→ Navigieren | Enter Auswählen | Esc Schließen"
 menu_open_hint = "Alt+M Menü"
 menu_preferences = "Einstellungen"
 menu_quit = "Beenden"
+menu_sessions = "Sitzungen"
 menu_terminal = "Terminal"
 modal_cancel = "Abbrechen"
 modal_create_dir_title = "Verzeichnis erstellen"
@@ -128,6 +129,8 @@ modal_yes = "Ja"
 panel_file_manager = "Dateimanager"
 panel_terminal = "Terminal"
 panel_welcome = "Willkommen"
+sessions_current = "(aktuell)"
+sessions_title = "Sitzung wechseln"
 size_bytes = "B"
 size_gigabytes = "GB"
 size_kilobytes = "KB"
@@ -150,6 +153,7 @@ status_shell = "Shell:"
 status_tab = "Tab:"
 status_terminal = "Terminal:"
 terminal_exit_confirm = "Prozess läuft noch. Terminal schließen?"
+time_just_now = "gerade eben"
 ui_cancel = "Abbrechen"
 ui_close = "Schließen"
 ui_continue = "Fortfahren"
@@ -207,7 +211,17 @@ status_items_deleted = "{count} Elemente gelöscht"
 status_items_deleted_with_errors = "Gelöscht: {success}, Fehler: {errors}"
 status_operation_skipped = "Operation '{name}' übersprungen"
 terminal_exited = "Prozess beendet mit Code {code}"
+time_days_ago = "vor {count} Tag{plural}"
+time_hours_ago = "vor {count} Stunde{plural}"
+time_minutes_ago = "vor {count} Minute{plural}"
+time_months_ago = "vor {count} Monat{plural}"
+time_weeks_ago = "vor {count} Woche{plural}"
 
 [plurals]
-file = { one = "", other = "en" }
+day = { one = "", other = "en" }
 element = { one = "Element", other = "Elemente" }
+file = { one = "", other = "en" }
+hour = { one = "", other = "n" }
+minute = { one = "", other = "n" }
+month = { one = "", other = "en" }
+week = { one = "", other = "n" }

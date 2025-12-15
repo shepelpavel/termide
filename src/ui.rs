@@ -39,6 +39,7 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
             ActiveModal::EditableSelect(m) => m.render(area, frame.buffer_mut(), theme),
             ActiveModal::Search(m) => m.render(area, frame.buffer_mut(), theme),
             ActiveModal::Replace(m) => m.render(area, frame.buffer_mut(), theme),
+            ActiveModal::Sessions(m) => m.render(area, frame.buffer_mut(), theme),
         }
     }
 }

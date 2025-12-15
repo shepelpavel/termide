@@ -112,7 +112,8 @@ impl App {
             | PendingAction::Replace
             | PendingAction::NextPanel
             | PendingAction::PrevPanel
-            | PendingAction::QuitApplication => {
+            | PendingAction::QuitApplication
+            | PendingAction::SwitchSession => {
                 // These actions don't require panel_index update
             }
         }

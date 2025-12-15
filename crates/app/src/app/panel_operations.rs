@@ -281,4 +281,33 @@ impl App {
         }
         Ok(())
     }
+
+    /// Handle switch session modal result
+    pub(super) fn handle_switch_session(&mut self, value: Box<dyn std::any::Any>) -> Result<()> {
+        if let Some(project_path) = value.downcast_ref::<std::path::PathBuf>() {
+            self.switch_to_session(project_path.clone())?;
+        }
+        Ok(())
+    }
+
+    /// Switch to a different session
+    fn switch_to_session(&mut self, new_project_root: std::path::PathBuf) -> Result<()> {
+        // 1. Save current session
+        self.auto_save_session();
+
+        // 2. Change working directory
+        std::env::set_current_dir(&new_project_root)?;
+        logger::info(format!(
+            "Changed working directory to: {:?}",
+            new_project_root
+        ));
+
+        // 3. Update project_root
+        self.project_root = new_project_root;
+
+        // 4. Load new session
+        self.load_session()?;
+
+        Ok(())
+    }
 }

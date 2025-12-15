@@ -383,6 +383,8 @@ pub enum PendingAction {
     PrevPanel,
     /// Quit application (with confirmation if there are unsaved changes)
     QuitApplication,
+    /// Switch to another session
+    SwitchSession,
 }
 
 #[cfg(test)]

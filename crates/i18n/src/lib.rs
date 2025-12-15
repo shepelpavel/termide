@@ -197,6 +197,7 @@ pub trait Translation: Send + Sync {
     fn batch_result_errors_fmt(&self, count: usize) -> String;
 
     // Menu
+    fn menu_sessions(&self) -> &str;
     fn menu_files(&self) -> &str;
     fn menu_terminal(&self) -> &str;
     fn menu_editor(&self) -> &str;
@@ -206,6 +207,18 @@ pub trait Translation: Send + Sync {
     fn menu_quit(&self) -> &str;
     fn menu_navigate_hint(&self) -> &str;
     fn menu_open_hint(&self) -> &str;
+
+    // Sessions
+    fn sessions_title(&self) -> &str;
+    fn sessions_current(&self) -> &str;
+
+    // Relative time
+    fn time_just_now(&self) -> &str;
+    fn time_minutes_ago(&self, count: usize) -> String;
+    fn time_hours_ago(&self, count: usize) -> String;
+    fn time_days_ago(&self, count: usize) -> String;
+    fn time_weeks_ago(&self, count: usize) -> String;
+    fn time_months_ago(&self, count: usize) -> String;
 
     // Status bar
     fn status_dir(&self) -> &str;

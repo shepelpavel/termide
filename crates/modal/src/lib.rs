@@ -26,6 +26,7 @@ pub mod rename_pattern;
 pub mod replace;
 pub mod search;
 pub mod select;
+pub mod sessions;
 
 pub use confirm::ConfirmModal;
 pub use conflict::{ConflictModal, ConflictResolution};
@@ -37,6 +38,7 @@ pub use rename_pattern::RenamePatternModal;
 pub use replace::{ReplaceAction, ReplaceModal, ReplaceModalResult};
 pub use search::{SearchAction, SearchModal, SearchModalResult};
 pub use select::SelectModal;
+pub use sessions::{SessionItem, SessionsModal};
 
 /// Active modal window enum.
 ///
@@ -64,6 +66,8 @@ pub enum ActiveModal {
     Search(Box<SearchModal>),
     /// Interactive replace modal
     Replace(Box<ReplaceModal>),
+    /// Sessions selection modal
+    Sessions(Box<SessionsModal>),
 }
 
 /// Trait for all modal windows.

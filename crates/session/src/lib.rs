@@ -408,3 +408,113 @@ pub fn delete_unsaved_buffer(session_dir: &Path, filename: &str) -> Result<()> {
 
     Ok(())
 }
+
+/// Information about a discovered session
+#[derive(Debug, Clone)]
+pub struct SessionInfo {
+    /// Original project path (reconstructed from session directory)
+    pub project_path: PathBuf,
+    /// Path to session.toml file
+    pub session_path: PathBuf,
+    /// Last modification time of session.toml
+    pub modified: std::time::SystemTime,
+}
+
+/// List all available sessions, sorted by modification time (newest first)
+pub fn list_all_sessions() -> Result<Vec<SessionInfo>> {
+    let data_dir = get_data_dir()?;
+    let sessions_dir = data_dir.join("sessions");
+
+    if !sessions_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut sessions = Vec::new();
+    collect_sessions(&sessions_dir, &sessions_dir, &mut sessions)?;
+
+    // Sort by modification time (newest first)
+    sessions.sort_by(|a, b| b.modified.cmp(&a.modified));
+
+    Ok(sessions)
+}
+
+/// Recursively collect sessions from directory tree
+fn collect_sessions(
+    dir: &Path,
+    sessions_base: &Path,
+    sessions: &mut Vec<SessionInfo>,
+) -> Result<()> {
+    if !dir.is_dir() {
+        return Ok(());
+    }
+
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return Ok(()),
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+
+        if path.is_dir() {
+            let session_file = path.join("session.toml");
+
+            if session_file.exists() {
+                // Extract project path from session directory structure
+                if let Ok(rel_path) = path.strip_prefix(sessions_base) {
+                    let project_path = PathBuf::from("/").join(rel_path);
+
+                    // Get modification time
+                    let modified = session_file
+                        .metadata()
+                        .and_then(|m| m.modified())
+                        .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+
+                    sessions.push(SessionInfo {
+                        project_path,
+                        session_path: session_file,
+                        modified,
+                    });
+                }
+            }
+
+            // Always recurse into subdirectories to find nested sessions
+            let _ = collect_sessions(&path, sessions_base, sessions);
+        }
+    }
+
+    Ok(())
+}
+
+/// Format a SystemTime as a relative time string (e.g., "2 hours ago")
+pub fn format_relative_time(time: std::time::SystemTime) -> String {
+    use std::time::SystemTime;
+
+    let now = SystemTime::now();
+    let duration = match now.duration_since(time) {
+        Ok(d) => d,
+        Err(_) => return termide_i18n::t().time_just_now().to_string(),
+    };
+
+    let seconds = duration.as_secs();
+    let t = termide_i18n::t();
+
+    if seconds < 60 {
+        t.time_just_now().to_string()
+    } else if seconds < 3600 {
+        let minutes = seconds / 60;
+        t.time_minutes_ago(minutes as usize)
+    } else if seconds < 86400 {
+        let hours = seconds / 3600;
+        t.time_hours_ago(hours as usize)
+    } else if seconds < 604800 {
+        let days = seconds / 86400;
+        t.time_days_ago(days as usize)
+    } else if seconds < 2592000 {
+        let weeks = seconds / 604800;
+        t.time_weeks_ago(weeks as usize)
+    } else {
+        let months = seconds / 2592000;
+        t.time_months_ago(months as usize)
+    }
+}

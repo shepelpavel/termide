@@ -374,21 +374,13 @@ impl App {
         }
     }
 
-    /// Check async git status results for FileManager panels and update spinners
+    /// Check async git status results for FileManager panels
     fn check_fm_git_status_async(&mut self) {
-        const SPINNER_INTERVAL: std::time::Duration = std::time::Duration::from_millis(125);
-
         for group in &mut self.layout_manager.panel_groups {
             for panel in group.panels_mut() {
                 if let Some(fm) = panel.as_file_manager_mut() {
                     // Check for async git status results
                     if fm.check_git_status_async() {
-                        self.state.needs_redraw = true;
-                    }
-
-                    // Update spinner if git status is still loading
-                    if fm.is_git_status_loading() && fm.spinner_elapsed() >= SPINNER_INTERVAL {
-                        fm.advance_spinner();
                         self.state.needs_redraw = true;
                     }
                 }

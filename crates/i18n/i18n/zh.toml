@@ -116,6 +116,7 @@ menu_navigate_hint = "←→ 导航 | Enter 选择 | Esc 关闭"
 menu_open_hint = "Alt+M 菜单"
 menu_preferences = "偏好设置"
 menu_quit = "退出"
+menu_sessions = "会话"
 menu_terminal = "终端"
 modal_cancel = "取消"
 modal_create_dir_title = "创建目录"
@@ -128,6 +129,8 @@ modal_yes = "是"
 panel_file_manager = "文件管理器"
 panel_terminal = "终端"
 panel_welcome = "欢迎"
+sessions_current = "(当前)"
+sessions_title = "切换会话"
 size_bytes = "B"
 size_gigabytes = "GB"
 size_kilobytes = "KB"
@@ -150,6 +153,7 @@ status_shell = "Shell："
 status_tab = "制表符："
 status_terminal = "终端："
 terminal_exit_confirm = "进程仍在运行。关闭终端？"
+time_just_now = "刚刚"
 ui_cancel = "取消"
 ui_close = "关闭"
 ui_continue = "继续"
@@ -207,8 +211,18 @@ status_items_deleted = "已删除 {count} 个项目"
 status_items_deleted_with_errors = "已删除：{success}，错误：{errors}"
 status_operation_skipped = "操作 '{name}' 已跳过"
 terminal_exited = "进程已退出，代码 {code}"
+time_days_ago = "{count}天前"
+time_hours_ago = "{count}小时前"
+time_minutes_ago = "{count}分钟前"
+time_months_ago = "{count}个月前"
+time_weeks_ago = "{count}周前"
 
 [plurals]
 # Chinese doesn't have plural forms
-file = { one = "", other = "" }
+day = { one = "", other = "" }
 element = { one = "项目", other = "项目" }
+file = { one = "", other = "" }
+hour = { one = "", other = "" }
+minute = { one = "", other = "" }
+month = { one = "", other = "" }
+week = { one = "", other = "" }

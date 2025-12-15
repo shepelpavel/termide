@@ -116,6 +116,7 @@ menu_navigate_hint = "←→ Naviguer | Enter Sélectionner | Esc Fermer"
 menu_open_hint = "Alt+M Menu"
 menu_preferences = "Préférences"
 menu_quit = "Quitter"
+menu_sessions = "Sessions"
 menu_terminal = "Terminal"
 modal_cancel = "Annuler"
 modal_create_dir_title = "Créer un répertoire"
@@ -128,6 +129,8 @@ modal_yes = "Oui"
 panel_file_manager = "Gestionnaire de fichiers"
 panel_terminal = "Terminal"
 panel_welcome = "Bienvenue"
+sessions_current = "(actuelle)"
+sessions_title = "Changer de session"
 size_bytes = "o"
 size_gigabytes = "Go"
 size_kilobytes = "Ko"
@@ -150,6 +153,7 @@ status_shell = "Shell:"
 status_tab = "Tab:"
 status_terminal = "Terminal:"
 terminal_exit_confirm = "Le processus est toujours en cours. Fermer le terminal?"
+time_just_now = "à l'instant"
 ui_cancel = "Annuler"
 ui_close = "Fermer"
 ui_continue = "Continuer"
@@ -207,7 +211,17 @@ status_items_deleted = "{count} éléments supprimés"
 status_items_deleted_with_errors = "Supprimés: {success}, erreurs: {errors}"
 status_operation_skipped = "Opération '{name}' ignorée"
 terminal_exited = "Le processus s'est terminé avec le code {code}"
+time_days_ago = "il y a {count} jour{plural}"
+time_hours_ago = "il y a {count} heure{plural}"
+time_minutes_ago = "il y a {count} minute{plural}"
+time_months_ago = "il y a {count} mois"
+time_weeks_ago = "il y a {count} semaine{plural}"
 
 [plurals]
-file = { one = "", other = "s" }
+day = { one = "", other = "s" }
 element = { one = "élément", other = "éléments" }
+file = { one = "", other = "s" }
+hour = { one = "", other = "s" }
+minute = { one = "", other = "s" }
+month = { one = "", other = "" }
+week = { one = "", other = "s" }

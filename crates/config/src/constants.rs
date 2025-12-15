@@ -6,6 +6,9 @@ pub const SPINNER_FRAMES_COUNT: usize = 8;
 /// Spinner animation characters.
 pub const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"];
 
+/// Static loading indicator (for blocking operations where animation is not possible).
+pub const LOADING_INDICATOR: &str = "●";
+
 /// File sizes.
 pub const KILOBYTE: u64 = 1024;
 pub const MEGABYTE: u64 = KILOBYTE * 1024;

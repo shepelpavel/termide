@@ -46,36 +46,41 @@ impl App {
         if let Some(menu_index) = self.state.ui.selected_menu_item {
             match menu_index {
                 0 => {
+                    // Sessions - open sessions modal
+                    self.state.close_menu();
+                    self.handle_open_sessions_modal()?;
+                }
+                1 => {
                     // Files - open new file manager panel
                     self.handle_new_file_manager()?;
                     self.state.close_menu();
                 }
-                1 => {
+                2 => {
                     // Terminal - open new terminal panel
                     self.handle_new_terminal()?;
                     self.state.close_menu();
                 }
-                2 => {
+                3 => {
                     // Editor - open new editor panel
                     self.handle_new_editor()?;
                     self.state.close_menu();
                 }
-                3 => {
+                4 => {
                     // Debug - open debug panel
                     self.handle_new_debug()?;
                     self.state.close_menu();
                 }
-                4 => {
+                5 => {
                     // Preferences - open config file in editor
                     self.state.close_menu();
                     self.open_config_in_editor()?;
                 }
-                5 => {
+                6 => {
                     // Help - show help
                     self.state.close_menu();
                     self.handle_new_help()?;
                 }
-                6 => {
+                7 => {
                     // Quit - exit
                     self.state.close_menu();
                     if self.has_panels_requiring_confirmation() {
@@ -93,6 +98,48 @@ impl App {
                 _ => {}
             }
         }
+        Ok(())
+    }
+
+    /// Open sessions modal to switch between projects
+    fn handle_open_sessions_modal(&mut self) -> Result<()> {
+        use termide_modal::{SessionItem, SessionsModal};
+        use termide_session::{format_relative_time, list_all_sessions};
+
+        let t = i18n::t();
+
+        // Get all sessions
+        let sessions = list_all_sessions().unwrap_or_default();
+
+        // Get current project path
+        let current_project = std::env::current_dir().unwrap_or_default();
+
+        // Convert to SessionItems
+        let items: Vec<SessionItem> = sessions
+            .into_iter()
+            .map(|info| {
+                let is_current = info.project_path == current_project;
+                let display_path = info.project_path.display().to_string();
+                let relative_time = format_relative_time(info.modified);
+
+                SessionItem {
+                    project_path: info.project_path,
+                    display_path,
+                    relative_time,
+                    is_current,
+                }
+            })
+            .collect();
+
+        // Only show modal if there are other sessions
+        if items.iter().any(|item| !item.is_current) {
+            let modal = SessionsModal::new(t.sessions_title(), items);
+            self.state.set_pending_action(
+                PendingAction::SwitchSession,
+                ActiveModal::Sessions(Box::new(modal)),
+            );
+        }
+
         Ok(())
     }
 

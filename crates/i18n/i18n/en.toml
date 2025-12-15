@@ -116,6 +116,7 @@ menu_navigate_hint = "←→ Navigate | Enter Select | Esc Close"
 menu_open_hint = "Alt+M Menu"
 menu_preferences = "Preferences"
 menu_quit = "Quit"
+menu_sessions = "Sessions"
 menu_terminal = "Terminal"
 modal_cancel = "Cancel"
 modal_create_dir_title = "Create Directory"
@@ -128,6 +129,8 @@ modal_yes = "Yes"
 panel_file_manager = "File Manager"
 panel_terminal = "Terminal"
 panel_welcome = "Welcome"
+sessions_current = "(current)"
+sessions_title = "Switch Session"
 size_bytes = "B"
 size_gigabytes = "GB"
 size_kilobytes = "KB"
@@ -150,6 +153,7 @@ status_shell = "Shell:"
 status_tab = "Tab:"
 status_terminal = "Terminal:"
 terminal_exit_confirm = "Process is still running. Close terminal?"
+time_just_now = "just now"
 ui_cancel = "Cancel"
 ui_close = "Close"
 ui_continue = "Continue"
@@ -207,7 +211,17 @@ status_items_deleted = "Deleted {count} items"
 status_items_deleted_with_errors = "Deleted: {success}, errors: {errors}"
 status_operation_skipped = "Operation '{name}' skipped"
 terminal_exited = "Process exited with code {code}"
+time_days_ago = "{count} day{plural} ago"
+time_hours_ago = "{count} hour{plural} ago"
+time_minutes_ago = "{count} minute{plural} ago"
+time_months_ago = "{count} month{plural} ago"
+time_weeks_ago = "{count} week{plural} ago"
 
 [plurals]
-file = { one = "", other = "s" }
+day = { one = "", other = "s" }
 element = { one = "element", other = "elements" }
+file = { one = "", other = "s" }
+hour = { one = "", other = "s" }
+minute = { one = "", other = "s" }
+month = { one = "", other = "s" }
+week = { one = "", other = "s" }

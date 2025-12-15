@@ -31,6 +31,7 @@ pub struct MenuRenderParams<'a> {
 pub fn get_menu_items() -> Vec<String> {
     let t = i18n::t();
     vec![
+        t.menu_sessions().to_string(),
         t.menu_files().to_string(),
         t.menu_terminal().to_string(),
         t.menu_editor().to_string(),
@@ -42,7 +43,10 @@ pub fn get_menu_items() -> Vec<String> {
 }
 
 /// Number of menu items
-pub const MENU_ITEM_COUNT: usize = 7;
+pub const MENU_ITEM_COUNT: usize = 8;
+
+/// Index of Sessions menu item (no keyboard accelerator highlighting)
+pub const SESSIONS_MENU_INDEX: usize = 0;
 
 /// Choose color indicator by load level
 /// < 50% - green (success)
@@ -83,7 +87,8 @@ pub fn render_menu(frame: &mut Frame, area: Rect, params: &MenuRenderParams) {
 
         // Highlight first letter (keyboard accelerator) only for English locale
         // In other locales, menu text doesn't match keyboard shortcuts
-        if i18n::current_language() == "en" {
+        // Sessions menu item never gets first letter highlighting (no keyboard shortcut)
+        if i18n::current_language() == "en" && i != SESSIONS_MENU_INDEX {
             // English: Split menu item and highlight first letter
             if let Some(first_char) = item.chars().next() {
                 let first = first_char.to_string();
@@ -95,7 +100,7 @@ pub fn render_menu(frame: &mut Frame, area: Rect, params: &MenuRenderParams) {
                 }
             }
         } else {
-            // Non-English: Don't highlight first letter
+            // Non-English or Sessions: Don't highlight first letter
             spans.push(Span::styled(item.as_str(), base_style));
         }
 
@@ -120,7 +125,7 @@ pub fn render_menu(frame: &mut Frame, area: Rect, params: &MenuRenderParams) {
     let cpu_color = resource_color(params.cpu_usage, params.theme);
 
     // RAM indicator
-    let ram_text = format!("RAM {} {} ", params.ram_value, ram_unit_str);
+    let ram_text = format!("RAM {}{} ", params.ram_value, ram_unit_str);
     let ram_color = resource_color(params.ram_percent, params.theme);
 
     // Current time

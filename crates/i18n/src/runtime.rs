@@ -695,6 +695,10 @@ impl Translation for RuntimeTranslation {
         self.format("batch_result_errors_fmt", &[("count", &count.to_string())])
     }
 
+    fn menu_sessions(&self) -> &str {
+        self.get_string("menu_sessions")
+    }
+
     fn menu_files(&self) -> &str {
         self.get_string("menu_files")
     }
@@ -729,6 +733,38 @@ impl Translation for RuntimeTranslation {
 
     fn menu_open_hint(&self) -> &str {
         self.get_string("menu_open_hint")
+    }
+
+    fn sessions_title(&self) -> &str {
+        self.get_string("sessions_title")
+    }
+
+    fn sessions_current(&self) -> &str {
+        self.get_string("sessions_current")
+    }
+
+    fn time_just_now(&self) -> &str {
+        self.get_string("time_just_now")
+    }
+
+    fn time_minutes_ago(&self, count: usize) -> String {
+        self.format("time_minutes_ago", &[("count", &count.to_string())])
+    }
+
+    fn time_hours_ago(&self, count: usize) -> String {
+        self.format("time_hours_ago", &[("count", &count.to_string())])
+    }
+
+    fn time_days_ago(&self, count: usize) -> String {
+        self.format("time_days_ago", &[("count", &count.to_string())])
+    }
+
+    fn time_weeks_ago(&self, count: usize) -> String {
+        self.format("time_weeks_ago", &[("count", &count.to_string())])
+    }
+
+    fn time_months_ago(&self, count: usize) -> String {
+        self.format("time_months_ago", &[("count", &count.to_string())])
     }
 
     fn status_dir(&self) -> &str {
