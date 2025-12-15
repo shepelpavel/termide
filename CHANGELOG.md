@@ -5,6 +5,25 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.4] - 2025-12-15
+
+### Added
+- Session switching modal (Alt+M → Sessions) to switch between open termide sessions
+- Static loading indicator for file watcher initialization (replaced animated Braille spinner)
+
+### Fixed
+- Word wrap cursor positioning unified calculation
+- Mouse selection offset with word wrap enabled
+- Disk space indicator formatting (removed space before unit: "411/467GB")
+
+### Performance
+- File watcher now uses `ignore` crate to skip .gitignored directories
+
+### Documentation
+- Updated project structure in README and architecture docs to reflect workspace crates
+- Updated i18n section to show all 9 supported languages
+- Added Ctrl+D (duplicate line) to editor help files
+
 ## [0.5.3] - 2025-12-15
 
 ### Fixed
