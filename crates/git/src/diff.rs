@@ -395,6 +395,7 @@ mod tests {
         // Deletion marker should be after line 0 (where line1 is)
         assert!(deleted_after.contains_key(&0));
         assert_eq!(deleted_after.get(&0), Some(&1)); // 1 line deleted
+        assert!(statuses.is_empty()); // No modifications or additions
     }
 
     #[test]

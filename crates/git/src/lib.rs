@@ -4,11 +4,27 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
 use std::sync::mpsc;
 use std::sync::OnceLock;
 
 pub mod diff;
+
+/// Execute a git command in the specified directory.
+/// Returns None if the command fails or git is not available.
+fn git_command(dir: &Path, args: &[&str]) -> Option<Output> {
+    Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+}
+
+/// Execute a git command and return stdout as String.
+fn git_command_stdout(dir: &Path, args: &[&str]) -> Option<String> {
+    git_command(dir, args).and_then(|output| String::from_utf8(output.stdout).ok())
+}
 
 pub use diff::{load_original_async, GitDiffAsyncResult, GitDiffCache, LineStatus};
 
@@ -19,45 +35,38 @@ pub fn file_status(repo_root: &Path, file_path: &Path) -> GitStatus {
         Err(_) => return GitStatus::default(),
     };
 
+    let relative_str = relative.to_string_lossy();
+
     // Check if file is ignored
-    if let Ok(output) = Command::new("git")
-        .args(["check-ignore", "-q"])
-        .arg(relative)
-        .current_dir(repo_root)
-        .output()
-    {
-        if output.status.success() {
-            return GitStatus::Ignored;
-        }
+    if git_command(repo_root, &["check-ignore", "-q", &relative_str]).is_some() {
+        return GitStatus::Ignored;
     }
 
     // Get status
-    if let Ok(output) = Command::new("git")
-        .args(["status", "--porcelain=v1", "--"])
-        .arg(relative)
-        .current_dir(repo_root)
-        .output()
-    {
-        if output.status.success() {
-            if let Ok(stdout) = String::from_utf8(output.stdout) {
-                if let Some(line) = stdout.lines().next() {
-                    if line.len() >= 2 {
-                        let status_code = &line[0..2];
-                        return match status_code {
-                            "!!" => GitStatus::Ignored,
-                            " M" | "M " | "MM" => GitStatus::Modified,
-                            "A " | " A" | "AM" | "AA" => GitStatus::Added,
-                            " D" | "D " | "DD" => GitStatus::Deleted,
-                            "??" => GitStatus::Added,
-                            _ => GitStatus::Unmodified,
-                        };
-                    }
-                }
+    if let Some(stdout) = git_command_stdout(
+        repo_root,
+        &["status", "--porcelain=v1", "--", &relative_str],
+    ) {
+        if let Some(line) = stdout.lines().next() {
+            if line.len() >= 2 {
+                return parse_status_code(&line[0..2]);
             }
         }
     }
 
     GitStatus::Unmodified
+}
+
+/// Parse git status porcelain code to GitStatus enum.
+fn parse_status_code(code: &str) -> GitStatus {
+    match code {
+        "!!" => GitStatus::Ignored,
+        " M" | "M " | "MM" => GitStatus::Modified,
+        "A " | " A" | "AM" | "AA" => GitStatus::Added,
+        " D" | "D " | "DD" => GitStatus::Deleted,
+        "??" => GitStatus::Added,
+        _ => GitStatus::Unmodified,
+    }
 }
 
 /// Global flag for git availability on system.
@@ -109,19 +118,8 @@ pub fn get_git_status(dir: &Path) -> Option<GitStatusCache> {
     }
 
     // Single git command to check repo and get root path
-    let output = Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .current_dir(dir)
-        .output()
-        .ok()?;
-
-    if !output.status.success() {
-        return None; // Not a git repository
-    }
-
-    let repo_root = String::from_utf8(output.stdout)
-        .ok()
-        .map(|s| PathBuf::from(s.trim()))?;
+    let repo_root_str = git_command_stdout(dir, &["rev-parse", "--show-toplevel"])?;
+    let repo_root = PathBuf::from(repo_root_str.trim());
 
     let relative_path = dir
         .strip_prefix(&repo_root)
@@ -132,37 +130,28 @@ pub fn get_git_status(dir: &Path) -> Option<GitStatusCache> {
     let mut status_map = HashMap::new();
     let mut ignored_files = HashSet::new();
 
-    if let Ok(output) = Command::new("git")
-        .args(["status", "--porcelain=v1", "--ignored"])
-        .current_dir(&repo_root)
-        .output()
+    if let Some(stdout) = git_command_stdout(&repo_root, &["status", "--porcelain=v1", "--ignored"])
     {
-        if output.status.success() {
-            if let Ok(stdout) = String::from_utf8(output.stdout) {
-                for line in stdout.lines() {
-                    if line.len() < 4 {
-                        continue;
-                    }
-
-                    let status_code = &line[0..2];
-                    let file_path = &line[3..];
-
-                    let status = match status_code {
-                        "!!" => {
-                            // Also add to ignored_files for parent directory checks
-                            ignored_files.insert(PathBuf::from(file_path));
-                            GitStatus::Ignored
-                        }
-                        " M" | "M " | "MM" => GitStatus::Modified,
-                        "A " | " A" | "AM" | "AA" => GitStatus::Added,
-                        " D" | "D " | "DD" => GitStatus::Deleted,
-                        "??" => GitStatus::Added,
-                        _ => continue,
-                    };
-
-                    status_map.insert(PathBuf::from(file_path), status);
-                }
+        for line in stdout.lines() {
+            if line.len() < 4 {
+                continue;
             }
+
+            let status_code = &line[0..2];
+            let file_path = &line[3..];
+
+            let status = if status_code == "!!" {
+                // Also add to ignored_files for parent directory checks
+                ignored_files.insert(PathBuf::from(file_path));
+                GitStatus::Ignored
+            } else {
+                match parse_status_code(status_code) {
+                    GitStatus::Unmodified => continue,
+                    s => s,
+                }
+            };
+
+            status_map.insert(PathBuf::from(file_path), status);
         }
     }
 
@@ -349,114 +338,43 @@ pub fn get_repo_status(repo_path: &Path, item_path: &Path) -> Option<GitRepoStat
         item_path
     };
 
-    let is_repo = Command::new("git")
-        .arg("rev-parse")
-        .arg("--is-inside-work-tree")
-        .current_dir(git_work_dir)
-        .output()
-        .ok()
-        .map(|output| output.status.success())
-        .unwrap_or(false);
+    // Check if inside git work tree
+    git_command(git_work_dir, &["rev-parse", "--is-inside-work-tree"])?;
 
-    if !is_repo {
-        return None;
-    }
-
-    let repo_root = Command::new("git")
-        .arg("rev-parse")
-        .arg("--show-toplevel")
-        .current_dir(git_work_dir)
-        .output()
-        .ok()
-        .and_then(|output| {
-            if output.status.success() {
-                String::from_utf8(output.stdout)
-                    .ok()
-                    .map(|s| PathBuf::from(s.trim()))
-            } else {
-                None
-            }
-        })?;
+    let repo_root_str = git_command_stdout(git_work_dir, &["rev-parse", "--show-toplevel"])?;
+    let repo_root = PathBuf::from(repo_root_str.trim());
 
     let relative_path = item_path.strip_prefix(&repo_root).ok()?;
     let is_repo_root = relative_path.as_os_str().is_empty();
-    let git_path = if is_repo_root {
-        Path::new(".")
+    let git_path_str = if is_repo_root {
+        ".".to_string()
     } else {
-        relative_path
+        relative_path.to_string_lossy().to_string()
     };
 
     // Repo root cannot be ignored within itself; for other paths check git status
     let is_ignored = if is_repo_root {
         false
     } else {
-        Command::new("git")
-            .args(["status", "--porcelain", "--ignored", "--"])
-            .arg(git_path)
-            .current_dir(&repo_root)
-            .output()
-            .ok()
-            .and_then(|output| {
-                if output.status.success() {
-                    String::from_utf8(output.stdout)
-                        .ok()
-                        .map(|stdout| stdout.lines().any(|line| line.starts_with("!! ")))
-                } else {
-                    None
-                }
-            })
-            .unwrap_or(false)
+        git_command_stdout(
+            &repo_root,
+            &["status", "--porcelain", "--ignored", "--", &git_path_str],
+        )
+        .map(|stdout| stdout.lines().any(|line| line.starts_with("!! ")))
+        .unwrap_or(false)
     };
 
-    let uncommitted_changes = Command::new("git")
-        .args(["status", "--porcelain", "--"])
-        .arg(git_path)
-        .current_dir(&repo_root)
-        .output()
-        .ok()
-        .and_then(|output| {
-            if output.status.success() {
-                String::from_utf8(output.stdout)
-                    .ok()
-                    .map(|stdout| stdout.lines().filter(|l| !l.starts_with("!!")).count())
-            } else {
-                None
-            }
-        })
+    let uncommitted_changes =
+        git_command_stdout(&repo_root, &["status", "--porcelain", "--", &git_path_str])
+            .map(|stdout| stdout.lines().filter(|l| !l.starts_with("!!")).count())
+            .unwrap_or(0);
+
+    let ahead = git_command_stdout(&repo_root, &["rev-list", "--count", "@{upstream}..HEAD"])
+        .and_then(|s| s.trim().parse().ok())
         .unwrap_or(0);
 
-    let ahead = Command::new("git")
-        .args(["rev-list", "--count", "@{upstream}..HEAD", "--"])
-        .arg(git_path)
-        .current_dir(&repo_root)
-        .output()
-        .ok()
-        .and_then(|output| {
-            if output.status.success() {
-                String::from_utf8(output.stdout)
-                    .ok()
-                    .and_then(|s| s.trim().parse().ok())
-            } else {
-                None
-            }
-        })
-        .unwrap_or(0);
-
-    let behind = Command::new("git")
-        .args(["rev-list", "--count", "HEAD..@{upstream}", "--"])
-        .arg(git_path)
-        .current_dir(&repo_root)
-        .output()
-        .ok()
-        .and_then(|output| {
-            if output.status.success() {
-                String::from_utf8(output.stdout)
-                    .ok()
-                    .and_then(|s| s.trim().parse().ok())
-            } else {
-                None
-            }
-        })
+    let behind = git_command_stdout(&repo_root, &["rev-list", "--count", "HEAD..@{upstream}"])
+        .and_then(|s| s.trim().parse().ok())
         .unwrap_or(0);
 
     Some(GitRepoStatus {
