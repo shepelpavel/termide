@@ -301,16 +301,26 @@ impl App {
                 self.state.ui.selected_submenu_item = item_index;
                 match item_index {
                     0 => {
-                        // Themes - open nested submenu with live preview
-                        let theme_names = Theme::all_theme_names();
-                        let current_idx = theme_names
-                            .iter()
-                            .position(|n| n == self.state.theme.name)
-                            .unwrap_or(0);
-                        // Save current theme for restoration on cancel
-                        self.state.ui.theme_preview_original =
-                            Some(self.state.theme.name.to_string());
-                        self.state.open_nested_submenu(current_idx);
+                        // Themes - toggle nested submenu
+                        if self.state.ui.nested_submenu_open {
+                            // Already open - close it and restore theme
+                            if let Some(original_name) = self.state.ui.theme_preview_original.take()
+                            {
+                                self.state.theme = Theme::get_by_name(&original_name);
+                            }
+                            self.state.close_nested_submenu();
+                        } else {
+                            // Open nested submenu with live preview
+                            let theme_names = Theme::all_theme_names();
+                            let current_idx = theme_names
+                                .iter()
+                                .position(|n| n == self.state.theme.name)
+                                .unwrap_or(0);
+                            // Save current theme for restoration on cancel
+                            self.state.ui.theme_preview_original =
+                                Some(self.state.theme.name.to_string());
+                            self.state.open_nested_submenu(current_idx);
+                        }
                     }
                     1 => {
                         // Edit preferences
