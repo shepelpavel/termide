@@ -12,20 +12,59 @@ use termide_layout::LayoutManager;
 use termide_panel_editor::Editor;
 use termide_panel_file_manager::FileManager;
 use termide_panel_terminal::Terminal;
+use termide_theme::Theme;
 use termide_ui_render::{
-    render_collapsed_panel, render_expanded_panel, render_menu, ExpandedPanelParams,
-    MenuRenderParams,
+    get_menu_item_x_position, get_preferences_items, render_collapsed_panel, render_expanded_panel,
+    render_menu, Dropdown, ExpandedPanelParams, MenuRenderParams, ThemeDropdown,
+    PREFERENCES_MENU_INDEX,
 };
 
 use termide_modal::Modal;
 use termide_ui_render::{StatusBar, StatusBarParams};
 
-/// Render modal windows
+/// Render dropdown submenus and modal windows
 fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
-    // Render active modal window if it's open
-    // Copy theme before getting mutable modal reference to avoid borrow checker issues
     let theme = state.theme;
 
+    // Render submenu dropdowns if Preferences menu is selected and submenu is open
+    if state.ui.menu_open
+        && state.ui.selected_menu_item == Some(PREFERENCES_MENU_INDEX)
+        && state.ui.submenu_open
+    {
+        // Calculate position of Preferences menu item
+        let menu_x = get_menu_item_x_position(PREFERENCES_MENU_INDEX);
+        let dropdown_y = 1_u16; // Below menu bar
+
+        // Render Preferences submenu
+        let pref_items = get_preferences_items();
+        let dropdown = Dropdown::new(
+            &pref_items,
+            state.ui.selected_submenu_item,
+            menu_x,
+            dropdown_y,
+            theme,
+        );
+        dropdown.render(frame.buffer_mut());
+
+        // If Themes is selected and nested submenu is open
+        if state.ui.nested_submenu_open && state.ui.selected_submenu_item == 0 {
+            // Calculate position: to the right of preferences dropdown
+            let nested_x = menu_x + dropdown.width();
+            let nested_y = dropdown_y + 1; // Align with "Themes" item (inside border)
+
+            let theme_names = Theme::all_theme_names();
+            let theme_dropdown = ThemeDropdown::new(
+                &theme_names,
+                state.ui.selected_nested_item,
+                nested_x,
+                nested_y,
+                theme,
+            );
+            theme_dropdown.render(frame.buffer_mut());
+        }
+    }
+
+    // Render active modal window if it's open
     if let Some(modal) = state.get_active_modal_mut() {
         let area = frame.area();
         match modal {

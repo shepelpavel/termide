@@ -5,7 +5,8 @@ use crossterm::event::{MouseButton, MouseEventKind};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 
 use super::App;
-use termide_ui_render::dropdown::{get_help_items, get_tools_items};
+use termide_theme::Theme;
+use termide_ui_render::{get_menu_item_x_position, get_preferences_items, PREFERENCES_MENU_INDEX};
 
 impl App {
     /// Handle mouse event
@@ -38,10 +39,11 @@ impl App {
             return Ok(());
         }
 
-        // Click on dropdown when menu is open
-        if self.state.ui.menu_open && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
+        // Handle submenu clicks when submenu is open
+        if self.state.ui.submenu_open
+            && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
+            && self.handle_submenu_click(mouse.column, mouse.row)?
         {
-            self.handle_dropdown_click(mouse.column, mouse.row)?;
             return Ok(());
         }
 
@@ -236,8 +238,8 @@ impl App {
         for (i, item) in menu_items.iter().enumerate() {
             let item_width = item.len() as u16;
             if x >= current_x && x < current_x + item_width {
-                // Set selected item and immediately execute action
-                self.state.ui.selected_menu_item = Some(i);
+                // Open menu with the selected item
+                self.state.open_menu(Some(i));
                 self.execute_menu_action()?;
                 return Ok(());
             }
@@ -247,28 +249,78 @@ impl App {
         Ok(())
     }
 
-    /// Handle click on dropdown
-    fn handle_dropdown_click(&mut self, _x: u16, y: u16) -> Result<()> {
-        if let Some(menu_index) = self.state.ui.selected_menu_item {
-            // Dropdown starts from row 1
-            if y >= 2 {
-                // -2 for menu row and top border of dropdown
-                let item_index = (y - 2) as usize;
+    /// Handle click on submenu dropdowns
+    /// Returns true if click was handled
+    fn handle_submenu_click(&mut self, x: u16, y: u16) -> Result<bool> {
+        // Get Preferences dropdown position
+        let menu_x = get_menu_item_x_position(PREFERENCES_MENU_INDEX);
+        let dropdown_y = 1_u16;
 
-                let item_count = match menu_index {
-                    0 => get_tools_items().len(),
-                    1 => get_help_items().len(),
-                    _ => 0,
-                };
+        // Calculate Preferences dropdown dimensions
+        let pref_items = get_preferences_items();
+        let pref_width = pref_items.iter().map(|i| i.label.len()).max().unwrap_or(10) as u16 + 4;
+        let pref_height = pref_items.len() as u16 + 2; // +2 for borders
 
-                if item_index < item_count {
-                    self.state.ui.selected_dropdown_item = item_index;
-                    self.execute_menu_action()?;
+        // Check if nested submenu (Themes) is open
+        if self.state.ui.nested_submenu_open && self.state.ui.selected_submenu_item == 0 {
+            // Theme dropdown is to the right of Preferences dropdown
+            let nested_x = menu_x + pref_width;
+            let nested_y = dropdown_y + 1;
+
+            let theme_names = Theme::all_theme_names();
+            let nested_width = theme_names.iter().map(|n| n.len()).max().unwrap_or(10) as u16 + 6;
+            let nested_height = theme_names.len().min(12) as u16 + 2;
+
+            // Check click on theme dropdown
+            if x >= nested_x
+                && x < nested_x + nested_width
+                && y >= nested_y
+                && y < nested_y + nested_height
+            {
+                let item_y = y.saturating_sub(nested_y + 1); // -1 for top border
+                let item_index = item_y as usize;
+                if item_index < theme_names.len() {
+                    // Apply selected theme
+                    if let Some(name) = theme_names.get(item_index) {
+                        self.apply_theme(name)?;
+                    }
+                    self.state.close_menu();
+                    return Ok(true);
                 }
             }
         }
 
-        Ok(())
+        // Check click on Preferences dropdown
+        if x >= menu_x && x < menu_x + pref_width && y >= dropdown_y && y < dropdown_y + pref_height
+        {
+            let item_y = y.saturating_sub(dropdown_y + 1); // -1 for top border
+            let item_index = item_y as usize;
+            if item_index < pref_items.len() {
+                self.state.ui.selected_submenu_item = item_index;
+                match item_index {
+                    0 => {
+                        // Themes - open nested submenu
+                        let theme_names = Theme::all_theme_names();
+                        let current_idx = theme_names
+                            .iter()
+                            .position(|n| n == self.state.theme.name)
+                            .unwrap_or(0);
+                        self.state.open_nested_submenu(current_idx);
+                    }
+                    1 => {
+                        // Edit preferences
+                        self.state.close_menu();
+                        self.open_config_in_editor()?;
+                    }
+                    _ => {}
+                }
+                return Ok(true);
+            }
+        }
+
+        // Click outside dropdowns - close all menus
+        self.state.close_menu();
+        Ok(true)
     }
 
     /// Calculate panel rectangles for mouse hit testing

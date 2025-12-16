@@ -28,14 +28,21 @@ TermIDE comes with 12 built-in themes and supports custom user themes. You can s
 
 ## Switching Themes
 
-### Method 1: Using TermIDE (Recommended)
+### Method 1: Using the Menu (Recommended)
+
+1. Click on **Preferences** in the menu bar
+2. Select **Themes** from the dropdown
+3. Choose your desired theme from the list - each item shows a color preview of the theme
+4. The theme will be applied immediately and saved to config
+
+### Method 2: Using Keyboard Shortcut
 
 1. Press `Alt+P` while running TermIDE to open the configuration file in the built-in editor
 2. Find the `theme` parameter
 3. Change it to your desired theme name (e.g., `theme = "dracula"`)
 4. Save the file with `Ctrl+S` - the new theme will be applied immediately
 
-### Method 2: Manual Edit
+### Method 3: Manual Edit
 
 You can also edit the configuration file directly with any text editor:
 

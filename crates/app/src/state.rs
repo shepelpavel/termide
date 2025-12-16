@@ -132,6 +132,34 @@ impl AppState {
         self.ui.menu_open = false;
         self.ui.selected_menu_item = None;
         self.ui.selected_dropdown_item = 0;
+        self.close_submenu();
+    }
+
+    /// Open submenu (e.g., Preferences dropdown)
+    pub fn open_submenu(&mut self) {
+        self.ui.submenu_open = true;
+        self.ui.selected_submenu_item = 0;
+        self.ui.nested_submenu_open = false;
+    }
+
+    /// Close submenu and all nested menus
+    pub fn close_submenu(&mut self) {
+        self.ui.submenu_open = false;
+        self.ui.selected_submenu_item = 0;
+        self.ui.nested_submenu_open = false;
+        self.ui.selected_nested_item = 0;
+    }
+
+    /// Open nested submenu (e.g., Themes list)
+    pub fn open_nested_submenu(&mut self, initial_item: usize) {
+        self.ui.nested_submenu_open = true;
+        self.ui.selected_nested_item = initial_item;
+    }
+
+    /// Close nested submenu (return to parent submenu)
+    pub fn close_nested_submenu(&mut self) {
+        self.ui.nested_submenu_open = false;
+        self.ui.selected_nested_item = 0;
     }
 
     /// Toggle menu

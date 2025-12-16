@@ -36,6 +36,11 @@ impl App {
             return self.handle_modal_key(key);
         }
 
+        // If submenu is open, handle submenu navigation
+        if self.state.ui.submenu_open {
+            return self.handle_submenu_key(key);
+        }
+
         // If menu is open, handle menu navigation
         if self.state.ui.menu_open {
             return self.handle_menu_key(key);
@@ -115,9 +120,7 @@ impl App {
             | PendingAction::NextPanel
             | PendingAction::PrevPanel
             | PendingAction::QuitApplication
-            | PendingAction::SwitchSession
-            | PendingAction::PreferencesMenu
-            | PendingAction::SelectTheme => {
+            | PendingAction::SwitchSession => {
                 // These actions don't require panel_index update
             }
         }

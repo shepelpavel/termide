@@ -108,6 +108,14 @@ pub struct UiState {
     pub selected_dropdown_item: usize,
     /// Status line message (for displaying errors and notifications)
     pub status_message: Option<(String, bool)>, // (message, is_error)
+    /// Is submenu open (e.g., Preferences dropdown)
+    pub submenu_open: bool,
+    /// Selected item in submenu
+    pub selected_submenu_item: usize,
+    /// Is nested submenu open (e.g., Themes list)
+    pub nested_submenu_open: bool,
+    /// Selected item in nested submenu
+    pub selected_nested_item: usize,
 }
 
 /// Terminal state (dimensions)
@@ -385,10 +393,6 @@ pub enum PendingAction {
     QuitApplication,
     /// Switch to another session
     SwitchSession,
-    /// Preferences submenu
-    PreferencesMenu,
-    /// Select theme from list
-    SelectTheme,
     /// File search in file manager
     FileSearch { panel_index: usize },
     /// Content search in file manager

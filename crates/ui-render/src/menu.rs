@@ -48,6 +48,35 @@ pub const MENU_ITEM_COUNT: usize = 8;
 /// Index of Sessions menu item (no keyboard accelerator highlighting)
 pub const SESSIONS_MENU_INDEX: usize = 0;
 
+/// Index of Preferences menu item (for submenu positioning)
+pub const PREFERENCES_MENU_INDEX: usize = 5;
+
+/// Calculate x position of a menu item by index.
+/// Used for positioning submenus next to their parent menu item.
+pub fn get_menu_item_x_position(menu_index: usize) -> u16 {
+    let menu_items = get_menu_items();
+    let mut x = 1_u16; // Start with initial padding (1 space)
+
+    for (i, item) in menu_items.iter().enumerate() {
+        if i == menu_index {
+            return x;
+        }
+        // Each item takes: item width + 2 spaces separator
+        x += item.width() as u16 + 2;
+    }
+
+    x
+}
+
+/// Get the width of a menu item by index
+pub fn get_menu_item_width(menu_index: usize) -> u16 {
+    let menu_items = get_menu_items();
+    menu_items
+        .get(menu_index)
+        .map(|item| item.width() as u16)
+        .unwrap_or(0)
+}
+
 /// Choose color indicator by load level
 /// < 50% - green (success)
 /// 50-75% - yellow (warning)

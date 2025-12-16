@@ -1,22 +1,25 @@
 //! Dropdown menu widget.
 
-// Dropdown component is prepared for future use
-#![allow(dead_code)]
-
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
     prelude::Widget,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem},
 };
+use unicode_width::UnicodeWidthStr;
+
+use termide_i18n as i18n;
+use termide_theme::Theme;
 
 /// Dropdown menu item
 #[derive(Debug, Clone)]
 pub struct DropdownItem {
     pub label: String,
     pub key: String,
+    /// Whether this item opens a submenu
+    pub has_submenu: bool,
 }
 
 impl DropdownItem {
@@ -24,7 +27,14 @@ impl DropdownItem {
         Self {
             label: label.into(),
             key: key.into(),
+            has_submenu: false,
         }
+    }
+
+    /// Mark this item as having a submenu
+    pub fn with_submenu(mut self) -> Self {
+        self.has_submenu = true;
+        self
     }
 }
 
@@ -34,16 +44,41 @@ pub struct Dropdown<'a> {
     selected: usize,
     x: u16,
     y: u16,
+    theme: &'a Theme,
 }
 
 impl<'a> Dropdown<'a> {
-    pub fn new(items: &'a [DropdownItem], selected: usize, x: u16, y: u16) -> Self {
+    pub fn new(
+        items: &'a [DropdownItem],
+        selected: usize,
+        x: u16,
+        y: u16,
+        theme: &'a Theme,
+    ) -> Self {
         Self {
             items,
             selected,
             x,
             y,
+            theme,
         }
+    }
+
+    /// Get the width of this dropdown
+    pub fn width(&self) -> u16 {
+        let max_label_len = self
+            .items
+            .iter()
+            .map(|item| item.label.width())
+            .max()
+            .unwrap_or(0);
+        // " " + label + " ▶" (or "  ")
+        (max_label_len + 4).min(40) as u16
+    }
+
+    /// Get the height of this dropdown
+    pub fn height(&self) -> u16 {
+        (self.items.len() + 2) as u16 // +2 for borders
     }
 
     pub fn render(&self, buf: &mut Buffer) {
@@ -51,15 +86,8 @@ impl<'a> Dropdown<'a> {
             return;
         }
 
-        // Calculate dropdown dimensions
-        let max_label_len = self
-            .items
-            .iter()
-            .map(|item| item.label.len())
-            .max()
-            .unwrap_or(0);
-        let width = (max_label_len + 6).min(40) as u16; // 6 = padding + number
-        let height = (self.items.len() + 2) as u16; // +2 for borders
+        let width = self.width();
+        let height = self.height();
 
         // Check screen boundaries
         let max_x = buf.area.width.saturating_sub(width);
@@ -83,49 +111,53 @@ impl<'a> Dropdown<'a> {
             .iter()
             .enumerate()
             .map(|(i, item)| {
-                let style = if i == self.selected {
+                let is_selected = i == self.selected;
+
+                let base_style = if is_selected {
                     Style::default()
-                        .bg(Color::Cyan)
-                        .fg(Color::Black)
+                        .bg(self.theme.selected_bg)
+                        .fg(self.theme.selected_fg)
                         .add_modifier(Modifier::BOLD)
                 } else {
-                    Style::default().fg(Color::White)
+                    Style::default().fg(self.theme.fg)
                 };
 
-                let line = Line::from(vec![
-                    Span::raw(" "),
-                    Span::styled(format!("{}. ", i + 1), Style::default().fg(Color::Yellow)),
-                    Span::styled(&item.label, style),
-                ]);
+                let mut spans = vec![Span::styled(" ", base_style)];
+                spans.push(Span::styled(&item.label, base_style));
 
-                ListItem::new(line)
+                // Add submenu indicator or padding
+                let label_width = item.label.width();
+                let padding_len = (width as usize).saturating_sub(label_width + 4); // -4 for " " + " ▶"
+                if padding_len > 0 {
+                    spans.push(Span::styled(" ".repeat(padding_len), base_style));
+                }
+
+                if item.has_submenu {
+                    spans.push(Span::styled(" ▶", base_style));
+                } else {
+                    spans.push(Span::styled("  ", base_style));
+                }
+
+                ListItem::new(Line::from(spans))
             })
             .collect();
 
         let list = List::new(items).block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Cyan))
-                .style(Style::default().bg(Color::DarkGray)),
+                .border_style(Style::default().fg(self.theme.accented_fg))
+                .style(Style::default().bg(self.theme.bg)),
         );
 
         list.render(area, buf);
     }
 }
 
-/// Menu item definitions for tools dropdown
-pub fn get_tools_items() -> Vec<DropdownItem> {
+/// Get preferences submenu items
+pub fn get_preferences_items() -> Vec<DropdownItem> {
+    let t = i18n::t();
     vec![
-        DropdownItem::new("Files", "files"),
-        DropdownItem::new("Editor", "editor"),
-        DropdownItem::new("Terminal", "terminal"),
-    ]
-}
-
-/// Menu item definitions for help dropdown
-pub fn get_help_items() -> Vec<DropdownItem> {
-    vec![
-        DropdownItem::new("Welcome", "welcome"),
-        DropdownItem::new("Debug console", "debug"),
+        DropdownItem::new(t.preferences_themes(), "themes").with_submenu(),
+        DropdownItem::new(t.preferences_edit(), "edit_preferences"),
     ]
 }

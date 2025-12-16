@@ -12,12 +12,14 @@ use std::path::PathBuf;
 use super::App;
 use crate::state::{ActiveModal, PendingAction};
 use crate::PanelExt;
+use termide_config::Config;
 use termide_i18n as i18n;
 use termide_logger as logger;
 use termide_panel_editor::Editor;
 use termide_panel_file_manager::FileManager;
 use termide_panel_misc::{LogViewerPanel as LogViewer, WelcomePanel as Welcome};
 use termide_panel_terminal::Terminal;
+use termide_theme::Theme;
 use termide_ui_render::menu::MENU_ITEM_COUNT;
 
 impl App {
@@ -71,18 +73,8 @@ impl App {
                     self.state.close_menu();
                 }
                 5 => {
-                    // Preferences - show submenu modal
-                    self.state.close_menu();
-                    let t = i18n::t();
-                    let items = vec![
-                        t.preferences_themes().to_string(), // 0: Themes
-                        t.preferences_edit().to_string(),   // 1: Edit preferences
-                    ];
-                    let modal = termide_modal::SelectModal::single(t.menu_preferences(), "", items);
-                    self.state.set_pending_action(
-                        PendingAction::PreferencesMenu,
-                        ActiveModal::Select(Box::new(modal)),
-                    );
+                    // Preferences - open submenu dropdown (keep menu open)
+                    self.state.open_submenu();
                 }
                 6 => {
                     // Help - show help
@@ -304,5 +296,124 @@ impl App {
         }
 
         false
+    }
+
+    // =========================================================================
+    // Submenu handling
+    // =========================================================================
+
+    /// Handle keyboard event in submenu (Preferences dropdown)
+    pub(super) fn handle_submenu_key(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
+        // If nested submenu is open, delegate to nested handler
+        if self.state.ui.nested_submenu_open {
+            return self.handle_nested_submenu_key(key);
+        }
+
+        const SUBMENU_ITEM_COUNT: usize = 2; // Themes, Edit preferences
+
+        match key.code {
+            KeyCode::Esc | KeyCode::Left => {
+                // Close submenu, return to menu
+                self.state.close_submenu();
+            }
+            KeyCode::Up => {
+                if self.state.ui.selected_submenu_item > 0 {
+                    self.state.ui.selected_submenu_item -= 1;
+                } else {
+                    self.state.ui.selected_submenu_item = SUBMENU_ITEM_COUNT - 1;
+                }
+            }
+            KeyCode::Down => {
+                self.state.ui.selected_submenu_item =
+                    (self.state.ui.selected_submenu_item + 1) % SUBMENU_ITEM_COUNT;
+            }
+            KeyCode::Right | KeyCode::Enter => {
+                self.execute_submenu_action()?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Execute action for selected submenu item
+    fn execute_submenu_action(&mut self) -> Result<()> {
+        match self.state.ui.selected_submenu_item {
+            0 => {
+                // Themes - open nested submenu
+                let theme_names = Theme::all_theme_names();
+                let current_idx = theme_names
+                    .iter()
+                    .position(|n| n == self.state.theme.name)
+                    .unwrap_or(0);
+                self.state.open_nested_submenu(current_idx);
+            }
+            1 => {
+                // Edit preferences - close menu and open config
+                self.state.close_menu();
+                self.open_config_in_editor()?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Handle keyboard event in nested submenu (Themes list)
+    fn handle_nested_submenu_key(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
+        let theme_names = Theme::all_theme_names();
+        let theme_count = theme_names.len();
+
+        match key.code {
+            KeyCode::Esc | KeyCode::Left => {
+                // Close nested submenu, return to parent
+                self.state.close_nested_submenu();
+            }
+            KeyCode::Up => {
+                if self.state.ui.selected_nested_item > 0 {
+                    self.state.ui.selected_nested_item -= 1;
+                } else {
+                    self.state.ui.selected_nested_item = theme_count.saturating_sub(1);
+                }
+            }
+            KeyCode::Down => {
+                if theme_count > 0 {
+                    self.state.ui.selected_nested_item =
+                        (self.state.ui.selected_nested_item + 1) % theme_count;
+                }
+            }
+            KeyCode::Enter => {
+                // Apply selected theme
+                if let Some(name) = theme_names.get(self.state.ui.selected_nested_item) {
+                    self.apply_theme(name)?;
+                }
+                // Close all menus
+                self.state.close_menu();
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Apply theme by name and save preference
+    pub(super) fn apply_theme(&mut self, theme_name: &str) -> Result<()> {
+        let new_theme = Theme::get_by_name(theme_name);
+        self.state.theme = new_theme;
+
+        let t = i18n::t();
+        self.state.set_info(t.theme_changed(theme_name));
+
+        // Save preference to config file
+        if let Err(e) = self.save_theme_preference(theme_name) {
+            logger::warn(format!("Failed to save theme preference: {}", e));
+        }
+
+        Ok(())
+    }
+
+    /// Save theme preference to config file
+    fn save_theme_preference(&self, theme_name: &str) -> Result<()> {
+        let mut config = Config::load()?;
+        config.general.theme = theme_name.to_string();
+        config.save()?;
+        Ok(())
     }
 }
