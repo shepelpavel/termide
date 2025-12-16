@@ -16,7 +16,9 @@ pub use termide_ui::{
 };
 
 pub mod base;
-pub use base::{check_mouse_click, check_mouse_click_with_item_height, MouseClickResult};
+pub use base::{
+    check_mouse_click, check_mouse_click_with_item_height, CursorNavigation, MouseClickResult,
+};
 pub mod confirm;
 pub mod conflict;
 pub mod content_search;

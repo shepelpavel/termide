@@ -4,6 +4,7 @@
 //! - Frame rendering with [X] close button
 //! - Input field rendering with cursor
 //! - Common positioning utilities
+//! - Cursor navigation trait for search modals
 
 use ratatui::{
     buffer::Buffer,
@@ -201,6 +202,82 @@ pub fn check_mouse_click_with_item_height(
     MouseClickResult::OnListItem(clicked_index)
 }
 
+/// Trait for cursor navigation in search modals.
+///
+/// Provides default implementations for common navigation patterns
+/// (up, down, home, end) with scroll adjustment.
+pub trait CursorNavigation {
+    /// Get total number of results.
+    fn results_len(&self) -> usize;
+
+    /// Get current cursor position.
+    fn cursor(&self) -> usize;
+
+    /// Set cursor position.
+    fn set_cursor(&mut self, pos: usize);
+
+    /// Get current scroll offset.
+    fn scroll_offset(&self) -> usize;
+
+    /// Set scroll offset.
+    fn set_scroll_offset(&mut self, offset: usize);
+
+    /// Get maximum visible results count.
+    fn max_visible(&self) -> usize;
+
+    /// Move cursor up by one.
+    fn cursor_up(&mut self) {
+        if self.cursor() > 0 {
+            self.set_cursor(self.cursor() - 1);
+            self.adjust_scroll();
+        }
+    }
+
+    /// Move cursor down by one.
+    fn cursor_down(&mut self) {
+        if self.cursor() < self.results_len().saturating_sub(1) {
+            self.set_cursor(self.cursor() + 1);
+            self.adjust_scroll();
+        }
+    }
+
+    /// Move cursor to first result.
+    fn cursor_home(&mut self) {
+        self.set_cursor(0);
+        self.set_scroll_offset(0);
+    }
+
+    /// Move cursor to last result.
+    fn cursor_end(&mut self) {
+        self.set_cursor(self.results_len().saturating_sub(1));
+        self.adjust_scroll();
+    }
+
+    /// Adjust scroll offset to keep cursor visible.
+    fn adjust_scroll(&mut self) {
+        let max_visible = self.max_visible();
+        if self.cursor() < self.scroll_offset() {
+            self.set_scroll_offset(self.cursor());
+        } else if self.cursor() >= self.scroll_offset() + max_visible {
+            self.set_scroll_offset(self.cursor() - max_visible + 1);
+        }
+    }
+
+    /// Move cursor up by page (max_visible items).
+    fn cursor_page_up(&mut self) {
+        for _ in 0..self.max_visible() {
+            self.cursor_up();
+        }
+    }
+
+    /// Move cursor down by page (max_visible items).
+    fn cursor_page_down(&mut self) {
+        for _ in 0..self.max_visible() {
+            self.cursor_down();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -305,5 +382,100 @@ mod tests {
             check_mouse_click(20, 20, modal_area, None, 0),
             MouseClickResult::OutsideList
         );
+    }
+
+    /// Test struct implementing CursorNavigation
+    struct TestNav {
+        cursor: usize,
+        scroll: usize,
+        len: usize,
+        max_visible: usize,
+    }
+
+    impl CursorNavigation for TestNav {
+        fn results_len(&self) -> usize {
+            self.len
+        }
+        fn cursor(&self) -> usize {
+            self.cursor
+        }
+        fn set_cursor(&mut self, pos: usize) {
+            self.cursor = pos;
+        }
+        fn scroll_offset(&self) -> usize {
+            self.scroll
+        }
+        fn set_scroll_offset(&mut self, offset: usize) {
+            self.scroll = offset;
+        }
+        fn max_visible(&self) -> usize {
+            self.max_visible
+        }
+    }
+
+    #[test]
+    fn test_cursor_navigation_up_down() {
+        let mut nav = TestNav {
+            cursor: 5,
+            scroll: 0,
+            len: 20,
+            max_visible: 10,
+        };
+
+        nav.cursor_up();
+        assert_eq!(nav.cursor(), 4);
+
+        nav.cursor_down();
+        assert_eq!(nav.cursor(), 5);
+    }
+
+    #[test]
+    fn test_cursor_navigation_bounds() {
+        let mut nav = TestNav {
+            cursor: 0,
+            scroll: 0,
+            len: 5,
+            max_visible: 10,
+        };
+
+        // Can't go below 0
+        nav.cursor_up();
+        assert_eq!(nav.cursor(), 0);
+
+        // Can't go past len - 1
+        nav.cursor = 4;
+        nav.cursor_down();
+        assert_eq!(nav.cursor(), 4);
+    }
+
+    #[test]
+    fn test_cursor_navigation_home_end() {
+        let mut nav = TestNav {
+            cursor: 5,
+            scroll: 3,
+            len: 20,
+            max_visible: 10,
+        };
+
+        nav.cursor_home();
+        assert_eq!(nav.cursor(), 0);
+        assert_eq!(nav.scroll_offset(), 0);
+
+        nav.cursor_end();
+        assert_eq!(nav.cursor(), 19);
+    }
+
+    #[test]
+    fn test_cursor_navigation_scroll_adjustment() {
+        let mut nav = TestNav {
+            cursor: 15,
+            scroll: 5,
+            len: 20,
+            max_visible: 5,
+        };
+
+        // Cursor should trigger scroll adjustment
+        nav.adjust_scroll();
+        assert_eq!(nav.scroll_offset(), 11); // cursor(15) - max_visible(5) + 1 = 11
     }
 }

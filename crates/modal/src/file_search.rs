@@ -19,8 +19,8 @@ use termide_git::{GitStatus, GitStatusCache};
 use termide_theme::Theme;
 
 use crate::{
-    calculate_modal_width, centered_rect_with_size, Modal, ModalResult, ModalWidthConfig,
-    TextInputHandler,
+    calculate_modal_width, centered_rect_with_size, CursorNavigation, Modal, ModalResult,
+    ModalWidthConfig, TextInputHandler,
 };
 
 /// Maximum number of search results visible at once
@@ -179,43 +179,6 @@ impl FileSearchModal {
         }
     }
 
-    /// Move cursor up
-    fn cursor_up(&mut self) {
-        if self.cursor > 0 {
-            self.cursor -= 1;
-            self.adjust_scroll();
-        }
-    }
-
-    /// Move cursor down
-    fn cursor_down(&mut self) {
-        if self.cursor < self.results.len().saturating_sub(1) {
-            self.cursor += 1;
-            self.adjust_scroll();
-        }
-    }
-
-    /// Move to first result
-    fn cursor_home(&mut self) {
-        self.cursor = 0;
-        self.scroll_offset = 0;
-    }
-
-    /// Move to last result
-    fn cursor_end(&mut self) {
-        self.cursor = self.results.len().saturating_sub(1);
-        self.adjust_scroll();
-    }
-
-    /// Adjust scroll to keep cursor visible
-    fn adjust_scroll(&mut self) {
-        if self.cursor < self.scroll_offset {
-            self.scroll_offset = self.cursor;
-        } else if self.cursor >= self.scroll_offset + MAX_VISIBLE_RESULTS {
-            self.scroll_offset = self.cursor - MAX_VISIBLE_RESULTS + 1;
-        }
-    }
-
     /// Get the selected result's full path
     fn get_selected_path(&self) -> Option<PathBuf> {
         self.results
@@ -234,6 +197,32 @@ impl FileSearchModal {
             GitStatus::Deleted => Style::default().fg(theme.error),
             GitStatus::Unmodified => Style::default().fg(theme.bg),
         }
+    }
+}
+
+impl CursorNavigation for FileSearchModal {
+    fn results_len(&self) -> usize {
+        self.results.len()
+    }
+
+    fn cursor(&self) -> usize {
+        self.cursor
+    }
+
+    fn set_cursor(&mut self, pos: usize) {
+        self.cursor = pos;
+    }
+
+    fn scroll_offset(&self) -> usize {
+        self.scroll_offset
+    }
+
+    fn set_scroll_offset(&mut self, offset: usize) {
+        self.scroll_offset = offset;
+    }
+
+    fn max_visible(&self) -> usize {
+        MAX_VISIBLE_RESULTS
     }
 }
 
@@ -510,15 +499,11 @@ impl Modal for FileSearchModal {
                 Ok(None)
             }
             KeyCode::PageUp => {
-                for _ in 0..MAX_VISIBLE_RESULTS {
-                    self.cursor_up();
-                }
+                self.cursor_page_up();
                 Ok(None)
             }
             KeyCode::PageDown => {
-                for _ in 0..MAX_VISIBLE_RESULTS {
-                    self.cursor_down();
-                }
+                self.cursor_page_down();
                 Ok(None)
             }
             KeyCode::Home if key.modifiers.contains(KeyModifiers::CONTROL) => {
