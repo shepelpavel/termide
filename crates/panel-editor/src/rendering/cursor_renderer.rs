@@ -64,6 +64,7 @@ mod tests {
             error: Color::Red,
             success: Color::Green,
             warning: Color::Yellow,
+            is_light: Some(false),
         }
     }
 

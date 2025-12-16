@@ -2,6 +2,7 @@
 # Minimalistic light theme with bright background and muted colors
 # Part of the popular Ayu theme family
 name = "ayu-light"
+is_light = true
 
 [colors]
 # Base - bright white background

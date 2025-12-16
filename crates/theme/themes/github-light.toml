@@ -2,6 +2,7 @@
 # Official GitHub theme using Primer design system (14M+ users)
 # Clean, professional interface matching GitHub.com
 name = "github-light"
+is_light = true
 
 [colors]
 # Base - pure white background

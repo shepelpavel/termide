@@ -62,6 +62,9 @@ struct TomlColors {
 struct TomlTheme {
     name: String,
     colors: TomlColors,
+    /// Optional override for light/dark classification (auto-detected from bg if not specified)
+    #[serde(default)]
+    is_light: Option<bool>,
 }
 
 /// Load theme from TOML file.
@@ -86,6 +89,7 @@ pub fn load_theme(path: &Path) -> Result<Theme> {
         success: toml_theme.colors.success.to_color(),
         warning: toml_theme.colors.warning.to_color(),
         error: toml_theme.colors.error.to_color(),
+        is_light: toml_theme.is_light,
     })
 }
 
@@ -105,5 +109,6 @@ pub fn load_theme_from_str(content: &str, name: &'static str) -> Result<Theme> {
         success: toml_theme.colors.success.to_color(),
         warning: toml_theme.colors.warning.to_color(),
         error: toml_theme.colors.error.to_color(),
+        is_light: toml_theme.is_light,
     })
 }

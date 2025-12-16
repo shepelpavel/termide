@@ -1,6 +1,7 @@
 # Classic Midnight Commander theme for TermIDE
 # Based on actual MC color scheme from screenshot
 name = "midnight"
+is_light = false
 
 [colors]
 # Base - medium steel blue background like in real MC

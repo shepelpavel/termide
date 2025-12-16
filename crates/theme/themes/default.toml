@@ -1,5 +1,6 @@
 # Default dark theme for TermIDE
 name = "default"
+is_light = false
 
 [colors]
 # Base

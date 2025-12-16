@@ -2,6 +2,7 @@
 # Classic precision color scheme for terminals
 # Designed by Ethan Schoonover
 name = "solarized-dark"
+is_light = false
 
 [colors]
 # Base - Solarized base03 background with base0 foreground

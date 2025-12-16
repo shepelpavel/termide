@@ -2,6 +2,7 @@
 # Popular arctic, north-bluish color palette
 # https://www.nordtheme.com
 name = "nord"
+is_light = false
 
 [colors]
 # Base - Nord polar night dark blue-gray background

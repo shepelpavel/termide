@@ -1783,6 +1783,11 @@ impl Panel for Editor {
     fn prepare_render(&mut self, theme: &Theme, config: &Config) {
         self.render_cache.theme = *theme;
         self.render_cache.config = config.clone();
+        // Sync highlight cache with theme's light/dark mode and default foreground color
+        self.render_cache
+            .highlight
+            .set_light_theme(theme.is_light_theme());
+        self.render_cache.highlight.set_default_fg(theme.fg);
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {

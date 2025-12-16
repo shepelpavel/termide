@@ -44,6 +44,38 @@ pub struct Theme {
     pub warning: Color,
     /// Error, git deleted, resource indicators >75%
     pub error: Color,
+
+    // === Theme classification ===
+    /// Optional override for light/dark classification (auto-detected from bg if None)
+    pub is_light: Option<bool>,
+}
+
+impl Theme {
+    /// Determine if this is a light theme.
+    /// Uses explicit is_light field if set, otherwise auto-detects from bg luminance.
+    pub fn is_light_theme(&self) -> bool {
+        if let Some(is_light) = self.is_light {
+            return is_light;
+        }
+        // Auto-detect using ITU-R BT.601 relative luminance formula
+        match self.bg {
+            Color::Rgb(r, g, b) => {
+                let luminance = 0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32;
+                luminance > 128.0
+            }
+            // Named light colors
+            Color::White
+            | Color::Gray
+            | Color::LightRed
+            | Color::LightGreen
+            | Color::LightYellow
+            | Color::LightBlue
+            | Color::LightMagenta
+            | Color::LightCyan => true,
+            // Black, DarkGray, and saturated colors are considered dark
+            _ => false,
+        }
+    }
 }
 
 impl Default for Theme {

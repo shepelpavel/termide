@@ -2,6 +2,7 @@
 # Classic popular theme with warm dark colors
 # Originally created for TextMate, popularized by Sublime Text
 name = "monokai"
+is_light = false
 
 [colors]
 # Base - Monokai classic dark greenish background

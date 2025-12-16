@@ -2,6 +2,7 @@
 # One of the most popular VSCode themes (7.5M+ installs)
 # https://draculatheme.com
 name = "dracula"
+is_light = false
 
 [colors]
 # Base - Dracula classic dark purple-gray background

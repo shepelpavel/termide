@@ -2,6 +2,7 @@
 # Based on Google's Material Design principles
 # Clean, professional interface with cyan accents
 name = "material-lighter"
+is_light = true
 
 [colors]
 # Base - bright white background

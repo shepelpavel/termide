@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use ratatui::style::Color;
 use termide_config::Config;
 use termide_highlight::{global_highlighter, HighlightCache};
 use termide_theme::Theme;
@@ -34,26 +35,30 @@ impl Default for RenderingCache {
 impl RenderingCache {
     /// Create new RenderingCache with defaults.
     pub fn new() -> Self {
+        let theme = Theme::default();
         Self {
-            highlight: HighlightCache::new(global_highlighter(), false),
+            // Note: is_light_theme and default_fg will be set correctly by prepare_render()
+            highlight: HighlightCache::new(global_highlighter(), false, Color::White),
             virtual_line_count: 0,
             content_width: 0,
             use_smart_wrap: false,
             wrap_points: HashMap::new(),
-            theme: Theme::default(),
+            theme,
             config: Config::default(),
         }
     }
 
     /// Create RenderingCache with large file optimization.
     pub fn new_large_file() -> Self {
+        let theme = Theme::default();
         Self {
-            highlight: HighlightCache::new(global_highlighter(), true),
+            // Note: is_light_theme and default_fg will be set correctly by prepare_render()
+            highlight: HighlightCache::new(global_highlighter(), false, Color::White),
             virtual_line_count: 0,
             content_width: 0,
             use_smart_wrap: false,
             wrap_points: HashMap::new(),
-            theme: Theme::default(),
+            theme,
             config: Config::default(),
         }
     }

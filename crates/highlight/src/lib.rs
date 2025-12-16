@@ -503,17 +503,24 @@ pub struct HighlightCache {
     is_light_theme: bool,
     /// Access counter for LRU
     access_counter: u64,
+    /// Default foreground color for unstyled text (from theme.fg)
+    default_fg: Color,
 }
 
 impl HighlightCache {
     /// Create a new cache.
-    pub fn new(syntax_highlighter: &'static TreeSitterHighlighter, is_light_theme: bool) -> Self {
+    pub fn new(
+        syntax_highlighter: &'static TreeSitterHighlighter,
+        is_light_theme: bool,
+        default_fg: Color,
+    ) -> Self {
         Self {
             lines: HashMap::new(),
             language: None,
             syntax_highlighter,
             is_light_theme,
             access_counter: 0,
+            default_fg,
         }
     }
 
@@ -561,12 +568,14 @@ impl HighlightCache {
 
     /// Compute highlighting for line.
     fn compute_line_segments(&self, line_text: &str) -> Vec<(String, Style)> {
+        let default_style = Style::default().fg(self.default_fg);
+
         let Some(ref language) = self.language else {
-            return vec![(line_text.to_string(), Style::default())];
+            return vec![(line_text.to_string(), default_style)];
         };
 
         let Some(config) = self.syntax_highlighter.get_config(language) else {
-            return vec![(line_text.to_string(), Style::default())];
+            return vec![(line_text.to_string(), default_style)];
         };
 
         let mut highlighter = Highlighter::new();
@@ -574,11 +583,11 @@ impl HighlightCache {
 
         let highlights = match highlighter.highlight(config, source, None, |_| None) {
             Ok(h) => h,
-            Err(_) => return vec![(line_text.to_string(), Style::default())],
+            Err(_) => return vec![(line_text.to_string(), default_style)],
         };
 
         let mut segments = Vec::new();
-        let mut current_style = Style::default();
+        let mut current_style = default_style;
         let mut current_text = String::new();
 
         for event in highlights {
@@ -602,10 +611,10 @@ impl HighlightCache {
                         // Use take() instead of clone() + clear() to avoid allocation
                         segments.push((std::mem::take(&mut current_text), current_style));
                     }
-                    current_style = Style::default();
+                    current_style = default_style;
                 }
                 Err(_) => {
-                    return vec![(line_text.to_string(), Style::default())];
+                    return vec![(line_text.to_string(), default_style)];
                 }
             }
         }
@@ -615,7 +624,7 @@ impl HighlightCache {
         }
 
         if segments.is_empty() {
-            vec![(line_text.to_string(), Style::default())]
+            vec![(line_text.to_string(), default_style)]
         } else {
             segments
         }
@@ -659,6 +668,16 @@ impl HighlightCache {
     pub fn set_light_theme(&mut self, is_light: bool) {
         if self.is_light_theme != is_light {
             self.is_light_theme = is_light;
+            self.invalidate_all();
+        }
+    }
+
+    /// Set default foreground color for unstyled text.
+    /// This color is used instead of Style::default() to ensure text is visible
+    /// on both light and dark theme backgrounds.
+    pub fn set_default_fg(&mut self, fg: Color) {
+        if self.default_fg != fg {
+            self.default_fg = fg;
             self.invalidate_all();
         }
     }

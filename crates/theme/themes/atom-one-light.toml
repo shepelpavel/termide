@@ -2,6 +2,7 @@
 # Popular light theme inspired by Atom editor
 # Bright white background with soft, non-glaring colors
 name = "atom-one-light"
+is_light = true
 
 [colors]
 # Base - bright white background

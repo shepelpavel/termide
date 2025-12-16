@@ -2,6 +2,7 @@
 # Classic precision color scheme designed by Ethan Schoonover
 # Scientifically balanced colors to minimize eye strain
 name = "solarized-light"
+is_light = true
 
 [colors]
 # Base - base3 background with base00 foreground
