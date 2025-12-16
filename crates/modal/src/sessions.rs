@@ -45,13 +45,10 @@ const MAX_VISIBLE_ITEMS: usize = 6;
 impl SessionsModal {
     /// Create a new sessions modal
     pub fn new(title: impl Into<String>, items: Vec<SessionItem>) -> Self {
-        // Find the first non-current session to select by default
-        let initial_cursor = items.iter().position(|item| !item.is_current).unwrap_or(0);
-
         Self {
             title: title.into(),
             items,
-            cursor: initial_cursor,
+            cursor: 0,
             scroll_offset: 0,
             last_list_area: None,
         }
@@ -76,57 +73,31 @@ impl SessionsModal {
         )
     }
 
-    /// Move cursor up, skipping current session
+    /// Move cursor up
     fn cursor_up(&mut self) {
-        let mut new_cursor = self.cursor;
-        loop {
-            if new_cursor == 0 {
-                break;
-            }
-            new_cursor -= 1;
-            if !self.items[new_cursor].is_current {
-                self.cursor = new_cursor;
-                break;
-            }
+        if self.cursor > 0 {
+            self.cursor -= 1;
+            self.adjust_scroll();
         }
-        self.adjust_scroll();
     }
 
-    /// Move cursor down, skipping current session
+    /// Move cursor down
     fn cursor_down(&mut self) {
-        let mut new_cursor = self.cursor;
-        loop {
-            if new_cursor >= self.items.len().saturating_sub(1) {
-                break;
-            }
-            new_cursor += 1;
-            if !self.items[new_cursor].is_current {
-                self.cursor = new_cursor;
-                break;
-            }
+        if self.cursor < self.items.len().saturating_sub(1) {
+            self.cursor += 1;
+            self.adjust_scroll();
         }
-        self.adjust_scroll();
     }
 
-    /// Go to first selectable item
+    /// Go to first item
     fn cursor_home(&mut self) {
-        for (i, item) in self.items.iter().enumerate() {
-            if !item.is_current {
-                self.cursor = i;
-                break;
-            }
-        }
+        self.cursor = 0;
         self.adjust_scroll();
     }
 
-    /// Go to last selectable item
+    /// Go to last item
     fn cursor_end(&mut self) {
-        for (i, item) in self.items.iter().enumerate().rev() {
-            if !item.is_current {
-                self.cursor = i;
-                break;
-            }
-        }
+        self.cursor = self.items.len().saturating_sub(1);
         self.adjust_scroll();
     }
 
@@ -139,12 +110,9 @@ impl SessionsModal {
         }
     }
 
-    /// Get the selected session's project path
-    fn get_selected_path(&self) -> Option<PathBuf> {
-        self.items
-            .get(self.cursor)
-            .filter(|item| !item.is_current)
-            .map(|item| item.project_path.clone())
+    /// Get the selected session
+    fn get_selected(&self) -> Option<&SessionItem> {
+        self.items.get(self.cursor)
     }
 }
 
@@ -192,11 +160,7 @@ impl Modal for SessionsModal {
             let is_current = item.is_current;
 
             // Line 1: Path with selection indicator
-            let prefix = if is_selected && !is_current {
-                "▶ "
-            } else {
-                "  "
-            };
+            let prefix = if is_selected { "▶ " } else { "  " };
 
             let path_suffix = if is_current {
                 format!(" {}", t.sessions_current())
@@ -204,13 +168,8 @@ impl Modal for SessionsModal {
                 String::new()
             };
 
-            let path_style = if is_current {
-                // Current session - dimmed, not selectable
-                Style::default()
-                    .fg(theme.accented_bg)
-                    .add_modifier(Modifier::DIM)
-            } else if is_selected {
-                // Selected item
+            let path_style = if is_selected {
+                // Selected item (including current session)
                 Style::default()
                     .fg(theme.fg)
                     .bg(theme.accented_fg)
@@ -276,10 +235,15 @@ impl Modal for SessionsModal {
                 Ok(None)
             }
             KeyCode::Enter => {
-                if let Some(path) = self.get_selected_path() {
-                    Ok(Some(ModalResult::Confirmed(path)))
+                if let Some(item) = self.get_selected() {
+                    if item.is_current {
+                        // Current session selected - just close modal
+                        Ok(Some(ModalResult::Cancelled))
+                    } else {
+                        Ok(Some(ModalResult::Confirmed(item.project_path.clone())))
+                    }
                 } else {
-                    Ok(None) // Can't select current session
+                    Ok(None)
                 }
             }
             _ => Ok(None),
@@ -315,16 +279,13 @@ impl Modal for SessionsModal {
 
         if clicked_item_index < self.items.len() {
             let item = &self.items[clicked_item_index];
-
-            // Skip if clicking on current session
-            if item.is_current {
-                return Ok(None);
-            }
-
-            // Select and confirm
             self.cursor = clicked_item_index;
-            if let Some(path) = self.get_selected_path() {
-                return Ok(Some(ModalResult::Confirmed(path)));
+
+            if item.is_current {
+                // Current session clicked - just close modal
+                return Ok(Some(ModalResult::Cancelled));
+            } else {
+                return Ok(Some(ModalResult::Confirmed(item.project_path.clone())));
             }
         }
 
