@@ -339,12 +339,14 @@ impl App {
     fn execute_submenu_action(&mut self) -> Result<()> {
         match self.state.ui.selected_submenu_item {
             0 => {
-                // Themes - open nested submenu
+                // Themes - open nested submenu with live preview
                 let theme_names = Theme::all_theme_names();
                 let current_idx = theme_names
                     .iter()
                     .position(|n| n == self.state.theme.name)
                     .unwrap_or(0);
+                // Save current theme for restoration on cancel
+                self.state.ui.theme_preview_original = Some(self.state.theme.name.to_string());
                 self.state.open_nested_submenu(current_idx);
             }
             1 => {
@@ -364,6 +366,10 @@ impl App {
 
         match key.code {
             KeyCode::Esc | KeyCode::Left => {
+                // Restore original theme on cancel
+                if let Some(original_name) = self.state.ui.theme_preview_original.take() {
+                    self.state.theme = Theme::get_by_name(&original_name);
+                }
                 // Close nested submenu, return to parent
                 self.state.close_nested_submenu();
             }
@@ -373,15 +379,25 @@ impl App {
                 } else {
                     self.state.ui.selected_nested_item = theme_count.saturating_sub(1);
                 }
+                // Live preview: apply theme on cursor move
+                if let Some(name) = theme_names.get(self.state.ui.selected_nested_item) {
+                    self.state.theme = Theme::get_by_name(name);
+                }
             }
             KeyCode::Down => {
                 if theme_count > 0 {
                     self.state.ui.selected_nested_item =
                         (self.state.ui.selected_nested_item + 1) % theme_count;
                 }
+                // Live preview: apply theme on cursor move
+                if let Some(name) = theme_names.get(self.state.ui.selected_nested_item) {
+                    self.state.theme = Theme::get_by_name(name);
+                }
             }
             KeyCode::Enter => {
-                // Apply selected theme
+                // Clear preview state - theme is confirmed
+                self.state.ui.theme_preview_original = None;
+                // Apply selected theme and save preference
                 if let Some(name) = theme_names.get(self.state.ui.selected_nested_item) {
                     self.apply_theme(name)?;
                 }

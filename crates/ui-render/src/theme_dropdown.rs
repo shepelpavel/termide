@@ -1,4 +1,7 @@
-//! Theme selection dropdown with color previews.
+//! Theme selection dropdown with live preview.
+//!
+//! Simple list of theme names. Live preview is handled by applying
+//! the theme on cursor navigation (see menu_actions.rs).
 
 use ratatui::{
     buffer::Buffer,
@@ -12,7 +15,7 @@ use unicode_width::UnicodeWidthStr;
 
 use termide_theme::Theme;
 
-/// Theme dropdown with color previews for each theme
+/// Theme dropdown with live preview on cursor navigation
 pub struct ThemeDropdown<'a> {
     /// Theme names to display
     theme_names: &'a [String],
@@ -65,8 +68,8 @@ impl<'a> ThemeDropdown<'a> {
             .map(|n| n.width())
             .max()
             .unwrap_or(10);
-        // "▶ ● " + name + padding
-        (max_name_len + 6).min(30) as u16
+        // "▶ " + name + padding
+        (max_name_len + 4).min(30) as u16
     }
 
     /// Get the height of this dropdown
@@ -99,7 +102,7 @@ impl<'a> ThemeDropdown<'a> {
         // Clear area under dropdown
         Clear.render(area, buf);
 
-        // Build list items with theme previews
+        // Build list items - simple text, live preview via theme switching
         let visible_end = (self.scroll_offset + self.max_visible).min(self.theme_names.len());
         let visible_items = &self.theme_names[self.scroll_offset..visible_end];
 
@@ -110,54 +113,26 @@ impl<'a> ThemeDropdown<'a> {
                 let actual_index = self.scroll_offset + i;
                 let is_selected = actual_index == self.selected;
 
-                // Get the theme for color preview
-                let preview_theme = Theme::get_by_name(name);
-
-                // Build spans for the line
-                let mut spans = Vec::new();
-
-                // Calculate styles
+                // Use current app theme colors (which changes on cursor move)
                 let item_style = if is_selected {
-                    // Inverted colors for selection
                     Style::default()
-                        .fg(preview_theme.bg)
-                        .bg(preview_theme.fg)
+                        .fg(self.app_theme.fg)
+                        .bg(self.app_theme.accented_fg)
                         .add_modifier(Modifier::BOLD)
                 } else {
-                    // Preview: use theme's own colors
-                    Style::default().fg(preview_theme.fg).bg(preview_theme.bg)
+                    Style::default().fg(self.app_theme.bg).bg(self.app_theme.fg)
                 };
 
-                // Circle style: accented_fg color, but follows selection background
-                let circle_style = if is_selected {
-                    Style::default()
-                        .fg(preview_theme.accented_fg)
-                        .bg(preview_theme.fg)
-                        .add_modifier(Modifier::BOLD)
+                // Build line with padding
+                let content = format!(" {}", name);
+                let padding_len = (width as usize).saturating_sub(content.width() + 2);
+                let padded = if padding_len > 0 {
+                    format!("{}{}", content, " ".repeat(padding_len))
                 } else {
-                    Style::default()
-                        .fg(preview_theme.accented_fg)
-                        .bg(preview_theme.bg)
+                    content
                 };
 
-                // Selection marker (▶) - moves with cursor
-                let marker = if is_selected { "▶" } else { " " };
-                spans.push(Span::styled(marker, item_style));
-
-                // Color preview circle (●) with accented_fg color
-                spans.push(Span::styled(" ● ", circle_style));
-
-                // Theme name
-                spans.push(Span::styled(name.as_str(), item_style));
-
-                // Padding to fill width with background color
-                let content_width = 4 + name.width(); // "▶ ● " + name
-                let padding_len = (width as usize).saturating_sub(content_width + 2); // -2 for borders
-                if padding_len > 0 {
-                    spans.push(Span::styled(" ".repeat(padding_len), item_style));
-                }
-
-                ListItem::new(Line::from(spans))
+                ListItem::new(Line::from(Span::styled(padded, item_style)))
             })
             .collect();
 

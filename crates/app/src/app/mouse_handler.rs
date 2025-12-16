@@ -280,6 +280,8 @@ impl App {
                 let item_y = y.saturating_sub(nested_y + 1); // -1 for top border
                 let item_index = item_y as usize;
                 if item_index < theme_names.len() {
+                    // Clear preview state - theme is confirmed
+                    self.state.ui.theme_preview_original = None;
                     // Apply selected theme
                     if let Some(name) = theme_names.get(item_index) {
                         self.apply_theme(name)?;
@@ -299,12 +301,15 @@ impl App {
                 self.state.ui.selected_submenu_item = item_index;
                 match item_index {
                     0 => {
-                        // Themes - open nested submenu
+                        // Themes - open nested submenu with live preview
                         let theme_names = Theme::all_theme_names();
                         let current_idx = theme_names
                             .iter()
                             .position(|n| n == self.state.theme.name)
                             .unwrap_or(0);
+                        // Save current theme for restoration on cancel
+                        self.state.ui.theme_preview_original =
+                            Some(self.state.theme.name.to_string());
                         self.state.open_nested_submenu(current_idx);
                     }
                     1 => {

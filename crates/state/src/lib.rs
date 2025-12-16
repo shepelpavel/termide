@@ -116,6 +116,8 @@ pub struct UiState {
     pub nested_submenu_open: bool,
     /// Selected item in nested submenu
     pub selected_nested_item: usize,
+    /// Original theme name before preview (for restoring on cancel)
+    pub theme_preview_original: Option<String>,
 }
 
 /// Terminal state (dimensions)
