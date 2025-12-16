@@ -44,16 +44,6 @@ pub struct VtPerformer {
 }
 
 impl VtPerformer {
-    /// Create a new VtPerformer with the given screen.
-    #[allow(dead_code)]
-    pub fn new(screen: Arc<RwLock<TerminalScreen>>) -> Self {
-        Self {
-            screen,
-            pending_backslash: false,
-            pending_ops: Vec::with_capacity(4096),
-        }
-    }
-
     /// Apply all pending operations with a single write lock.
     ///
     /// This significantly reduces lock contention when processing

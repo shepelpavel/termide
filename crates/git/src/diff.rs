@@ -239,12 +239,6 @@ impl GitDiffCache {
         self.deleted_after_lines.get(&line).copied().unwrap_or(0)
     }
 
-    /// Check if cache is stale (older than threshold)
-    #[allow(dead_code)]
-    pub fn is_stale(&self, threshold: std::time::Duration) -> bool {
-        self.last_updated.elapsed() > threshold
-    }
-
     /// Apply async result and recompute diff
     /// Called when background thread completes loading original content
     pub fn apply_async_result(&mut self, result: GitDiffAsyncResult) {

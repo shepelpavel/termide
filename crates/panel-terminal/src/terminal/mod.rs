@@ -141,9 +141,6 @@ pub struct TerminalScreen {
     pub cols: usize,
     /// Current style
     pub current_style: CellStyle,
-    /// Insert mode
-    #[allow(dead_code)]
-    pub insert_mode: bool,
     /// Application Cursor Keys Mode (DECCKM)
     pub application_cursor_keys: bool,
     /// Mouse tracking mode
@@ -185,7 +182,6 @@ impl TerminalScreen {
             rows,
             cols,
             current_style: CellStyle::default(),
-            insert_mode: false,
             application_cursor_keys: false,
             mouse_tracking: MouseTrackingMode::None,
             sgr_mouse_mode: false,
@@ -366,20 +362,6 @@ impl TerminalScreen {
             // Middle lines - all selected
             true
         }
-    }
-
-    /// Clear screen (doesn't move cursor)
-    #[allow(dead_code)]
-    pub fn clear_screen(&mut self) {
-        let rows = self.rows;
-        let cols = self.cols;
-        let empty_cell = Cell {
-            ch: ' ',
-            style: CellStyle::default(),
-        };
-        let buffer = self.active_buffer_mut();
-        *buffer = std::collections::VecDeque::from(vec![vec![empty_cell; cols]; rows]);
-        // Cursor stays in place (standard ED 2 behavior)
     }
 
     /// Move cursor

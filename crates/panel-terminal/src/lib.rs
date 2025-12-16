@@ -69,12 +69,6 @@ pub struct Terminal {
 }
 
 impl Terminal {
-    /// Create new terminal with PTY
-    #[allow(dead_code)]
-    pub fn new(rows: u16, cols: u16) -> Result<Self> {
-        Self::new_with_cwd(rows, cols, None)
-    }
-
     /// Create new terminal with specified working directory
     pub fn new_with_cwd(rows: u16, cols: u16, cwd: Option<std::path::PathBuf>) -> Result<Self> {
         let pty_system = native_pty_system();

@@ -364,7 +364,6 @@ pub enum PendingAction {
     /// Close editor with conflict (local changes + external changes)
     CloseEditorConflict { panel_index: usize },
     /// File overwrite decision when copying/moving
-    #[allow(dead_code)]
     OverwriteDecision {
         panel_index: usize,
         source: PathBuf,
@@ -372,7 +371,6 @@ pub enum PendingAction {
         is_move: bool, // true for move, false for copy
     },
     /// Batch file operation (copy/move)
-    #[allow(dead_code)]
     BatchFileOperation { operation: BatchOperation },
     /// Continue batch operation after conflict resolution
     ContinueBatchOperation { operation: BatchOperation },

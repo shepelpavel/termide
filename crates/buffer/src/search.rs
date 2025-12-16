@@ -51,12 +51,6 @@ impl SearchState {
         }
     }
 
-    /// Check if replace mode is enabled
-    #[allow(dead_code)]
-    pub fn is_replace_mode(&self) -> bool {
-        self.replace_with.is_some()
-    }
-
     /// Check if search is active
     pub fn is_active(&self) -> bool {
         !self.query.is_empty()
@@ -116,14 +110,6 @@ impl SearchState {
 
         // If nothing found, return to beginning
         self.current_match = Some(0);
-    }
-
-    /// Clear search state
-    #[allow(dead_code)]
-    pub fn clear(&mut self) {
-        self.query.clear();
-        self.matches.clear();
-        self.current_match = None;
     }
 }
 
