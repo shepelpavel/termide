@@ -10,6 +10,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, List, ListItem, Widget},
 };
 use std::path::PathBuf;
+use unicode_width::UnicodeWidthStr;
 
 use termide_theme::Theme;
 
@@ -219,9 +220,9 @@ impl Modal for SessionsModal {
                 Style::default().fg(theme.bg)
             };
 
-            // Pad line1 to full width
-            let line1_len = prefix.len() + item.display_path.len() + path_suffix.len();
-            let padding1 = " ".repeat((inner.width as usize).saturating_sub(line1_len));
+            // Pad line1 to full width (use unicode width for correct calculation)
+            let line1_width = prefix.width() + item.display_path.width() + path_suffix.width();
+            let padding1 = " ".repeat((inner.width as usize).saturating_sub(line1_width));
 
             let line1 = Line::from(vec![
                 Span::styled(prefix, path_style),
@@ -230,23 +231,15 @@ impl Modal for SessionsModal {
                 Span::styled(padding1, path_style),
             ]);
 
-            // Line 2: Relative time (indented, dimmed)
-            let time_style = if is_current {
-                Style::default()
-                    .fg(theme.accented_bg)
-                    .add_modifier(Modifier::DIM)
-            } else if is_selected {
-                Style::default().fg(theme.fg).bg(theme.accented_fg)
-            } else {
-                Style::default()
-                    .fg(theme.accented_bg)
-                    .add_modifier(Modifier::DIM)
-            };
+            // Line 2: Relative time (indented, dimmed) - no highlight even if selected
+            let time_style = Style::default()
+                .fg(theme.accented_bg)
+                .add_modifier(Modifier::DIM);
 
-            // Pad line2 to full width
+            // Pad line2 to full width (use unicode width)
             let line2_prefix = "  ";
-            let line2_len = line2_prefix.len() + item.relative_time.len();
-            let padding2 = " ".repeat((inner.width as usize).saturating_sub(line2_len));
+            let line2_width = line2_prefix.width() + item.relative_time.width();
+            let padding2 = " ".repeat((inner.width as usize).saturating_sub(line2_width));
 
             let line2 = Line::from(vec![
                 Span::styled(line2_prefix, time_style),

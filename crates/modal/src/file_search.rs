@@ -244,10 +244,17 @@ fn search_files(
 ) -> Vec<SearchResultItem> {
     use ignore::WalkBuilder;
 
-    let glob = match glob::Pattern::new(pattern) {
-        Ok(g) => g,
-        Err(_) => return Vec::new(),
+    // Determine search mode: glob for wildcards, substring for plain text
+    let has_wildcards = pattern.contains('*') || pattern.contains('?');
+    let glob_pattern = if has_wildcards {
+        match glob::Pattern::new(pattern) {
+            Ok(g) => Some(g),
+            Err(_) => return Vec::new(),
+        }
+    } else {
+        None
     };
+    let pattern_lower = pattern.to_lowercase();
 
     let mut results = Vec::new();
 
@@ -282,7 +289,14 @@ fn search_files(
             None => continue,
         };
 
-        if !glob.matches(&name) {
+        // Use glob matching for wildcards, case-insensitive substring for plain text
+        let name_matches = if let Some(ref glob) = glob_pattern {
+            glob.matches(&name)
+        } else {
+            name.to_lowercase().contains(&pattern_lower)
+        };
+
+        if !name_matches {
             continue;
         }
 
