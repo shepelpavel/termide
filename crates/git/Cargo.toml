@@ -10,6 +10,6 @@ description = "Git integration for termide"
 [dependencies]
 anyhow.workspace = true
 regex.workspace = true
-similar = "2.7"
+similar.workspace = true
 notify.workspace = true
 notify-debouncer-mini.workspace = true

@@ -77,6 +77,9 @@ pub trait Translation: Send + Sync {
     fn editor_search_no_matches(&self) -> &str;
     fn editor_deletion_marker(&self, count: usize) -> String;
 
+    // File manager
+    fn file_search_title(&self) -> &str;
+
     // Terminal
     fn terminal_exit_confirm(&self) -> &str;
     fn terminal_exited(&self, code: i32) -> String;

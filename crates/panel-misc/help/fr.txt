@@ -38,7 +38,8 @@
     Space        Afficher les informations du fichier
     Ctrl+A       Sélectionner tous les éléments
     F4           Ouvrir le fichier dans l'éditeur
-    f / F        Créer un nouveau fichier
+    Ctrl+N       Créer un nouveau fichier
+    Ctrl+F       Rechercher des fichiers
     d / D / F7   Créer un nouveau répertoire
     c / C / F5   Copier les éléments sélectionnés
     m / M / F6   Déplacer les éléments sélectionnés

@@ -49,6 +49,7 @@ file_info_press_key = "बंद करने के लिए कोई भी 
 file_info_size = "आकार"
 file_info_title = "फ़ाइल जानकारी"
 file_info_type = "प्रकार"
+file_search_title = "फ़ाइलें खोजें"
 file_type_directory = "डायरेक्टरी"
 file_type_file = "फ़ाइल"
 file_type_symlink = "सिमलिंक"

@@ -4,11 +4,11 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-anyhow = "1.0"
-chrono = "0.4"
-crossterm = "0.28"
-ratatui = "0.29.0"
-unicode-width = "0.2"
+anyhow.workspace = true
+chrono.workspace = true
+crossterm.workspace = true
+ratatui.workspace = true
+unicode-width.workspace = true
 
 # Workspace crates
 termide-config = { path = "../config" }

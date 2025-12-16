@@ -49,6 +49,7 @@ impl App {
                 ActiveModal::Search(m) => m.handle_key(key)?.map(box_modal_result),
                 ActiveModal::Replace(m) => m.handle_key(key)?.map(box_modal_result),
                 ActiveModal::Sessions(m) => m.handle_key(key)?.map(box_modal_result),
+                ActiveModal::FileSearch(m) => m.handle_key(key)?.map(box_modal_result),
             };
 
             // If modal window returned result, handle it
@@ -191,6 +192,12 @@ impl App {
                     }
                     ModalResult::Cancelled => ModalResult::Cancelled,
                 }),
+                ActiveModal::FileSearch(m) => m.handle_mouse(mouse, modal_area)?.map(|r| match r {
+                    ModalResult::Confirmed(value) => {
+                        ModalResult::Confirmed(Box::new(value) as Box<dyn std::any::Any>)
+                    }
+                    ModalResult::Cancelled => ModalResult::Cancelled,
+                }),
             };
 
             // If modal window returned result, handle it
@@ -309,6 +316,9 @@ impl App {
                 }
                 PendingAction::SwitchSession => {
                     self.handle_switch_session(value)?;
+                }
+                PendingAction::FileSearch { panel_index } => {
+                    self.handle_file_search(panel_index, value)?;
                 }
                 // Navigation actions are handled in key_handler, should not get here
                 PendingAction::NextPanel | PendingAction::PrevPanel => {}

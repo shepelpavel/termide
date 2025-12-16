@@ -164,9 +164,16 @@ impl FileManager {
                 ];
 
                 // Add git status if in repository (filtered by specific file/directory)
-                if let Some(git_status) =
+                // Special case: if directory is itself a git repo root, show its git info
+                let git_status = if is_dir && file_path.join(".git").exists() {
+                    // Directory is a git repo root - get its own status
+                    termide_git::get_repo_status(&file_path, &file_path)
+                } else {
+                    // Regular file/directory - check status in parent repo
                     termide_git::get_repo_status(&self.current_path, &file_path)
-                {
+                };
+
+                if let Some(git_status) = git_status {
                     if git_status.is_ignored {
                         // If file is ignored, show only one line
                         data.push((

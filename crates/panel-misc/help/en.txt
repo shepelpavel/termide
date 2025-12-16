@@ -38,7 +38,8 @@
     Space        Show file information
     Ctrl+A       Select all items
     F4           Open file in editor
-    f / F        Create new file
+    Ctrl+N       Create new file
+    Ctrl+F       Find files
     d / D / F7   Create new directory
     c / C / F5   Copy selected items
     m / M / F6   Move selected items

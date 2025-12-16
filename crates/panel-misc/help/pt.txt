@@ -38,7 +38,8 @@
     Space        Mostrar informações do arquivo
     Ctrl+A       Selecionar todos os itens
     F4           Abrir arquivo no editor
-    f / F        Criar novo arquivo
+    Ctrl+N       Criar novo arquivo
+    Ctrl+F       Buscar arquivos
     d / D / F7   Criar novo diretório
     c / C / F5   Copiar itens selecionados
     m / M / F6   Mover itens selecionados

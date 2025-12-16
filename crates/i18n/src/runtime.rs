@@ -260,6 +260,10 @@ impl Translation for RuntimeTranslation {
         )
     }
 
+    fn file_search_title(&self) -> &str {
+        self.get_string("file_search_title")
+    }
+
     fn terminal_exit_confirm(&self) -> &str {
         self.get_string("terminal_exit_confirm")
     }

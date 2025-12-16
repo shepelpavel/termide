@@ -15,4 +15,4 @@ unicode-width.workspace = true
 regex.workspace = true
 
 [dev-dependencies]
-tempfile = "3.12"
+tempfile.workspace = true

@@ -8,5 +8,5 @@ repository.workspace = true
 description = "State types and data structures for termide"
 
 [dependencies]
-chrono = "0.4"
+chrono.workspace = true
 termide-config = { path = "../config" }

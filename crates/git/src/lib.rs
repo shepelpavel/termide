@@ -195,7 +195,7 @@ pub fn get_git_status_async(dir: PathBuf) -> mpsc::Receiver<GitStatusAsyncResult
 }
 
 /// Git status cache for directory.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GitStatusCache {
     status_map: HashMap<PathBuf, GitStatus>,
     ignored_files: HashSet<PathBuf>,
@@ -381,28 +381,34 @@ pub fn get_repo_status(repo_path: &Path, item_path: &Path) -> Option<GitRepoStat
         })?;
 
     let relative_path = item_path.strip_prefix(&repo_root).ok()?;
-    let git_path = if relative_path.as_os_str().is_empty() {
+    let is_repo_root = relative_path.as_os_str().is_empty();
+    let git_path = if is_repo_root {
         Path::new(".")
     } else {
         relative_path
     };
 
-    let is_ignored = Command::new("git")
-        .args(["status", "--porcelain", "--ignored", "--"])
-        .arg(git_path)
-        .current_dir(&repo_root)
-        .output()
-        .ok()
-        .and_then(|output| {
-            if output.status.success() {
-                String::from_utf8(output.stdout)
-                    .ok()
-                    .map(|stdout| stdout.lines().any(|line| line.starts_with("!! ")))
-            } else {
-                None
-            }
-        })
-        .unwrap_or(false);
+    // Repo root cannot be ignored within itself; for other paths check git status
+    let is_ignored = if is_repo_root {
+        false
+    } else {
+        Command::new("git")
+            .args(["status", "--porcelain", "--ignored", "--"])
+            .arg(git_path)
+            .current_dir(&repo_root)
+            .output()
+            .ok()
+            .and_then(|output| {
+                if output.status.success() {
+                    String::from_utf8(output.stdout)
+                        .ok()
+                        .map(|stdout| stdout.lines().any(|line| line.starts_with("!! ")))
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(false)
+    };
 
     let uncommitted_changes = Command::new("git")
         .args(["status", "--porcelain", "--"])

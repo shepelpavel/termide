@@ -10,5 +10,5 @@ description = "Configuration management for termide"
 [dependencies]
 serde.workspace = true
 anyhow.workspace = true
-toml = "0.8"
-dirs = "6.0"
+toml.workspace = true
+dirs.workspace = true

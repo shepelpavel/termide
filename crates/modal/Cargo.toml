@@ -7,12 +7,15 @@ license = "MIT"
 
 [dependencies]
 # External
-anyhow = "1"
-crossterm = "0.28"
-ratatui = "0.29.0"
-unicode-width = "0.2"
+anyhow.workspace = true
+crossterm.workspace = true
+glob.workspace = true
+ignore.workspace = true
+ratatui.workspace = true
+unicode-width.workspace = true
 
 # Workspace crates
+termide-git = { path = "../git" }
 termide-ui = { path = "../ui" }
 termide-theme = { path = "../theme" }
 termide-i18n = { path = "../i18n" }

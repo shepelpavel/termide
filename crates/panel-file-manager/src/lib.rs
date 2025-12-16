@@ -23,7 +23,7 @@ use std::sync::mpsc;
 use termide_config::{constants, Config, FileManagerSettings};
 use termide_core::{CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel};
 use termide_git::{get_git_status_async, GitStatus, GitStatusAsyncResult, GitStatusCache};
-use termide_modal::{ActiveModal, ConfirmModal, InputModal};
+use termide_modal::{ActiveModal, ConfirmModal, FileSearchModal, InputModal};
 use termide_state::{DirSizeResult, PendingAction};
 use termide_theme::Theme;
 use termide_ui::{clipboard, path_utils};
@@ -204,6 +204,23 @@ impl FileManager {
         // This triggers re-registration with watcher in check_watcher_events()
         self.git_root = None;
         self.load_directory_inner(false)
+    }
+
+    /// Navigate to a specific file - opens its parent directory and selects the file
+    pub fn navigate_to_file(&mut self, path: &std::path::Path) {
+        if let Some(parent) = path.parent() {
+            self.current_path = parent.to_path_buf();
+            let _ = self.load_directory();
+
+            // Find and select the file in the list
+            if let Some(file_name) = path.file_name() {
+                let name_str = file_name.to_string_lossy();
+                if let Some(idx) = self.entries.iter().position(|e| e.name == name_str) {
+                    self.selected = idx;
+                    self.adjust_scroll_offset(self.visible_height);
+                }
+            }
+        }
     }
 
     /// Reload directory preserving selection (with debounce to prevent rapid reloads)
@@ -718,7 +735,7 @@ impl Panel for FileManager {
                     let _ = self.load_directory();
                 }
             }
-            (KeyCode::Char('f'), _) | (KeyCode::Char('F'), _) => {
+            (KeyCode::Char('n'), KeyModifiers::CONTROL) => {
                 // Create new file - open InputModal
                 let t = termide_i18n::t();
                 let modal = InputModal::new(t.modal_create_file_title(), "");
@@ -727,6 +744,15 @@ impl Panel for FileManager {
                     directory: self.current_path.clone(),
                 };
                 self.modal_request = Some((action, ActiveModal::Input(Box::new(modal))));
+            }
+            (KeyCode::Char('f'), KeyModifiers::CONTROL) => {
+                // Search files - open FileSearchModal
+                let t = termide_i18n::t();
+                let modal = FileSearchModal::new(t.file_search_title(), self.current_path.clone());
+                let action = PendingAction::FileSearch {
+                    panel_index: 0, // will be updated in app.rs
+                };
+                self.modal_request = Some((action, ActiveModal::FileSearch(Box::new(modal))));
             }
             (KeyCode::Char('d'), _) | (KeyCode::Char('D'), _) | (KeyCode::F(7), _) => {
                 // Create new directory - open InputModal

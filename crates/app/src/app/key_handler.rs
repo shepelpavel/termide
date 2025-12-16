@@ -102,7 +102,8 @@ impl App {
             | PendingAction::CloseEditorWithSave { panel_index }
             | PendingAction::CloseEditorExternal { panel_index }
             | PendingAction::CloseEditorConflict { panel_index }
-            | PendingAction::OverwriteDecision { panel_index, .. } => {
+            | PendingAction::OverwriteDecision { panel_index, .. }
+            | PendingAction::FileSearch { panel_index } => {
                 *panel_index = 0; // Placeholder value, not used with LayoutManager
             }
             PendingAction::BatchFileOperation { .. }

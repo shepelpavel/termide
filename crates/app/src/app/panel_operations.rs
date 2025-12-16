@@ -5,6 +5,7 @@
 use anyhow::Result;
 
 use super::App;
+use crate::panel_ext::PanelExt;
 use crate::state::{ActiveModal, PendingAction};
 use termide_core::{CommandResult, PanelCommand};
 use termide_i18n as i18n;
@@ -308,6 +309,23 @@ impl App {
         // 4. Load new session
         self.load_session()?;
 
+        Ok(())
+    }
+
+    /// Handle file search modal result - navigate to selected file
+    pub(super) fn handle_file_search(
+        &mut self,
+        _panel_index: usize,
+        value: Box<dyn std::any::Any>,
+    ) -> Result<()> {
+        if let Some(path) = value.downcast_ref::<std::path::PathBuf>() {
+            // Get the active file manager panel and navigate to the file
+            if let Some(panel) = self.layout_manager.active_panel_mut() {
+                if let Some(file_manager) = panel.as_file_manager_mut() {
+                    file_manager.navigate_to_file(path);
+                }
+            }
+        }
         Ok(())
     }
 }

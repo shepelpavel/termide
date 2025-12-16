@@ -49,6 +49,7 @@ file_info_press_key = "กดปุ่มใดก็ได้เพื่อป
 file_info_size = "ขนาด"
 file_info_title = "ข้อมูลไฟล์"
 file_info_type = "ประเภท"
+file_search_title = "ค้นหาไฟล์"
 file_type_directory = "ไดเรกทอรี"
 file_type_file = "ไฟล์"
 file_type_symlink = "ลิงก์สัญลักษณ์"

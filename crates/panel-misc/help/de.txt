@@ -38,7 +38,8 @@
     Space        Dateiinformationen anzeigen
     Ctrl+A       Alle Elemente auswählen
     F4           Datei im Editor öffnen
-    f / F        Neue Datei erstellen
+    Ctrl+N       Neue Datei erstellen
+    Ctrl+F       Dateien suchen
     d / D / F7   Neues Verzeichnis erstellen
     c / C / F5   Ausgewählte Elemente kopieren
     m / M / F6   Ausgewählte Elemente verschieben

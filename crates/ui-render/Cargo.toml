@@ -7,9 +7,9 @@ license = "MIT"
 
 [dependencies]
 # External
-ratatui = "0.29.0"
-unicode-width = "0.2"
-chrono = "0.4"
+ratatui.workspace = true
+unicode-width.workspace = true
+chrono.workspace = true
 
 # Workspace crates
 termide-theme = { path = "../theme" }

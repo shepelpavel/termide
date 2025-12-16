@@ -219,10 +219,15 @@ impl Modal for SessionsModal {
                 Style::default().fg(theme.bg)
             };
 
+            // Pad line1 to full width
+            let line1_len = prefix.len() + item.display_path.len() + path_suffix.len();
+            let padding1 = " ".repeat((inner.width as usize).saturating_sub(line1_len));
+
             let line1 = Line::from(vec![
                 Span::styled(prefix, path_style),
                 Span::styled(&item.display_path, path_style),
                 Span::styled(path_suffix, path_style),
+                Span::styled(padding1, path_style),
             ]);
 
             // Line 2: Relative time (indented, dimmed)
@@ -238,9 +243,15 @@ impl Modal for SessionsModal {
                     .add_modifier(Modifier::DIM)
             };
 
+            // Pad line2 to full width
+            let line2_prefix = "  ";
+            let line2_len = line2_prefix.len() + item.relative_time.len();
+            let padding2 = " ".repeat((inner.width as usize).saturating_sub(line2_len));
+
             let line2 = Line::from(vec![
-                Span::styled("  ", time_style), // Indent
+                Span::styled(line2_prefix, time_style),
                 Span::styled(&item.relative_time, time_style),
+                Span::styled(padding2, time_style),
             ]);
 
             list_items.push(ListItem::new(vec![line1, line2]));

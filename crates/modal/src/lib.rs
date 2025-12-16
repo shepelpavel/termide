@@ -19,6 +19,7 @@ pub mod base;
 pub mod confirm;
 pub mod conflict;
 pub mod editable_select;
+pub mod file_search;
 pub mod info;
 pub mod input;
 pub mod overwrite;
@@ -31,6 +32,7 @@ pub mod sessions;
 pub use confirm::ConfirmModal;
 pub use conflict::{ConflictModal, ConflictResolution};
 pub use editable_select::{EditableSelectModal, SelectOption};
+pub use file_search::{FileSearchModal, SearchResultItem};
 pub use info::InfoModal;
 pub use input::InputModal;
 pub use overwrite::{OverwriteChoice, OverwriteModal};
@@ -68,6 +70,8 @@ pub enum ActiveModal {
     Replace(Box<ReplaceModal>),
     /// Sessions selection modal
     Sessions(Box<SessionsModal>),
+    /// File search modal
+    FileSearch(Box<FileSearchModal>),
 }
 
 /// Trait for all modal windows.

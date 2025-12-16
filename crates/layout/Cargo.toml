@@ -11,4 +11,4 @@ publish = false
 [dependencies]
 termide-core = { path = "../core" }
 termide-config = { path = "../config" }
-anyhow = "1.0"
+anyhow.workspace = true

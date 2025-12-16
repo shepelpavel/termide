@@ -8,4 +8,4 @@ repository.workspace = true
 description = "Logging infrastructure for termide"
 
 [dependencies]
-chrono = "0.4"
+chrono.workspace = true

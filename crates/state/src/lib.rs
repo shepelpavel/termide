@@ -385,6 +385,8 @@ pub enum PendingAction {
     QuitApplication,
     /// Switch to another session
     SwitchSession,
+    /// File search in file manager
+    FileSearch { panel_index: usize },
 }
 
 #[cfg(test)]
