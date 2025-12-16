@@ -96,7 +96,6 @@ fn calculate_simple_wrap_point(graphemes: &[&str], start: usize, max_width: usiz
 /// - `content_width`: Width of content area for wrapping
 /// - `word_wrap_enabled`: Whether word wrap is enabled
 /// - `use_smart_wrap`: Whether to use smart wrapping
-#[allow(dead_code)] // May be used in future phases
 pub fn calculate_visual_row_for_cursor(
     buffer: &TextBuffer,
     cursor_line: usize,

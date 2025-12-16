@@ -508,15 +508,6 @@ impl App {
             .and_then(|panel| panel.as_editor_mut())
     }
 
-    /// Get mutable reference to active file manager panel
-    /// Helper to avoid nested if-let chains: `if let Some(panel) = ... { if let Some(fm) = ... }`
-    #[allow(dead_code)]
-    fn active_file_manager_mut(&mut self) -> Option<&mut termide_panel_file_manager::FileManager> {
-        self.layout_manager
-            .active_panel_mut()
-            .and_then(|panel| panel.as_file_manager_mut())
-    }
-
     /// Get reference to AppState
     pub fn state(&self) -> &AppState {
         &self.state

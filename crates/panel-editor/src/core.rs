@@ -139,21 +139,9 @@ impl Editor {
             .and_then(|opt| opt.as_ref())
     }
 
-    /// Invalidate cached repo root (call when file path changes)
-    #[allow(dead_code)]
-    pub fn invalidate_repo_root_cache(&mut self) {
-        self.git.cached_repo_root = None;
-    }
-
     /// Get unsaved buffer filename (if this is a temporary unsaved buffer)
     pub fn unsaved_buffer_file(&self) -> Option<&str> {
         self.file_state.unsaved_buffer_file.as_deref()
-    }
-
-    /// Open file with default configuration
-    #[allow(dead_code)]
-    pub fn open_file(path: PathBuf) -> Result<Self> {
-        Self::open_file_with_config(path, EditorConfig::default())
     }
 
     /// Open file with specified configuration
@@ -349,12 +337,6 @@ impl Editor {
     /// Check if buffer has unsaved modifications
     pub fn buffer_is_modified(&self) -> bool {
         self.buffer.is_modified()
-    }
-
-    /// Clear external change flag (after user acknowledged or reloaded)
-    #[allow(dead_code)]
-    pub fn clear_external_change(&mut self) {
-        self.file_state.external_change_detected = false;
     }
 
     /// Reload file from disk (discards local changes)
@@ -2181,7 +2163,9 @@ mod tests {
     fn create_editor_with_content(content: &str) -> (Editor, NamedTempFile) {
         let mut file = NamedTempFile::new().unwrap();
         write!(file, "{}", content).unwrap();
-        let editor = Editor::open_file(file.path().to_path_buf()).unwrap();
+        let editor =
+            Editor::open_file_with_config(file.path().to_path_buf(), EditorConfig::default())
+                .unwrap();
         (editor, file)
     }
 
@@ -2334,7 +2318,9 @@ mod tests {
             .unwrap();
         }
         file.flush().unwrap();
-        let editor = Editor::open_file(file.path().to_path_buf()).unwrap();
+        let editor =
+            Editor::open_file_with_config(file.path().to_path_buf(), EditorConfig::default())
+                .unwrap();
         (editor, file)
     }
 
