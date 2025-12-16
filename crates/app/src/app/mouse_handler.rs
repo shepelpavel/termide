@@ -238,9 +238,18 @@ impl App {
         for (i, item) in menu_items.iter().enumerate() {
             let item_width = item.len() as u16;
             if x >= current_x && x < current_x + item_width {
-                // Open menu with the selected item
-                self.state.open_menu(Some(i));
-                self.execute_menu_action()?;
+                // Toggle: if this menu item is already open, close it
+                if self.state.ui.menu_open && self.state.ui.selected_menu_item == Some(i) {
+                    // Restore theme if nested submenu was open
+                    if let Some(original_name) = self.state.ui.theme_preview_original.take() {
+                        self.state.theme = Theme::get_by_name(&original_name);
+                    }
+                    self.state.close_menu();
+                } else {
+                    // Open menu with the selected item
+                    self.state.open_menu(Some(i));
+                    self.execute_menu_action()?;
+                }
                 return Ok(());
             }
             current_x += item_width + 2; // +2 for spaces
