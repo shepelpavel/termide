@@ -32,6 +32,40 @@ pub struct StatusBarParams<'a> {
     pub recommended_layout: &'a str,
 }
 
+/// Calculate width of spans accounting for unicode characters.
+fn spans_width(spans: &[Span<'_>]) -> usize {
+    spans
+        .iter()
+        .map(|s| match &s.content {
+            std::borrow::Cow::Borrowed(s) => s.width(),
+            std::borrow::Cow::Owned(s) => s.width(),
+        })
+        .sum()
+}
+
+/// Append disk space info to spans, right-aligned.
+fn append_disk_space(
+    spans: &mut Vec<Span<'_>>,
+    disk: &DiskSpaceInfo,
+    theme: &Theme,
+    total_width: u16,
+) {
+    let disk_text = format!(" {} ", disk.format_space());
+    let disk_color = resource_color(disk.usage_percent(), theme);
+
+    // Add padding between left part and disk info
+    let used_width = spans_width(spans);
+    let remaining = (total_width as usize).saturating_sub(used_width + disk_text.width());
+    if remaining > 0 {
+        spans.push(Span::raw(" ".repeat(remaining)));
+    }
+
+    spans.push(Span::styled(
+        disk_text,
+        Style::default().fg(disk_color).bg(theme.accented_bg),
+    ));
+}
+
 /// Status bar at the bottom of screen
 pub struct StatusBar;
 
@@ -134,29 +168,7 @@ impl StatusBar {
 
             // If there's disk information, add it on the right
             if let Some(disk) = &info.disk_space {
-                let disk_text = format!(" {} ", disk.format_space());
-                let disk_color = resource_color(disk.usage_percent(), theme);
-
-                // Calculate current spans width considering unicode characters
-                let used_width: usize = spans
-                    .iter()
-                    .map(|s| match &s.content {
-                        std::borrow::Cow::Borrowed(s) => s.width(),
-                        std::borrow::Cow::Owned(s) => s.width(),
-                    })
-                    .sum();
-
-                // Add padding between left part and disk info
-                let remaining =
-                    (total_width as usize).saturating_sub(used_width + disk_text.width());
-                if remaining > 0 {
-                    spans.push(Span::raw(" ".repeat(remaining)));
-                }
-
-                spans.push(Span::styled(
-                    disk_text,
-                    Style::default().fg(disk_color).bg(theme.accented_bg),
-                ));
+                append_disk_space(&mut spans, disk, theme, total_width);
             }
 
             spans
@@ -214,29 +226,7 @@ impl StatusBar {
 
             // If there's disk information, add it on the right
             if let Some(disk) = disk_space {
-                let disk_text = format!(" {} ", disk.format_space());
-                let disk_color = resource_color(disk.usage_percent(), theme);
-
-                // Calculate current spans width considering unicode characters
-                let used_width: usize = spans
-                    .iter()
-                    .map(|s| match &s.content {
-                        std::borrow::Cow::Borrowed(s) => s.width(),
-                        std::borrow::Cow::Owned(s) => s.width(),
-                    })
-                    .sum();
-
-                // Add padding between left part and disk info
-                let remaining =
-                    (total_width as usize).saturating_sub(used_width + disk_text.width());
-                if remaining > 0 {
-                    spans.push(Span::raw(" ".repeat(remaining)));
-                }
-
-                spans.push(Span::styled(
-                    disk_text,
-                    Style::default().fg(disk_color).bg(theme.accented_bg),
-                ));
+                append_disk_space(&mut spans, disk, theme, total_width);
             }
 
             spans

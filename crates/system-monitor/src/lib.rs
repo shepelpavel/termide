@@ -46,12 +46,15 @@ impl Default for SystemMonitor {
     }
 }
 
+/// Bytes per gigabyte.
+const BYTES_PER_GB: f64 = 1_073_741_824.0;
+/// Bytes per megabyte.
+const BYTES_PER_MB: f64 = 1_048_576.0;
+
 impl SystemMonitor {
     /// Create a new system monitor.
     pub fn new() -> Self {
-        let refresh_kind = RefreshKind::new()
-            .with_cpu(CpuRefreshKind::new().with_cpu_usage())
-            .with_memory(MemoryRefreshKind::new().with_ram());
+        let refresh_kind = Self::refresh_kind();
 
         let mut system = System::new_with_specifics(refresh_kind);
         system.refresh_specifics(refresh_kind);
@@ -61,13 +64,22 @@ impl SystemMonitor {
         }
     }
 
+    /// Get refresh kind configuration.
+    fn refresh_kind() -> RefreshKind {
+        RefreshKind::new()
+            .with_cpu(CpuRefreshKind::new().with_cpu_usage())
+            .with_memory(MemoryRefreshKind::new().with_ram())
+    }
+
+    /// Execute a function with locked system, returning default on lock failure.
+    fn with_system<T: Default>(&self, f: impl FnOnce(&System) -> T) -> T {
+        self.system.lock().map(|sys| f(&sys)).unwrap_or_default()
+    }
+
     /// Refresh system information.
     pub fn refresh(&self) {
         if let Ok(mut sys) = self.system.lock() {
-            let refresh_kind = RefreshKind::new()
-                .with_cpu(CpuRefreshKind::new().with_cpu_usage())
-                .with_memory(MemoryRefreshKind::new().with_ram());
-            sys.refresh_specifics(refresh_kind);
+            sys.refresh_specifics(Self::refresh_kind());
         }
     }
 
@@ -79,24 +91,16 @@ impl SystemMonitor {
 
     /// Get current system stats.
     pub fn stats(&self) -> SystemStats {
-        if let Ok(sys) = self.system.lock() {
-            SystemStats {
-                cpu_usage: sys.global_cpu_usage(),
-                memory_used: sys.used_memory(),
-                memory_total: sys.total_memory(),
-            }
-        } else {
-            SystemStats::default()
-        }
+        self.with_system(|sys| SystemStats {
+            cpu_usage: sys.global_cpu_usage(),
+            memory_used: sys.used_memory(),
+            memory_total: sys.total_memory(),
+        })
     }
 
     /// Get CPU usage as integer percentage (0-100).
     pub fn cpu_usage(&self) -> u8 {
-        if let Ok(sys) = self.system.lock() {
-            sys.global_cpu_usage().round() as u8
-        } else {
-            0
-        }
+        self.with_system(|sys| sys.global_cpu_usage().round() as u8)
     }
 
     /// Get CPU usage as float percentage.
@@ -109,31 +113,28 @@ impl SystemMonitor {
         self.stats().memory_percent()
     }
 
+    /// Get RAM info in specified unit: (used, total).
+    fn ram_info(&self, divisor: f64) -> (u64, u64) {
+        self.with_system(|sys| {
+            let used = (sys.used_memory() as f64 / divisor).round() as u64;
+            let total = (sys.total_memory() as f64 / divisor).round() as u64;
+            (used, total)
+        })
+    }
+
     /// Get RAM info: (used_gb, total_gb).
     pub fn ram_info_gb(&self) -> (u64, u64) {
-        if let Ok(sys) = self.system.lock() {
-            let used = (sys.used_memory() as f64 / 1_073_741_824.0).round() as u64;
-            let total = (sys.total_memory() as f64 / 1_073_741_824.0).round() as u64;
-            (used, total)
-        } else {
-            (0, 0)
-        }
+        self.ram_info(BYTES_PER_GB)
     }
 
     /// Get RAM info: (used_mb, total_mb).
     pub fn ram_info_mb(&self) -> (u64, u64) {
-        if let Ok(sys) = self.system.lock() {
-            let used = (sys.used_memory() as f64 / 1_048_576.0).round() as u64;
-            let total = (sys.total_memory() as f64 / 1_048_576.0).round() as u64;
-            (used, total)
-        } else {
-            (0, 0)
-        }
+        self.ram_info(BYTES_PER_MB)
     }
 
     /// Get RAM usage as integer percentage (0-100).
     pub fn ram_usage_percent(&self) -> u8 {
-        if let Ok(sys) = self.system.lock() {
+        self.with_system(|sys| {
             let used = sys.used_memory();
             let total = sys.total_memory();
             if total > 0 {
@@ -141,9 +142,7 @@ impl SystemMonitor {
             } else {
                 0
             }
-        } else {
-            0
-        }
+        })
     }
 
     /// Format RAM info with automatic unit selection.
@@ -187,12 +186,12 @@ impl DiskSpaceInfo {
 
     /// Get used space in GB.
     pub fn used_gb(&self) -> u64 {
-        (self.used() as f64 / 1_073_741_824.0).round() as u64
+        (self.used() as f64 / BYTES_PER_GB).round() as u64
     }
 
     /// Get total space in GB.
     pub fn total_gb(&self) -> u64 {
-        (self.total as f64 / 1_073_741_824.0).round() as u64
+        (self.total as f64 / BYTES_PER_GB).round() as u64
     }
 
     /// Get device name (extracted from path).
@@ -239,8 +238,8 @@ impl DiskSpaceInfoExt for DiskSpaceInfo {
         };
 
         // Convert to GB (rounded to nearest integer)
-        let used_gb = (used as f64 / 1_073_741_824.0).round() as u64;
-        let total_gb = (self.total as f64 / 1_073_741_824.0).round() as u64;
+        let used_gb = (used as f64 / BYTES_PER_GB).round() as u64;
+        let total_gb = (self.total as f64 / BYTES_PER_GB).round() as u64;
 
         if let Some(device) = &self.device {
             // Extract device name from path like "/dev/nvme0n1p2" -> "NVME0N1P2"
