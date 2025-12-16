@@ -332,6 +332,12 @@ impl App {
                 PendingAction::ContentSearch { panel_index } => {
                     self.handle_content_search(panel_index, value)?;
                 }
+                PendingAction::PreferencesMenu => {
+                    self.handle_preferences_menu(value)?;
+                }
+                PendingAction::SelectTheme => {
+                    self.handle_select_theme(value)?;
+                }
                 // Navigation actions are handled in key_handler, should not get here
                 PendingAction::NextPanel | PendingAction::PrevPanel => {}
             }
@@ -543,5 +549,92 @@ impl App {
         }
 
         None // Continue with normal modal handling
+    }
+
+    /// Handle preferences submenu selection
+    fn handle_preferences_menu(&mut self, value: Box<dyn std::any::Any>) -> Result<()> {
+        use termide_i18n as i18n;
+        use termide_state::PendingAction;
+        use termide_theme::Theme;
+
+        if let Some(selection) = value.downcast_ref::<Vec<usize>>() {
+            if let Some(&index) = selection.first() {
+                match index {
+                    0 => {
+                        // Themes - open theme selection modal
+                        let t = i18n::t();
+                        let theme_names = Theme::all_theme_names();
+                        let current_theme = self.state.theme.name;
+
+                        // Find index of current theme
+                        let current_index = theme_names
+                            .iter()
+                            .position(|n| n == current_theme)
+                            .unwrap_or(0);
+
+                        let mut modal = termide_modal::SelectModal::single(
+                            t.theme_select_title(),
+                            "",
+                            theme_names,
+                        );
+                        modal.set_cursor(current_index);
+
+                        self.state.set_pending_action(
+                            PendingAction::SelectTheme,
+                            ActiveModal::Select(Box::new(modal)),
+                        );
+                    }
+                    1 => {
+                        // Edit preferences - open config file in editor
+                        self.open_config_in_editor()?;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Handle theme selection
+    fn handle_select_theme(&mut self, value: Box<dyn std::any::Any>) -> Result<()> {
+        use termide_i18n as i18n;
+        use termide_theme::Theme;
+
+        if let Some(selection) = value.downcast_ref::<Vec<usize>>() {
+            if let Some(&index) = selection.first() {
+                let theme_names = Theme::all_theme_names();
+                if let Some(theme_name) = theme_names.get(index) {
+                    // Apply the theme
+                    let new_theme = Theme::get_by_name(theme_name);
+                    self.state.theme = new_theme;
+
+                    // Show status message
+                    let t = i18n::t();
+                    self.state.set_info(t.theme_changed(theme_name));
+
+                    // Save theme preference to config
+                    if let Err(e) = self.save_theme_preference(theme_name) {
+                        termide_logger::warn(format!("Failed to save theme preference: {}", e));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Save theme preference to config file
+    fn save_theme_preference(&self, theme_name: &str) -> Result<()> {
+        use termide_config::Config;
+
+        // Load current config
+        let mut config = Config::load()?;
+
+        // Update theme
+        config.general.theme = theme_name.to_string();
+
+        // Save config
+        config.save()?;
+
+        Ok(())
     }
 }

@@ -743,6 +743,22 @@ impl Translation for RuntimeTranslation {
         self.get_string("menu_open_hint")
     }
 
+    fn preferences_themes(&self) -> &str {
+        self.get_string("preferences_themes")
+    }
+
+    fn preferences_edit(&self) -> &str {
+        self.get_string("preferences_edit")
+    }
+
+    fn theme_select_title(&self) -> &str {
+        self.get_string("theme_select_title")
+    }
+
+    fn theme_changed(&self, name: &str) -> String {
+        self.format("theme_changed", &[("name", name)])
+    }
+
     fn sessions_title(&self) -> &str {
         self.get_string("sessions_title")
     }

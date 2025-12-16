@@ -41,6 +41,80 @@ static THEME_ONEDARK: OnceLock<Theme> = OnceLock::new();
 static THEME_SOLARIZED_DARK: OnceLock<Theme> = OnceLock::new();
 static THEME_SOLARIZED_LIGHT: OnceLock<Theme> = OnceLock::new();
 
+/// Entry in the built-in themes registry.
+/// Single source of truth for all built-in theme configurations.
+struct BuiltinThemeEntry {
+    name: &'static str,
+    content: &'static str,
+    storage: &'static OnceLock<Theme>,
+}
+
+/// Registry of all built-in themes.
+/// Adding a new theme requires only adding an entry here
+/// (plus the TOML file and static OnceLock above).
+static BUILTIN_THEMES: &[BuiltinThemeEntry] = &[
+    BuiltinThemeEntry {
+        name: "atom-one-light",
+        content: THEME_ATOM_ONE_LIGHT_TOML,
+        storage: &THEME_ATOM_ONE_LIGHT,
+    },
+    BuiltinThemeEntry {
+        name: "ayu-light",
+        content: THEME_AYU_LIGHT_TOML,
+        storage: &THEME_AYU_LIGHT,
+    },
+    BuiltinThemeEntry {
+        name: "default",
+        content: THEME_DEFAULT_TOML,
+        storage: &THEME_DEFAULT,
+    },
+    BuiltinThemeEntry {
+        name: "dracula",
+        content: THEME_DRACULA_TOML,
+        storage: &THEME_DRACULA,
+    },
+    BuiltinThemeEntry {
+        name: "github-light",
+        content: THEME_GITHUB_LIGHT_TOML,
+        storage: &THEME_GITHUB_LIGHT,
+    },
+    BuiltinThemeEntry {
+        name: "material-lighter",
+        content: THEME_MATERIAL_LIGHTER_TOML,
+        storage: &THEME_MATERIAL_LIGHTER,
+    },
+    BuiltinThemeEntry {
+        name: "midnight",
+        content: THEME_MIDNIGHT_TOML,
+        storage: &THEME_MIDNIGHT,
+    },
+    BuiltinThemeEntry {
+        name: "monokai",
+        content: THEME_MONOKAI_TOML,
+        storage: &THEME_MONOKAI,
+    },
+    BuiltinThemeEntry {
+        name: "nord",
+        content: THEME_NORD_TOML,
+        storage: &THEME_NORD,
+    },
+    BuiltinThemeEntry {
+        name: "onedark",
+        content: THEME_ONEDARK_TOML,
+        storage: &THEME_ONEDARK,
+    },
+    BuiltinThemeEntry {
+        name: "solarized-dark",
+        content: THEME_SOLARIZED_DARK_TOML,
+        storage: &THEME_SOLARIZED_DARK,
+    },
+    BuiltinThemeEntry {
+        name: "solarized-light",
+        content: THEME_SOLARIZED_LIGHT_TOML,
+        storage: &THEME_SOLARIZED_LIGHT,
+    },
+];
+
 // Cache for user-loaded themes
 static USER_THEMES: OnceLock<Mutex<HashMap<String, &'static Theme>>> = OnceLock::new();
 
@@ -71,6 +145,7 @@ fn get_hardcoded_fallback_theme(name: &'static str) -> Theme {
         success: Color::Green,
         warning: Color::Yellow,
         error: Color::Red,
+        is_light: None,
     }
 }
 
@@ -88,56 +163,21 @@ fn load_theme_from_toml(content: &str, name: &'static str) -> Theme {
     }
 }
 
-fn get_atom_one_light_theme() -> &'static Theme {
-    THEME_ATOM_ONE_LIGHT
-        .get_or_init(|| load_theme_from_toml(THEME_ATOM_ONE_LIGHT_TOML, "atom-one-light"))
+/// Get a built-in theme by name.
+fn get_builtin_theme(name: &str) -> Option<&'static Theme> {
+    BUILTIN_THEMES
+        .iter()
+        .find(|entry| entry.name == name)
+        .map(|entry| {
+            entry
+                .storage
+                .get_or_init(|| load_theme_from_toml(entry.content, entry.name))
+        })
 }
 
-fn get_ayu_light_theme() -> &'static Theme {
-    THEME_AYU_LIGHT.get_or_init(|| load_theme_from_toml(THEME_AYU_LIGHT_TOML, "ayu-light"))
-}
-
+/// Get the default theme.
 fn get_default_theme() -> &'static Theme {
-    THEME_DEFAULT.get_or_init(|| load_theme_from_toml(THEME_DEFAULT_TOML, "default"))
-}
-
-fn get_dracula_theme() -> &'static Theme {
-    THEME_DRACULA.get_or_init(|| load_theme_from_toml(THEME_DRACULA_TOML, "dracula"))
-}
-
-fn get_github_light_theme() -> &'static Theme {
-    THEME_GITHUB_LIGHT.get_or_init(|| load_theme_from_toml(THEME_GITHUB_LIGHT_TOML, "github-light"))
-}
-
-fn get_material_lighter_theme() -> &'static Theme {
-    THEME_MATERIAL_LIGHTER
-        .get_or_init(|| load_theme_from_toml(THEME_MATERIAL_LIGHTER_TOML, "material-lighter"))
-}
-
-fn get_midnight_theme() -> &'static Theme {
-    THEME_MIDNIGHT.get_or_init(|| load_theme_from_toml(THEME_MIDNIGHT_TOML, "midnight"))
-}
-
-fn get_monokai_theme() -> &'static Theme {
-    THEME_MONOKAI.get_or_init(|| load_theme_from_toml(THEME_MONOKAI_TOML, "monokai"))
-}
-
-fn get_nord_theme() -> &'static Theme {
-    THEME_NORD.get_or_init(|| load_theme_from_toml(THEME_NORD_TOML, "nord"))
-}
-
-fn get_onedark_theme() -> &'static Theme {
-    THEME_ONEDARK.get_or_init(|| load_theme_from_toml(THEME_ONEDARK_TOML, "onedark"))
-}
-
-fn get_solarized_dark_theme() -> &'static Theme {
-    THEME_SOLARIZED_DARK
-        .get_or_init(|| load_theme_from_toml(THEME_SOLARIZED_DARK_TOML, "solarized-dark"))
-}
-
-fn get_solarized_light_theme() -> &'static Theme {
-    THEME_SOLARIZED_LIGHT
-        .get_or_init(|| load_theme_from_toml(THEME_SOLARIZED_LIGHT_TOML, "solarized-light"))
+    get_builtin_theme("default").expect("default theme must exist")
 }
 
 /// Try to load user theme from config directory.
@@ -186,57 +226,50 @@ impl Theme {
         }
 
         // Fall back to built-in themes
-        match name {
-            "atom-one-light" => get_atom_one_light_theme(),
-            "ayu-light" => get_ayu_light_theme(),
-            "default" => get_default_theme(),
-            "dracula" => get_dracula_theme(),
-            "github-light" => get_github_light_theme(),
-            "material-lighter" => get_material_lighter_theme(),
-            "midnight" => get_midnight_theme(),
-            "monokai" => get_monokai_theme(),
-            "nord" => get_nord_theme(),
-            "onedark" => get_onedark_theme(),
-            "solarized-dark" => get_solarized_dark_theme(),
-            "solarized-light" => get_solarized_light_theme(),
-            _ => get_default_theme(),
-        }
+        get_builtin_theme(name).unwrap_or_else(get_default_theme)
     }
 
-    /// Get list of all available themes.
+    /// Get list of all available built-in themes.
     pub fn all_themes() -> Vec<&'static Theme> {
-        vec![
-            get_atom_one_light_theme(),
-            get_ayu_light_theme(),
-            get_default_theme(),
-            get_dracula_theme(),
-            get_github_light_theme(),
-            get_material_lighter_theme(),
-            get_midnight_theme(),
-            get_monokai_theme(),
-            get_nord_theme(),
-            get_onedark_theme(),
-            get_solarized_dark_theme(),
-            get_solarized_light_theme(),
-        ]
+        BUILTIN_THEMES
+            .iter()
+            .map(|entry| {
+                entry
+                    .storage
+                    .get_or_init(|| load_theme_from_toml(entry.content, entry.name))
+            })
+            .collect()
     }
 
-    /// Get list of all theme names.
-    pub fn all_theme_names() -> &'static [&'static str] {
-        &[
-            "atom-one-light",
-            "ayu-light",
-            "default",
-            "dracula",
-            "github-light",
-            "material-lighter",
-            "midnight",
-            "monokai",
-            "nord",
-            "onedark",
-            "solarized-dark",
-            "solarized-light",
-        ]
+    /// Get list of all theme names (built-in + user themes).
+    /// Returns owned Vec since user themes are discovered at runtime.
+    pub fn all_theme_names() -> Vec<String> {
+        let mut names: Vec<String> = BUILTIN_THEMES.iter().map(|e| e.name.to_string()).collect();
+
+        // Add user themes from config directory
+        if let Some(themes_dir) = get_themes_dir() {
+            if let Ok(entries) = std::fs::read_dir(themes_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().is_some_and(|ext| ext == "toml") {
+                        if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
+                            // Avoid duplicates (user theme would override built-in)
+                            if !names.iter().any(|n| n == name) {
+                                names.push(name.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        names.sort();
+        names
+    }
+
+    /// Get list of built-in theme names only.
+    pub fn builtin_theme_names() -> Vec<&'static str> {
+        BUILTIN_THEMES.iter().map(|e| e.name).collect()
     }
 }
 

@@ -385,6 +385,10 @@ pub enum PendingAction {
     QuitApplication,
     /// Switch to another session
     SwitchSession,
+    /// Preferences submenu
+    PreferencesMenu,
+    /// Select theme from list
+    SelectTheme,
     /// File search in file manager
     FileSearch { panel_index: usize },
     /// Content search in file manager

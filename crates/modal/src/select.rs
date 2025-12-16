@@ -43,6 +43,13 @@ impl SelectModal {
         }
     }
 
+    /// Set initial cursor position.
+    pub fn set_cursor(&mut self, index: usize) {
+        if index < self.items.len() {
+            self.cursor = index;
+        }
+    }
+
     /// Calculate dynamic modal width
     fn calculate_modal_width(&self, screen_width: u16) -> u16 {
         let title_width = self.title.len() as u16 + 2;

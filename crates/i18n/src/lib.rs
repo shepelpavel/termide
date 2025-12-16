@@ -212,6 +212,12 @@ pub trait Translation: Send + Sync {
     fn menu_navigate_hint(&self) -> &str;
     fn menu_open_hint(&self) -> &str;
 
+    // Preferences submenu
+    fn preferences_themes(&self) -> &str;
+    fn preferences_edit(&self) -> &str;
+    fn theme_select_title(&self) -> &str;
+    fn theme_changed(&self, name: &str) -> String;
+
     // Sessions
     fn sessions_title(&self) -> &str;
     fn sessions_current(&self) -> &str;

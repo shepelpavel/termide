@@ -115,7 +115,9 @@ impl App {
             | PendingAction::NextPanel
             | PendingAction::PrevPanel
             | PendingAction::QuitApplication
-            | PendingAction::SwitchSession => {
+            | PendingAction::SwitchSession
+            | PendingAction::PreferencesMenu
+            | PendingAction::SelectTheme => {
                 // These actions don't require panel_index update
             }
         }

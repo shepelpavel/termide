@@ -71,9 +71,18 @@ impl App {
                     self.state.close_menu();
                 }
                 5 => {
-                    // Preferences - open config file in editor
+                    // Preferences - show submenu modal
                     self.state.close_menu();
-                    self.open_config_in_editor()?;
+                    let t = i18n::t();
+                    let items = vec![
+                        t.preferences_themes().to_string(), // 0: Themes
+                        t.preferences_edit().to_string(),   // 1: Edit preferences
+                    ];
+                    let modal = termide_modal::SelectModal::single(t.menu_preferences(), "", items);
+                    self.state.set_pending_action(
+                        PendingAction::PreferencesMenu,
+                        ActiveModal::Select(Box::new(modal)),
+                    );
                 }
                 6 => {
                     // Help - show help
