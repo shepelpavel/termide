@@ -37,6 +37,10 @@ impl App {
                 self.event_open_file(path)?;
             }
 
+            PanelEvent::ExecuteFile(path) => {
+                self.event_execute_file(path)?;
+            }
+
             PanelEvent::ClosePanel => {
                 // Request close of current panel (with confirmation if needed)
                 self.handle_close_panel_request(0)?;
@@ -209,6 +213,48 @@ impl App {
                 let error_msg = t.status_error_open_file(filename, &e.to_string());
                 logger::error(format!("Error opening '{}': {}", filename, e));
                 self.state.set_error(error_msg);
+            }
+        }
+        Ok(())
+    }
+
+    /// Handle ExecuteFile event - run executable in a new terminal
+    fn event_execute_file(&mut self, file_path: PathBuf) -> Result<()> {
+        use termide_panel_terminal::Terminal;
+
+        self.close_welcome_panels();
+
+        let filename = file_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("?");
+
+        // Working directory = directory containing the file
+        let working_dir = file_path.parent().map(|p| p.to_path_buf());
+
+        // Command to execute
+        let command = file_path.to_string_lossy().to_string();
+
+        let width = self.state.terminal.width;
+        let height = self.state.terminal.height;
+        let term_height = height.saturating_sub(3);
+        let term_width = width.saturating_sub(2);
+
+        match Terminal::new_with_cwd(term_height, term_width, working_dir) {
+            Ok(mut terminal) => {
+                // Send command to execute the file
+                let _ = terminal.send_command(&command);
+                self.add_panel(Box::new(terminal));
+                self.auto_save_session();
+                logger::info(format!("Executing '{}' in terminal", filename));
+            }
+            Err(e) => {
+                logger::error(format!(
+                    "Failed to create terminal for '{}': {}",
+                    filename, e
+                ));
+                self.state
+                    .set_error(format!("Failed to run {}: {}", filename, e));
             }
         }
         Ok(())

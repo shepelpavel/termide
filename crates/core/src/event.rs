@@ -73,6 +73,9 @@ pub enum PanelEvent {
     /// Open a file in the editor
     OpenFile(PathBuf),
 
+    /// Execute file in a new terminal
+    ExecuteFile(PathBuf),
+
     /// Save file to disk
     SaveFile(PathBuf),
 

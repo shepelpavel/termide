@@ -450,9 +450,15 @@ impl FileManager {
                 self.current_path.push(&entry.name);
                 let _ = self.load_directory();
             } else {
-                // This is a file - emit event to open in editor
+                // This is a file
                 let file_path = self.current_path.join(&entry.name);
-                return Some(PanelEvent::OpenFile(file_path));
+                if entry.is_executable {
+                    // Executable file - run in terminal
+                    return Some(PanelEvent::ExecuteFile(file_path));
+                } else {
+                    // Regular file - open in editor
+                    return Some(PanelEvent::OpenFile(file_path));
+                }
             }
         }
         None

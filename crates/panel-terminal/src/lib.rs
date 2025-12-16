@@ -480,6 +480,13 @@ impl Terminal {
         Ok(())
     }
 
+    /// Send a command to the terminal and execute it (adds Enter)
+    pub fn send_command(&mut self, command: &str) -> Result<()> {
+        self.send_input(command.as_bytes())?;
+        self.send_input(b"\r")?;
+        Ok(())
+    }
+
     /// Get selected text
     fn get_selected_text(&self) -> String {
         let screen = self.screen.read().expect("Terminal screen lock poisoned");
