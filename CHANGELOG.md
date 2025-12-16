@@ -5,6 +5,25 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2025-12-16
+
+### Added
+- File search modal (Ctrl+Shift+P) with async glob pattern matching
+- Content search modal (Ctrl+Shift+F) with regex support for searching text in files
+- Theme selection UI with nested dropdown menu in Preferences
+  - Color preview for each theme showing bg/fg and accent colors
+  - Immediate theme application and config persistence
+- Theme refactoring: `all_theme_names()` and `get_by_name()` API for theme system
+
+### Fixed
+- Syntax highlighting fallback to theme foreground color for light themes
+- Session modal: current session now highlighted with accent color and selectable
+- Session modal and file search UX improvements
+
+### Documentation
+- Added file search (Ctrl+Shift+P) and content search (Ctrl+Shift+F) shortcuts
+- Updated theme documentation with new menu-based selection method
+
 ## [0.5.4] - 2025-12-15
 
 ### Added
