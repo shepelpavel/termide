@@ -772,23 +772,43 @@ impl Translation for RuntimeTranslation {
     }
 
     fn time_minutes_ago(&self, count: usize) -> String {
-        self.format("time_minutes_ago", &[("count", &count.to_string())])
+        let plural = self.pluralize(count, "minute");
+        self.format(
+            "time_minutes_ago",
+            &[("count", &count.to_string()), ("plural", plural)],
+        )
     }
 
     fn time_hours_ago(&self, count: usize) -> String {
-        self.format("time_hours_ago", &[("count", &count.to_string())])
+        let plural = self.pluralize(count, "hour");
+        self.format(
+            "time_hours_ago",
+            &[("count", &count.to_string()), ("plural", plural)],
+        )
     }
 
     fn time_days_ago(&self, count: usize) -> String {
-        self.format("time_days_ago", &[("count", &count.to_string())])
+        let plural = self.pluralize(count, "day");
+        self.format(
+            "time_days_ago",
+            &[("count", &count.to_string()), ("plural", plural)],
+        )
     }
 
     fn time_weeks_ago(&self, count: usize) -> String {
-        self.format("time_weeks_ago", &[("count", &count.to_string())])
+        let plural = self.pluralize(count, "week");
+        self.format(
+            "time_weeks_ago",
+            &[("count", &count.to_string()), ("plural", plural)],
+        )
     }
 
     fn time_months_ago(&self, count: usize) -> String {
-        self.format("time_months_ago", &[("count", &count.to_string())])
+        let plural = self.pluralize(count, "month");
+        self.format(
+            "time_months_ago",
+            &[("count", &count.to_string()), ("plural", plural)],
+        )
     }
 
     fn status_dir(&self) -> &str {
