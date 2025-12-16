@@ -843,47 +843,36 @@ impl Modal for ContentSearchModal {
         mouse: MouseEvent,
         _modal_area: Rect,
     ) -> Result<Option<ModalResult<Self::Result>>> {
+        use crate::{check_mouse_click_with_item_height, MouseClickResult};
+
         // Only handle left button press
         if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
             return Ok(None);
         }
 
-        // Check if click is outside modal - close it
-        if let Some(modal_area) = self.last_modal_area {
-            if mouse.column < modal_area.x
-                || mouse.column >= modal_area.x + modal_area.width
-                || mouse.row < modal_area.y
-                || mouse.row >= modal_area.y + modal_area.height
-            {
-                return Ok(Some(ModalResult::Cancelled));
+        // Content search items are 4 lines each
+        const LINES_PER_ITEM: usize = 4;
+
+        match check_mouse_click_with_item_height(
+            mouse.column,
+            mouse.row,
+            self.last_modal_area,
+            self.last_list_area,
+            self.scroll_offset,
+            LINES_PER_ITEM,
+        ) {
+            MouseClickResult::OutsideModal => Ok(Some(ModalResult::Cancelled)),
+            MouseClickResult::OutsideList => Ok(None),
+            MouseClickResult::OnListItem(clicked_index) => {
+                if clicked_index < self.results.len() {
+                    self.cursor = clicked_index;
+                    // Return selected item on click
+                    if let Some(result) = self.get_selected_result() {
+                        return Ok(Some(ModalResult::Confirmed(result)));
+                    }
+                }
+                Ok(None)
             }
         }
-
-        let Some(list_area) = self.last_list_area else {
-            return Ok(None);
-        };
-
-        // Check if click is within list area
-        if mouse.row < list_area.y
-            || mouse.row >= list_area.y + list_area.height
-            || mouse.column < list_area.x
-            || mouse.column >= list_area.x + list_area.width
-        {
-            return Ok(None);
-        }
-
-        // Calculate which item was clicked (4 lines per item)
-        let relative_row = (mouse.row - list_area.y) as usize;
-        let clicked_index = self.scroll_offset + relative_row / 4;
-
-        if clicked_index < self.results.len() {
-            self.cursor = clicked_index;
-            // Return selected item on click
-            if let Some(result) = self.get_selected_result() {
-                return Ok(Some(ModalResult::Confirmed(result)));
-            }
-        }
-
-        Ok(None)
     }
 }

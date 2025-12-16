@@ -569,47 +569,32 @@ impl Modal for FileSearchModal {
         mouse: MouseEvent,
         _modal_area: Rect,
     ) -> Result<Option<ModalResult<Self::Result>>> {
+        use crate::{check_mouse_click, MouseClickResult};
+
         // Only handle left button press
         if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
             return Ok(None);
         }
 
-        // Check if click is outside modal - close it
-        if let Some(modal_area) = self.last_modal_area {
-            if mouse.column < modal_area.x
-                || mouse.column >= modal_area.x + modal_area.width
-                || mouse.row < modal_area.y
-                || mouse.row >= modal_area.y + modal_area.height
-            {
-                return Ok(Some(ModalResult::Cancelled));
+        match check_mouse_click(
+            mouse.column,
+            mouse.row,
+            self.last_modal_area,
+            self.last_list_area,
+            self.scroll_offset,
+        ) {
+            MouseClickResult::OutsideModal => Ok(Some(ModalResult::Cancelled)),
+            MouseClickResult::OutsideList => Ok(None),
+            MouseClickResult::OnListItem(clicked_index) => {
+                if clicked_index < self.results.len() {
+                    self.cursor = clicked_index;
+                    // Single click to select and confirm
+                    if let Some(path) = self.get_selected_path() {
+                        return Ok(Some(ModalResult::Confirmed(path)));
+                    }
+                }
+                Ok(None)
             }
         }
-
-        let Some(list_area) = self.last_list_area else {
-            return Ok(None);
-        };
-
-        // Check if click is within list area
-        if mouse.row < list_area.y
-            || mouse.row >= list_area.y + list_area.height
-            || mouse.column < list_area.x
-            || mouse.column >= list_area.x + list_area.width
-        {
-            return Ok(None);
-        }
-
-        // Calculate which item was clicked
-        let relative_row = (mouse.row - list_area.y) as usize;
-        let clicked_index = self.scroll_offset + relative_row;
-
-        if clicked_index < self.results.len() {
-            self.cursor = clicked_index;
-            // Double click or single click to select
-            if let Some(path) = self.get_selected_path() {
-                return Ok(Some(ModalResult::Confirmed(path)));
-            }
-        }
-
-        Ok(None)
     }
 }

@@ -173,6 +173,7 @@ impl Modal for SelectModal {
         mouse: crossterm::event::MouseEvent,
         _modal_area: Rect,
     ) -> Result<Option<ModalResult<Self::Result>>> {
+        use crate::{check_mouse_click, MouseClickResult};
         use crossterm::event::MouseEventKind;
 
         // Only handle left button press
@@ -180,29 +181,23 @@ impl Modal for SelectModal {
             return Ok(None);
         }
 
-        // Check if we have stored list area
-        let Some(list_area) = self.last_list_area else {
-            return Ok(None);
-        };
-
-        // Check if click is within list area
-        if mouse.row < list_area.y
-            || mouse.row >= list_area.y + list_area.height
-            || mouse.column < list_area.x
-            || mouse.column >= list_area.x + list_area.width
-        {
-            return Ok(None);
-        }
-
-        // Calculate which item was clicked
-        let clicked_item = (mouse.row - list_area.y) as usize;
-
-        if clicked_item < self.items.len() {
-            // Item clicked - select and confirm immediately
-            self.cursor = clicked_item;
-            Ok(Some(ModalResult::Confirmed(vec![self.cursor])))
-        } else {
-            Ok(None)
+        match check_mouse_click(
+            mouse.column,
+            mouse.row,
+            None, // No modal area check
+            self.last_list_area,
+            0, // No scroll offset in simple select
+        ) {
+            MouseClickResult::OutsideModal | MouseClickResult::OutsideList => Ok(None),
+            MouseClickResult::OnListItem(clicked_index) => {
+                if clicked_index < self.items.len() {
+                    // Item clicked - select and confirm immediately
+                    self.cursor = clicked_index;
+                    Ok(Some(ModalResult::Confirmed(vec![self.cursor])))
+                } else {
+                    Ok(None)
+                }
+            }
         }
     }
 }

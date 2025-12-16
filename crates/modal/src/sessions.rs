@@ -256,40 +256,39 @@ impl Modal for SessionsModal {
         mouse: MouseEvent,
         _modal_area: Rect,
     ) -> Result<Option<ModalResult<Self::Result>>> {
+        use crate::{check_mouse_click_with_item_height, MouseClickResult};
+
         // Only handle left button press
         if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
             return Ok(None);
         }
 
-        let Some(list_area) = self.last_list_area else {
-            return Ok(None);
-        };
+        // Sessions items are 2 lines each
+        const LINES_PER_ITEM: usize = 2;
 
-        // Check if click is within list area
-        if mouse.row < list_area.y
-            || mouse.row >= list_area.y + list_area.height
-            || mouse.column < list_area.x
-            || mouse.column >= list_area.x + list_area.width
-        {
-            return Ok(None);
-        }
+        match check_mouse_click_with_item_height(
+            mouse.column,
+            mouse.row,
+            None, // No modal area check for sessions modal
+            self.last_list_area,
+            self.scroll_offset,
+            LINES_PER_ITEM,
+        ) {
+            MouseClickResult::OutsideModal | MouseClickResult::OutsideList => Ok(None),
+            MouseClickResult::OnListItem(clicked_index) => {
+                if clicked_index < self.items.len() {
+                    let item = &self.items[clicked_index];
+                    self.cursor = clicked_index;
 
-        // Calculate which item was clicked (each item takes 2 lines)
-        let relative_row = (mouse.row - list_area.y) as usize;
-        let clicked_item_index = self.scroll_offset + (relative_row / 2);
-
-        if clicked_item_index < self.items.len() {
-            let item = &self.items[clicked_item_index];
-            self.cursor = clicked_item_index;
-
-            if item.is_current {
-                // Current session clicked - just close modal
-                return Ok(Some(ModalResult::Cancelled));
-            } else {
-                return Ok(Some(ModalResult::Confirmed(item.project_path.clone())));
+                    if item.is_current {
+                        // Current session clicked - just close modal
+                        return Ok(Some(ModalResult::Cancelled));
+                    } else {
+                        return Ok(Some(ModalResult::Confirmed(item.project_path.clone())));
+                    }
+                }
+                Ok(None)
             }
         }
-
-        Ok(None)
     }
 }

@@ -120,6 +120,87 @@ pub fn render_labeled_input(
     render_input_field(buf, input_x, area.y, input_width, text, is_focused, theme);
 }
 
+/// Result of checking mouse click position in a modal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MouseClickResult {
+    /// Click was outside the modal area (should close)
+    OutsideModal,
+    /// Click was outside the list area (ignore)
+    OutsideList,
+    /// Click was on a valid list item at the given index
+    OnListItem(usize),
+}
+
+/// Check mouse click position relative to modal and list areas.
+///
+/// This is a common pattern for search modals that display a list of results.
+/// Returns the appropriate action based on click position.
+///
+/// # Arguments
+/// * `mouse_col`, `mouse_row` - Mouse click coordinates
+/// * `modal_area` - Optional modal area for outside-click detection
+/// * `list_area` - Optional list area for item click detection
+/// * `scroll_offset` - Current scroll offset in the list
+/// * `lines_per_item` - Number of visual lines per list item (default 1)
+pub fn check_mouse_click(
+    mouse_col: u16,
+    mouse_row: u16,
+    modal_area: Option<Rect>,
+    list_area: Option<Rect>,
+    scroll_offset: usize,
+) -> MouseClickResult {
+    check_mouse_click_with_item_height(
+        mouse_col,
+        mouse_row,
+        modal_area,
+        list_area,
+        scroll_offset,
+        1,
+    )
+}
+
+/// Check mouse click with custom item height (lines per item).
+///
+/// Use this when list items span multiple lines.
+pub fn check_mouse_click_with_item_height(
+    mouse_col: u16,
+    mouse_row: u16,
+    modal_area: Option<Rect>,
+    list_area: Option<Rect>,
+    scroll_offset: usize,
+    lines_per_item: usize,
+) -> MouseClickResult {
+    // Check if click is outside modal - close it
+    if let Some(modal_area) = modal_area {
+        if mouse_col < modal_area.x
+            || mouse_col >= modal_area.x + modal_area.width
+            || mouse_row < modal_area.y
+            || mouse_row >= modal_area.y + modal_area.height
+        {
+            return MouseClickResult::OutsideModal;
+        }
+    }
+
+    let Some(list_area) = list_area else {
+        return MouseClickResult::OutsideList;
+    };
+
+    // Check if click is within list area
+    if mouse_row < list_area.y
+        || mouse_row >= list_area.y + list_area.height
+        || mouse_col < list_area.x
+        || mouse_col >= list_area.x + list_area.width
+    {
+        return MouseClickResult::OutsideList;
+    }
+
+    // Calculate which item was clicked
+    let relative_row = (mouse_row - list_area.y) as usize;
+    let clicked_index = scroll_offset + relative_row / lines_per_item.max(1);
+
+    MouseClickResult::OnListItem(clicked_index)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -162,5 +243,67 @@ mod tests {
         // x should account for container offset
         assert_eq!(result.x, 10 + 30); // container.x + margin
         assert_eq!(result.y, 5 + 1); // container.y + 1
+    }
+
+    #[test]
+    fn test_check_mouse_click_outside_modal() {
+        let modal_area = Some(Rect::new(10, 10, 50, 30));
+        let list_area = Some(Rect::new(12, 15, 46, 20));
+
+        // Click outside modal bounds
+        assert_eq!(
+            check_mouse_click(5, 5, modal_area, list_area, 0),
+            MouseClickResult::OutsideModal
+        );
+        assert_eq!(
+            check_mouse_click(70, 20, modal_area, list_area, 0),
+            MouseClickResult::OutsideModal
+        );
+    }
+
+    #[test]
+    fn test_check_mouse_click_outside_list() {
+        let modal_area = Some(Rect::new(10, 10, 50, 30));
+        let list_area = Some(Rect::new(12, 15, 46, 20));
+
+        // Click inside modal but outside list area
+        assert_eq!(
+            check_mouse_click(11, 11, modal_area, list_area, 0),
+            MouseClickResult::OutsideList
+        );
+    }
+
+    #[test]
+    fn test_check_mouse_click_on_list_item() {
+        let modal_area = Some(Rect::new(10, 10, 50, 30));
+        let list_area = Some(Rect::new(12, 15, 46, 20));
+
+        // Click on first item
+        assert_eq!(
+            check_mouse_click(20, 15, modal_area, list_area, 0),
+            MouseClickResult::OnListItem(0)
+        );
+
+        // Click on third item
+        assert_eq!(
+            check_mouse_click(20, 17, modal_area, list_area, 0),
+            MouseClickResult::OnListItem(2)
+        );
+
+        // Click with scroll offset
+        assert_eq!(
+            check_mouse_click(20, 15, modal_area, list_area, 5),
+            MouseClickResult::OnListItem(5)
+        );
+    }
+
+    #[test]
+    fn test_check_mouse_click_no_list_area() {
+        let modal_area = Some(Rect::new(10, 10, 50, 30));
+
+        assert_eq!(
+            check_mouse_click(20, 20, modal_area, None, 0),
+            MouseClickResult::OutsideList
+        );
     }
 }

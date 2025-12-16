@@ -364,120 +364,70 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_single_added_line() {
-        let diff = r#"
-@@ -3,0 +4 @@ some context
-+added line
-"#;
-        let hunks = parse_diff_hunks(diff).unwrap();
-        assert_eq!(hunks.len(), 1);
-        assert_eq!(hunks[0].old_start, 3);
-        assert_eq!(hunks[0].old_count, 0);
-        assert_eq!(hunks[0].new_start, 4);
-        assert_eq!(hunks[0].new_count, 1);
+    fn test_compute_line_statuses_from_textdiff_added() {
+        let original = "line1\nline2\nline3\n";
+        let current = "line1\nline2\nnew line\nline3\n";
+
+        let diff = similar::TextDiff::from_lines(original, current);
+        let (statuses, deleted_after) = compute_line_statuses_from_textdiff(&diff);
+
+        // Line at index 2 should be Added (0-indexed: "new line")
+        assert_eq!(statuses.get(&2), Some(&LineStatus::Added));
+        // No deletions
+        assert!(deleted_after.is_empty());
     }
 
     #[test]
-    fn test_parse_modified_line() {
-        let diff = r#"
-@@ -2 +2 @@ context
--old line
-+new line
-"#;
-        let hunks = parse_diff_hunks(diff).unwrap();
-        assert_eq!(hunks.len(), 1);
-        assert_eq!(hunks[0].old_start, 2);
-        assert_eq!(hunks[0].old_count, 1);
-        assert_eq!(hunks[0].new_start, 2);
-        assert_eq!(hunks[0].new_count, 1);
+    fn test_compute_line_statuses_from_textdiff_modified() {
+        let original = "line1\noriginal line\nline3\n";
+        let current = "line1\nmodified line\nline3\n";
+
+        let diff = similar::TextDiff::from_lines(original, current);
+        let (statuses, deleted_after) = compute_line_statuses_from_textdiff(&diff);
+
+        // Line at index 1 should be Modified (0-indexed)
+        assert_eq!(statuses.get(&1), Some(&LineStatus::Modified));
+        assert!(deleted_after.is_empty());
     }
 
     #[test]
-    fn test_parse_deleted_lines() {
-        let diff = r#"
-@@ -5,2 +4,0 @@ context
--deleted line 1
--deleted line 2
-"#;
-        let hunks = parse_diff_hunks(diff).unwrap();
-        assert_eq!(hunks.len(), 1);
-        assert_eq!(hunks[0].old_start, 5);
-        assert_eq!(hunks[0].old_count, 2);
-        assert_eq!(hunks[0].new_start, 4);
-        assert_eq!(hunks[0].new_count, 0);
-    }
+    fn test_compute_line_statuses_from_textdiff_deleted() {
+        let original = "line1\ndeleted line\nline3\n";
+        let current = "line1\nline3\n";
 
-    // Tests for old compute_line_statuses API - disabled as we now use TextDiff
-    // These tests can be re-enabled when compute_line_statuses is updated
-    // to return the new (HashMap<LineStatus>, HashMap<deletion_count>) format
+        let diff = similar::TextDiff::from_lines(original, current);
+        let (statuses, deleted_after) = compute_line_statuses_from_textdiff(&diff);
 
-    #[test]
-    #[ignore]
-    fn test_compute_added_status() {
-        let hunks = vec![DiffHunk {
-            old_start: 3,
-            old_count: 0,
-            new_start: 4,
-            new_count: 2,
-        }];
-
-        let (statuses, _) = compute_line_statuses(hunks);
-        assert_eq!(statuses.get(&3), Some(&LineStatus::Added)); // 0-based line 3
-        assert_eq!(statuses.get(&4), Some(&LineStatus::Added)); // 0-based line 4
-        assert_eq!(statuses.get(&5), None); // No status
+        // Deletion marker should be after line 0 (where line1 is)
+        assert!(deleted_after.contains_key(&0));
+        assert_eq!(deleted_after.get(&0), Some(&1)); // 1 line deleted
     }
 
     #[test]
-    #[ignore]
-    fn test_compute_modified_status() {
-        let hunks = vec![DiffHunk {
-            old_start: 2,
-            old_count: 1,
-            new_start: 2,
-            new_count: 1,
-        }];
+    fn test_compute_line_statuses_from_textdiff_multiple_deletions() {
+        let original = "line1\ndeleted1\ndeleted2\ndeleted3\nline5\n";
+        let current = "line1\nline5\n";
 
-        let (statuses, _) = compute_line_statuses(hunks);
-        assert_eq!(statuses.get(&1), Some(&LineStatus::Modified)); // 0-based line 1
+        let diff = similar::TextDiff::from_lines(original, current);
+        let (statuses, deleted_after) = compute_line_statuses_from_textdiff(&diff);
+
+        // 3 lines deleted after line 0
+        assert!(deleted_after.contains_key(&0));
+        assert_eq!(deleted_after.get(&0), Some(&3));
+        assert!(statuses.is_empty()); // No modifications or additions
     }
 
     #[test]
-    #[ignore]
-    fn test_compute_deleted_status() {
-        let hunks = vec![DiffHunk {
-            old_start: 5,
-            old_count: 2,
-            new_start: 5,
-            new_count: 0,
-        }];
+    fn test_compute_line_statuses_from_textdiff_mixed_changes() {
+        let original = "line1\nold\nline3\n";
+        let current = "line1\nnew\nnew2\nline3\n";
 
-        let (statuses, _) = compute_line_statuses(hunks);
-        // Marker should be on line before deletion (0-based line 4)
-        assert_eq!(statuses.get(&4), Some(&LineStatus::DeletedAfter));
-    }
+        let diff = similar::TextDiff::from_lines(original, current);
+        let (statuses, deleted_after) = compute_line_statuses_from_textdiff(&diff);
 
-    #[test]
-    #[ignore]
-    fn test_multiple_hunks() {
-        let diff = r#"
-@@ -2 +2 @@
--old
-+new
-@@ -5,0 +6,2 @@
-+added1
-+added2
-@@ -10,3 +13,0 @@
--del1
--del2
--del3
-"#;
-        let hunks = parse_diff_hunks(diff).unwrap();
-        assert_eq!(hunks.len(), 3);
-
-        let (statuses, _) = compute_line_statuses(hunks);
-        assert_eq!(statuses.get(&1), Some(&LineStatus::Modified)); // Line 2 (0-based 1)
-        assert_eq!(statuses.get(&5), Some(&LineStatus::Added)); // Line 6 (0-based 5)
-        assert_eq!(statuses.get(&6), Some(&LineStatus::Added)); // Line 7 (0-based 6)
-        assert_eq!(statuses.get(&12), Some(&LineStatus::DeletedAfter)); // Line 13 (0-based 12)
+        // Line 1 modified (old -> new), line 2 added (new2)
+        assert_eq!(statuses.get(&1), Some(&LineStatus::Modified));
+        assert_eq!(statuses.get(&2), Some(&LineStatus::Added));
+        assert!(deleted_after.is_empty());
     }
 }
