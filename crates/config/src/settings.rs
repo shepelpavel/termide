@@ -70,6 +70,10 @@ pub struct FileManagerSettings {
     /// Minimum width to display extended columns (size, time)
     #[serde(default = "default_extended_view_width")]
     pub extended_view_width: usize,
+
+    /// Maximum file size in MB for content search (skip larger files)
+    #[serde(default = "default_content_search_max_file_size_mb")]
+    pub content_search_max_file_size_mb: u64,
 }
 
 /// Logging settings.
@@ -123,6 +127,10 @@ fn default_large_file_threshold_mb() -> u64 {
 
 fn default_extended_view_width() -> usize {
     defaults::EXTENDED_VIEW_WIDTH
+}
+
+fn default_content_search_max_file_size_mb() -> u64 {
+    defaults::CONTENT_SEARCH_MAX_FILE_SIZE_MB
 }
 
 fn default_min_level() -> String {
@@ -179,6 +187,7 @@ impl From<LegacyConfig> for Config {
             },
             file_manager: FileManagerSettings {
                 extended_view_width: legacy.fm_extended_view_width,
+                content_search_max_file_size_mb: defaults::CONTENT_SEARCH_MAX_FILE_SIZE_MB,
             },
             logging: LoggingSettings {
                 file_path: legacy.log_file_path,
@@ -216,6 +225,7 @@ impl Default for FileManagerSettings {
     fn default() -> Self {
         Self {
             extended_view_width: default_extended_view_width(),
+            content_search_max_file_size_mb: default_content_search_max_file_size_mb(),
         }
     }
 }

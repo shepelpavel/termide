@@ -387,6 +387,8 @@ pub enum PendingAction {
     SwitchSession,
     /// File search in file manager
     FileSearch { panel_index: usize },
+    /// Content search in file manager
+    ContentSearch { panel_index: usize },
 }
 
 #[cfg(test)]

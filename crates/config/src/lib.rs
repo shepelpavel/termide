@@ -25,6 +25,7 @@ pub mod defaults {
     pub const SHOW_GIT_DIFF: bool = true;
     pub const WORD_WRAP: bool = true;
     pub const LARGE_FILE_THRESHOLD_MB: u64 = 5;
+    pub const CONTENT_SEARCH_MAX_FILE_SIZE_MB: u64 = 1;
     pub const EXTENDED_VIEW_WIDTH: usize = 50;
     pub const MIN_LOG_LEVEL: &str = "info";
     pub const RESOURCE_MONITOR_INTERVAL: u64 = 1000;

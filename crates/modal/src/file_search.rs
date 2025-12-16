@@ -55,6 +55,7 @@ pub struct FileSearchModal {
     scroll_offset: usize,
     git_cache: Option<GitStatusCache>,
     last_list_area: Option<Rect>,
+    last_modal_area: Option<Rect>,
 
     // Async search state
     last_input_text: String,
@@ -91,6 +92,7 @@ impl FileSearchModal {
             scroll_offset: 0,
             git_cache,
             last_list_area: None,
+            last_modal_area: None,
             last_input_text: String::new(),
             last_input_time: None,
             search_receiver: None,
@@ -367,6 +369,7 @@ impl Modal for FileSearchModal {
         let modal_height = (2 + 3 + 1 + list_height).min(area.height - 2);
 
         let modal_area = centered_rect_with_size(modal_width, modal_height, area);
+        self.last_modal_area = Some(modal_area);
         Clear.render(modal_area, buf);
 
         // Create block with inverted colors
@@ -569,6 +572,17 @@ impl Modal for FileSearchModal {
         // Only handle left button press
         if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
             return Ok(None);
+        }
+
+        // Check if click is outside modal - close it
+        if let Some(modal_area) = self.last_modal_area {
+            if mouse.column < modal_area.x
+                || mouse.column >= modal_area.x + modal_area.width
+                || mouse.row < modal_area.y
+                || mouse.row >= modal_area.y + modal_area.height
+            {
+                return Ok(Some(ModalResult::Cancelled));
+            }
         }
 
         let Some(list_area) = self.last_list_area else {

@@ -23,7 +23,7 @@ use std::sync::mpsc;
 use termide_config::{constants, Config, FileManagerSettings};
 use termide_core::{CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel};
 use termide_git::{get_git_status_async, GitStatus, GitStatusAsyncResult, GitStatusCache};
-use termide_modal::{ActiveModal, ConfirmModal, FileSearchModal, InputModal};
+use termide_modal::{ActiveModal, ConfirmModal, ContentSearchModal, FileSearchModal, InputModal};
 use termide_state::{DirSizeResult, PendingAction};
 use termide_theme::Theme;
 use termide_ui::{clipboard, path_utils};
@@ -753,6 +753,21 @@ impl Panel for FileManager {
                     panel_index: 0, // will be updated in app.rs
                 };
                 self.modal_request = Some((action, ActiveModal::FileSearch(Box::new(modal))));
+            }
+            (KeyCode::Char('F'), KeyModifiers::CONTROL | KeyModifiers::SHIFT) => {
+                // Search in file contents - open ContentSearchModal
+                let t = termide_i18n::t();
+                let max_file_size =
+                    self.cached_config.content_search_max_file_size_mb * 1024 * 1024;
+                let modal = ContentSearchModal::new(
+                    t.content_search_title(),
+                    self.current_path.clone(),
+                    max_file_size,
+                );
+                let action = PendingAction::ContentSearch {
+                    panel_index: 0, // will be updated in app.rs
+                };
+                self.modal_request = Some((action, ActiveModal::ContentSearch(Box::new(modal))));
             }
             (KeyCode::Char('d'), _) | (KeyCode::Char('D'), _) | (KeyCode::F(7), _) => {
                 // Create new directory - open InputModal
