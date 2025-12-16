@@ -200,26 +200,6 @@ impl History {
             None
         }
     }
-
-    /// Check if undo is possible
-    #[allow(dead_code)]
-    pub fn can_undo(&self) -> bool {
-        !self.undo_stack.is_empty() || self.pending_action.is_some()
-    }
-
-    /// Check if redo is possible
-    #[allow(dead_code)]
-    pub fn can_redo(&self) -> bool {
-        !self.redo_stack.is_empty()
-    }
-
-    /// Clear history
-    #[allow(dead_code)]
-    pub fn clear(&mut self) {
-        self.undo_stack.clear();
-        self.redo_stack.clear();
-        self.pending_action = None;
-    }
 }
 
 impl Default for History {
@@ -244,8 +224,8 @@ mod tests {
         history.push(action);
         history.commit_pending();
 
-        assert!(history.can_undo());
-        assert!(!history.can_redo());
+        assert!(!history.undo_stack.is_empty());
+        assert!(history.redo_stack.is_empty());
 
         let undo_action = history.undo().unwrap();
         match undo_action {
@@ -256,8 +236,8 @@ mod tests {
             _ => panic!("Expected Delete action"),
         }
 
-        assert!(!history.can_undo());
-        assert!(history.can_redo());
+        assert!(history.undo_stack.is_empty());
+        assert!(!history.redo_stack.is_empty());
 
         let redo_action = history.redo().unwrap();
         match redo_action {

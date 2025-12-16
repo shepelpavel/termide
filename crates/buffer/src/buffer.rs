@@ -366,20 +366,10 @@ impl TextBuffer {
     }
 
     /// Append text to the end of buffer (for log viewer, no history tracking)
-    #[allow(dead_code)]
     pub fn append(&mut self, text: &str) {
         let len = self.rope.len_chars();
         self.rope.insert(len, text);
         // Don't mark as modified - this is for internal use (log viewer)
-    }
-
-    /// Append line with newline (for log viewer)
-    #[allow(dead_code)]
-    pub fn append_line(&mut self, line: &str) {
-        self.append(line);
-        if !line.ends_with('\n') {
-            self.append("\n");
-        }
     }
 
     /// Undo last action
@@ -429,18 +419,6 @@ impl TextBuffer {
                 Ok(cursor)
             }
         }
-    }
-
-    /// Check if undo is possible
-    #[allow(dead_code)]
-    pub fn can_undo(&self) -> bool {
-        self.history.can_undo()
-    }
-
-    /// Check if redo is possible
-    #[allow(dead_code)]
-    pub fn can_redo(&self) -> bool {
-        self.history.can_redo()
     }
 }
 

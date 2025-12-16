@@ -2,8 +2,6 @@
 //!
 //! Provides git status, diff information, and repository utilities.
 
-#![allow(dead_code)]
-
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;

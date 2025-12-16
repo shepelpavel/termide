@@ -131,12 +131,6 @@ impl Logger {
     fn get_entries(&self) -> Vec<LogEntry> {
         self.entries.iter().cloned().collect()
     }
-
-    /// Set minimum log level
-    #[allow(dead_code)]
-    fn set_min_level(&mut self, level: LogLevel) {
-        self.min_level = level;
-    }
 }
 
 /// Global logger instance that persists for the application lifetime.
@@ -162,17 +156,6 @@ fn get_logger() -> &'static Mutex<Logger> {
 /// * `min_level` - Minimum log level to record (Debug, Info, Warn, Error)
 pub fn init(file_path: PathBuf, max_entries: usize, min_level: LogLevel) {
     LOGGER.get_or_init(|| Mutex::new(Logger::new(file_path, max_entries, min_level)));
-}
-
-/// Set minimum log level dynamically
-///
-/// Updates the minimum log level filter.
-/// Logs below this level will be ignored.
-#[allow(dead_code)]
-pub fn set_min_level(level: LogLevel) {
-    if let Ok(mut logger) = get_logger().lock() {
-        logger.set_min_level(level);
-    }
 }
 
 /// Log a debug message

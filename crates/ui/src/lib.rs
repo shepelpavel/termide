@@ -316,12 +316,6 @@ impl Default for TextInput {
 /// This utility function is used by modal dialogs to center themselves on screen.
 /// It calculates horizontal and vertical margins and uses ratatui's Layout system
 /// to create a properly centered rectangle.
-pub fn centered_rect(width: u16, height: u16, r: Rect) -> Rect {
-    centered_rect_with_size(width, height, r)
-}
-
-/// Alias for centered_rect - backward compatibility.
-#[inline]
 pub fn centered_rect_with_size(width: u16, height: u16, r: Rect) -> Rect {
     // Calculate margins
     let horizontal_margin = r.width.saturating_sub(width) / 2;

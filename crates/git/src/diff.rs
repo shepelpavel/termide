@@ -1,7 +1,6 @@
 use anyhow::{Context, Result};
-use regex::Regex;
 use similar::TextDiff;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::mpsc;
@@ -82,15 +81,6 @@ pub enum LineStatus {
     Modified,
     /// Lines deleted after this line
     DeletedAfter,
-}
-
-/// Represents a single hunk from git diff output
-#[derive(Debug, Clone)]
-struct DiffHunk {
-    old_start: usize,
-    old_count: usize,
-    new_start: usize,
-    new_count: usize,
 }
 
 /// Cache for git diff results for a single file
@@ -289,71 +279,6 @@ impl GitDiffCache {
         self.deleted_after_lines = deleted_after;
         self.last_updated = std::time::Instant::now();
     }
-}
-
-/// Parse git diff hunks from unified diff format
-/// Format: @@ -<old_start>,<old_count> +<new_start>,<new_count> @@
-fn parse_diff_hunks(diff_text: &str) -> Result<Vec<DiffHunk>> {
-    let mut hunks = Vec::new();
-
-    // Regex to match hunk headers
-    // Example: "@@ -2 +2 @@" or "@@ -2,3 +2,5 @@"
-    let hunk_regex = Regex::new(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
-        .context("Failed to compile diff hunk regex")?;
-
-    for captures in hunk_regex.captures_iter(diff_text) {
-        let old_start: usize = captures[1].parse().context("Failed to parse old_start")?;
-        let old_count: usize = captures
-            .get(2)
-            .map(|m| m.as_str().parse().unwrap_or(1))
-            .unwrap_or(1);
-        let new_start: usize = captures[3].parse().context("Failed to parse new_start")?;
-        let new_count: usize = captures
-            .get(4)
-            .map(|m| m.as_str().parse().unwrap_or(1))
-            .unwrap_or(1);
-
-        hunks.push(DiffHunk {
-            old_start,
-            old_count,
-            new_start,
-            new_count,
-        });
-    }
-
-    Ok(hunks)
-}
-
-/// Compute line statuses from diff hunks
-fn compute_line_statuses(hunks: Vec<DiffHunk>) -> (HashMap<usize, LineStatus>, HashSet<usize>) {
-    let mut statuses = HashMap::new();
-    let mut deleted_after = HashSet::new();
-
-    for hunk in hunks {
-        if hunk.old_count == 0 && hunk.new_count > 0 {
-            // Lines added (not in old file)
-            // new_start is 1-based, convert to 0-based
-            let start = hunk.new_start.saturating_sub(1);
-            for i in 0..hunk.new_count {
-                statuses.insert(start + i, LineStatus::Added);
-            }
-        } else if hunk.old_count > 0 && hunk.new_count > 0 {
-            // Lines modified (changed from old file)
-            // Mark all new lines as modified
-            let start = hunk.new_start.saturating_sub(1);
-            for i in 0..hunk.new_count {
-                statuses.insert(start + i, LineStatus::Modified);
-            }
-        } else if hunk.old_count > 0 && hunk.new_count == 0 {
-            // Lines deleted
-            // Show deletion marker on the line before deletion point
-            // If deleting at start of file (old_start == 1), mark line 0
-            let marker_line = hunk.new_start.saturating_sub(1);
-            deleted_after.insert(marker_line);
-        }
-    }
-
-    (statuses, deleted_after)
 }
 
 /// Compute line statuses from TextDiff (similar crate)
