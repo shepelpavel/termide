@@ -64,8 +64,9 @@ pub fn calculate_wrap_point(
     let is_boundary = |g: &str| g.chars().next().is_none_or(|c| !c.is_alphanumeric());
 
     // If the grapheme at ideal_end is a word boundary, we can break there
+    // Note: ideal_end points to a grapheme that doesn't fit, so don't include it
     if ideal_end < line_len && is_boundary(graphemes[ideal_end]) {
-        return ideal_end + 1;
+        return ideal_end;
     }
 
     // Search backwards from ideal_end for a word boundary
