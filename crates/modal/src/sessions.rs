@@ -54,6 +54,13 @@ impl SessionsModal {
         }
     }
 
+    /// Set initial cursor position (for selecting current session)
+    pub fn with_cursor(mut self, index: usize) -> Self {
+        self.cursor = index.min(self.items.len().saturating_sub(1));
+        self.adjust_scroll();
+        self
+    }
+
     /// Calculate dynamic modal width
     fn calculate_modal_width(&self, screen_width: u16) -> u16 {
         let title_width = self.title.len() as u16 + 4;

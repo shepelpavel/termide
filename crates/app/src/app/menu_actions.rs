@@ -134,7 +134,9 @@ impl App {
 
         // Only show modal if there are other sessions
         if items.iter().any(|item| !item.is_current) {
-            let modal = SessionsModal::new(t.sessions_title(), items);
+            // Find index of current session to position cursor there
+            let current_idx = items.iter().position(|item| item.is_current).unwrap_or(0);
+            let modal = SessionsModal::new(t.sessions_title(), items).with_cursor(current_idx);
             self.state.set_pending_action(
                 PendingAction::SwitchSession,
                 ActiveModal::Sessions(Box::new(modal)),
