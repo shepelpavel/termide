@@ -39,7 +39,7 @@ impl LayoutManager {
         let num_groups_after_split = self.panel_groups.len() + 1;
         let new_width_if_split = available_width / num_groups_after_split as u16;
 
-        if new_width_if_split < config.general.min_panel_width {
+        if new_width_if_split < config.general.auto_stack_threshold {
             // Auto-stacking: add to current group vertically
             if let Some(active_group) = self.panel_groups.get_mut(active_group_idx) {
                 active_group.add_panel(panel);
@@ -536,6 +536,66 @@ impl LayoutManager {
     /// Get number of groups.
     pub fn group_count(&self) -> usize {
         self.panel_groups.len()
+    }
+
+    /// Find divider at given position (for drag resize).
+    ///
+    /// Returns divider index if position is within grab zone (±1 from divider).
+    /// Divider N is between groups N and N+1.
+    pub fn find_divider_at_position(&self, x: u16, y: u16, terminal_height: u16) -> Option<usize> {
+        // Skip menu row (y == 0) and status bar (y == terminal_height - 1)
+        if y == 0 || y >= terminal_height.saturating_sub(1) {
+            return None;
+        }
+
+        // Need at least 2 groups for a divider
+        if self.panel_groups.len() < 2 {
+            return None;
+        }
+
+        let mut current_x: u16 = 0;
+        for (idx, group) in self.panel_groups.iter().enumerate() {
+            current_x += group.width.unwrap_or(0);
+
+            // Check if this is not the last group (divider exists after it)
+            if idx < self.panel_groups.len() - 1 {
+                // Grab zone: [current_x - 1, current_x + 1]
+                if x >= current_x.saturating_sub(1) && x <= current_x.saturating_add(1) {
+                    return Some(idx);
+                }
+            }
+        }
+        None
+    }
+
+    /// Get X positions of all dividers.
+    ///
+    /// Returns Vec of (divider_index, x_position).
+    pub fn get_divider_positions(&self) -> Vec<(usize, u16)> {
+        let mut positions = Vec::new();
+        let mut current_x: u16 = 0;
+
+        for (idx, group) in self.panel_groups.iter().enumerate() {
+            current_x += group.width.unwrap_or(0);
+
+            // Divider exists after each group except the last
+            if idx < self.panel_groups.len() - 1 {
+                positions.push((idx, current_x));
+            }
+        }
+        positions
+    }
+
+    /// Resize two adjacent groups.
+    ///
+    /// `left_idx` is the index of the left group (divider is between left_idx and left_idx+1).
+    pub fn resize_groups(&mut self, left_idx: usize, new_left_width: u16, new_right_width: u16) {
+        if left_idx + 1 >= self.panel_groups.len() {
+            return;
+        }
+
+        self.panel_groups[left_idx].width = Some(new_left_width);
+        self.panel_groups[left_idx + 1].width = Some(new_right_width);
     }
 }
 

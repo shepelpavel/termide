@@ -11,6 +11,21 @@ use termide_ui_render::{get_menu_item_x_position, get_preferences_items, PREFERE
 impl App {
     /// Handle mouse event
     pub(super) fn handle_mouse_event(&mut self, mouse: crossterm::event::MouseEvent) -> Result<()> {
+        // Handle divider drag first (highest priority for smooth resize)
+        if self.state.ui.drag.is_dragging() {
+            match mouse.kind {
+                MouseEventKind::Drag(MouseButton::Left) => {
+                    self.handle_divider_drag(mouse.column)?;
+                    return Ok(());
+                }
+                MouseEventKind::Up(MouseButton::Left) => {
+                    self.handle_divider_drag_end()?;
+                    return Ok(());
+                }
+                _ => {}
+            }
+        }
+
         // Scroll events should reach panels even when modal is active
         // This allows scrolling terminal history while input modal is open
         if matches!(
@@ -51,6 +66,13 @@ impl App {
         if self.state.ui.menu_open && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
         {
             self.state.close_menu();
+            return Ok(());
+        }
+
+        // Check click on divider for resize (before panel click handling)
+        if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
+            && self.handle_divider_click(mouse.column, mouse.row)?
+        {
             return Ok(());
         }
 
@@ -345,6 +367,80 @@ impl App {
         // Click outside dropdowns - close all menus
         self.state.close_menu();
         Ok(true)
+    }
+
+    /// Handle click on divider to start resize drag
+    /// Returns true if click was on a divider
+    fn handle_divider_click(&mut self, x: u16, y: u16) -> Result<bool> {
+        let terminal_height = self.state.terminal.height;
+
+        if let Some(divider_idx) =
+            self.layout_manager
+                .find_divider_at_position(x, y, terminal_height)
+        {
+            // Get current widths of adjacent groups
+            let left_width = self
+                .layout_manager
+                .panel_groups
+                .get(divider_idx)
+                .and_then(|g| g.width)
+                .unwrap_or(0);
+            let right_width = self
+                .layout_manager
+                .panel_groups
+                .get(divider_idx + 1)
+                .and_then(|g| g.width)
+                .unwrap_or(0);
+
+            // Start drag
+            self.state
+                .ui
+                .drag
+                .start(divider_idx, x, left_width, right_width);
+            self.state.needs_redraw = true;
+
+            return Ok(true);
+        }
+
+        Ok(false)
+    }
+
+    /// Handle divider drag (update widths)
+    fn handle_divider_drag(&mut self, current_x: u16) -> Result<()> {
+        let drag = &self.state.ui.drag;
+        let Some(divider_idx) = drag.active_divider else {
+            return Ok(());
+        };
+
+        let delta = current_x as i32 - drag.start_x as i32;
+        let (start_left, start_right) = drag.start_widths;
+
+        // Calculate new widths with min_panel_width constraint
+        let min_width = self.state.config.general.min_panel_width;
+        let total_width = start_left + start_right;
+
+        let new_left = (start_left as i32 + delta)
+            .max(min_width as i32)
+            .min((total_width - min_width) as i32) as u16;
+        let new_right = total_width - new_left;
+
+        // Apply new widths
+        self.layout_manager
+            .resize_groups(divider_idx, new_left, new_right);
+        self.state.needs_redraw = true;
+
+        Ok(())
+    }
+
+    /// Handle divider drag end (save session)
+    fn handle_divider_drag_end(&mut self) -> Result<()> {
+        self.state.ui.drag.end();
+        self.state.needs_redraw = true;
+
+        // Save session with new widths (debounce: only on mouse up)
+        self.auto_save_session();
+
+        Ok(())
     }
 
     /// Calculate panel rectangles for mouse hit testing

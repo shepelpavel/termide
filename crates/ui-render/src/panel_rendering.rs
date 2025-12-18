@@ -14,6 +14,48 @@ use termide_config::Config;
 use termide_core::{Panel, PanelConfig, RenderContext, ThemeColors};
 use termide_theme::Theme;
 
+/// Render active divider during drag operation.
+///
+/// Only draws when a divider is being actively dragged.
+/// Replaces both adjacent panel borders (right border of left panel
+/// and left border of right panel) with double-line style `║`.
+pub fn render_dividers(
+    buf: &mut Buffer,
+    divider_positions: &[(usize, u16)], // (group_idx, x_position)
+    active_divider: Option<usize>,
+    terminal_height: u16,
+    theme: &Theme,
+) {
+    // Only draw when actively dragging
+    let Some(active_idx) = active_divider else {
+        return;
+    };
+
+    // Draw from below menu (y=1) to above status bar (y=height-2)
+    let start_y = 1u16;
+    let end_y = terminal_height.saturating_sub(1);
+    let style = Style::default().fg(theme.accented_fg);
+
+    // Find and draw only the active divider
+    for &(group_idx, x) in divider_positions {
+        if group_idx == active_idx {
+            // Draw at both border positions:
+            // x-1 = right border of left panel
+            // x = left border of right panel
+            let positions = [x.saturating_sub(1), x];
+            for y in start_y..end_y {
+                for &pos in &positions {
+                    if let Some(cell) = buf.cell_mut((pos, y)) {
+                        cell.set_symbol("║");
+                        cell.set_style(style);
+                    }
+                }
+            }
+            break;
+        }
+    }
+}
+
 /// Parameters for rendering expanded panels.
 #[derive(Clone, Copy)]
 pub struct ExpandedPanelParams {

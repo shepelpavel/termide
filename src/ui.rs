@@ -14,9 +14,9 @@ use termide_panel_file_manager::FileManager;
 use termide_panel_terminal::Terminal;
 use termide_theme::Theme;
 use termide_ui_render::{
-    get_menu_item_x_position, get_preferences_items, render_collapsed_panel, render_expanded_panel,
-    render_menu, Dropdown, ExpandedPanelParams, MenuRenderParams, ThemeDropdown,
-    PREFERENCES_MENU_INDEX,
+    get_menu_item_x_position, get_preferences_items, render_collapsed_panel, render_dividers,
+    render_expanded_panel, render_menu, Dropdown, ExpandedPanelParams, MenuRenderParams,
+    ThemeDropdown, PREFERENCES_MENU_INDEX,
 };
 
 use termide_modal::Modal;
@@ -173,6 +173,16 @@ fn render_main_area_with_accordion(
 
             render_panel_group(frame, group_area, state, group, group_idx, is_active_group);
         }
+
+        // Render dividers between groups
+        let divider_positions = layout_manager.get_divider_positions();
+        render_dividers(
+            frame.buffer_mut(),
+            &divider_positions,
+            state.ui.drag.active_divider,
+            state.terminal.height,
+            state.theme,
+        );
     }
 }
 

@@ -97,6 +97,36 @@ impl LayoutInfo {
     }
 }
 
+/// State for divider drag resize operation
+#[derive(Debug, Default, Clone)]
+pub struct DragState {
+    /// Index of divider being dragged (between groups idx and idx+1)
+    pub active_divider: Option<usize>,
+    /// Initial X position when drag started
+    pub start_x: u16,
+    /// Initial widths of left and right groups
+    pub start_widths: (u16, u16),
+}
+
+impl DragState {
+    /// Start dragging a divider
+    pub fn start(&mut self, divider_idx: usize, x: u16, left_width: u16, right_width: u16) {
+        self.active_divider = Some(divider_idx);
+        self.start_x = x;
+        self.start_widths = (left_width, right_width);
+    }
+
+    /// End dragging
+    pub fn end(&mut self) {
+        self.active_divider = None;
+    }
+
+    /// Check if currently dragging
+    pub fn is_dragging(&self) -> bool {
+        self.active_divider.is_some()
+    }
+}
+
 /// UI components state
 #[derive(Debug, Default)]
 pub struct UiState {
@@ -118,6 +148,8 @@ pub struct UiState {
     pub selected_nested_item: usize,
     /// Original theme name before preview (for restoring on cancel)
     pub theme_preview_original: Option<String>,
+    /// Divider drag state for panel resize
+    pub drag: DragState,
 }
 
 /// Terminal state (dimensions)
