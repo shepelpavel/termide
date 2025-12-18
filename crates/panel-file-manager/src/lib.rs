@@ -21,7 +21,10 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 
 use termide_config::{constants, Config, FileManagerSettings};
-use termide_core::{CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel};
+use termide_core::{
+    util::is_binary_file, CommandResult, Panel, PanelCommand, PanelEvent, RenderContext,
+    SessionPanel,
+};
 use termide_git::{get_git_status_async, GitStatus, GitStatusAsyncResult, GitStatusCache};
 use termide_modal::{ActiveModal, ConfirmModal, ContentSearchModal, FileSearchModal, InputModal};
 use termide_state::{DirSizeResult, PendingAction};
@@ -452,13 +455,29 @@ impl FileManager {
             } else {
                 // This is a file
                 let file_path = self.current_path.join(&entry.name);
-                if entry.is_executable {
-                    // Executable file - run in terminal
-                    return Some(PanelEvent::ExecuteFile(file_path));
-                } else {
-                    // Regular file - open in editor
-                    return Some(PanelEvent::OpenFile(file_path));
+
+                // 1. Raster images → ImagePanel or xdg-open
+                if is_raster_image(&entry.name) {
+                    return Some(PanelEvent::PreviewMedia(file_path));
                 }
+
+                // 2. Vector images, video → always xdg-open
+                if is_vector_image(&entry.name) || is_video(&entry.name) {
+                    return Some(PanelEvent::OpenExternal(file_path));
+                }
+
+                // 3. Executable → run in terminal
+                if entry.is_executable {
+                    return Some(PanelEvent::ExecuteFile(file_path));
+                }
+
+                // 4. Binary files → xdg-open
+                if is_binary_file(&file_path) {
+                    return Some(PanelEvent::OpenExternal(file_path));
+                }
+
+                // 5. Text files → editor
+                return Some(PanelEvent::OpenFile(file_path));
             }
         }
         None
@@ -478,6 +497,62 @@ impl FileManager {
                 let file_path = self.current_path.join(&entry.name);
                 return Some(PanelEvent::OpenFile(file_path));
             }
+        }
+        None
+    }
+
+    /// View file without executing (F3)
+    /// Similar to enter() but treats executables as text files
+    fn view_file(&mut self) -> Option<PanelEvent> {
+        if let Some(entry) = self.entries.get(self.selected) {
+            // Prohibit operations on deleted files
+            if entry.git_status == GitStatus::Deleted {
+                return None;
+            }
+
+            // Directories and ".." - do nothing
+            if entry.is_dir || entry.name == ".." {
+                return None;
+            }
+
+            let file_path = self.current_path.join(&entry.name);
+
+            // 1. Raster images → ImagePanel
+            if is_raster_image(&entry.name) {
+                return Some(PanelEvent::PreviewMedia(file_path));
+            }
+
+            // 2. Vector images, video → xdg-open
+            if is_vector_image(&entry.name) || is_video(&entry.name) {
+                return Some(PanelEvent::OpenExternal(file_path));
+            }
+
+            // 3. Binary files → xdg-open
+            if is_binary_file(&file_path) {
+                return Some(PanelEvent::OpenExternal(file_path));
+            }
+
+            // 4. Text files (including executables) → editor
+            return Some(PanelEvent::OpenFile(file_path));
+        }
+        None
+    }
+
+    /// Force open file with system default application (Shift+Enter)
+    fn open_external(&mut self) -> Option<PanelEvent> {
+        if let Some(entry) = self.entries.get(self.selected) {
+            // Prohibit operations on deleted files
+            if entry.git_status == GitStatus::Deleted {
+                return None;
+            }
+
+            // Directories and ".." - do nothing
+            if entry.is_dir || entry.name == ".." {
+                return None;
+            }
+
+            let file_path = self.current_path.join(&entry.name);
+            return Some(PanelEvent::OpenExternal(file_path));
         }
         None
     }
@@ -700,8 +775,14 @@ impl Panel for FileManager {
             (KeyCode::Esc, KeyModifiers::NONE) => {
                 self.selected_items.clear();
             }
-            (KeyCode::Enter, _) => {
+            (KeyCode::Enter, KeyModifiers::NONE) => {
                 if let Some(event) = self.enter() {
+                    events.push(event);
+                }
+            }
+            (KeyCode::Enter, KeyModifiers::SHIFT) => {
+                // Force open with external application (xdg-open)
+                if let Some(event) = self.open_external() {
                     events.push(event);
                 }
             }
@@ -810,6 +891,12 @@ impl Panel for FileManager {
             (KeyCode::F(4), _) => {
                 // Open selected file for editing
                 if let Some(event) = self.edit_file() {
+                    events.push(event);
+                }
+            }
+            (KeyCode::F(3), _) => {
+                // View file (without executing)
+                if let Some(event) = self.view_file() {
                     events.push(event);
                 }
             }
@@ -1218,6 +1305,36 @@ impl Default for FileManager {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Get file extension in lowercase
+fn get_extension(filename: &str) -> String {
+    filename
+        .rsplit('.')
+        .next()
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default()
+}
+
+/// Check if file is a raster image supported by ImagePanel
+fn is_raster_image(filename: &str) -> bool {
+    matches!(
+        get_extension(filename).as_str(),
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "tiff" | "tif"
+    )
+}
+
+/// Check if file is a vector image (requires external viewer)
+fn is_vector_image(filename: &str) -> bool {
+    matches!(get_extension(filename).as_str(), "svg" | "ico")
+}
+
+/// Check if file is a video (requires external viewer)
+fn is_video(filename: &str) -> bool {
+    matches!(
+        get_extension(filename).as_str(),
+        "mp4" | "mkv" | "avi" | "mov" | "webm" | "flv" | "wmv" | "m4v"
+    )
 }
 
 #[cfg(test)]

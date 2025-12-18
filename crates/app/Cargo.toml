@@ -13,6 +13,7 @@ crossterm.workspace = true
 ratatui.workspace = true
 dirs.workspace = true
 chrono.workspace = true
+open = "5"
 
 # All app-* foundation crates
 termide-app-core = { path = "../app-core" }
@@ -44,6 +45,7 @@ termide-ui-render = { path = "../ui-render" }
 termide-panel-editor = { path = "../panel-editor" }
 termide-panel-file-manager = { path = "../panel-file-manager" }
 termide-panel-terminal = { path = "../panel-terminal" }
+termide-panel-image = { path = "../panel-image" }
 termide-panel-misc = { path = "../panel-misc" }
 
 [dev-dependencies]

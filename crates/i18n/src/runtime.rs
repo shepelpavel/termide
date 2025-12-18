@@ -579,6 +579,10 @@ impl Translation for RuntimeTranslation {
         self.format("status_operation_skipped", &[("name", name)])
     }
 
+    fn status_opening_external(&self, name: &str) -> String {
+        self.format("status_opening_external", &[("name", name)])
+    }
+
     fn action_copied(&self) -> &str {
         self.get_string("action_copied")
     }

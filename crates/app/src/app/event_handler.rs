@@ -41,6 +41,14 @@ impl App {
                 self.event_execute_file(path)?;
             }
 
+            PanelEvent::PreviewMedia(path) => {
+                self.event_preview_media(path)?;
+            }
+
+            PanelEvent::OpenExternal(path) => {
+                self.event_open_external(path)?;
+            }
+
             PanelEvent::ClosePanel => {
                 // Request close of current panel (with confirmation if needed)
                 self.handle_close_panel_request(0)?;
@@ -256,6 +264,79 @@ impl App {
                 self.state
                     .set_error(format!("Failed to run {}: {}", filename, e));
             }
+        }
+        Ok(())
+    }
+
+    /// Handle PreviewMedia event - preview image/video using native graphics or system viewer
+    fn event_preview_media(&mut self, file_path: PathBuf) -> Result<()> {
+        use termide_panel_image::ImagePanel;
+
+        let filename = file_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("?")
+            .to_string();
+
+        // Check if file is an image by extension
+        let is_image = file_path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| {
+                matches!(
+                    ext.to_lowercase().as_str(),
+                    "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "ico" | "tiff" | "tif"
+                )
+            })
+            .unwrap_or(false);
+
+        // Try native graphics rendering for images if protocol is available
+        if is_image && ImagePanel::graphics_available() {
+            self.close_welcome_panels();
+
+            match ImagePanel::new(file_path.clone()) {
+                Ok(panel) => {
+                    self.add_panel(Box::new(panel));
+                    self.auto_save_session();
+                    logger::info(format!("Previewing '{}' with native graphics", filename));
+                    return Ok(());
+                }
+                Err(e) => {
+                    logger::debug(format!(
+                        "Native graphics failed for '{}': {}, falling back to xdg-open",
+                        filename, e
+                    ));
+                }
+            }
+        }
+
+        // Fallback to system default viewer (xdg-open)
+        logger::info(format!("Opening '{}' with system viewer", filename));
+        if let Err(e) = open::that(&file_path) {
+            logger::error(format!("Failed to open '{}': {}", filename, e));
+            self.state
+                .set_error(format!("Failed to open {}: {}", filename, e));
+        }
+        Ok(())
+    }
+
+    /// Handle OpenExternal event - open file with system default application
+    fn event_open_external(&mut self, file_path: PathBuf) -> Result<()> {
+        let t = termide_i18n::t();
+        let filename = file_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("?")
+            .to_string();
+
+        // Show status message
+        self.state.set_info(t.status_opening_external(&filename));
+        logger::info(format!("Opening '{}' with system viewer", filename));
+
+        if let Err(e) = open::that(&file_path) {
+            logger::error(format!("Failed to open '{}': {}", filename, e));
+            self.state
+                .set_error(format!("Failed to open {}: {}", filename, e));
         }
         Ok(())
     }

@@ -29,7 +29,9 @@
   DATEIMANAGER-TASTEN
 
     ↑↓           Dateiliste navigieren
-    Enter        Datei oder Verzeichnis öffnen
+    Enter        Datei oder Verzeichnis öffnen (ausführbare starten)
+    F3           Datei anzeigen (ausführbare im Editor öffnen)
+    Shift+Enter  Mit Systemanwendung öffnen (xdg-open)
     Backspace    Zum übergeordneten Verzeichnis wechseln
     Home         Zum ersten Element springen
     End          Zum letzten Element springen

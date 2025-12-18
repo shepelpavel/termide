@@ -6,6 +6,7 @@
 pub mod command;
 pub mod event;
 pub mod panel;
+pub mod util;
 
 pub use command::{CommandResult, PanelCommand};
 pub use event::{

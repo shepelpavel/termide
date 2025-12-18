@@ -10,6 +10,7 @@ use termide_core::Panel;
 use termide_layout::{LayoutManager, PanelGroup};
 use termide_panel_editor::{Editor, EditorConfig};
 use termide_panel_file_manager::FileManager;
+use termide_panel_image::ImagePanel;
 use termide_panel_misc::LogViewerPanel;
 use termide_panel_terminal::Terminal;
 use termide_session::{
@@ -125,6 +126,16 @@ impl LayoutManagerSession for LayoutManager {
                             .map(|t| Box::new(t) as Box<dyn Panel>)
                     }
                     SessionPanel::Debug => Some(Box::new(LogViewerPanel::default())),
+                    SessionPanel::Image { path } => {
+                        // Only restore image panel if graphics are available
+                        if ImagePanel::graphics_available() {
+                            ImagePanel::new(path)
+                                .ok()
+                                .map(|p| Box::new(p) as Box<dyn Panel>)
+                        } else {
+                            None
+                        }
+                    }
                 };
 
                 if let Some(p) = panel {

@@ -29,7 +29,9 @@
   FILE MANAGER KEYS
 
     ↑↓           Navigate file list
-    Enter        Open file or directory
+    Enter        Open file or directory (run executables)
+    F3           View file (executables open in editor)
+    Shift+Enter  Open with system application (xdg-open)
     Backspace    Go to parent directory
     Home         Jump to first item
     End          Jump to last item

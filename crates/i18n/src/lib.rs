@@ -167,6 +167,7 @@ pub trait Translation: Send + Sync {
     fn status_item_actioned(&self, name: &str, action: &str) -> String;
     fn status_error_action(&self, action: &str, error: &str) -> String;
     fn status_operation_skipped(&self, name: &str) -> String;
+    fn status_opening_external(&self, name: &str) -> String;
 
     // Action words
     fn action_copied(&self) -> &str;

@@ -57,6 +57,12 @@ pub enum SessionPanel {
     /// Debug log panel
     #[serde(rename = "debug")]
     Debug,
+    /// Image viewer panel
+    #[serde(rename = "image")]
+    Image {
+        /// Path to image file
+        path: PathBuf,
+    },
     // Note: Welcome panels are NOT saved (they auto-close)
 }
 

@@ -29,7 +29,9 @@
   TOUCHES DU GESTIONNAIRE DE FICHIERS
 
     ↑↓           Naviguer dans la liste des fichiers
-    Enter        Ouvrir un fichier ou un répertoire
+    Enter        Ouvrir un fichier ou un répertoire (exécuter)
+    F3           Afficher le fichier (exécutables dans l'éditeur)
+    Shift+Enter  Ouvrir avec l'application système (xdg-open)
     Backspace    Aller au répertoire parent
     Home         Aller au premier élément
     End          Aller au dernier élément

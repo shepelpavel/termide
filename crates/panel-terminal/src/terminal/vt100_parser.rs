@@ -113,14 +113,6 @@ impl Perform for VtPerformer {
         }
     }
 
-    fn hook(&mut self, _params: &Params, _intermediates: &[u8], _ignore: bool, _c: char) {}
-
-    fn put(&mut self, _byte: u8) {}
-
-    fn unhook(&mut self) {}
-
-    fn osc_dispatch(&mut self, _params: &[&[u8]], _bell_terminated: bool) {}
-
     fn csi_dispatch(&mut self, params: &Params, intermediates: &[u8], _ignore: bool, c: char) {
         // Flush pending operations before CSI dispatch to maintain order
         self.flush();

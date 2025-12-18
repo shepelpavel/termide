@@ -29,7 +29,9 @@
   TECLAS DEL ADMINISTRADOR DE ARCHIVOS
 
     ↑↓           Navegar lista de archivos
-    Enter        Abrir archivo o directorio
+    Enter        Abrir archivo o directorio (ejecutar ejecutables)
+    F3           Ver archivo (ejecutables en el editor)
+    Shift+Enter  Abrir con aplicación del sistema (xdg-open)
     Backspace    Ir al directorio padre
     Home         Saltar al primer elemento
     End          Saltar al último elemento

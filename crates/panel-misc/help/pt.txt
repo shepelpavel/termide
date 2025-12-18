@@ -29,7 +29,9 @@
   TECLAS DO GERENCIADOR DE ARQUIVOS
 
     ↑↓           Navegar lista de arquivos
-    Enter        Abrir arquivo ou diretório
+    Enter        Abrir arquivo ou diretório (executar executáveis)
+    F3           Ver arquivo (executáveis no editor)
+    Shift+Enter  Abrir com aplicativo do sistema (xdg-open)
     Backspace    Ir para o diretório pai
     Home         Pular para o primeiro item
     End          Pular para o último item

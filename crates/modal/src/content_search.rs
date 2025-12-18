@@ -10,7 +10,6 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph, Widget},
 };
 use regex::Regex;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -18,6 +17,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use unicode_segmentation::UnicodeSegmentation;
 
+use termide_core::util::is_binary_file;
 use termide_git::{GitStatus, GitStatusCache};
 use termide_theme::Theme;
 
@@ -358,18 +358,8 @@ fn should_skip_file(path: &Path, max_size: u64, min_size: u64) -> bool {
         return true;
     }
 
-    // Check for binary file (NULL bytes in first 8KB)
-    let file = match std::fs::File::open(path) {
-        Ok(f) => f,
-        Err(_) => return true,
-    };
-    let mut reader = std::io::BufReader::new(file);
-    let mut buffer = [0u8; 8192];
-    let bytes_read = match reader.read(&mut buffer) {
-        Ok(n) => n,
-        Err(_) => return true,
-    };
-    buffer[..bytes_read].contains(&0)
+    // Skip binary files
+    is_binary_file(path)
 }
 
 /// Perform content search using regex (runs in background thread)

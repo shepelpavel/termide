@@ -76,6 +76,12 @@ pub enum PanelEvent {
     /// Execute file in a new terminal
     ExecuteFile(PathBuf),
 
+    /// Preview media file (raster image) using native graphics or xdg-open
+    PreviewMedia(PathBuf),
+
+    /// Open file with system default application (xdg-open)
+    OpenExternal(PathBuf),
+
     /// Save file to disk
     SaveFile(PathBuf),
 
