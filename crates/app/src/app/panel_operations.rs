@@ -195,17 +195,18 @@ impl App {
 
             let terminal_width = self.state.terminal.width;
             let available_width = terminal_width;
+            let min_width = self.state.config.general.min_panel_width as i16;
 
             // Freeze all auto-width groups before resize
             let actual_widths = self.layout_manager.calculate_actual_widths(available_width);
             for (idx, group) in self.layout_manager.panel_groups.iter_mut().enumerate() {
                 if group.width.is_none() {
-                    group.width = Some(actual_widths.get(idx).copied().unwrap_or(20));
+                    group.width = Some(actual_widths.get(idx).copied().unwrap_or(min_width as u16));
                 }
             }
 
             let current_width = self.layout_manager.panel_groups[group_idx].width.unwrap();
-            let desired_new_width = ((current_width as i16 + delta).clamp(20, 300)) as u16;
+            let desired_new_width = ((current_width as i16 + delta).clamp(min_width, 300)) as u16;
             let actual_delta = desired_new_width as i16 - current_width as i16;
 
             if actual_delta == 0 {
@@ -242,7 +243,7 @@ impl App {
                     ((-actual_delta as f64) * proportion).round() as i16
                 };
 
-                let new_width = ((width as i16 + delta_for_this).clamp(20, 300)) as u16;
+                let new_width = ((width as i16 + delta_for_this).clamp(min_width, 300)) as u16;
                 new_widths.push((idx, new_width));
 
                 let actual_change = new_width as i16 - width as i16;
@@ -261,7 +262,7 @@ impl App {
                 .layout_manager
                 .panel_groups
                 .iter()
-                .map(|g| g.width.unwrap_or(20))
+                .map(|g| g.width.unwrap_or(min_width as u16))
                 .sum();
 
             if total_new_width != available_width {
@@ -271,12 +272,12 @@ impl App {
                     .iter()
                     .enumerate()
                     .filter(|(idx, _)| *idx != group_idx)
-                    .map(|(_, g)| g.width.unwrap_or(20))
+                    .map(|(_, g)| g.width.unwrap_or(min_width as u16))
                     .sum();
 
                 let corrected_width = available_width.saturating_sub(other_widths_sum);
                 self.layout_manager.panel_groups[group_idx].width =
-                    Some(corrected_width.clamp(20, 300));
+                    Some(corrected_width.clamp(min_width as u16, 300));
             }
             self.auto_save_session();
         }

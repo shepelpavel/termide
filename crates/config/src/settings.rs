@@ -35,7 +35,11 @@ pub struct GeneralSettings {
     #[serde(default = "default_language")]
     pub language: String,
 
-    /// Minimum panel width in characters
+    /// Threshold width for auto-stacking panels (below this, panels stack vertically)
+    #[serde(default = "default_auto_stack_threshold")]
+    pub auto_stack_threshold: u16,
+
+    /// Minimum panel width during resize operations
     #[serde(default = "default_min_panel_width")]
     pub min_panel_width: u16,
 
@@ -99,6 +103,10 @@ fn default_theme_name() -> String {
 
 fn default_language() -> String {
     defaults::LANGUAGE.to_string()
+}
+
+fn default_auto_stack_threshold() -> u16 {
+    defaults::AUTO_STACK_THRESHOLD
 }
 
 fn default_min_panel_width() -> u16 {
@@ -176,7 +184,8 @@ impl From<LegacyConfig> for Config {
             general: GeneralSettings {
                 theme: legacy.theme,
                 language: legacy.language,
-                min_panel_width: legacy.min_panel_width,
+                auto_stack_threshold: legacy.min_panel_width, // migrate old field
+                min_panel_width: default_min_panel_width(),
                 session_retention_days: legacy.session_retention_days,
             },
             editor: EditorSettings {
@@ -204,6 +213,7 @@ impl Default for GeneralSettings {
         Self {
             theme: default_theme_name(),
             language: default_language(),
+            auto_stack_threshold: default_auto_stack_threshold(),
             min_panel_width: default_min_panel_width(),
             session_retention_days: default_session_retention_days(),
         }
