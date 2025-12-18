@@ -188,7 +188,17 @@ impl App {
     pub(super) fn handle_new_editor(&mut self) -> Result<()> {
         logger::debug("Opening new Editor panel");
         self.close_welcome_panels();
-        let editor_panel = Editor::with_config(self.state.editor_config());
+
+        // Get working directory from current active panel (e.g., FileManager)
+        let initial_directory = self
+            .layout_manager
+            .active_panel_mut()
+            .and_then(|p| p.get_working_directory());
+
+        let mut config = self.state.editor_config();
+        config.initial_directory = initial_directory;
+
+        let editor_panel = Editor::with_config(config);
         self.add_panel(Box::new(editor_panel));
         self.auto_save_session();
         Ok(())

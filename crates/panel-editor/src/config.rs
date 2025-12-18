@@ -1,5 +1,7 @@
 //! Editor configuration and information types.
 
+use std::path::PathBuf;
+
 /// Editor mode configuration
 #[derive(Debug, Clone)]
 pub struct EditorConfig {
@@ -11,6 +13,8 @@ pub struct EditorConfig {
     pub word_wrap: bool,
     /// Tab size (number of spaces)
     pub tab_size: usize,
+    /// Initial directory for new buffers (used in SaveAs dialog)
+    pub initial_directory: Option<PathBuf>,
 }
 
 impl Default for EditorConfig {
@@ -20,6 +24,7 @@ impl Default for EditorConfig {
             read_only: false,
             word_wrap: true,
             tab_size: 4,
+            initial_directory: None,
         }
     }
 }
@@ -32,6 +37,7 @@ impl EditorConfig {
             read_only: true,
             word_wrap: true,
             tab_size: 4,
+            initial_directory: None,
         }
     }
 }

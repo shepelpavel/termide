@@ -108,7 +108,7 @@ impl App {
     pub(in crate::app) fn handle_save_file_as(
         &mut self,
         _panel_index: usize, // obsolete with LayoutManager
-        _directory: PathBuf,
+        directory: PathBuf,
         value: Box<dyn std::any::Any>,
     ) -> Result<()> {
         if let Some(filename) = value.downcast_ref::<String>() {
@@ -116,15 +116,22 @@ impl App {
             // Get active Editor panel and save file
             if let Some(panel) = self.layout_manager.active_panel_mut() {
                 if let Some(editor) = panel.as_editor_mut() {
-                    // User enters path - parse it directly
-                    let file_path = PathBuf::from(filename);
+                    // Resolve path: absolute paths used as-is, relative joined with directory
+                    let input_path = PathBuf::from(filename);
+                    let file_path = if input_path.is_absolute() {
+                        input_path
+                    } else {
+                        directory.join(filename)
+                    };
+                    let display_path = file_path.display().to_string();
+
                     match editor.save_file_as(file_path) {
                         Ok(_) => {
-                            termide_logger::info(format!("File saved as: {}", filename));
-                            self.state.set_info(t.status_file_saved(filename));
+                            termide_logger::info(format!("File saved as: {}", display_path));
+                            self.state.set_info(t.status_file_saved(&display_path));
                         }
                         Err(e) => {
-                            termide_logger::error(format!("Save error '{}': {}", filename, e));
+                            termide_logger::error(format!("Save error '{}': {}", display_path, e));
                             self.state.set_error(t.status_error_save(&e.to_string()));
                         }
                     }

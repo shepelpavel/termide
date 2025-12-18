@@ -82,13 +82,16 @@ impl Editor {
 
     /// Create new empty editor with specified configuration
     pub fn with_config(config: EditorConfig) -> Self {
+        let mut file_state = FileState::new();
+        file_state.initial_directory = config.initial_directory.clone();
+
         Self {
             config,
             buffer: TextBuffer::new(),
             cursor: Cursor::new(),
             selection: None,
             viewport: Viewport::default(),
-            file_state: FileState::new(),
+            file_state,
             search: SearchController::new(),
             git: GitIntegration::new(),
             render_cache: RenderingCache::new(),
@@ -1684,10 +1687,23 @@ impl Editor {
 
     /// Open "Save As" modal for saving file with a new name
     pub(crate) fn handle_save_as(&mut self) -> Result<()> {
-        let directory = std::env::current_dir()
-            .unwrap_or_else(|_| dirs::home_dir().unwrap_or_else(|| PathBuf::from("/")));
+        // Priority: initial_directory > file_path parent > CWD > home
+        let directory = self
+            .file_state
+            .initial_directory
+            .clone()
+            .or_else(|| {
+                self.file_path()
+                    .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+            })
+            .or_else(|| std::env::current_dir().ok())
+            .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| PathBuf::from("/")));
 
-        let modal = InputModal::new("Save File As", "untitled.txt");
+        // Предложить полный путь с именем файла по умолчанию
+        let default_path = directory.join("untitled.txt");
+        let default_value = default_path.display().to_string();
+
+        let modal = InputModal::with_default(t().modal_save_as_title(), "", default_value);
         let action = PendingAction::SaveFileAs {
             panel_index: 0, // will be updated in app.rs
             directory,

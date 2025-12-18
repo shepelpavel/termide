@@ -1,6 +1,6 @@
 //! File-related state for the editor.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use crate::file_io;
@@ -18,6 +18,8 @@ pub(crate) struct FileState {
     pub title: String,
     /// Temporary file name for unsaved buffer (for session restoration).
     pub unsaved_buffer_file: Option<String>,
+    /// Initial directory for new buffers (used in SaveAs dialog).
+    pub initial_directory: Option<PathBuf>,
 }
 
 impl FileState {
@@ -29,6 +31,7 @@ impl FileState {
             size: 0,
             title: "Untitled".to_string(),
             unsaved_buffer_file: None,
+            initial_directory: None,
         }
     }
 
@@ -40,6 +43,7 @@ impl FileState {
             size,
             title: file_io::path_to_title(path),
             unsaved_buffer_file: None,
+            initial_directory: None,
         }
     }
 
