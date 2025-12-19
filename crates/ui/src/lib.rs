@@ -155,17 +155,26 @@ pub fn max_item_width(items: &[String], prefix_len: usize) -> u16 {
         .unwrap_or(0) as u16
 }
 
-/// Text input handler with cursor management
+/// Text input handler with cursor management and selection support
 ///
 /// This utility handles common text input operations for modal windows,
-/// including character insertion, deletion, and cursor navigation.
+/// including character insertion, deletion, cursor navigation, and text selection.
 /// It properly handles UTF-8 multi-byte characters by tracking cursor
 /// position in characters (not bytes).
+///
+/// Selection uses anchor/active model:
+/// - `cursor_pos` is the active (moving) point
+/// - `selection_anchor` is the fixed point where selection started
+/// - Selection range is from min(anchor, cursor) to max(anchor, cursor)
+///
+/// Supports undo/redo history with Ctrl+Z/Y.
 #[derive(Debug, Clone)]
 pub struct TextInput {
     input: String,
-    cursor_pos: usize,  // Position in characters, not bytes
-    selected_all: bool, // True when all text is selected (Ctrl+A)
+    cursor_pos: usize,                // Position in characters (active point)
+    selection_anchor: Option<usize>,  // None = no selection, Some = anchor position
+    undo_stack: Vec<(String, usize)>, // (text, cursor_pos) history for undo
+    redo_stack: Vec<(String, usize)>, // (text, cursor_pos) history for redo
 }
 
 impl TextInput {
@@ -174,7 +183,9 @@ impl TextInput {
         Self {
             input: String::new(),
             cursor_pos: 0,
-            selected_all: false,
+            selection_anchor: None,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
         }
     }
 
@@ -185,7 +196,9 @@ impl TextInput {
         Self {
             input,
             cursor_pos,
-            selected_all: false,
+            selection_anchor: None,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
         }
     }
 
@@ -208,31 +221,140 @@ impl TextInput {
     pub fn set_text(&mut self, text: impl Into<String>) {
         self.input = text.into();
         self.cursor_pos = self.input.chars().count();
-        self.selected_all = false;
+        self.selection_anchor = None;
     }
 
     /// Clear all input
     pub fn clear(&mut self) {
         self.input.clear();
         self.cursor_pos = 0;
-        self.selected_all = false;
+        self.selection_anchor = None;
+    }
+
+    // === Undo/Redo support ===
+
+    /// Save current state to undo stack (call before modifying text)
+    fn save_undo_state(&mut self) {
+        // Don't save if state hasn't changed from last saved state
+        if let Some((last_text, _)) = self.undo_stack.last() {
+            if last_text == &self.input {
+                return;
+            }
+        }
+        self.undo_stack.push((self.input.clone(), self.cursor_pos));
+        // Clear redo stack on new change
+        self.redo_stack.clear();
+        // Limit history size
+        const MAX_UNDO_HISTORY: usize = 100;
+        if self.undo_stack.len() > MAX_UNDO_HISTORY {
+            self.undo_stack.remove(0);
+        }
+    }
+
+    /// Undo last change (Ctrl+Z)
+    pub fn undo(&mut self) -> bool {
+        if let Some((text, cursor_pos)) = self.undo_stack.pop() {
+            // Save current state for redo
+            self.redo_stack.push((self.input.clone(), self.cursor_pos));
+            self.input = text;
+            self.cursor_pos = cursor_pos;
+            self.selection_anchor = None;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Redo last undone change (Ctrl+Y or Ctrl+Shift+Z)
+    pub fn redo(&mut self) -> bool {
+        if let Some((text, cursor_pos)) = self.redo_stack.pop() {
+            // Save current state for undo
+            self.undo_stack.push((self.input.clone(), self.cursor_pos));
+            self.input = text;
+            self.cursor_pos = cursor_pos;
+            self.selection_anchor = None;
+            true
+        } else {
+            false
+        }
     }
 
     /// Select all text (Ctrl+A)
     pub fn select_all(&mut self) {
         if !self.input.is_empty() {
-            self.selected_all = true;
+            self.selection_anchor = Some(0);
+            self.cursor_pos = self.input.chars().count();
         }
     }
 
-    /// Check if all text is selected
+    /// Check if has non-empty selection
     pub fn has_selection(&self) -> bool {
-        self.selected_all && !self.input.is_empty()
+        self.selection_anchor
+            .is_some_and(|anchor| anchor != self.cursor_pos)
+    }
+
+    /// Get selection range (start, end) in character positions
+    pub fn selection_range(&self) -> Option<(usize, usize)> {
+        self.selection_anchor
+            .map(|anchor| (anchor.min(self.cursor_pos), anchor.max(self.cursor_pos)))
+    }
+
+    /// Get selected text
+    pub fn selected_text(&self) -> Option<&str> {
+        let (start, end) = self.selection_range()?;
+        if start == end {
+            return None;
+        }
+        let start_byte = self.char_to_byte_index(start);
+        let end_byte = self.char_to_byte_index(end);
+        Some(&self.input[start_byte..end_byte])
+    }
+
+    /// Delete selected text and return true if something was deleted
+    pub fn delete_selection(&mut self) -> bool {
+        if let Some((start, end)) = self.selection_range() {
+            if start != end {
+                self.save_undo_state();
+                self.delete_selection_internal();
+                return true;
+            }
+        }
+        self.selection_anchor = None;
+        false
+    }
+
+    /// Internal: delete selection without saving undo state
+    fn delete_selection_internal(&mut self) {
+        if let Some((start, end)) = self.selection_range() {
+            if start != end {
+                let start_byte = self.char_to_byte_index(start);
+                let end_byte = self.char_to_byte_index(end);
+                self.input.replace_range(start_byte..end_byte, "");
+                self.cursor_pos = start;
+            }
+        }
+        self.selection_anchor = None;
+    }
+
+    /// Start selection at current cursor position (for Shift+movement)
+    pub fn start_selection(&mut self) {
+        if self.selection_anchor.is_none() {
+            self.selection_anchor = Some(self.cursor_pos);
+        }
     }
 
     /// Clear selection without modifying text
-    fn clear_selection(&mut self) {
-        self.selected_all = false;
+    pub fn clear_selection(&mut self) {
+        self.selection_anchor = None;
+    }
+
+    /// Convert character position to byte index
+    fn char_to_byte_index(&self, char_pos: usize) -> usize {
+        self.input
+            .char_indices()
+            .nth(char_pos)
+            .map(|(idx, _)| idx)
+            .unwrap_or(self.input.len())
     }
 
     /// Convert cursor position (in characters) to byte index
@@ -246,12 +368,10 @@ impl TextInput {
 
     /// Insert a character at the cursor position
     pub fn insert(&mut self, c: char) {
-        // If all text is selected, replace it
-        if self.selected_all {
-            self.input.clear();
-            self.cursor_pos = 0;
-            self.selected_all = false;
-        }
+        // Save state before any modification
+        self.save_undo_state();
+        // Delete selection first if present (no need to save again - already saved)
+        self.delete_selection_internal();
         let byte_idx = self.byte_index();
         self.input.insert(byte_idx, c);
         self.cursor_pos += 1;
@@ -265,25 +385,23 @@ impl TextInput {
 
     /// Insert a string at cursor position
     pub fn insert_str(&mut self, s: &str) {
-        // If all text is selected, replace it
-        if self.selected_all {
-            self.input.clear();
-            self.cursor_pos = 0;
-            self.selected_all = false;
-        }
-        for c in s.chars() {
-            self.insert(c);
-        }
+        // Save state before any modification
+        self.save_undo_state();
+        // Delete selection first if present (no need to save again - already saved)
+        self.delete_selection_internal();
+        let byte_idx = self.byte_index();
+        self.input.insert_str(byte_idx, s);
+        self.cursor_pos += s.chars().count();
     }
 
     /// Delete character before cursor (backspace)
     pub fn backspace(&mut self) -> bool {
-        // If all text is selected, delete everything
-        if self.selected_all {
-            self.clear();
+        // Delete selection if present
+        if self.delete_selection() {
             return true;
         }
         if self.cursor_pos > 0 {
+            self.save_undo_state();
             self.cursor_pos -= 1;
             let byte_idx = self.byte_index();
             self.input.remove(byte_idx);
@@ -295,13 +413,13 @@ impl TextInput {
 
     /// Delete character at cursor (delete key)
     pub fn delete(&mut self) -> bool {
-        // If all text is selected, delete everything
-        if self.selected_all {
-            self.clear();
+        // Delete selection if present
+        if self.delete_selection() {
             return true;
         }
         let char_count = self.input.chars().count();
         if self.cursor_pos < char_count {
+            self.save_undo_state();
             let byte_idx = self.byte_index();
             self.input.remove(byte_idx);
             true
@@ -343,6 +461,66 @@ impl TextInput {
     pub fn move_end(&mut self) {
         self.clear_selection();
         self.cursor_pos = self.input.chars().count();
+    }
+
+    // === Selection movement methods (Shift+arrows) ===
+
+    /// Move cursor left while extending selection
+    pub fn move_left_with_selection(&mut self) -> bool {
+        self.start_selection();
+        if self.cursor_pos > 0 {
+            self.cursor_pos -= 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Move cursor right while extending selection
+    pub fn move_right_with_selection(&mut self) -> bool {
+        self.start_selection();
+        let char_count = self.input.chars().count();
+        if self.cursor_pos < char_count {
+            self.cursor_pos += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Move cursor to start while extending selection
+    pub fn move_home_with_selection(&mut self) {
+        self.start_selection();
+        self.cursor_pos = 0;
+    }
+
+    /// Move cursor to end while extending selection
+    pub fn move_end_with_selection(&mut self) {
+        self.start_selection();
+        self.cursor_pos = self.input.chars().count();
+    }
+
+    // === Mouse support methods ===
+
+    /// Set cursor position (for mouse click without selection)
+    pub fn set_cursor_pos(&mut self, pos: usize) {
+        self.clear_selection();
+        self.cursor_pos = pos.min(self.input.chars().count());
+    }
+
+    /// Set cursor and start selection (for mouse down)
+    pub fn set_cursor_with_selection_start(&mut self, pos: usize) {
+        let pos = pos.min(self.input.chars().count());
+        self.selection_anchor = Some(pos);
+        self.cursor_pos = pos;
+    }
+
+    /// Extend selection to position (for mouse drag)
+    pub fn extend_selection_to(&mut self, pos: usize) {
+        if self.selection_anchor.is_none() {
+            self.selection_anchor = Some(self.cursor_pos);
+        }
+        self.cursor_pos = pos.min(self.input.chars().count());
     }
 
     /// Check if input is empty

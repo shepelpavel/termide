@@ -49,6 +49,7 @@ pub struct SearchModal {
     /// Last rendered areas for mouse handling
     last_button_areas: Vec<(Rect, usize)>, // (area, button_idx)
     last_close_button_area: Option<Rect>,
+    last_input_area: Option<Rect>,
 }
 
 impl SearchModal {
@@ -61,6 +62,7 @@ impl SearchModal {
             match_info: None,
             last_button_areas: Vec::new(),
             last_close_button_area: None,
+            last_input_area: None,
         }
     }
 
@@ -112,15 +114,16 @@ impl Modal for SearchModal {
 
         // === Render input line ===
         let input_area = chunks[0];
+        self.last_input_area = Some(input_area);
         base::render_input_field(
             buf,
             input_area.x,
             input_area.y,
             input_area.width,
-            self.input_handler.text_before_cursor(),
-            self.input_handler.text_after_cursor(),
+            self.input_handler.text(),
+            self.input_handler.cursor_pos(),
+            self.input_handler.selection_range(),
             matches!(self.focus, FocusArea::Input),
-            self.input_handler.has_selection(),
             theme,
         );
 
@@ -272,17 +275,33 @@ impl Modal for SearchModal {
                 (KeyCode::Left, KeyModifiers::NONE) => {
                     self.input_handler.move_left();
                 }
+                // Shift+Left - select left
+                (KeyCode::Left, KeyModifiers::SHIFT) => {
+                    self.input_handler.move_left_with_selection();
+                }
                 // Right - move cursor right
                 (KeyCode::Right, KeyModifiers::NONE) => {
                     self.input_handler.move_right();
+                }
+                // Shift+Right - select right
+                (KeyCode::Right, KeyModifiers::SHIFT) => {
+                    self.input_handler.move_right_with_selection();
                 }
                 // Home - move to start
                 (KeyCode::Home, KeyModifiers::NONE) => {
                     self.input_handler.move_home();
                 }
+                // Shift+Home - select to start
+                (KeyCode::Home, KeyModifiers::SHIFT) => {
+                    self.input_handler.move_home_with_selection();
+                }
                 // End - move to end
                 (KeyCode::End, KeyModifiers::NONE) => {
                     self.input_handler.move_end();
+                }
+                // Shift+End - select to end
+                (KeyCode::End, KeyModifiers::SHIFT) => {
+                    self.input_handler.move_end_with_selection();
                 }
                 // Ctrl+V - paste from clipboard
                 (KeyCode::Char('v'), KeyModifiers::CONTROL) => {
@@ -300,6 +319,50 @@ impl Modal for SearchModal {
                 // Ctrl+A - select all
                 (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
                     self.input_handler.select_all();
+                }
+                // Ctrl+C - copy selected text
+                (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
+                    if let Some(text) = self.input_handler.selected_text() {
+                        let _ = termide_clipboard::copy(text);
+                    }
+                }
+                // Ctrl+X - cut selected text
+                (KeyCode::Char('x'), KeyModifiers::CONTROL) => {
+                    if let Some(text) = self.input_handler.selected_text() {
+                        let _ = termide_clipboard::copy(text);
+                        self.input_handler.delete_selection();
+                        // Trigger live search if text remains
+                        if !self.input_handler.is_empty() {
+                            return Ok(Some(ModalResult::Confirmed(SearchModalResult {
+                                query: self.input_handler.text().to_string(),
+                                action: SearchAction::Search,
+                            })));
+                        }
+                    }
+                }
+                // Ctrl+Z - undo
+                (KeyCode::Char('z'), KeyModifiers::CONTROL) => {
+                    if self.input_handler.undo() {
+                        // Trigger live search after undo
+                        if !self.input_handler.is_empty() {
+                            return Ok(Some(ModalResult::Confirmed(SearchModalResult {
+                                query: self.input_handler.text().to_string(),
+                                action: SearchAction::Search,
+                            })));
+                        }
+                    }
+                }
+                // Ctrl+Y - redo
+                (KeyCode::Char('y'), KeyModifiers::CONTROL) => {
+                    if self.input_handler.redo() {
+                        // Trigger live search after redo
+                        if !self.input_handler.is_empty() {
+                            return Ok(Some(ModalResult::Confirmed(SearchModalResult {
+                                query: self.input_handler.text().to_string(),
+                                action: SearchAction::Search,
+                            })));
+                        }
+                    }
                 }
                 // Character input - insert character and trigger live search
                 (KeyCode::Char(ch), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
@@ -323,45 +386,85 @@ impl Modal for SearchModal {
         mouse: crossterm::event::MouseEvent,
         _modal_area: Rect,
     ) -> Result<Option<ModalResult<Self::Result>>> {
-        use crossterm::event::MouseEventKind;
+        use crossterm::event::{MouseButton, MouseEventKind};
 
-        // Only handle left clicks
-        if !matches!(
-            mouse.kind,
-            MouseEventKind::Down(crossterm::event::MouseButton::Left)
-        ) {
-            return Ok(None);
-        }
+        let mouse_pos = (mouse.column, mouse.row);
 
-        let click_pos = (mouse.column, mouse.row);
+        match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                // Check if clicked on close button [X]
+                if let Some(close_area) = self.last_close_button_area {
+                    if mouse_pos.0 >= close_area.x
+                        && mouse_pos.0 < close_area.x + close_area.width
+                        && mouse_pos.1 == close_area.y
+                    {
+                        return Ok(Some(ModalResult::Cancelled));
+                    }
+                }
 
-        // Check if clicked on close button [X]
-        if let Some(close_area) = self.last_close_button_area {
-            if click_pos.0 >= close_area.x
-                && click_pos.0 < close_area.x + close_area.width
-                && click_pos.1 == close_area.y
-            {
-                return Ok(Some(ModalResult::Cancelled));
-            }
-        }
+                // Check if clicked on any button
+                for (area, idx) in &self.last_button_areas {
+                    if mouse_pos.0 >= area.x
+                        && mouse_pos.0 < area.x + area.width
+                        && mouse_pos.1 == area.y
+                    {
+                        // Trigger corresponding action
+                        if !self.input_handler.is_empty() {
+                            let action = match idx {
+                                0 => SearchAction::Previous,
+                                _ => SearchAction::Next,
+                            };
+                            return Ok(Some(ModalResult::Confirmed(SearchModalResult {
+                                query: self.input_handler.text().to_string(),
+                                action,
+                            })));
+                        }
+                    }
+                }
 
-        // Check if clicked on any button
-        for (area, idx) in &self.last_button_areas {
-            if click_pos.0 >= area.x && click_pos.0 < area.x + area.width && click_pos.1 == area.y {
-                // Trigger corresponding action
-                if !self.input_handler.is_empty() {
-                    let action = match idx {
-                        0 => SearchAction::Previous,
-                        _ => SearchAction::Next,
-                    };
-                    return Ok(Some(ModalResult::Confirmed(SearchModalResult {
-                        query: self.input_handler.text().to_string(),
-                        action,
-                    })));
+                // Check if clicked on input field - start selection
+                if let Some(input_area) = self.last_input_area {
+                    if mouse_pos.0 >= input_area.x
+                        && mouse_pos.0 < input_area.x + input_area.width
+                        && mouse_pos.1 == input_area.y
+                    {
+                        let click_x = (mouse_pos.0 - input_area.x) as usize;
+                        let char_pos = screen_x_to_char_pos(self.input_handler.text(), click_x);
+                        self.input_handler.set_cursor_with_selection_start(char_pos);
+                    }
                 }
             }
+            MouseEventKind::Drag(MouseButton::Left) => {
+                // Extend selection during drag
+                if let Some(input_area) = self.last_input_area {
+                    if mouse_pos.1 == input_area.y {
+                        let drag_x = if mouse_pos.0 < input_area.x {
+                            0
+                        } else {
+                            (mouse_pos.0 - input_area.x) as usize
+                        };
+                        let char_pos = screen_x_to_char_pos(self.input_handler.text(), drag_x);
+                        self.input_handler.extend_selection_to(char_pos);
+                    }
+                }
+            }
+            _ => {}
         }
 
         Ok(None)
     }
+}
+
+/// Convert screen X position to character position in text.
+fn screen_x_to_char_pos(text: &str, screen_x: usize) -> usize {
+    use unicode_width::UnicodeWidthChar;
+    let mut width = 0;
+    for (i, c) in text.chars().enumerate() {
+        let cw = UnicodeWidthChar::width(c).unwrap_or(1);
+        if width + cw > screen_x {
+            return i;
+        }
+        width += cw;
+    }
+    text.chars().count() // Click past end = cursor at end
 }

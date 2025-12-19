@@ -60,129 +60,114 @@ pub fn render_modal_frame(
     (inner, close_button_area)
 }
 
-/// Render a text input field with cursor.
+/// Render a text input field with cursor and selection support.
+///
+/// Parameters:
+/// - `text`: Full text content
+/// - `cursor_pos`: Cursor position in characters
+/// - `selection_range`: Optional (start, end) selection in characters
 #[allow(clippy::too_many_arguments)]
 pub fn render_input_field(
     buf: &mut Buffer,
     x: u16,
     y: u16,
     width: u16,
-    text_before_cursor: &str,
-    text_after_cursor: &str,
+    text: &str,
+    cursor_pos: usize,
+    selection_range: Option<(usize, usize)>,
     is_focused: bool,
-    is_selected_all: bool,
     theme: &Theme,
 ) {
-    use unicode_width::UnicodeWidthStr;
+    use unicode_width::UnicodeWidthChar;
+
+    let width = width as usize;
+    if width == 0 {
+        return;
+    }
 
     let text_style = if is_focused {
         Style::default().fg(theme.fg).bg(theme.bg)
     } else {
         Style::default().fg(theme.bg)
     };
+    let selection_style = Style::default().fg(theme.bg).bg(theme.success);
+    let cursor_style = selection_style;
 
-    // Use display width for proper Unicode handling
-    let before_width = UnicodeWidthStr::width(text_before_cursor);
-    let after_width = UnicodeWidthStr::width(text_after_cursor);
-    let total_width = before_width + after_width;
-    let width = width as usize;
+    // Collect chars with their display widths
+    let chars: Vec<(usize, char, usize)> = text
+        .char_indices()
+        .enumerate()
+        .map(|(char_idx, (_byte_idx, c))| {
+            let cw = UnicodeWidthChar::width(c).unwrap_or(1);
+            (char_idx, c, cw)
+        })
+        .collect();
 
-    // Calculate visible portions using character iteration
-    let (visible_before, visible_after, cursor_screen_x) = if total_width >= width {
-        let max_before = width;
-        if before_width > max_before {
-            // Need to skip some chars from the beginning
-            let skip_width = before_width - max_before;
-            let mut skipped = 0;
-            let mut byte_start = 0;
-            for (i, c) in text_before_cursor.char_indices() {
-                let cw = unicode_width::UnicodeWidthChar::width(c).unwrap_or(0);
-                if skipped >= skip_width {
-                    byte_start = i;
+    let total_chars = chars.len();
+    let total_display_width: usize = chars.iter().map(|(_, _, w)| w).sum();
+
+    // Calculate scroll offset (how many chars to skip from start)
+    let mut scroll_offset = 0;
+    if total_display_width >= width {
+        // Need to scroll - ensure cursor is visible
+        let mut cursor_display_x = 0;
+        for (char_idx, _, cw) in &chars {
+            if *char_idx >= cursor_pos {
+                break;
+            }
+            cursor_display_x += cw;
+        }
+
+        // If cursor would be past visible area, scroll
+        if cursor_display_x >= width {
+            let mut skipped_width = 0;
+            for (char_idx, _, cw) in &chars {
+                if cursor_display_x - skipped_width < width {
+                    scroll_offset = *char_idx;
                     break;
                 }
-                skipped += cw;
-                byte_start = i + c.len_utf8();
+                skipped_width += cw;
             }
-            let before = &text_before_cursor[byte_start..];
-            let before_display_width = UnicodeWidthStr::width(before);
-
-            // Truncate after if needed
-            let after_space = width.saturating_sub(before_display_width);
-            let after = truncate_to_width(text_after_cursor, after_space);
-
-            (before, after, x + before_display_width as u16)
-        } else {
-            // Truncate after
-            let after_space = width.saturating_sub(before_width);
-            let after = truncate_to_width(text_after_cursor, after_space);
-            (text_before_cursor, after, x + before_width as u16)
         }
-    } else {
-        (
-            text_before_cursor,
-            text_after_cursor,
-            x + before_width as u16,
-        )
-    };
-
-    // Selection style (used when all text is selected)
-    let selection_style = Style::default().fg(theme.bg).bg(theme.success);
-
-    // Render text before cursor
-    if is_selected_all && is_focused {
-        buf.set_string(x, y, visible_before, selection_style);
-    } else {
-        buf.set_string(x, y, visible_before, text_style);
     }
 
-    // Render cursor and text after
+    // Render characters
+    let mut screen_x = x;
     let field_end = x + width as u16;
-    if is_focused {
-        let cursor_char = visible_after.chars().next().unwrap_or(' ');
-        let cursor_width = unicode_width::UnicodeWidthChar::width(cursor_char)
-            .unwrap_or(1)
-            .max(1);
-        // Only render cursor if it's within field bounds
-        if cursor_screen_x < field_end {
-            buf.set_string(cursor_screen_x, y, cursor_char.to_string(), selection_style);
-        }
-        // Render text after cursor (skip first char which is under cursor)
-        let rest_after = visible_after.get(cursor_char.len_utf8()..).unwrap_or("");
-        if !rest_after.is_empty() {
-            let rest_x = cursor_screen_x + cursor_width as u16;
-            if rest_x < field_end {
-                let style = if is_selected_all {
-                    selection_style
-                } else {
-                    text_style
-                };
-                buf.set_string(rest_x, y, rest_after, style);
-            }
-        }
-    } else {
-        let before_display_width = UnicodeWidthStr::width(visible_before);
-        buf.set_string(
-            x + before_display_width as u16,
-            y,
-            visible_after,
-            text_style,
-        );
-    }
-}
 
-/// Truncate string to fit within given display width
-fn truncate_to_width(s: &str, max_width: usize) -> &str {
-    use unicode_width::UnicodeWidthChar;
-    let mut width = 0;
-    for (i, c) in s.char_indices() {
-        let cw = UnicodeWidthChar::width(c).unwrap_or(0);
-        if width + cw > max_width {
-            return &s[..i];
+    for (char_idx, c, cw) in chars.iter().skip(scroll_offset) {
+        if screen_x >= field_end {
+            break;
         }
-        width += cw;
+
+        // Determine style for this character
+        let is_selected = selection_range
+            .map(|(start, end)| *char_idx >= start && *char_idx < end)
+            .unwrap_or(false);
+        let is_cursor = is_focused && *char_idx == cursor_pos;
+
+        let style = if is_cursor || (is_selected && is_focused) {
+            selection_style
+        } else {
+            text_style
+        };
+
+        buf.set_string(screen_x, y, c.to_string(), style);
+        screen_x += *cw as u16;
     }
-    s
+
+    // Render cursor at end if cursor is past last char
+    if is_focused && cursor_pos >= total_chars && screen_x < field_end {
+        let is_selected = selection_range
+            .map(|(start, end)| cursor_pos >= start && cursor_pos < end)
+            .unwrap_or(false);
+        let style = if is_selected {
+            selection_style
+        } else {
+            cursor_style
+        };
+        buf.set_string(screen_x, y, " ", style);
+    }
 }
 
 /// Render a labeled input field.
@@ -191,10 +176,10 @@ pub fn render_labeled_input(
     buf: &mut Buffer,
     area: Rect,
     label: &str,
-    text_before_cursor: &str,
-    text_after_cursor: &str,
+    text: &str,
+    cursor_pos: usize,
+    selection_range: Option<(usize, usize)>,
     is_focused: bool,
-    is_selected_all: bool,
     theme: &Theme,
 ) {
     let label_width = label.len() as u16;
@@ -211,10 +196,10 @@ pub fn render_labeled_input(
         input_x,
         area.y,
         input_width,
-        text_before_cursor,
-        text_after_cursor,
+        text,
+        cursor_pos,
+        selection_range,
         is_focused,
-        is_selected_all,
         theme,
     );
 }

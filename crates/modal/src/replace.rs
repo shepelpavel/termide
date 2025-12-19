@@ -55,6 +55,8 @@ pub struct ReplaceModal {
     /// Last rendered areas for mouse handling
     last_button_areas: Vec<(Rect, usize)>, // (area, button_idx)
     last_close_button_area: Option<Rect>,
+    last_find_input_area: Option<Rect>,
+    last_replace_input_area: Option<Rect>,
 }
 
 impl ReplaceModal {
@@ -68,6 +70,8 @@ impl ReplaceModal {
             match_info: None,
             last_button_areas: Vec::new(),
             last_close_button_area: None,
+            last_find_input_area: None,
+            last_replace_input_area: None,
         }
     }
 
@@ -133,26 +137,30 @@ impl Modal for ReplaceModal {
             .split(inner);
 
         // === Render find input line ===
+        let find_input_area = chunks[0];
+        self.last_find_input_area = Some(find_input_area);
         base::render_labeled_input(
             buf,
-            chunks[0],
+            find_input_area,
             "Find:    ",
-            self.find_input_handler.text_before_cursor(),
-            self.find_input_handler.text_after_cursor(),
+            self.find_input_handler.text(),
+            self.find_input_handler.cursor_pos(),
+            self.find_input_handler.selection_range(),
             matches!(self.focus, FocusArea::FindInput),
-            self.find_input_handler.has_selection(),
             theme,
         );
 
         // === Render replace input line ===
+        let replace_input_area = chunks[1];
+        self.last_replace_input_area = Some(replace_input_area);
         base::render_labeled_input(
             buf,
-            chunks[1],
+            replace_input_area,
             "Replace: ",
-            self.replace_input_handler.text_before_cursor(),
-            self.replace_input_handler.text_after_cursor(),
+            self.replace_input_handler.text(),
+            self.replace_input_handler.cursor_pos(),
+            self.replace_input_handler.selection_range(),
             matches!(self.focus, FocusArea::ReplaceInput),
-            self.replace_input_handler.has_selection(),
             theme,
         );
 
@@ -236,50 +244,128 @@ impl Modal for ReplaceModal {
         mouse: crossterm::event::MouseEvent,
         _modal_area: Rect,
     ) -> Result<Option<ModalResult<Self::Result>>> {
-        use crossterm::event::MouseEventKind;
+        use crossterm::event::{MouseButton, MouseEventKind};
 
-        // Only handle left clicks
-        if !matches!(
-            mouse.kind,
-            MouseEventKind::Down(crossterm::event::MouseButton::Left)
-        ) {
-            return Ok(None);
-        }
+        let mouse_pos = (mouse.column, mouse.row);
+        let label_width = 9u16; // "Find:    " or "Replace: "
 
-        let click_pos = (mouse.column, mouse.row);
+        match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                // Check if clicked on close button [X]
+                if let Some(close_area) = self.last_close_button_area {
+                    if mouse_pos.0 >= close_area.x
+                        && mouse_pos.0 < close_area.x + close_area.width
+                        && mouse_pos.1 == close_area.y
+                    {
+                        return Ok(Some(ModalResult::Cancelled));
+                    }
+                }
 
-        // Check if clicked on close button [X]
-        if let Some(close_area) = self.last_close_button_area {
-            if click_pos.0 >= close_area.x
-                && click_pos.0 < close_area.x + close_area.width
-                && click_pos.1 == close_area.y
-            {
-                return Ok(Some(ModalResult::Cancelled));
-            }
-        }
+                // Check if clicked on any button
+                for (area, idx) in &self.last_button_areas {
+                    if mouse_pos.0 >= area.x
+                        && mouse_pos.0 < area.x + area.width
+                        && mouse_pos.1 == area.y
+                    {
+                        // Trigger corresponding action
+                        if !self.find_input_handler.is_empty() {
+                            let action = match idx {
+                                0 => ReplaceAction::Replace,
+                                1 => ReplaceAction::ReplaceAll,
+                                2 => ReplaceAction::Previous,
+                                _ => ReplaceAction::Next,
+                            };
+                            return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
+                                find_query: self.find_input_handler.text().to_string(),
+                                replace_with: self.replace_input_handler.text().to_string(),
+                                action,
+                            })));
+                        }
+                    }
+                }
 
-        // Check if clicked on any button
-        for (area, idx) in &self.last_button_areas {
-            if click_pos.0 >= area.x && click_pos.0 < area.x + area.width && click_pos.1 == area.y {
-                // Trigger corresponding action
-                if !self.find_input_handler.is_empty() {
-                    let action = match idx {
-                        0 => ReplaceAction::Replace,
-                        1 => ReplaceAction::ReplaceAll,
-                        2 => ReplaceAction::Previous,
-                        _ => ReplaceAction::Next,
-                    };
-                    return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
-                        find_query: self.find_input_handler.text().to_string(),
-                        replace_with: self.replace_input_handler.text().to_string(),
-                        action,
-                    })));
+                // Check if clicked on find input field - start selection
+                if let Some(input_area) = self.last_find_input_area {
+                    let input_start_x = input_area.x + label_width;
+                    if mouse_pos.0 >= input_start_x
+                        && mouse_pos.0 < input_area.x + input_area.width
+                        && mouse_pos.1 == input_area.y
+                    {
+                        self.focus = FocusArea::FindInput;
+                        let click_x = (mouse_pos.0 - input_start_x) as usize;
+                        let char_pos =
+                            screen_x_to_char_pos(self.find_input_handler.text(), click_x);
+                        self.find_input_handler
+                            .set_cursor_with_selection_start(char_pos);
+                    }
+                }
+
+                // Check if clicked on replace input field - start selection
+                if let Some(input_area) = self.last_replace_input_area {
+                    let input_start_x = input_area.x + label_width;
+                    if mouse_pos.0 >= input_start_x
+                        && mouse_pos.0 < input_area.x + input_area.width
+                        && mouse_pos.1 == input_area.y
+                    {
+                        self.focus = FocusArea::ReplaceInput;
+                        let click_x = (mouse_pos.0 - input_start_x) as usize;
+                        let char_pos =
+                            screen_x_to_char_pos(self.replace_input_handler.text(), click_x);
+                        self.replace_input_handler
+                            .set_cursor_with_selection_start(char_pos);
+                    }
                 }
             }
+            MouseEventKind::Drag(MouseButton::Left) => {
+                // Extend selection during drag for find input
+                if let Some(input_area) = self.last_find_input_area {
+                    if mouse_pos.1 == input_area.y && matches!(self.focus, FocusArea::FindInput) {
+                        let input_start_x = input_area.x + label_width;
+                        let drag_x = if mouse_pos.0 < input_start_x {
+                            0
+                        } else {
+                            (mouse_pos.0 - input_start_x) as usize
+                        };
+                        let char_pos = screen_x_to_char_pos(self.find_input_handler.text(), drag_x);
+                        self.find_input_handler.extend_selection_to(char_pos);
+                    }
+                }
+
+                // Extend selection during drag for replace input
+                if let Some(input_area) = self.last_replace_input_area {
+                    if mouse_pos.1 == input_area.y && matches!(self.focus, FocusArea::ReplaceInput)
+                    {
+                        let input_start_x = input_area.x + label_width;
+                        let drag_x = if mouse_pos.0 < input_start_x {
+                            0
+                        } else {
+                            (mouse_pos.0 - input_start_x) as usize
+                        };
+                        let char_pos =
+                            screen_x_to_char_pos(self.replace_input_handler.text(), drag_x);
+                        self.replace_input_handler.extend_selection_to(char_pos);
+                    }
+                }
+            }
+            _ => {}
         }
 
         Ok(None)
     }
+}
+
+/// Convert screen X position to character position in text.
+fn screen_x_to_char_pos(text: &str, screen_x: usize) -> usize {
+    use unicode_width::UnicodeWidthChar;
+    let mut width = 0;
+    for (i, c) in text.chars().enumerate() {
+        let cw = UnicodeWidthChar::width(c).unwrap_or(1);
+        if width + cw > screen_x {
+            return i;
+        }
+        width += cw;
+    }
+    text.chars().count() // Click past end = cursor at end
 }
 
 impl ReplaceModal {
@@ -399,17 +485,33 @@ impl ReplaceModal {
             (KeyCode::Left, KeyModifiers::NONE) => {
                 self.find_input_handler.move_left();
             }
+            // Shift+Left - select left
+            (KeyCode::Left, KeyModifiers::SHIFT) => {
+                self.find_input_handler.move_left_with_selection();
+            }
             // Right - move cursor right
             (KeyCode::Right, KeyModifiers::NONE) => {
                 self.find_input_handler.move_right();
+            }
+            // Shift+Right - select right
+            (KeyCode::Right, KeyModifiers::SHIFT) => {
+                self.find_input_handler.move_right_with_selection();
             }
             // Home - move to start
             (KeyCode::Home, KeyModifiers::NONE) => {
                 self.find_input_handler.move_home();
             }
+            // Shift+Home - select to start
+            (KeyCode::Home, KeyModifiers::SHIFT) => {
+                self.find_input_handler.move_home_with_selection();
+            }
             // End - move to end
             (KeyCode::End, KeyModifiers::NONE) => {
                 self.find_input_handler.move_end();
+            }
+            // Shift+End - select to end
+            (KeyCode::End, KeyModifiers::SHIFT) => {
+                self.find_input_handler.move_end_with_selection();
             }
             // Down - move to replace input
             (KeyCode::Down, KeyModifiers::NONE) => {
@@ -432,6 +534,53 @@ impl ReplaceModal {
             // Ctrl+A - select all
             (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
                 self.find_input_handler.select_all();
+            }
+            // Ctrl+C - copy selected text
+            (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
+                if let Some(text) = self.find_input_handler.selected_text() {
+                    let _ = termide_clipboard::copy(text);
+                }
+            }
+            // Ctrl+X - cut selected text
+            (KeyCode::Char('x'), KeyModifiers::CONTROL) => {
+                if let Some(text) = self.find_input_handler.selected_text() {
+                    let _ = termide_clipboard::copy(text);
+                    self.find_input_handler.delete_selection();
+                    // Trigger live search if text remains
+                    if !self.find_input_handler.is_empty() {
+                        return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
+                            find_query: self.find_input_handler.text().to_string(),
+                            replace_with: self.replace_input_handler.text().to_string(),
+                            action: ReplaceAction::Search,
+                        })));
+                    }
+                }
+            }
+            // Ctrl+Z - undo
+            (KeyCode::Char('z'), KeyModifiers::CONTROL) => {
+                if self.find_input_handler.undo() {
+                    // Trigger live search after undo
+                    if !self.find_input_handler.is_empty() {
+                        return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
+                            find_query: self.find_input_handler.text().to_string(),
+                            replace_with: self.replace_input_handler.text().to_string(),
+                            action: ReplaceAction::Search,
+                        })));
+                    }
+                }
+            }
+            // Ctrl+Y - redo
+            (KeyCode::Char('y'), KeyModifiers::CONTROL) => {
+                if self.find_input_handler.redo() {
+                    // Trigger live search after redo
+                    if !self.find_input_handler.is_empty() {
+                        return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
+                            find_query: self.find_input_handler.text().to_string(),
+                            replace_with: self.replace_input_handler.text().to_string(),
+                            action: ReplaceAction::Search,
+                        })));
+                    }
+                }
             }
             // Character input - insert character and trigger live search
             (KeyCode::Char(ch), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
@@ -532,17 +681,33 @@ impl ReplaceModal {
             (KeyCode::Left, KeyModifiers::NONE) => {
                 self.replace_input_handler.move_left();
             }
+            // Shift+Left - select left
+            (KeyCode::Left, KeyModifiers::SHIFT) => {
+                self.replace_input_handler.move_left_with_selection();
+            }
             // Right - move cursor right
             (KeyCode::Right, KeyModifiers::NONE) => {
                 self.replace_input_handler.move_right();
+            }
+            // Shift+Right - select right
+            (KeyCode::Right, KeyModifiers::SHIFT) => {
+                self.replace_input_handler.move_right_with_selection();
             }
             // Home - move to start
             (KeyCode::Home, KeyModifiers::NONE) => {
                 self.replace_input_handler.move_home();
             }
+            // Shift+Home - select to start
+            (KeyCode::Home, KeyModifiers::SHIFT) => {
+                self.replace_input_handler.move_home_with_selection();
+            }
             // End - move to end
             (KeyCode::End, KeyModifiers::NONE) => {
                 self.replace_input_handler.move_end();
+            }
+            // Shift+End - select to end
+            (KeyCode::End, KeyModifiers::SHIFT) => {
+                self.replace_input_handler.move_end_with_selection();
             }
             // Up - move back to find input
             (KeyCode::Up, KeyModifiers::NONE) => {
@@ -561,6 +726,27 @@ impl ReplaceModal {
             // Ctrl+A - select all
             (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
                 self.replace_input_handler.select_all();
+            }
+            // Ctrl+C - copy selected text
+            (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
+                if let Some(text) = self.replace_input_handler.selected_text() {
+                    let _ = termide_clipboard::copy(text);
+                }
+            }
+            // Ctrl+X - cut selected text
+            (KeyCode::Char('x'), KeyModifiers::CONTROL) => {
+                if let Some(text) = self.replace_input_handler.selected_text() {
+                    let _ = termide_clipboard::copy(text);
+                    self.replace_input_handler.delete_selection();
+                }
+            }
+            // Ctrl+Z - undo
+            (KeyCode::Char('z'), KeyModifiers::CONTROL) => {
+                self.replace_input_handler.undo();
+            }
+            // Ctrl+Y - redo
+            (KeyCode::Char('y'), KeyModifiers::CONTROL) => {
+                self.replace_input_handler.redo();
             }
             // Character input - insert character (no live search trigger)
             (KeyCode::Char(ch), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
