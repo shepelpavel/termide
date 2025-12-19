@@ -117,8 +117,10 @@ impl Modal for SearchModal {
             input_area.x,
             input_area.y,
             input_area.width,
-            self.input_handler.text(),
+            self.input_handler.text_before_cursor(),
+            self.input_handler.text_after_cursor(),
             matches!(self.focus, FocusArea::Input),
+            self.input_handler.has_selection(),
             theme,
         );
 
@@ -281,6 +283,23 @@ impl Modal for SearchModal {
                 // End - move to end
                 (KeyCode::End, KeyModifiers::NONE) => {
                     self.input_handler.move_end();
+                }
+                // Ctrl+V - paste from clipboard
+                (KeyCode::Char('v'), KeyModifiers::CONTROL) => {
+                    if let Some(text) = termide_clipboard::paste() {
+                        self.input_handler.insert_str(&text);
+                        // Trigger live search
+                        if !self.input_handler.is_empty() {
+                            return Ok(Some(ModalResult::Confirmed(SearchModalResult {
+                                query: self.input_handler.text().to_string(),
+                                action: SearchAction::Search,
+                            })));
+                        }
+                    }
+                }
+                // Ctrl+A - select all
+                (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
+                    self.input_handler.select_all();
                 }
                 // Character input - insert character and trigger live search
                 (KeyCode::Char(ch), KeyModifiers::NONE | KeyModifiers::SHIFT) => {

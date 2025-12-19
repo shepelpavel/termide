@@ -61,52 +61,140 @@ pub fn render_modal_frame(
 }
 
 /// Render a text input field with cursor.
+#[allow(clippy::too_many_arguments)]
 pub fn render_input_field(
     buf: &mut Buffer,
     x: u16,
     y: u16,
     width: u16,
-    text: &str,
+    text_before_cursor: &str,
+    text_after_cursor: &str,
     is_focused: bool,
+    is_selected_all: bool,
     theme: &Theme,
 ) {
-    let input_style = if is_focused {
+    use unicode_width::UnicodeWidthStr;
+
+    let text_style = if is_focused {
         Style::default().fg(theme.fg).bg(theme.bg)
     } else {
         Style::default().fg(theme.bg)
     };
 
-    // Calculate visible text (scroll if text is longer than width)
-    let visible_text = if text.len() as u16 > width {
-        let start = text.len().saturating_sub(width as usize);
-        &text[start..]
+    // Use display width for proper Unicode handling
+    let before_width = UnicodeWidthStr::width(text_before_cursor);
+    let after_width = UnicodeWidthStr::width(text_after_cursor);
+    let total_width = before_width + after_width;
+    let width = width as usize;
+
+    // Calculate visible portions using character iteration
+    let (visible_before, visible_after, cursor_screen_x) = if total_width >= width {
+        let max_before = width;
+        if before_width > max_before {
+            // Need to skip some chars from the beginning
+            let skip_width = before_width - max_before;
+            let mut skipped = 0;
+            let mut byte_start = 0;
+            for (i, c) in text_before_cursor.char_indices() {
+                let cw = unicode_width::UnicodeWidthChar::width(c).unwrap_or(0);
+                if skipped >= skip_width {
+                    byte_start = i;
+                    break;
+                }
+                skipped += cw;
+                byte_start = i + c.len_utf8();
+            }
+            let before = &text_before_cursor[byte_start..];
+            let before_display_width = UnicodeWidthStr::width(before);
+
+            // Truncate after if needed
+            let after_space = width.saturating_sub(before_display_width);
+            let after = truncate_to_width(text_after_cursor, after_space);
+
+            (before, after, x + before_display_width as u16)
+        } else {
+            // Truncate after
+            let after_space = width.saturating_sub(before_width);
+            let after = truncate_to_width(text_after_cursor, after_space);
+            (text_before_cursor, after, x + before_width as u16)
+        }
     } else {
-        text
+        (
+            text_before_cursor,
+            text_after_cursor,
+            x + before_width as u16,
+        )
     };
 
-    buf.set_string(x, y, visible_text, input_style);
+    // Selection style (used when all text is selected)
+    let selection_style = Style::default().fg(theme.bg).bg(theme.success);
 
-    // Draw cursor if focused
+    // Render text before cursor
+    if is_selected_all && is_focused {
+        buf.set_string(x, y, visible_before, selection_style);
+    } else {
+        buf.set_string(x, y, visible_before, text_style);
+    }
+
+    // Render cursor and text after
+    let field_end = x + width as u16;
     if is_focused {
-        let cursor_screen_pos = x + (visible_text.len() as u16).min(width.saturating_sub(1));
-        if cursor_screen_pos < x + width {
-            buf[(cursor_screen_pos, y)].set_style(
-                Style::default()
-                    .bg(theme.bg)
-                    .fg(theme.fg)
-                    .add_modifier(Modifier::REVERSED),
-            );
+        let cursor_char = visible_after.chars().next().unwrap_or(' ');
+        let cursor_width = unicode_width::UnicodeWidthChar::width(cursor_char)
+            .unwrap_or(1)
+            .max(1);
+        // Only render cursor if it's within field bounds
+        if cursor_screen_x < field_end {
+            buf.set_string(cursor_screen_x, y, cursor_char.to_string(), selection_style);
         }
+        // Render text after cursor (skip first char which is under cursor)
+        let rest_after = visible_after.get(cursor_char.len_utf8()..).unwrap_or("");
+        if !rest_after.is_empty() {
+            let rest_x = cursor_screen_x + cursor_width as u16;
+            if rest_x < field_end {
+                let style = if is_selected_all {
+                    selection_style
+                } else {
+                    text_style
+                };
+                buf.set_string(rest_x, y, rest_after, style);
+            }
+        }
+    } else {
+        let before_display_width = UnicodeWidthStr::width(visible_before);
+        buf.set_string(
+            x + before_display_width as u16,
+            y,
+            visible_after,
+            text_style,
+        );
     }
 }
 
+/// Truncate string to fit within given display width
+fn truncate_to_width(s: &str, max_width: usize) -> &str {
+    use unicode_width::UnicodeWidthChar;
+    let mut width = 0;
+    for (i, c) in s.char_indices() {
+        let cw = UnicodeWidthChar::width(c).unwrap_or(0);
+        if width + cw > max_width {
+            return &s[..i];
+        }
+        width += cw;
+    }
+    s
+}
+
 /// Render a labeled input field.
+#[allow(clippy::too_many_arguments)]
 pub fn render_labeled_input(
     buf: &mut Buffer,
     area: Rect,
     label: &str,
-    text: &str,
+    text_before_cursor: &str,
+    text_after_cursor: &str,
     is_focused: bool,
+    is_selected_all: bool,
     theme: &Theme,
 ) {
     let label_width = label.len() as u16;
@@ -118,7 +206,17 @@ pub fn render_labeled_input(
     let input_x = area.x + label_width;
     let input_width = area.width.saturating_sub(label_width);
 
-    render_input_field(buf, input_x, area.y, input_width, text, is_focused, theme);
+    render_input_field(
+        buf,
+        input_x,
+        area.y,
+        input_width,
+        text_before_cursor,
+        text_after_cursor,
+        is_focused,
+        is_selected_all,
+        theme,
+    );
 }
 
 /// Result of checking mouse click position in a modal.

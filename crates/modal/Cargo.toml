@@ -17,6 +17,7 @@ unicode-segmentation.workspace = true
 unicode-width.workspace = true
 
 # Workspace crates
+termide-clipboard = { path = "../clipboard" }
 termide-core = { path = "../core" }
 termide-git = { path = "../git" }
 termide-ui = { path = "../ui" }

@@ -137,8 +137,10 @@ impl Modal for ReplaceModal {
             buf,
             chunks[0],
             "Find:    ",
-            self.find_input_handler.text(),
+            self.find_input_handler.text_before_cursor(),
+            self.find_input_handler.text_after_cursor(),
             matches!(self.focus, FocusArea::FindInput),
+            self.find_input_handler.has_selection(),
             theme,
         );
 
@@ -147,8 +149,10 @@ impl Modal for ReplaceModal {
             buf,
             chunks[1],
             "Replace: ",
-            self.replace_input_handler.text(),
+            self.replace_input_handler.text_before_cursor(),
+            self.replace_input_handler.text_after_cursor(),
             matches!(self.focus, FocusArea::ReplaceInput),
+            self.replace_input_handler.has_selection(),
             theme,
         );
 
@@ -411,6 +415,24 @@ impl ReplaceModal {
             (KeyCode::Down, KeyModifiers::NONE) => {
                 self.focus = FocusArea::ReplaceInput;
             }
+            // Ctrl+V - paste from clipboard
+            (KeyCode::Char('v'), KeyModifiers::CONTROL) => {
+                if let Some(text) = termide_clipboard::paste() {
+                    self.find_input_handler.insert_str(&text);
+                    // Trigger live search
+                    if !self.find_input_handler.is_empty() {
+                        return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
+                            find_query: self.find_input_handler.text().to_string(),
+                            replace_with: self.replace_input_handler.text().to_string(),
+                            action: ReplaceAction::Search,
+                        })));
+                    }
+                }
+            }
+            // Ctrl+A - select all
+            (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
+                self.find_input_handler.select_all();
+            }
             // Character input - insert character and trigger live search
             (KeyCode::Char(ch), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
                 self.find_input_handler.insert_char(ch);
@@ -529,6 +551,16 @@ impl ReplaceModal {
             // Down - move to buttons
             (KeyCode::Down, KeyModifiers::NONE) => {
                 self.focus = FocusArea::Buttons;
+            }
+            // Ctrl+V - paste from clipboard
+            (KeyCode::Char('v'), KeyModifiers::CONTROL) => {
+                if let Some(text) = termide_clipboard::paste() {
+                    self.replace_input_handler.insert_str(&text);
+                }
+            }
+            // Ctrl+A - select all
+            (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
+                self.replace_input_handler.select_all();
             }
             // Character input - insert character (no live search trigger)
             (KeyCode::Char(ch), KeyModifiers::NONE | KeyModifiers::SHIFT) => {

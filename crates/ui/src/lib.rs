@@ -164,7 +164,8 @@ pub fn max_item_width(items: &[String], prefix_len: usize) -> u16 {
 #[derive(Debug, Clone)]
 pub struct TextInput {
     input: String,
-    cursor_pos: usize, // Position in characters, not bytes
+    cursor_pos: usize,  // Position in characters, not bytes
+    selected_all: bool, // True when all text is selected (Ctrl+A)
 }
 
 impl TextInput {
@@ -173,6 +174,7 @@ impl TextInput {
         Self {
             input: String::new(),
             cursor_pos: 0,
+            selected_all: false,
         }
     }
 
@@ -180,7 +182,11 @@ impl TextInput {
     pub fn with_text(text: impl Into<String>) -> Self {
         let input = text.into();
         let cursor_pos = input.chars().count();
-        Self { input, cursor_pos }
+        Self {
+            input,
+            cursor_pos,
+            selected_all: false,
+        }
     }
 
     /// Alias for with_text - backward compatibility.
@@ -202,12 +208,31 @@ impl TextInput {
     pub fn set_text(&mut self, text: impl Into<String>) {
         self.input = text.into();
         self.cursor_pos = self.input.chars().count();
+        self.selected_all = false;
     }
 
     /// Clear all input
     pub fn clear(&mut self) {
         self.input.clear();
         self.cursor_pos = 0;
+        self.selected_all = false;
+    }
+
+    /// Select all text (Ctrl+A)
+    pub fn select_all(&mut self) {
+        if !self.input.is_empty() {
+            self.selected_all = true;
+        }
+    }
+
+    /// Check if all text is selected
+    pub fn has_selection(&self) -> bool {
+        self.selected_all && !self.input.is_empty()
+    }
+
+    /// Clear selection without modifying text
+    fn clear_selection(&mut self) {
+        self.selected_all = false;
     }
 
     /// Convert cursor position (in characters) to byte index
@@ -221,6 +246,12 @@ impl TextInput {
 
     /// Insert a character at the cursor position
     pub fn insert(&mut self, c: char) {
+        // If all text is selected, replace it
+        if self.selected_all {
+            self.input.clear();
+            self.cursor_pos = 0;
+            self.selected_all = false;
+        }
         let byte_idx = self.byte_index();
         self.input.insert(byte_idx, c);
         self.cursor_pos += 1;
@@ -232,8 +263,26 @@ impl TextInput {
         self.insert(c);
     }
 
+    /// Insert a string at cursor position
+    pub fn insert_str(&mut self, s: &str) {
+        // If all text is selected, replace it
+        if self.selected_all {
+            self.input.clear();
+            self.cursor_pos = 0;
+            self.selected_all = false;
+        }
+        for c in s.chars() {
+            self.insert(c);
+        }
+    }
+
     /// Delete character before cursor (backspace)
     pub fn backspace(&mut self) -> bool {
+        // If all text is selected, delete everything
+        if self.selected_all {
+            self.clear();
+            return true;
+        }
         if self.cursor_pos > 0 {
             self.cursor_pos -= 1;
             let byte_idx = self.byte_index();
@@ -246,6 +295,11 @@ impl TextInput {
 
     /// Delete character at cursor (delete key)
     pub fn delete(&mut self) -> bool {
+        // If all text is selected, delete everything
+        if self.selected_all {
+            self.clear();
+            return true;
+        }
         let char_count = self.input.chars().count();
         if self.cursor_pos < char_count {
             let byte_idx = self.byte_index();
@@ -258,6 +312,7 @@ impl TextInput {
 
     /// Move cursor left
     pub fn move_left(&mut self) -> bool {
+        self.clear_selection();
         if self.cursor_pos > 0 {
             self.cursor_pos -= 1;
             true
@@ -268,6 +323,7 @@ impl TextInput {
 
     /// Move cursor right
     pub fn move_right(&mut self) -> bool {
+        self.clear_selection();
         let char_count = self.input.chars().count();
         if self.cursor_pos < char_count {
             self.cursor_pos += 1;
@@ -279,11 +335,13 @@ impl TextInput {
 
     /// Move cursor to start (Home)
     pub fn move_home(&mut self) {
+        self.clear_selection();
         self.cursor_pos = 0;
     }
 
     /// Move cursor to end (End)
     pub fn move_end(&mut self) {
+        self.clear_selection();
         self.cursor_pos = self.input.chars().count();
     }
 

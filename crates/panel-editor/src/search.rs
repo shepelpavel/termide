@@ -42,7 +42,12 @@ pub fn perform_search(buffer: &TextBuffer, search: &mut SearchState) {
                     line: line_idx,
                     column: match_col,
                 });
-                col = match_col + 1;
+                // Advance past the first character of the match to handle multi-byte UTF-8
+                if let Some(first_char) = search_text[match_col..].chars().next() {
+                    col = match_col + first_char.len_utf8();
+                } else {
+                    break;
+                }
             }
         }
     }
