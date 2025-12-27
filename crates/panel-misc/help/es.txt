@@ -9,6 +9,7 @@
     Alt+L        Abrir panel de registro
     Alt+P        Abrir archivo de configuración en el editor
     Alt+/        Menú sesiones (nueva/cambiar/cambiar raíz)
+    Alt+G        Abrir panel Git Status
 
 
   GESTIÓN DE PANELES

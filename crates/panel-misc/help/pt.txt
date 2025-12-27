@@ -9,6 +9,7 @@
     Alt+L        Abrir painel de log
     Alt+P        Abrir arquivo de configuração no editor
     Alt+/        Menu sessões (nova/alternar/mudar raiz)
+    Alt+G        Abrir painel Git Status
 
 
   GERENCIAMENTO DE PAINÉIS

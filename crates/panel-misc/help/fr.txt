@@ -9,6 +9,7 @@
     Alt+L        Ouvrir le panneau journal
     Alt+P        Ouvrir le fichier de configuration dans l'éditeur
     Alt+/        Menu sessions (nouveau/changer/changer racine)
+    Alt+G        Ouvrir le panneau Git Status
 
 
   GESTION DES PANNEAUX

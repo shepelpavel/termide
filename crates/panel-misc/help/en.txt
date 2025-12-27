@@ -9,6 +9,7 @@
     Alt+L        Open Log panel
     Alt+P        Open config file in editor
     Alt+/        Sessions menu (new/switch/change root)
+    Alt+G        Open Git Status panel
 
 
   PANEL MANAGEMENT

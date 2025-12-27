@@ -68,6 +68,9 @@ impl App {
             HotkeyAction::OpenSessions => {
                 self.handle_open_sessions_modal()?;
             }
+            HotkeyAction::OpenGitStatus => {
+                self.handle_open_git_status()?;
+            }
 
             // Navigation
             HotkeyAction::PrevGroup => {

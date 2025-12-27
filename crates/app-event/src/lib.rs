@@ -126,6 +126,8 @@ pub enum HotkeyAction {
     RequestQuit,
     /// Open sessions modal
     OpenSessions,
+    /// Open or focus Git Status panel
+    OpenGitStatus,
 }
 
 impl HotkeyAction {
@@ -171,6 +173,7 @@ impl HotkeyAction {
             HotkeyAction::ToggleMenu
             | HotkeyAction::OpenPreferences
             | HotkeyAction::OpenSessions
+            | HotkeyAction::OpenGitStatus
             | HotkeyAction::PrevInGroup
             | HotkeyAction::NextInGroup
             | HotkeyAction::ToggleStacking
@@ -337,6 +340,24 @@ impl DefaultHotkeyProcessor {
         bindings.insert(
             KeyBinding::alt(KeyCode::Char('>')),
             HotkeyAction::OpenSessions,
+        );
+
+        // Git Status panel (Alt+G or Alt+п for Cyrillic layout)
+        bindings.insert(
+            KeyBinding::alt(KeyCode::Char('g')),
+            HotkeyAction::OpenGitStatus,
+        );
+        bindings.insert(
+            KeyBinding::alt(KeyCode::Char('G')),
+            HotkeyAction::OpenGitStatus,
+        );
+        bindings.insert(
+            KeyBinding::alt(KeyCode::Char('п')),
+            HotkeyAction::OpenGitStatus,
+        );
+        bindings.insert(
+            KeyBinding::alt(KeyCode::Char('П')),
+            HotkeyAction::OpenGitStatus,
         );
 
         // Panel management

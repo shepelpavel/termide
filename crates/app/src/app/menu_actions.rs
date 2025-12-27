@@ -599,7 +599,7 @@ impl App {
     }
 
     /// Open Git Status panel
-    fn handle_open_git_status(&mut self) -> Result<()> {
+    pub(super) fn handle_open_git_status(&mut self) -> Result<()> {
         logger::debug("Opening Git Status panel");
         self.close_welcome_panels();
 

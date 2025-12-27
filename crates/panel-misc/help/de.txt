@@ -9,6 +9,7 @@
     Alt+L        Log-Panel öffnen
     Alt+P        Konfigurationsdatei im Editor öffnen
     Alt+/        Sitzungsmenü (neu/wechseln/Stammverz. ändern)
+    Alt+G        Git Status Panel öffnen
 
 
   PANELVERWALTUNG
