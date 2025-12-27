@@ -426,6 +426,506 @@ fn parse_git_status_output(output: &str, is_repo_root: bool) -> (usize, usize, u
     (ahead, behind, uncommitted_changes, is_ignored)
 }
 
+// =============================================================================
+// Extended Git operations for Git Status Panel
+// =============================================================================
+
+/// Staged file information
+#[derive(Debug, Clone)]
+pub struct StagedFile {
+    /// Path relative to repo root
+    pub path: PathBuf,
+    /// Status code (M=modified, A=added, D=deleted, R=renamed)
+    pub status: char,
+}
+
+/// Unstaged file information
+#[derive(Debug, Clone)]
+pub struct UnstagedFile {
+    /// Path relative to repo root
+    pub path: PathBuf,
+    /// Status code (M=modified, D=deleted)
+    pub status: char,
+    /// Is this an untracked file
+    pub untracked: bool,
+}
+
+/// Commit information
+#[derive(Debug, Clone)]
+pub struct CommitInfo {
+    /// Commit hash (short form)
+    pub hash: String,
+    /// Author name
+    pub author: String,
+    /// Commit date
+    pub date: String,
+    /// Commit message (first line)
+    pub message: String,
+    /// Graph line for display (if using --graph)
+    pub graph: Option<String>,
+    /// Refs pointing to this commit (HEAD, branches, tags)
+    pub refs: Option<String>,
+}
+
+/// Get current branch name
+pub fn get_current_branch(repo: &Path) -> Option<String> {
+    git_command_stdout(repo, &["rev-parse", "--abbrev-ref", "HEAD"]).map(|s| s.trim().to_string())
+}
+
+/// Get list of all local branches
+pub fn get_branches(repo: &Path) -> Vec<String> {
+    git_command_stdout(repo, &["branch", "--format=%(refname:short)"])
+        .map(|s| s.lines().map(|l| l.to_string()).collect())
+        .unwrap_or_default()
+}
+
+/// Switch to a different branch
+pub fn checkout_branch(repo: &Path, branch: &str) -> Result<(), String> {
+    match git_command(repo, &["checkout", branch]) {
+        Some(_) => Ok(()),
+        None => Err(format!("Failed to checkout branch: {}", branch)),
+    }
+}
+
+/// Get staged files (files in index ready for commit)
+pub fn get_staged_files(repo: &Path) -> Vec<StagedFile> {
+    let mut result = Vec::new();
+
+    if let Some(stdout) = git_command_stdout(repo, &["diff", "--cached", "--name-status"]) {
+        for line in stdout.lines() {
+            if let Some((status, path)) = line.split_once('\t') {
+                if let Some(status_char) = status.chars().next() {
+                    result.push(StagedFile {
+                        path: PathBuf::from(path),
+                        status: status_char,
+                    });
+                }
+            }
+        }
+    }
+
+    result
+}
+
+/// Get unstaged files (modified files not in index) and untracked files
+pub fn get_unstaged_files(repo: &Path) -> Vec<UnstagedFile> {
+    let mut result = Vec::new();
+
+    // Get modified but not staged files
+    if let Some(stdout) = git_command_stdout(repo, &["diff", "--name-status"]) {
+        for line in stdout.lines() {
+            if let Some((status, path)) = line.split_once('\t') {
+                if let Some(status_char) = status.chars().next() {
+                    result.push(UnstagedFile {
+                        path: PathBuf::from(path),
+                        status: status_char,
+                        untracked: false,
+                    });
+                }
+            }
+        }
+    }
+
+    // Get untracked files
+    if let Some(stdout) = git_command_stdout(repo, &["ls-files", "--others", "--exclude-standard"])
+    {
+        for line in stdout.lines() {
+            if !line.is_empty() {
+                result.push(UnstagedFile {
+                    path: PathBuf::from(line),
+                    status: '?',
+                    untracked: true,
+                });
+            }
+        }
+    }
+
+    result
+}
+
+/// Check if a file is staged (in the git index)
+pub fn is_file_staged(repo: &Path, file: &Path) -> bool {
+    let staged = get_staged_files(repo);
+    let file_str = file.to_string_lossy();
+
+    // Check if the file path matches any staged file
+    staged.iter().any(|s| {
+        let staged_path = repo.join(&s.path);
+        staged_path == file || s.path.to_string_lossy() == file_str
+    })
+}
+
+/// Stage a file (add to index)
+pub fn stage_file(repo: &Path, file: &Path) -> Result<(), String> {
+    let file_str = file.to_string_lossy();
+    match git_command(repo, &["add", &file_str]) {
+        Some(_) => Ok(()),
+        None => Err(format!("Failed to stage file: {}", file_str)),
+    }
+}
+
+/// Stage multiple files
+pub fn stage_files(repo: &Path, files: &[PathBuf]) -> Result<(), String> {
+    if files.is_empty() {
+        return Ok(());
+    }
+
+    let mut args = vec!["add", "--"];
+    let file_strs: Vec<String> = files
+        .iter()
+        .map(|f| f.to_string_lossy().to_string())
+        .collect();
+    args.extend(file_strs.iter().map(|s| s.as_str()));
+
+    match git_command(repo, &args) {
+        Some(_) => Ok(()),
+        None => Err("Failed to stage files".to_string()),
+    }
+}
+
+/// Unstage a file (remove from index)
+pub fn unstage_file(repo: &Path, file: &Path) -> Result<(), String> {
+    let file_str = file.to_string_lossy();
+    match git_command(repo, &["reset", "HEAD", "--", &file_str]) {
+        Some(_) => Ok(()),
+        None => Err(format!("Failed to unstage file: {}", file_str)),
+    }
+}
+
+/// Unstage multiple files
+pub fn unstage_files(repo: &Path, files: &[PathBuf]) -> Result<(), String> {
+    if files.is_empty() {
+        return Ok(());
+    }
+
+    let mut args = vec!["reset", "HEAD", "--"];
+    let file_strs: Vec<String> = files
+        .iter()
+        .map(|f| f.to_string_lossy().to_string())
+        .collect();
+    args.extend(file_strs.iter().map(|s| s.as_str()));
+
+    match git_command(repo, &args) {
+        Some(_) => Ok(()),
+        None => Err("Failed to unstage files".to_string()),
+    }
+}
+
+/// Stage all changes
+pub fn stage_all(repo: &Path) -> Result<(), String> {
+    match git_command(repo, &["add", "-A"]) {
+        Some(_) => Ok(()),
+        None => Err("Failed to stage all files".to_string()),
+    }
+}
+
+/// Unstage all changes
+pub fn unstage_all(repo: &Path) -> Result<(), String> {
+    match git_command(repo, &["reset", "HEAD"]) {
+        Some(_) => Ok(()),
+        None => Err("Failed to unstage all files".to_string()),
+    }
+}
+
+/// Create a commit
+pub fn commit(repo: &Path, message: &str) -> Result<String, String> {
+    let output = Command::new("git")
+        .args(["commit", "-m", message])
+        .current_dir(repo)
+        .output()
+        .map_err(|e| format!("Failed to run git commit: {}", e))?;
+
+    if output.status.success() {
+        // Extract commit hash from output
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let hash = stdout
+            .lines()
+            .next()
+            .and_then(|l| l.split_whitespace().last())
+            .map(|s| s.trim_matches(|c| c == '[' || c == ']').to_string())
+            .unwrap_or_default();
+        Ok(hash)
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("Commit failed: {}", stderr.trim()))
+    }
+}
+
+/// Revert changes in a file (restore from HEAD)
+pub fn revert_file(repo: &Path, file: &Path) -> Result<(), String> {
+    let file_str = file.to_string_lossy();
+    match git_command(repo, &["checkout", "--", &file_str]) {
+        Some(_) => Ok(()),
+        None => Err(format!("Failed to revert file: {}", file_str)),
+    }
+}
+
+/// Revert multiple files
+pub fn revert_files(repo: &Path, files: &[PathBuf]) -> Result<(), String> {
+    if files.is_empty() {
+        return Ok(());
+    }
+
+    let mut args = vec!["checkout", "--"];
+    let file_strs: Vec<String> = files
+        .iter()
+        .map(|f| f.to_string_lossy().to_string())
+        .collect();
+    args.extend(file_strs.iter().map(|s| s.as_str()));
+
+    match git_command(repo, &args) {
+        Some(_) => Ok(()),
+        None => Err("Failed to revert files".to_string()),
+    }
+}
+
+/// Push to remote
+pub fn push(repo: &Path) -> Result<(), String> {
+    let output = Command::new("git")
+        .args(["push"])
+        .current_dir(repo)
+        .output()
+        .map_err(|e| format!("Failed to run git push: {}", e))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("Push failed: {}", stderr.trim()))
+    }
+}
+
+/// Pull from remote
+pub fn pull(repo: &Path) -> Result<(), String> {
+    let output = Command::new("git")
+        .args(["pull"])
+        .current_dir(repo)
+        .output()
+        .map_err(|e| format!("Failed to run git pull: {}", e))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("Pull failed: {}", stderr.trim()))
+    }
+}
+
+/// Fetch from remote
+pub fn fetch(repo: &Path) -> Result<(), String> {
+    let output = Command::new("git")
+        .args(["fetch"])
+        .current_dir(repo)
+        .output()
+        .map_err(|e| format!("Failed to run git fetch: {}", e))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("Fetch failed: {}", stderr.trim()))
+    }
+}
+
+/// Stash changes
+pub fn stash(repo: &Path, message: Option<&str>) -> Result<(), String> {
+    let args = if let Some(msg) = message {
+        vec!["stash", "push", "-m", msg]
+    } else {
+        vec!["stash", "push"]
+    };
+
+    match git_command(repo, &args) {
+        Some(_) => Ok(()),
+        None => Err("Failed to stash changes".to_string()),
+    }
+}
+
+/// Get commit log
+pub fn get_log(repo: &Path, count: usize) -> Vec<CommitInfo> {
+    let count_str = count.to_string();
+    // Format: hash, author, date, refs, message
+    let format = "%h\t%an\t%ar\t%d\t%s";
+
+    git_command_stdout(
+        repo,
+        &[
+            "log",
+            &format!("-{}", count_str),
+            &format!("--format={}", format),
+        ],
+    )
+    .map(|stdout| {
+        stdout
+            .lines()
+            .filter_map(|line| {
+                let parts: Vec<&str> = line.splitn(5, '\t').collect();
+                if parts.len() == 5 {
+                    let refs = if parts[3].is_empty() {
+                        None
+                    } else {
+                        Some(parts[3].trim().to_string())
+                    };
+                    Some(CommitInfo {
+                        hash: parts[0].to_string(),
+                        author: parts[1].to_string(),
+                        date: parts[2].to_string(),
+                        message: parts[4].to_string(),
+                        graph: None,
+                        refs,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect()
+    })
+    .unwrap_or_default()
+}
+
+/// Get commit log with graph
+pub fn get_log_with_graph(repo: &Path, count: usize) -> Vec<CommitInfo> {
+    let count_str = count.to_string();
+
+    // Use a special format that includes graph and refs
+    // Format: hash, author, date, refs, message
+    git_command_stdout(
+        repo,
+        &[
+            "log",
+            &format!("-{}", count_str),
+            "--graph",
+            "--format=%h\t%an\t%ar\t%d\t%s",
+        ],
+    )
+    .map(|stdout| {
+        stdout
+            .lines()
+            .filter_map(|line| {
+                // Graph lines start with *, |, /, \ or space
+                // Find where the actual commit info starts
+                let graph_end = line.find(|c: char| c.is_ascii_hexdigit()).unwrap_or(0);
+
+                let graph = if graph_end > 0 {
+                    Some(line[..graph_end].to_string())
+                } else {
+                    None
+                };
+
+                let info_part = &line[graph_end..];
+                let parts: Vec<&str> = info_part.splitn(5, '\t').collect();
+
+                if parts.len() == 5 {
+                    let refs = if parts[3].is_empty() {
+                        None
+                    } else {
+                        Some(parts[3].trim().to_string())
+                    };
+                    Some(CommitInfo {
+                        hash: parts[0].to_string(),
+                        author: parts[1].to_string(),
+                        date: parts[2].to_string(),
+                        message: parts[4].to_string(),
+                        graph,
+                        refs,
+                    })
+                } else if !info_part.trim().is_empty() {
+                    // Handle graph-only lines (merge indicators)
+                    Some(CommitInfo {
+                        hash: String::new(),
+                        author: String::new(),
+                        date: String::new(),
+                        message: String::new(),
+                        graph,
+                        refs: None,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect()
+    })
+    .unwrap_or_default()
+}
+
+/// Get diff for a specific commit (with full patch)
+pub fn get_commit_diff(repo: &Path, hash: &str) -> Option<String> {
+    git_command_stdout(repo, &["show", "--stat", "--patch", hash])
+}
+
+/// Get file diff (for diff viewer)
+pub fn get_file_diff(repo: &Path, file: &Path, staged: bool) -> Option<String> {
+    let file_str = file.to_string_lossy();
+    if staged {
+        git_command_stdout(repo, &["diff", "--cached", "--", &file_str])
+    } else {
+        git_command_stdout(repo, &["diff", "--", &file_str])
+    }
+}
+
+/// Find all git repositories under a root directory up to max_depth
+pub fn find_all_repos(root: &Path, max_depth: usize) -> Vec<PathBuf> {
+    let mut repos = Vec::new();
+    find_repos_recursive(root, 0, max_depth, &mut repos);
+    repos
+}
+
+fn find_repos_recursive(dir: &Path, depth: usize, max_depth: usize, repos: &mut Vec<PathBuf>) {
+    if depth > max_depth {
+        return;
+    }
+
+    // Check if this directory is a git repo
+    if dir.join(".git").exists() {
+        repos.push(dir.to_path_buf());
+        // Don't recurse into git repos (nested repos are unusual)
+        return;
+    }
+
+    // Scan subdirectories
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                // Skip hidden directories (except .git which we check above)
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    if name.starts_with('.') {
+                        continue;
+                    }
+                }
+                find_repos_recursive(&path, depth + 1, max_depth, repos);
+            }
+        }
+    }
+}
+
+/// Get repository name (folder name containing .git)
+pub fn get_repo_name(repo: &Path) -> String {
+    repo.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("repository")
+        .to_string()
+}
+
+/// Get ahead/behind counts relative to upstream
+pub fn get_ahead_behind(repo: &Path) -> (usize, usize) {
+    git_command_stdout(
+        repo,
+        &["rev-list", "--left-right", "--count", "@{u}...HEAD"],
+    )
+    .and_then(|s| {
+        let parts: Vec<&str> = s.split_whitespace().collect();
+        if parts.len() == 2 {
+            let behind = parts[0].parse().unwrap_or(0);
+            let ahead = parts[1].parse().unwrap_or(0);
+            Some((ahead, behind))
+        } else {
+            None
+        }
+    })
+    .unwrap_or((0, 0))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

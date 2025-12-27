@@ -34,6 +34,7 @@ use termide_core::Panel;
 use termide_modal::ActiveModal;
 use termide_panel_editor::Editor;
 use termide_panel_file_manager::FileManager;
+use termide_panel_git_status::GitStatusPanel;
 use termide_panel_misc::LogViewerPanel;
 use termide_panel_terminal::Terminal;
 use termide_state::PendingAction;
@@ -59,9 +60,11 @@ pub trait PanelExt {
     fn as_file_manager_mut(&mut self) -> Option<&mut FileManager>;
     /// Downcast to Terminal (mutable)
     fn as_terminal_mut(&mut self) -> Option<&mut Terminal>;
+    /// Downcast to GitStatusPanel (mutable)
+    fn as_git_status_mut(&mut self) -> Option<&mut GitStatusPanel>;
     /// Check if panel is a LogViewer
     fn is_log_viewer(&self) -> bool;
-    /// Take modal request from FileManager or Editor panels.
+    /// Take modal request from FileManager, Editor, or GitStatusPanel.
     fn take_modal_request(&mut self) -> Option<(PendingAction, ActiveModal)>;
 }
 
@@ -83,6 +86,10 @@ impl PanelExt for dyn Panel {
         (self as &mut dyn Any).downcast_mut::<Terminal>()
     }
 
+    fn as_git_status_mut(&mut self) -> Option<&mut GitStatusPanel> {
+        (self as &mut dyn Any).downcast_mut::<GitStatusPanel>()
+    }
+
     fn is_log_viewer(&self) -> bool {
         (self as &dyn Any).is::<LogViewerPanel>()
     }
@@ -93,6 +100,9 @@ impl PanelExt for dyn Panel {
         }
         if let Some(editor) = self.as_editor_mut() {
             return editor.take_modal_request();
+        }
+        if let Some(git_status) = self.as_git_status_mut() {
+            return git_status.take_modal_request();
         }
         None
     }
@@ -114,6 +124,10 @@ impl PanelExt for Box<dyn Panel> {
 
     fn as_terminal_mut(&mut self) -> Option<&mut Terminal> {
         (**self).as_terminal_mut()
+    }
+
+    fn as_git_status_mut(&mut self) -> Option<&mut GitStatusPanel> {
+        (**self).as_git_status_mut()
     }
 
     fn is_log_viewer(&self) -> bool {

@@ -1,0 +1,24 @@
+# FAR Manager theme
+name = "far-manager"
+is_light = false
+
+[colors]
+# Base - Very dark blue (FAR's signature color)
+bg = { rgb = [0, 0, 64] }
+fg = { rgb = [192, 192, 192] }
+
+# Accented - Dark blue panels
+accented_bg = { rgb = [0, 0, 128] }
+accented_fg = { rgb = [255, 255, 0] }
+
+# Selection - Black on cyan
+selected_bg = { rgb = [0, 170, 170] }
+selected_fg = { rgb = [0, 0, 0] }
+
+# Disabled
+disabled = { rgb = [85, 85, 85] }
+
+# Semantic
+success = { rgb = [0, 255, 0] }
+warning = { rgb = [255, 255, 0] }
+error = { rgb = [255, 0, 0] }

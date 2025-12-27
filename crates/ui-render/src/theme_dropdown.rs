@@ -42,7 +42,7 @@ impl<'a> ThemeDropdown<'a> {
         app_theme: &'a Theme,
     ) -> Self {
         // Calculate scroll offset to keep selected item visible
-        let max_visible = 12;
+        let max_visible = 25;
         let scroll_offset = if selected >= max_visible {
             selected - max_visible + 1
         } else {
@@ -78,6 +78,16 @@ impl<'a> ThemeDropdown<'a> {
         (items_count + 2) as u16 // +2 for borders
     }
 
+    /// Check if there are items above the visible area
+    fn can_scroll_up(&self) -> bool {
+        self.scroll_offset > 0
+    }
+
+    /// Check if there are items below the visible area
+    fn can_scroll_down(&self) -> bool {
+        self.scroll_offset + self.max_visible < self.theme_names.len()
+    }
+
     pub fn render(&self, buf: &mut Buffer) {
         if self.theme_names.is_empty() {
             return;
@@ -102,7 +112,7 @@ impl<'a> ThemeDropdown<'a> {
         // Clear area under dropdown
         Clear.render(area, buf);
 
-        // Build list items - simple text, live preview via theme switching
+        // Build list items - use panel colors (not modal colors)
         let visible_end = (self.scroll_offset + self.max_visible).min(self.theme_names.len());
         let visible_items = &self.theme_names[self.scroll_offset..visible_end];
 
@@ -113,14 +123,16 @@ impl<'a> ThemeDropdown<'a> {
                 let actual_index = self.scroll_offset + i;
                 let is_selected = actual_index == self.selected;
 
-                // Use current app theme colors (which changes on cursor move)
+                // Panel-style colors: normal text on panel background, selection highlighted
                 let item_style = if is_selected {
                     Style::default()
-                        .fg(self.app_theme.fg)
-                        .bg(self.app_theme.bg)
+                        .fg(self.app_theme.selected_fg)
+                        .bg(self.app_theme.selected_bg)
                         .add_modifier(Modifier::BOLD)
                 } else {
-                    Style::default().fg(self.app_theme.bg).bg(self.app_theme.fg)
+                    Style::default()
+                        .fg(self.app_theme.fg)
+                        .bg(self.app_theme.accented_bg)
                 };
 
                 // Build line with padding
@@ -136,13 +148,34 @@ impl<'a> ThemeDropdown<'a> {
             })
             .collect();
 
+        // Panel-style: accented_bg background, fg for border (like panel borders)
         let list = List::new(items).block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(self.app_theme.accented_fg))
-                .style(Style::default().bg(self.app_theme.bg)),
+                .border_style(Style::default().fg(self.app_theme.fg))
+                .style(Style::default().bg(self.app_theme.accented_bg)),
         );
 
         list.render(area, buf);
+
+        // Render scroll indicators
+        let indicator_style = Style::default().fg(self.app_theme.fg);
+
+        // Up indicator (on top border, centered)
+        if self.can_scroll_up() {
+            let indicator_x = x + width / 2;
+            buf[(indicator_x, y)]
+                .set_symbol("▲")
+                .set_style(indicator_style);
+        }
+
+        // Down indicator (on bottom border, centered)
+        if self.can_scroll_down() {
+            let indicator_x = x + width / 2;
+            let indicator_y = y + height - 1;
+            buf[(indicator_x, indicator_y)]
+                .set_symbol("▼")
+                .set_style(indicator_style);
+        }
     }
 }

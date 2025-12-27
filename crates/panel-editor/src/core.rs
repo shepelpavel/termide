@@ -1,6 +1,6 @@
 use anyhow::Result;
 use crossterm::event::KeyEvent;
-use ratatui::{buffer::Buffer, layout::Rect};
+use ratatui::{buffer::Buffer, layout::Rect, style::Style};
 use std::any::Any;
 use std::path::PathBuf;
 
@@ -1274,6 +1274,28 @@ impl Editor {
             content_width,
             content_height,
         );
+
+        // Render scroll indicators on the right edge
+        let scroll_offset = self.viewport.top_line;
+        let can_scroll_up = scroll_offset > 0;
+        let can_scroll_down = scroll_offset + content_height < virtual_lines_total;
+
+        if can_scroll_up || can_scroll_down {
+            let indicator_x = area.x + area.width.saturating_sub(1);
+            let indicator_style = Style::default().fg(theme.fg);
+
+            if can_scroll_up {
+                buf[(indicator_x, area.y)]
+                    .set_symbol("▲")
+                    .set_style(indicator_style);
+            }
+
+            if can_scroll_down && area.height > 0 {
+                buf[(indicator_x, area.y + area.height - 1)]
+                    .set_symbol("▼")
+                    .set_style(indicator_style);
+            }
+        }
     }
 
     /// Start search

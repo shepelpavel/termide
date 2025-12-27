@@ -41,6 +41,10 @@ impl App {
                 self.event_execute_file(path)?;
             }
 
+            PanelEvent::RunCommand { command, cwd } => {
+                self.event_run_command(command, cwd)?;
+            }
+
             PanelEvent::PreviewMedia(path) => {
                 self.event_preview_media(path)?;
             }
@@ -263,6 +267,36 @@ impl App {
                 ));
                 self.state
                     .set_error(format!("Failed to run {}: {}", filename, e));
+            }
+        }
+        Ok(())
+    }
+
+    /// Handle RunCommand event - run command in a new terminal
+    fn event_run_command(&mut self, command: String, cwd: Option<PathBuf>) -> Result<()> {
+        use termide_panel_terminal::Terminal;
+
+        self.close_welcome_panels();
+
+        let width = self.state.terminal.width;
+        let height = self.state.terminal.height;
+        let term_height = height.saturating_sub(3);
+        let term_width = width.saturating_sub(2);
+
+        match Terminal::new_with_cwd(term_height, term_width, cwd) {
+            Ok(mut terminal) => {
+                let _ = terminal.send_command(&command);
+                self.add_panel(Box::new(terminal));
+                self.auto_save_session();
+                logger::info(format!("Running '{}' in terminal", command));
+            }
+            Err(e) => {
+                logger::error(format!(
+                    "Failed to create terminal for command '{}': {}",
+                    command, e
+                ));
+                self.state
+                    .set_error(format!("Failed to run command: {}", e));
             }
         }
         Ok(())

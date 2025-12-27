@@ -1,0 +1,24 @@
+# Windows 95 theme
+name = "windows-95"
+is_light = false
+
+[colors]
+# Base - Classic teal desktop
+bg = { rgb = [0, 128, 128] }
+fg = { rgb = [255, 255, 255] }
+
+# Accented - Navy blue title bars
+accented_bg = { rgb = [0, 0, 128] }
+accented_fg = { rgb = [255, 255, 255] }
+
+# Selection - White on navy
+selected_bg = { rgb = [0, 0, 128] }
+selected_fg = { rgb = [255, 255, 255] }
+
+# Disabled - Gray
+disabled = { rgb = [128, 128, 128] }
+
+# Semantic
+success = { rgb = [0, 128, 0] }
+warning = { rgb = [255, 255, 0] }
+error = { rgb = [255, 0, 0] }

@@ -1,0 +1,24 @@
+# Windows 98 theme
+name = "windows-98"
+is_light = true
+
+[colors]
+# Base - Silver/gray background
+bg = { rgb = [192, 192, 192] }
+fg = { rgb = [0, 0, 0] }
+
+# Accented - Navy blue active elements
+accented_bg = { rgb = [0, 0, 128] }
+accented_fg = { rgb = [255, 255, 255] }
+
+# Selection - White on navy
+selected_bg = { rgb = [0, 0, 128] }
+selected_fg = { rgb = [255, 255, 255] }
+
+# Disabled - Dark gray
+disabled = { rgb = [128, 128, 128] }
+
+# Semantic
+success = { rgb = [0, 128, 0] }
+warning = { rgb = [128, 128, 0] }
+error = { rgb = [128, 0, 0] }

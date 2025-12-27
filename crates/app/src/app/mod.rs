@@ -242,12 +242,20 @@ impl App {
         if let Some(rx) = &self.state.dir_size_receiver {
             // Try to receive result without blocking
             if let Ok(result) = rx.try_recv() {
-                // Update Info modal if it's open
-                if let Some(ActiveModal::Info(ref mut modal)) = self.state.active_modal {
-                    let t = termide_i18n::t();
-                    let formatted_size = FileManager::format_size_static(result.size);
-                    modal.update_value(t.file_info_size(), formatted_size);
-                    self.state.needs_redraw = true;
+                let t = termide_i18n::t();
+                let formatted_size = FileManager::format_size_static(result.size);
+
+                // Update Info or InfoAction modal if open
+                match &mut self.state.active_modal {
+                    Some(ActiveModal::Info(ref mut modal)) => {
+                        modal.update_value(t.file_info_size(), formatted_size);
+                        self.state.needs_redraw = true;
+                    }
+                    Some(ActiveModal::InfoAction(ref mut modal)) => {
+                        modal.update_value(t.file_info_size(), formatted_size);
+                        self.state.needs_redraw = true;
+                    }
+                    _ => {}
                 }
 
                 // Clear channel
@@ -526,6 +534,21 @@ impl App {
     /// Get mutable reference to LayoutManager
     pub fn layout_manager_mut(&mut self) -> &mut LayoutManager {
         &mut self.layout_manager
+    }
+
+    /// Find existing panel by name and focus on it
+    /// Returns true if found and focused, false if not found
+    fn find_and_focus_panel_by_name(&mut self, name: &str) -> bool {
+        for (group_idx, group) in self.layout_manager.panel_groups.iter_mut().enumerate() {
+            for (panel_idx, panel) in group.panels().iter().enumerate() {
+                if panel.name() == name {
+                    self.layout_manager.focus = group_idx;
+                    group.set_expanded(panel_idx);
+                    return true;
+                }
+            }
+        }
+        false
     }
 }
 

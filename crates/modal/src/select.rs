@@ -76,7 +76,7 @@ impl Modal for SelectModal {
 
         // Calculate height:
         // 1 (top border) + N (prompt) + M (list) + 1 (bottom border)
-        let list_height = self.items.len().min(10) as u16; // Limit to 10 items
+        let list_height = self.items.len().min(20) as u16; // Limit to 20 items
         let modal_height = 1 + prompt_lines + list_height + 1;
 
         // Create centered area

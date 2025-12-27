@@ -1,0 +1,24 @@
+# Norton Commander theme
+name = "norton-commander"
+is_light = false
+
+[colors]
+# Base - Classic NC blue
+bg = { rgb = [0, 0, 170] }
+fg = { rgb = [85, 255, 255] }
+
+# Accented - Cyan panels
+accented_bg = { rgb = [0, 170, 170] }
+accented_fg = { rgb = [255, 255, 85] }
+
+# Selection - Black on cyan
+selected_bg = { rgb = [0, 170, 170] }
+selected_fg = { rgb = [0, 0, 0] }
+
+# Disabled
+disabled = { rgb = [85, 85, 85] }
+
+# Semantic
+success = { rgb = [85, 255, 85] }
+warning = { rgb = [255, 255, 85] }
+error = { rgb = [255, 85, 85] }

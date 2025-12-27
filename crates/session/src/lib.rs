@@ -63,6 +63,18 @@ pub enum SessionPanel {
         /// Path to image file
         path: PathBuf,
     },
+    /// Git status panel
+    #[serde(rename = "git_status")]
+    GitStatus {
+        /// Repository path
+        repo_path: PathBuf,
+    },
+    /// Git log panel
+    #[serde(rename = "git_log")]
+    GitLog {
+        /// Repository path
+        repo_path: PathBuf,
+    },
     // Note: Welcome panels are NOT saved (they auto-close)
 }
 

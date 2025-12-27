@@ -44,6 +44,7 @@ impl App {
                 ActiveModal::Overwrite(m) => m.handle_key(key)?.map(box_modal_result),
                 ActiveModal::Conflict(m) => m.handle_key(key)?.map(box_modal_result),
                 ActiveModal::Info(m) => m.handle_key(key)?.map(box_modal_result),
+                ActiveModal::InfoAction(m) => m.handle_key(key)?.map(box_modal_result),
                 ActiveModal::RenamePattern(m) => m.handle_key(key)?.map(box_modal_result),
                 ActiveModal::EditableSelect(m) => m.handle_key(key)?.map(box_modal_result),
                 ActiveModal::Search(m) => m.handle_key(key)?.map(box_modal_result),
@@ -155,6 +156,12 @@ impl App {
                     ModalResult::Cancelled => ModalResult::Cancelled,
                 }),
                 ActiveModal::Info(m) => m.handle_mouse(mouse, modal_area)?.map(|r| match r {
+                    ModalResult::Confirmed(value) => {
+                        ModalResult::Confirmed(Box::new(value) as Box<dyn std::any::Any>)
+                    }
+                    ModalResult::Cancelled => ModalResult::Cancelled,
+                }),
+                ActiveModal::InfoAction(m) => m.handle_mouse(mouse, modal_area)?.map(|r| match r {
                     ModalResult::Confirmed(value) => {
                         ModalResult::Confirmed(Box::new(value) as Box<dyn std::any::Any>)
                     }
@@ -349,6 +356,15 @@ impl App {
                 }
                 // Navigation actions are handled in key_handler, should not get here
                 PendingAction::NextPanel | PendingAction::PrevPanel => {}
+                // Git actions will open panels directly, should not get here
+                PendingAction::OpenGitStatus | PendingAction::OpenGitLog => {}
+                // Git file action from File Info modal
+                PendingAction::GitFileAction {
+                    file_path,
+                    repo_path,
+                } => {
+                    self.handle_git_file_action(value, &file_path, &repo_path)?;
+                }
             }
         }
         Ok(())
@@ -558,5 +574,93 @@ impl App {
         }
 
         None // Continue with normal modal handling
+    }
+
+    /// Handle git file action from InfoActionModal
+    fn handle_git_file_action(
+        &mut self,
+        value: Box<dyn std::any::Any>,
+        file_path: &std::path::Path,
+        repo_path: &std::path::Path,
+    ) -> Result<()> {
+        use termide_modal::InfoActionResult;
+
+        if let Some(result) = value.downcast_ref::<InfoActionResult>() {
+            match result {
+                InfoActionResult::Action(action) => match action.as_str() {
+                    "commit" => {
+                        // Try to find existing Git Status panel
+                        if !self.find_and_focus_panel_by_name("git_status") {
+                            // Not found, create new one
+                            let git_status_panel =
+                                termide_panel_git_status::GitStatusPanel::new_for_repo(
+                                    repo_path.to_path_buf(),
+                                );
+                            self.add_panel(Box::new(git_status_panel));
+                        }
+                        self.auto_save_session();
+                    }
+                    "push" => {
+                        // Open terminal with git push
+                        self.open_terminal_with_command(repo_path, "git push");
+                    }
+                    "pull" => {
+                        // Open terminal with git pull
+                        self.open_terminal_with_command(repo_path, "git pull");
+                    }
+                    "stage" => {
+                        if let Err(e) = termide_git::stage_file(repo_path, file_path) {
+                            self.state.set_error(format!("Stage error: {}", e));
+                        } else {
+                            self.state.set_info("File staged".to_string());
+                        }
+                    }
+                    "unstage" => {
+                        if let Err(e) = termide_git::unstage_file(repo_path, file_path) {
+                            self.state.set_error(format!("Unstage error: {}", e));
+                        } else {
+                            self.state.set_info("File unstaged".to_string());
+                        }
+                    }
+                    "diff" => {
+                        // Show diff in status message for now
+                        // Full implementation would open diff in a panel
+                        self.state
+                            .set_info("Diff view not yet implemented".to_string());
+                    }
+                    "revert" => {
+                        if let Err(e) = termide_git::revert_file(repo_path, file_path) {
+                            self.state.set_error(format!("Revert error: {}", e));
+                        } else {
+                            self.state.set_info("File reverted".to_string());
+                        }
+                    }
+                    _ => {
+                        // Close the modal for "close" or any unknown action
+                    }
+                },
+                InfoActionResult::Closed => {
+                    // Just close the modal
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Open a terminal panel with a command
+    fn open_terminal_with_command(&mut self, cwd: &std::path::Path, command: &str) {
+        use termide_panel_terminal::Terminal;
+
+        let width = self.state.terminal.width;
+        let height = self.state.terminal.height.saturating_sub(3);
+        let term_width = width.saturating_sub(2);
+
+        if let Ok(mut terminal) =
+            Terminal::new_with_cwd(height, term_width, Some(cwd.to_path_buf()))
+        {
+            let _ = terminal.send_command(command);
+            self.add_panel(Box::new(terminal));
+            self.auto_save_session();
+        }
     }
 }

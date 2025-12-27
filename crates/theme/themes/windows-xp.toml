@@ -1,0 +1,24 @@
+# Windows XP Luna theme
+name = "windows-xp"
+is_light = false
+
+[colors]
+# Base - Royal blue (Luna theme)
+bg = { rgb = [0, 78, 152] }
+fg = { rgb = [255, 255, 255] }
+
+# Accented - Darker blue
+accented_bg = { rgb = [0, 51, 102] }
+accented_fg = { rgb = [255, 153, 0] }
+
+# Selection - White on green (Start button style)
+selected_bg = { rgb = [55, 126, 34] }
+selected_fg = { rgb = [255, 255, 255] }
+
+# Disabled - Muted blue
+disabled = { rgb = [128, 158, 182] }
+
+# Semantic
+success = { rgb = [55, 126, 34] }
+warning = { rgb = [255, 153, 0] }
+error = { rgb = [200, 0, 0] }

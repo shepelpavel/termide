@@ -13,7 +13,7 @@ pub use file_info::FileInfo;
 
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::{buffer::Buffer, layout::Rect, prelude::Widget, widgets::Paragraph};
+use ratatui::{buffer::Buffer, layout::Rect, prelude::Widget, style::Style, widgets::Paragraph};
 use std::any::Any;
 use std::collections::HashSet;
 use std::fs;
@@ -697,6 +697,27 @@ impl Panel for FileManager {
         let paragraph = Paragraph::new(items);
 
         paragraph.render(area, buf);
+
+        // Render scroll indicators on the right edge
+        let can_scroll_up = self.scroll_offset > 0;
+        let can_scroll_down = self.scroll_offset + content_height < self.entries.len();
+
+        if can_scroll_up || can_scroll_down {
+            let indicator_x = area.x + area.width.saturating_sub(1);
+            let indicator_style = Style::default().fg(self.cached_theme.fg);
+
+            if can_scroll_up {
+                buf[(indicator_x, area.y)]
+                    .set_symbol("▲")
+                    .set_style(indicator_style);
+            }
+
+            if can_scroll_down && area.height > 0 {
+                buf[(indicator_x, area.y + area.height - 1)]
+                    .set_symbol("▼")
+                    .set_style(indicator_style);
+            }
+        }
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {

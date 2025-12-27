@@ -154,6 +154,10 @@ pub struct UiState {
     pub sessions_submenu_open: bool,
     /// Selected item in Sessions submenu
     pub selected_sessions_item: usize,
+    /// Is Git submenu open
+    pub git_submenu_open: bool,
+    /// Selected item in Git submenu
+    pub selected_git_item: usize,
 }
 
 /// Terminal state (dimensions)
@@ -433,6 +437,17 @@ pub enum PendingAction {
     FileSearch { panel_index: usize },
     /// Content search in file manager
     ContentSearch { panel_index: usize },
+    /// Open Git Status panel
+    OpenGitStatus,
+    /// Open Git Log panel
+    OpenGitLog,
+    /// Git file action from File Info modal
+    GitFileAction {
+        /// The file path to operate on
+        file_path: PathBuf,
+        /// Repository root path
+        repo_path: PathBuf,
+    },
 }
 
 #[cfg(test)]

@@ -1,0 +1,24 @@
+# Volkov Commander theme
+name = "volkov-commander"
+is_light = false
+
+[colors]
+# Base - Dark blue background
+bg = { rgb = [0, 0, 128] }
+fg = { rgb = [170, 255, 255] }
+
+# Accented - Blue panels
+accented_bg = { rgb = [0, 0, 170] }
+accented_fg = { rgb = [255, 255, 255] }
+
+# Selection - White on dark cyan
+selected_bg = { rgb = [0, 128, 128] }
+selected_fg = { rgb = [255, 255, 255] }
+
+# Disabled
+disabled = { rgb = [85, 85, 85] }
+
+# Semantic
+success = { rgb = [0, 255, 0] }
+warning = { rgb = [255, 255, 0] }
+error = { rgb = [255, 0, 0] }

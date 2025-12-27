@@ -77,6 +77,12 @@ pub struct ThemeColors {
     pub cursor: Color,
     pub status_bar_bg: Color,
     pub status_bar_fg: Color,
+    // Semantic colors
+    pub disabled: Color,
+    pub success: Color,
+    pub warning: Color,
+    pub error: Color,
+    pub info: Color,
 }
 
 impl Default for ThemeColors {
@@ -92,6 +98,11 @@ impl Default for ThemeColors {
             cursor: Color::Yellow,
             status_bar_bg: Color::DarkGray,
             status_bar_fg: Color::White,
+            disabled: Color::DarkGray,
+            success: Color::Green,
+            warning: Color::Yellow,
+            error: Color::Red,
+            info: Color::Cyan,
         }
     }
 }
@@ -109,6 +120,11 @@ impl From<&Theme> for ThemeColors {
             cursor: theme.accented_fg,
             status_bar_bg: theme.accented_bg,
             status_bar_fg: theme.fg,
+            disabled: theme.disabled,
+            success: theme.success,
+            warning: theme.warning,
+            error: theme.error,
+            info: theme.accented_fg, // Use accented_fg as info color
         }
     }
 }

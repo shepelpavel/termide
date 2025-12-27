@@ -41,6 +41,11 @@ impl App {
             return self.handle_sessions_submenu_key(key);
         }
 
+        // If Git submenu is open, handle its navigation
+        if self.state.ui.git_submenu_open {
+            return self.handle_git_submenu_key(key);
+        }
+
         // If Preferences submenu is open, handle submenu navigation
         if self.state.ui.submenu_open {
             return self.handle_submenu_key(key);
@@ -127,7 +132,10 @@ impl App {
             | PendingAction::QuitApplication
             | PendingAction::SwitchSession
             | PendingAction::NewSession
-            | PendingAction::ChangeRootPath => {
+            | PendingAction::ChangeRootPath
+            | PendingAction::OpenGitStatus
+            | PendingAction::OpenGitLog
+            | PendingAction::GitFileAction { .. } => {
                 // These actions don't require panel_index update
             }
         }

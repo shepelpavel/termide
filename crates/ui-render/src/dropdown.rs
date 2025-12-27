@@ -38,6 +38,9 @@ impl DropdownItem {
     }
 }
 
+/// Maximum visible items in dropdown before scrolling
+const MAX_VISIBLE_ITEMS: usize = 20;
+
 /// Dropdown menu
 pub struct Dropdown<'a> {
     items: &'a [DropdownItem],
@@ -45,6 +48,8 @@ pub struct Dropdown<'a> {
     x: u16,
     y: u16,
     theme: &'a Theme,
+    max_visible: usize,
+    scroll_offset: usize,
 }
 
 impl<'a> Dropdown<'a> {
@@ -55,12 +60,22 @@ impl<'a> Dropdown<'a> {
         y: u16,
         theme: &'a Theme,
     ) -> Self {
+        let max_visible = MAX_VISIBLE_ITEMS.min(items.len());
+        // Calculate scroll offset to keep selected item visible
+        let scroll_offset = if selected >= max_visible {
+            selected - max_visible + 1
+        } else {
+            0
+        };
+
         Self {
             items,
             selected,
             x,
             y,
             theme,
+            max_visible,
+            scroll_offset,
         }
     }
 
@@ -78,7 +93,18 @@ impl<'a> Dropdown<'a> {
 
     /// Get the height of this dropdown
     pub fn height(&self) -> u16 {
-        (self.items.len() + 2) as u16 // +2 for borders
+        let visible_count = self.items.len().min(self.max_visible);
+        (visible_count + 2) as u16 // +2 for borders
+    }
+
+    /// Check if there are items above the visible area
+    fn can_scroll_up(&self) -> bool {
+        self.scroll_offset > 0
+    }
+
+    /// Check if there are items below the visible area
+    fn can_scroll_down(&self) -> bool {
+        self.scroll_offset + self.max_visible < self.items.len()
     }
 
     pub fn render(&self, buf: &mut Buffer) {
@@ -105,13 +131,17 @@ impl<'a> Dropdown<'a> {
         // Clear area under dropdown
         Clear.render(area, buf);
 
+        // Get visible items
+        let visible_end = (self.scroll_offset + self.max_visible).min(self.items.len());
+        let visible_items = &self.items[self.scroll_offset..visible_end];
+
         // Create list of items
-        let items: Vec<ListItem> = self
-            .items
+        let items: Vec<ListItem> = visible_items
             .iter()
             .enumerate()
             .map(|(i, item)| {
-                let is_selected = i == self.selected;
+                let actual_index = self.scroll_offset + i;
+                let is_selected = actual_index == self.selected;
 
                 let base_style = if is_selected {
                     Style::default()
@@ -150,6 +180,26 @@ impl<'a> Dropdown<'a> {
         );
 
         list.render(area, buf);
+
+        // Render scroll indicators
+        let indicator_style = Style::default().fg(self.theme.accented_fg);
+
+        // Up indicator (on top border, centered)
+        if self.can_scroll_up() {
+            let indicator_x = x + width / 2;
+            buf[(indicator_x, y)]
+                .set_symbol("▲")
+                .set_style(indicator_style);
+        }
+
+        // Down indicator (on bottom border, centered)
+        if self.can_scroll_down() {
+            let indicator_x = x + width / 2;
+            let indicator_y = y + height - 1;
+            buf[(indicator_x, indicator_y)]
+                .set_symbol("▼")
+                .set_style(indicator_style);
+        }
     }
 }
 
@@ -174,3 +224,15 @@ pub fn get_sessions_items() -> Vec<DropdownItem> {
 
 /// Number of items in Sessions submenu
 pub const SESSIONS_SUBMENU_ITEM_COUNT: usize = 3;
+
+/// Get git submenu items
+pub fn get_git_items() -> Vec<DropdownItem> {
+    let t = i18n::t();
+    vec![
+        DropdownItem::new(t.git_status(), "git_status"),
+        DropdownItem::new(t.git_log(), "git_log"),
+    ]
+}
+
+/// Number of items in Git submenu
+pub const GIT_SUBMENU_ITEM_COUNT: usize = 2;

@@ -76,6 +76,12 @@ pub enum PanelEvent {
     /// Execute file in a new terminal
     ExecuteFile(PathBuf),
 
+    /// Run command in a new terminal
+    RunCommand {
+        command: String,
+        cwd: Option<PathBuf>,
+    },
+
     /// Preview media file (raster image) using native graphics or xdg-open
     PreviewMedia(PathBuf),
 

@@ -26,6 +26,7 @@ pub mod directory_picker;
 pub mod editable_select;
 pub mod file_search;
 pub mod info;
+pub mod info_action;
 pub mod input;
 pub mod overwrite;
 pub mod rename_pattern;
@@ -41,6 +42,7 @@ pub use directory_picker::DirectoryPickerModal;
 pub use editable_select::{EditableSelectModal, SelectOption};
 pub use file_search::{FileSearchModal, SearchResultItem};
 pub use info::InfoModal;
+pub use info_action::{ActionButton, InfoActionModal, InfoActionResult};
 pub use input::InputModal;
 pub use overwrite::{OverwriteChoice, OverwriteModal};
 pub use rename_pattern::RenamePatternModal;
@@ -67,6 +69,8 @@ pub enum ActiveModal {
     Conflict(Box<ConflictModal>),
     /// Information modal
     Info(Box<InfoModal>),
+    /// Information modal with action buttons
+    InfoAction(Box<InfoActionModal>),
     /// Rename pattern input modal
     RenamePattern(Box<RenamePatternModal>),
     /// Editable select modal (combobox)

@@ -723,6 +723,10 @@ impl Translation for RuntimeTranslation {
         self.get_string("menu_editor")
     }
 
+    fn menu_git(&self) -> &str {
+        self.get_string("menu_git")
+    }
+
     fn menu_debug(&self) -> &str {
         self.get_string("menu_debug")
     }
@@ -745,6 +749,78 @@ impl Translation for RuntimeTranslation {
 
     fn menu_open_hint(&self) -> &str {
         self.get_string("menu_open_hint")
+    }
+
+    fn git_status(&self) -> &str {
+        self.get_string("git_status")
+    }
+
+    fn git_log(&self) -> &str {
+        self.get_string("git_log")
+    }
+
+    fn git_action_stage(&self) -> &str {
+        self.get_string("git_action_stage")
+    }
+
+    fn git_action_unstage(&self) -> &str {
+        self.get_string("git_action_unstage")
+    }
+
+    fn git_action_diff(&self) -> &str {
+        self.get_string("git_action_diff")
+    }
+
+    fn git_action_revert(&self) -> &str {
+        self.get_string("git_action_revert")
+    }
+
+    fn git_action_close(&self) -> &str {
+        self.get_string("git_action_close")
+    }
+
+    fn git_action_commit(&self) -> &str {
+        self.get_string("git_action_commit")
+    }
+
+    fn git_action_push(&self) -> &str {
+        self.get_string("git_action_push")
+    }
+
+    fn git_action_pull(&self) -> &str {
+        self.get_string("git_action_pull")
+    }
+
+    fn git_file_properties_title(&self) -> &str {
+        self.get_string("git_file_properties_title")
+    }
+
+    fn git_props_path(&self) -> &str {
+        self.get_string("git_props_path")
+    }
+
+    fn git_props_status(&self) -> &str {
+        self.get_string("git_props_status")
+    }
+
+    fn git_status_added(&self) -> String {
+        self.get_string("git_status_added").to_string()
+    }
+
+    fn git_status_deleted(&self) -> String {
+        self.get_string("git_status_deleted").to_string()
+    }
+
+    fn git_status_modified(&self) -> String {
+        self.get_string("git_status_modified").to_string()
+    }
+
+    fn git_status_renamed(&self) -> String {
+        self.get_string("git_status_renamed").to_string()
+    }
+
+    fn git_status_untracked(&self) -> String {
+        self.get_string("git_status_untracked").to_string()
     }
 
     fn preferences_themes(&self) -> &str {

@@ -67,20 +67,24 @@ impl App {
                     self.state.close_menu();
                 }
                 4 => {
+                    // Git - open submenu dropdown (keep menu open)
+                    self.state.open_git_submenu();
+                }
+                5 => {
                     // Debug - open debug panel
                     self.handle_new_debug()?;
                     self.state.close_menu();
                 }
-                5 => {
+                6 => {
                     // Preferences - open submenu dropdown (keep menu open)
                     self.state.open_submenu();
                 }
-                6 => {
+                7 => {
                     // Help - show help
                     self.state.close_menu();
                     self.handle_new_help()?;
                 }
-                7 => {
+                8 => {
                     // Quit - exit
                     self.state.close_menu();
                     if self.has_panels_requiring_confirmation() {
@@ -541,6 +545,81 @@ impl App {
         let mut config = Config::load()?;
         config.general.theme = theme_name.to_string();
         config.save()?;
+        Ok(())
+    }
+
+    // =========================================================================
+    // Git submenu handling
+    // =========================================================================
+
+    /// Handle keyboard event in Git submenu
+    pub(super) fn handle_git_submenu_key(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
+        use termide_ui_render::GIT_SUBMENU_ITEM_COUNT;
+
+        match key.code {
+            KeyCode::Esc | KeyCode::Left => {
+                // Close submenu, return to menu
+                self.state.close_git_submenu();
+            }
+            KeyCode::Up => {
+                if self.state.ui.selected_git_item > 0 {
+                    self.state.ui.selected_git_item -= 1;
+                } else {
+                    self.state.ui.selected_git_item = GIT_SUBMENU_ITEM_COUNT - 1;
+                }
+            }
+            KeyCode::Down => {
+                self.state.ui.selected_git_item =
+                    (self.state.ui.selected_git_item + 1) % GIT_SUBMENU_ITEM_COUNT;
+            }
+            KeyCode::Right | KeyCode::Enter => {
+                self.execute_git_submenu_action()?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Execute action for selected Git submenu item
+    pub(super) fn execute_git_submenu_action(&mut self) -> Result<()> {
+        match self.state.ui.selected_git_item {
+            0 => {
+                // Git Status - open Git Status panel
+                self.state.close_menu();
+                self.handle_open_git_status()?;
+            }
+            1 => {
+                // Git Log - open Git Log panel
+                self.state.close_menu();
+                self.handle_open_git_log()?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Open Git Status panel
+    fn handle_open_git_status(&mut self) -> Result<()> {
+        logger::debug("Opening Git Status panel");
+        self.close_welcome_panels();
+
+        if !self.find_and_focus_panel_by_name("git_status") {
+            let git_status_panel =
+                termide_panel_git_status::GitStatusPanel::new(&self.project_root);
+            self.add_panel(Box::new(git_status_panel));
+        }
+        self.auto_save_session();
+        Ok(())
+    }
+
+    /// Open Git Log panel
+    fn handle_open_git_log(&mut self) -> Result<()> {
+        logger::debug("Opening Git Log panel");
+        self.close_welcome_panels();
+
+        let git_log_panel = termide_panel_git_log::GitLogPanel::new_for_project(&self.project_root);
+        self.add_panel(Box::new(git_log_panel));
+        self.auto_save_session();
         Ok(())
     }
 }

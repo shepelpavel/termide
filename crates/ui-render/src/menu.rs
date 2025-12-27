@@ -35,6 +35,7 @@ pub fn get_menu_items() -> Vec<String> {
         t.menu_files().to_string(),
         t.menu_terminal().to_string(),
         t.menu_editor().to_string(),
+        t.menu_git().to_string(),
         t.menu_debug().to_string(),
         t.menu_preferences().to_string(),
         t.menu_help().to_string(),
@@ -43,13 +44,16 @@ pub fn get_menu_items() -> Vec<String> {
 }
 
 /// Number of menu items
-pub const MENU_ITEM_COUNT: usize = 8;
+pub const MENU_ITEM_COUNT: usize = 9;
 
 /// Index of Sessions menu item (no keyboard accelerator highlighting)
 pub const SESSIONS_MENU_INDEX: usize = 0;
 
+/// Index of Git menu item (for submenu positioning)
+pub const GIT_MENU_INDEX: usize = 4;
+
 /// Index of Preferences menu item (for submenu positioning)
-pub const PREFERENCES_MENU_INDEX: usize = 5;
+pub const PREFERENCES_MENU_INDEX: usize = 6;
 
 /// Calculate x position of a menu item by index.
 /// Used for positioning submenus next to their parent menu item.

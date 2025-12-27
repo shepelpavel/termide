@@ -1,0 +1,24 @@
+# macOS Dark theme
+name = "macos-dark"
+is_light = false
+
+[colors]
+# Base - Dark gray background
+bg = { rgb = [30, 30, 30] }
+fg = { rgb = [255, 255, 255] }
+
+# Accented - Darker panels
+accented_bg = { rgb = [44, 44, 46] }
+accented_fg = { rgb = [10, 132, 255] }
+
+# Selection - White on blue (Aqua accent)
+selected_bg = { rgb = [10, 132, 255] }
+selected_fg = { rgb = [255, 255, 255] }
+
+# Disabled - Gray
+disabled = { rgb = [99, 99, 102] }
+
+# Semantic
+success = { rgb = [48, 209, 88] }
+warning = { rgb = [255, 159, 10] }
+error = { rgb = [255, 69, 58] }

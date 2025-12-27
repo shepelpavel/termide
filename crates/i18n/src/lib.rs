@@ -206,12 +206,37 @@ pub trait Translation: Send + Sync {
     fn menu_files(&self) -> &str;
     fn menu_terminal(&self) -> &str;
     fn menu_editor(&self) -> &str;
+    fn menu_git(&self) -> &str;
     fn menu_debug(&self) -> &str;
     fn menu_preferences(&self) -> &str;
     fn menu_help(&self) -> &str;
     fn menu_quit(&self) -> &str;
     fn menu_navigate_hint(&self) -> &str;
     fn menu_open_hint(&self) -> &str;
+
+    // Git submenu
+    fn git_status(&self) -> &str;
+    fn git_log(&self) -> &str;
+
+    // Git action buttons
+    fn git_action_stage(&self) -> &str;
+    fn git_action_unstage(&self) -> &str;
+    fn git_action_diff(&self) -> &str;
+    fn git_action_revert(&self) -> &str;
+    fn git_action_close(&self) -> &str;
+    fn git_action_commit(&self) -> &str;
+    fn git_action_push(&self) -> &str;
+    fn git_action_pull(&self) -> &str;
+
+    // Git file properties modal
+    fn git_file_properties_title(&self) -> &str;
+    fn git_props_path(&self) -> &str;
+    fn git_props_status(&self) -> &str;
+    fn git_status_added(&self) -> String;
+    fn git_status_deleted(&self) -> String;
+    fn git_status_modified(&self) -> String;
+    fn git_status_renamed(&self) -> String;
+    fn git_status_untracked(&self) -> String;
 
     // Preferences submenu
     fn preferences_themes(&self) -> &str;

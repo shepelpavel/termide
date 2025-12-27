@@ -16,30 +16,46 @@ use std::sync::{Mutex, OnceLock};
 // Embed theme files at compile time
 const THEME_ATOM_ONE_LIGHT_TOML: &str = include_str!("../themes/atom-one-light.toml");
 const THEME_AYU_LIGHT_TOML: &str = include_str!("../themes/ayu-light.toml");
-const THEME_DEFAULT_TOML: &str = include_str!("../themes/default.toml");
+const THEME_DOS_NAVIGATOR_TOML: &str = include_str!("../themes/dos-navigator.toml");
 const THEME_DRACULA_TOML: &str = include_str!("../themes/dracula.toml");
+const THEME_FAR_MANAGER_TOML: &str = include_str!("../themes/far-manager.toml");
 const THEME_GITHUB_LIGHT_TOML: &str = include_str!("../themes/github-light.toml");
+const THEME_MACOS_DARK_TOML: &str = include_str!("../themes/macos-dark.toml");
+const THEME_MACOS_LIGHT_TOML: &str = include_str!("../themes/macos-light.toml");
 const THEME_MATERIAL_LIGHTER_TOML: &str = include_str!("../themes/material-lighter.toml");
 const THEME_MIDNIGHT_TOML: &str = include_str!("../themes/midnight.toml");
 const THEME_MONOKAI_TOML: &str = include_str!("../themes/monokai.toml");
 const THEME_NORD_TOML: &str = include_str!("../themes/nord.toml");
+const THEME_NORTON_COMMANDER_TOML: &str = include_str!("../themes/norton-commander.toml");
 const THEME_ONEDARK_TOML: &str = include_str!("../themes/onedark.toml");
 const THEME_SOLARIZED_DARK_TOML: &str = include_str!("../themes/solarized-dark.toml");
 const THEME_SOLARIZED_LIGHT_TOML: &str = include_str!("../themes/solarized-light.toml");
+const THEME_VOLKOV_COMMANDER_TOML: &str = include_str!("../themes/volkov-commander.toml");
+const THEME_WINDOWS_95_TOML: &str = include_str!("../themes/windows-95.toml");
+const THEME_WINDOWS_98_TOML: &str = include_str!("../themes/windows-98.toml");
+const THEME_WINDOWS_XP_TOML: &str = include_str!("../themes/windows-xp.toml");
 
 // Static theme instances
 static THEME_ATOM_ONE_LIGHT: OnceLock<Theme> = OnceLock::new();
 static THEME_AYU_LIGHT: OnceLock<Theme> = OnceLock::new();
-static THEME_DEFAULT: OnceLock<Theme> = OnceLock::new();
+static THEME_DOS_NAVIGATOR: OnceLock<Theme> = OnceLock::new();
 static THEME_DRACULA: OnceLock<Theme> = OnceLock::new();
+static THEME_FAR_MANAGER: OnceLock<Theme> = OnceLock::new();
 static THEME_GITHUB_LIGHT: OnceLock<Theme> = OnceLock::new();
+static THEME_MACOS_DARK: OnceLock<Theme> = OnceLock::new();
+static THEME_MACOS_LIGHT: OnceLock<Theme> = OnceLock::new();
 static THEME_MATERIAL_LIGHTER: OnceLock<Theme> = OnceLock::new();
 static THEME_MIDNIGHT: OnceLock<Theme> = OnceLock::new();
 static THEME_MONOKAI: OnceLock<Theme> = OnceLock::new();
 static THEME_NORD: OnceLock<Theme> = OnceLock::new();
+static THEME_NORTON_COMMANDER: OnceLock<Theme> = OnceLock::new();
 static THEME_ONEDARK: OnceLock<Theme> = OnceLock::new();
 static THEME_SOLARIZED_DARK: OnceLock<Theme> = OnceLock::new();
 static THEME_SOLARIZED_LIGHT: OnceLock<Theme> = OnceLock::new();
+static THEME_VOLKOV_COMMANDER: OnceLock<Theme> = OnceLock::new();
+static THEME_WINDOWS_95: OnceLock<Theme> = OnceLock::new();
+static THEME_WINDOWS_98: OnceLock<Theme> = OnceLock::new();
+static THEME_WINDOWS_XP: OnceLock<Theme> = OnceLock::new();
 
 /// Entry in the built-in themes registry.
 /// Single source of truth for all built-in theme configurations.
@@ -64,9 +80,9 @@ static BUILTIN_THEMES: &[BuiltinThemeEntry] = &[
         storage: &THEME_AYU_LIGHT,
     },
     BuiltinThemeEntry {
-        name: "default",
-        content: THEME_DEFAULT_TOML,
-        storage: &THEME_DEFAULT,
+        name: "dos-navigator",
+        content: THEME_DOS_NAVIGATOR_TOML,
+        storage: &THEME_DOS_NAVIGATOR,
     },
     BuiltinThemeEntry {
         name: "dracula",
@@ -74,9 +90,24 @@ static BUILTIN_THEMES: &[BuiltinThemeEntry] = &[
         storage: &THEME_DRACULA,
     },
     BuiltinThemeEntry {
+        name: "far-manager",
+        content: THEME_FAR_MANAGER_TOML,
+        storage: &THEME_FAR_MANAGER,
+    },
+    BuiltinThemeEntry {
         name: "github-light",
         content: THEME_GITHUB_LIGHT_TOML,
         storage: &THEME_GITHUB_LIGHT,
+    },
+    BuiltinThemeEntry {
+        name: "macos-dark",
+        content: THEME_MACOS_DARK_TOML,
+        storage: &THEME_MACOS_DARK,
+    },
+    BuiltinThemeEntry {
+        name: "macos-light",
+        content: THEME_MACOS_LIGHT_TOML,
+        storage: &THEME_MACOS_LIGHT,
     },
     BuiltinThemeEntry {
         name: "material-lighter",
@@ -99,6 +130,11 @@ static BUILTIN_THEMES: &[BuiltinThemeEntry] = &[
         storage: &THEME_NORD,
     },
     BuiltinThemeEntry {
+        name: "norton-commander",
+        content: THEME_NORTON_COMMANDER_TOML,
+        storage: &THEME_NORTON_COMMANDER,
+    },
+    BuiltinThemeEntry {
         name: "onedark",
         content: THEME_ONEDARK_TOML,
         storage: &THEME_ONEDARK,
@@ -112,6 +148,26 @@ static BUILTIN_THEMES: &[BuiltinThemeEntry] = &[
         name: "solarized-light",
         content: THEME_SOLARIZED_LIGHT_TOML,
         storage: &THEME_SOLARIZED_LIGHT,
+    },
+    BuiltinThemeEntry {
+        name: "volkov-commander",
+        content: THEME_VOLKOV_COMMANDER_TOML,
+        storage: &THEME_VOLKOV_COMMANDER,
+    },
+    BuiltinThemeEntry {
+        name: "windows-95",
+        content: THEME_WINDOWS_95_TOML,
+        storage: &THEME_WINDOWS_95,
+    },
+    BuiltinThemeEntry {
+        name: "windows-98",
+        content: THEME_WINDOWS_98_TOML,
+        storage: &THEME_WINDOWS_98,
+    },
+    BuiltinThemeEntry {
+        name: "windows-xp",
+        content: THEME_WINDOWS_XP_TOML,
+        storage: &THEME_WINDOWS_XP,
     },
 ];
 
@@ -175,9 +231,9 @@ fn get_builtin_theme(name: &str) -> Option<&'static Theme> {
         })
 }
 
-/// Get the default theme.
+/// Get the default theme (windows-xp).
 fn get_default_theme() -> &'static Theme {
-    get_builtin_theme("default").expect("default theme must exist")
+    get_builtin_theme("windows-xp").expect("windows-xp theme must exist")
 }
 
 /// Try to load user theme from config directory.
@@ -279,15 +335,15 @@ mod tests {
 
     #[test]
     fn test_theme_loading() {
-        let default = Theme::get_by_name("default");
-        assert_eq!(default.name, "default");
+        let windows_xp = Theme::get_by_name("windows-xp");
+        assert_eq!(windows_xp.name, "windows-xp");
 
         let midnight = Theme::get_by_name("midnight");
         assert_eq!(midnight.name, "midnight");
 
-        // Test fallback for unknown theme
+        // Test fallback for unknown theme (should return windows-xp as default)
         let unknown = Theme::get_by_name("nonexistent");
-        assert_eq!(unknown.name, "default");
+        assert_eq!(unknown.name, "windows-xp");
     }
 
     #[test]

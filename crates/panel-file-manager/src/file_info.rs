@@ -2,7 +2,7 @@ use std::fs;
 use std::sync::mpsc;
 
 use super::{utils, FileManager};
-use termide_modal::ActiveModal;
+use termide_modal::{ActionButton, ActiveModal};
 use termide_state::{DirSizeResult, PendingAction};
 use termide_ui::system_monitor::DiskSpaceInfo;
 
@@ -165,15 +165,30 @@ impl FileManager {
 
                 // Add git status if in repository (filtered by specific file/directory)
                 // Special case: if directory is itself a git repo root, show its git info
-                let git_status = if is_dir && file_path.join(".git").exists() {
+                let (git_status, repo_path) = if is_dir && file_path.join(".git").exists() {
                     // Directory is a git repo root - get its own status
-                    termide_git::get_repo_status(&file_path, &file_path)
+                    (
+                        termide_git::get_repo_status(&file_path, &file_path),
+                        Some(file_path.clone()),
+                    )
                 } else {
                     // Regular file/directory - check status in parent repo
-                    termide_git::get_repo_status(&self.current_path, &file_path)
+                    let repo = termide_git::find_repo_root(&self.current_path);
+                    (
+                        termide_git::get_repo_status(&self.current_path, &file_path),
+                        repo,
+                    )
                 };
 
-                if let Some(git_status) = git_status {
+                // Track whether file has actionable git status (any git actions available)
+                let has_git_actions = git_status
+                    .as_ref()
+                    .map(|s| {
+                        !s.is_ignored && (s.uncommitted_changes > 0 || s.ahead > 0 || s.behind > 0)
+                    })
+                    .unwrap_or(false);
+
+                if let Some(ref git_status) = git_status {
                     if git_status.is_ignored {
                         // If file is ignored, show only one line
                         data.push((
@@ -197,11 +212,29 @@ impl FileManager {
                     }
                 }
 
-                let modal = termide_modal::InfoModal::new(modal_title, data);
-                self.modal_request = Some((
-                    PendingAction::ClosePanel { panel_index: 0 },
-                    ActiveModal::Info(Box::new(modal)),
-                ));
+                // If file has git actions, use InfoActionModal with smart buttons
+                if let (true, Some(ref status), Some(repo)) =
+                    (has_git_actions, &git_status, repo_path)
+                {
+                    let buttons = Self::build_git_action_buttons(status);
+                    let selected_button = buttons.len().saturating_sub(1); // Select [Close]
+                    let modal =
+                        termide_modal::InfoActionModal::new(modal_title, data.clone(), buttons)
+                            .with_selected_button(selected_button);
+                    self.modal_request = Some((
+                        PendingAction::GitFileAction {
+                            file_path: file_path.clone(),
+                            repo_path: repo,
+                        },
+                        ActiveModal::InfoAction(Box::new(modal)),
+                    ));
+                } else {
+                    let modal = termide_modal::InfoModal::new(modal_title, data);
+                    self.modal_request = Some((
+                        PendingAction::ClosePanel { panel_index: 0 },
+                        ActiveModal::Info(Box::new(modal)),
+                    ));
+                }
 
                 if is_dir {
                     let (tx, rx) = mpsc::channel();
@@ -283,6 +316,32 @@ impl FileManager {
                 Some(resolved)
             }
         })
+    }
+
+    /// Build smart action buttons based on git status
+    fn build_git_action_buttons(git_status: &termide_git::GitRepoStatus) -> Vec<ActionButton> {
+        let t = termide_i18n::t();
+        let mut buttons = Vec::new();
+
+        // Commit button - only if there are uncommitted changes
+        if git_status.uncommitted_changes > 0 {
+            buttons.push(ActionButton::new(t.git_action_commit(), "commit"));
+        }
+
+        // Push button - only if ahead of remote
+        if git_status.ahead > 0 {
+            buttons.push(ActionButton::new(t.git_action_push(), "push"));
+        }
+
+        // Pull button - only if behind remote
+        if git_status.behind > 0 {
+            buttons.push(ActionButton::new(t.git_action_pull(), "pull"));
+        }
+
+        // Close is always present
+        buttons.push(ActionButton::new(t.git_action_close(), "close"));
+
+        buttons
     }
 
     /// Get disk space information for the current directory

@@ -73,6 +73,14 @@ impl App {
             return Ok(());
         }
 
+        // Handle Git submenu clicks when it's open
+        if self.state.ui.git_submenu_open
+            && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
+            && self.handle_git_submenu_click(mouse.column, mouse.row)?
+        {
+            return Ok(());
+        }
+
         // If menu is open, close it on click outside menu
         if self.state.ui.menu_open && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
         {
@@ -409,6 +417,37 @@ impl App {
                 self.state.ui.selected_sessions_item = item_index;
                 // Execute the action for the selected item
                 self.execute_sessions_submenu_action()?;
+                return Ok(true);
+            }
+        }
+
+        // Click outside dropdown - close menu
+        self.state.close_menu();
+        Ok(true)
+    }
+
+    /// Handle click on Git submenu dropdown
+    /// Returns true if click was handled
+    fn handle_git_submenu_click(&mut self, x: u16, y: u16) -> Result<bool> {
+        use termide_ui_render::{get_git_items, get_menu_item_x_position, GIT_MENU_INDEX};
+
+        // Get Git dropdown position
+        let menu_x = get_menu_item_x_position(GIT_MENU_INDEX);
+        let dropdown_y = 1_u16;
+
+        // Calculate Git dropdown dimensions
+        let git_items = get_git_items();
+        let git_width = git_items.iter().map(|i| i.label.len()).max().unwrap_or(10) as u16 + 4;
+        let git_height = git_items.len() as u16 + 2; // +2 for borders
+
+        // Check click on Git dropdown
+        if x >= menu_x && x < menu_x + git_width && y >= dropdown_y && y < dropdown_y + git_height {
+            let item_y = y.saturating_sub(dropdown_y + 1); // -1 for top border
+            let item_index = item_y as usize;
+            if item_index < git_items.len() {
+                self.state.ui.selected_git_item = item_index;
+                // Execute the action for the selected item
+                self.execute_git_submenu_action()?;
                 return Ok(true);
             }
         }
