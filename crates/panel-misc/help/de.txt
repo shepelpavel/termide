@@ -8,7 +8,7 @@
     Alt+E        Editor-Panel öffnen
     Alt+L        Log-Panel öffnen
     Alt+P        Konfigurationsdatei im Editor öffnen
-    Alt+/        Sitzung wechseln (Projekt auswählen)
+    Alt+/        Sitzungsmenü (neu/wechseln/Stammverz. ändern)
 
 
   PANELVERWALTUNG
@@ -66,6 +66,31 @@
     Ctrl+H       Text ersetzen (interaktives Modal)
     Ctrl+G       Zur Zeile gehen
     Escape       Suche/Modal schließen oder Panel schließen
+
+
+  GIT STATUS PANEL-TASTEN
+
+    Tab          Fokus wechseln (Selektoren / Dateien / Buttons)
+    ↑↓           Dateien oder Listenelemente navigieren
+    Space        Datei stagen/unstagen
+    Insert       Datei auswählen (für Batch-Operationen)
+    Delete       Aus Staging entfernen
+    Ctrl+S       Ausgewählte stagen
+    Ctrl+U       Ausgewählte unstagen
+    Ctrl+R       Status aktualisieren
+    Enter        Button ausführen oder Element auswählen
+
+
+  GIT LOG PANEL-TASTEN
+
+    Tab          Fokus wechseln (Branches / Commits)
+    ↑↓ / j/k     Commits navigieren
+    PgUp / PgDn  Seite hoch/runter
+    Home / g     Zum ersten Commit
+    End / G      Zum letzten Commit
+    Enter / d    Commit-Details anzeigen
+    c / C        Commit-Hash kopieren
+    Ctrl+R       Log aktualisieren
 
 
   Verwenden Sie die Pfeiltasten zum Scrollen dieser Hilfe.

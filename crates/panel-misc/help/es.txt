@@ -8,7 +8,7 @@
     Alt+E        Abrir panel de editor
     Alt+L        Abrir panel de registro
     Alt+P        Abrir archivo de configuración en el editor
-    Alt+/        Cambiar sesión (seleccionar proyecto)
+    Alt+/        Menú sesiones (nueva/cambiar/cambiar raíz)
 
 
   GESTIÓN DE PANELES
@@ -66,6 +66,31 @@
     Ctrl+H       Reemplazar texto (modal interactivo)
     Ctrl+G       Ir a línea
     Escape       Cerrar búsqueda/modal, o cerrar panel
+
+
+  TECLAS DEL PANEL GIT STATUS
+
+    Tab          Cambiar foco (selectores / archivos / botones)
+    ↑↓           Navegar archivos o elementos de lista
+    Space        Preparar/despreparar archivo
+    Insert       Seleccionar archivo (operaciones por lotes)
+    Delete       Quitar del área de preparación
+    Ctrl+S       Preparar archivos seleccionados
+    Ctrl+U       Despreparar archivos seleccionados
+    Ctrl+R       Actualizar estado
+    Enter        Ejecutar botón o seleccionar elemento
+
+
+  TECLAS DEL PANEL GIT LOG
+
+    Tab          Cambiar foco (ramas / commits)
+    ↑↓ / j/k     Navegar commits
+    PgUp / PgDn  Página arriba/abajo
+    Home / g     Ir al primer commit
+    End / G      Ir al último commit
+    Enter / d    Mostrar detalles del commit
+    c / C        Copiar hash del commit
+    Ctrl+R       Actualizar registro
 
 
   Use las teclas de flecha para desplazar este texto de ayuda.

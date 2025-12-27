@@ -8,7 +8,7 @@
     Alt+E        Open editor panel
     Alt+L        Open Log panel
     Alt+P        Open config file in editor
-    Alt+/        Switch session (select project)
+    Alt+/        Sessions menu (new/switch/change root)
 
 
   PANEL MANAGEMENT
@@ -67,6 +67,31 @@
     Ctrl+H       Replace text (interactive modal)
     Ctrl+G       Go to line
     Escape       Close search/modal, or close panel
+
+
+  GIT STATUS PANEL KEYS
+
+    Tab          Switch focus (selectors / files / buttons)
+    ↑↓           Navigate files or dropdown items
+    Space        Stage/unstage file under cursor
+    Insert       Select file (for batch operations)
+    Delete       Remove from staged area
+    Ctrl+S       Stage selected files
+    Ctrl+U       Unstage selected files
+    Ctrl+R       Refresh status
+    Enter        Execute button or select dropdown item
+
+
+  GIT LOG PANEL KEYS
+
+    Tab          Switch focus (branches / commits)
+    ↑↓ / j/k     Navigate commits
+    PgUp / PgDn  Page up/down in commit list
+    Home / g     Jump to first commit
+    End / G      Jump to last commit
+    Enter / d    Show commit details
+    c / C        Copy commit hash to clipboard
+    Ctrl+R       Refresh log
 
 
   Use arrow keys to scroll this help text.

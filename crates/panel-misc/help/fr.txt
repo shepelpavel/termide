@@ -8,7 +8,7 @@
     Alt+E        Ouvrir le panneau éditeur
     Alt+L        Ouvrir le panneau journal
     Alt+P        Ouvrir le fichier de configuration dans l'éditeur
-    Alt+/        Changer de session (sélectionner le projet)
+    Alt+/        Menu sessions (nouveau/changer/changer racine)
 
 
   GESTION DES PANNEAUX
@@ -66,6 +66,31 @@
     Ctrl+H       Remplacer du texte (modal interactif)
     Ctrl+G       Aller à la ligne
     Escape       Fermer recherche/modal, ou fermer le panneau
+
+
+  TOUCHES DU PANNEAU GIT STATUS
+
+    Tab          Changer le focus (sélecteurs / fichiers / boutons)
+    ↑↓           Naviguer fichiers ou éléments de liste
+    Space        Indexer/désindexer le fichier
+    Insert       Sélectionner fichier (opérations groupées)
+    Delete       Retirer de l'index
+    Ctrl+S       Indexer les fichiers sélectionnés
+    Ctrl+U       Désindexer les fichiers sélectionnés
+    Ctrl+R       Actualiser le statut
+    Enter        Exécuter bouton ou sélectionner élément
+
+
+  TOUCHES DU PANNEAU GIT LOG
+
+    Tab          Changer le focus (branches / commits)
+    ↑↓ / j/k     Naviguer les commits
+    PgUp / PgDn  Page haut/bas
+    Home / g     Aller au premier commit
+    End / G      Aller au dernier commit
+    Enter / d    Afficher les détails du commit
+    c / C        Copier le hash du commit
+    Ctrl+R       Actualiser le journal
 
 
   Utilisez les touches fléchées pour faire défiler ce texte d'aide.

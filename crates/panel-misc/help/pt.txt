@@ -8,7 +8,7 @@
     Alt+E        Abrir painel do editor
     Alt+L        Abrir painel de log
     Alt+P        Abrir arquivo de configuração no editor
-    Alt+/        Alternar sessão (selecionar projeto)
+    Alt+/        Menu sessões (nova/alternar/mudar raiz)
 
 
   GERENCIAMENTO DE PAINÉIS
@@ -66,6 +66,31 @@
     Ctrl+H       Substituir texto (modal interativo)
     Ctrl+G       Ir para linha
     Escape       Fechar busca/modal, ou fechar painel
+
+
+  TECLAS DO PAINEL GIT STATUS
+
+    Tab          Alternar foco (seletores / arquivos / botões)
+    ↑↓           Navegar arquivos ou itens da lista
+    Space        Preparar/despreparar arquivo
+    Insert       Selecionar arquivo (operações em lote)
+    Delete       Remover da área de preparação
+    Ctrl+S       Preparar arquivos selecionados
+    Ctrl+U       Despreparar arquivos selecionados
+    Ctrl+R       Atualizar status
+    Enter        Executar botão ou selecionar item
+
+
+  TECLAS DO PAINEL GIT LOG
+
+    Tab          Alternar foco (branches / commits)
+    ↑↓ / j/k     Navegar commits
+    PgUp / PgDn  Página acima/abaixo
+    Home / g     Ir para o primeiro commit
+    End / G      Ir para o último commit
+    Enter / d    Mostrar detalhes do commit
+    c / C        Copiar hash do commit
+    Ctrl+R       Atualizar log
 
 
   Use as teclas de seta para rolar este texto de ajuda.
