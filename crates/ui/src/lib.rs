@@ -5,6 +5,9 @@
 pub mod config;
 pub mod path_utils;
 pub mod system_monitor;
+pub mod textarea;
+
+pub use textarea::TextArea;
 
 // Re-exports for convenience
 pub use termide_clipboard as clipboard;

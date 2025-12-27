@@ -115,18 +115,27 @@ impl App {
 
     /// Forward mouse event to active panel
     fn forward_mouse_to_panel(&mut self, mouse: crossterm::event::MouseEvent) -> Result<()> {
+        use crate::panel_ext::PanelExt;
+
         // Determine active panel area
         let panel_area = self.get_active_panel_area();
 
         // Handle mouse event and collect results
-        let events = if let Some(panel) = self.layout_manager.active_panel_mut() {
-            panel.handle_mouse(mouse, panel_area)
+        let (events, modal_request) = if let Some(panel) = self.layout_manager.active_panel_mut() {
+            let events = panel.handle_mouse(mouse, panel_area);
+            let modal_request = panel.take_modal_request();
+            (events, modal_request)
         } else {
-            vec![]
+            (vec![], None)
         };
 
         // Process panel events (new event-based architecture)
         self.process_panel_events(events)?;
+
+        // Handle modal window request from panel (legacy, still used)
+        if let Some((action, modal)) = modal_request {
+            self.handle_modal_request(action, modal)?;
+        }
 
         Ok(())
     }

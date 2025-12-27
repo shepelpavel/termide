@@ -611,8 +611,22 @@ impl GitStatusPanel {
         let button = buttons[self.selected_button];
         match button {
             Button::Commit => {
-                // TODO: Open commit modal
-                self.status_message = Some("Commit modal not implemented yet".to_string());
+                if let Some(repo) = self.current_repo() {
+                    let staged_count = self.staged_files.len();
+                    let repo_name = git::get_repo_name(repo);
+                    let branch_name = self
+                        .branch
+                        .clone()
+                        .unwrap_or_else(|| "(detached)".to_string());
+                    let modal =
+                        termide_modal::CommitModal::new(staged_count, repo_name, branch_name);
+                    self.modal_request = Some((
+                        termide_state::PendingAction::GitCommit {
+                            repo_path: repo.to_path_buf(),
+                        },
+                        termide_modal::ActiveModal::Commit(Box::new(modal)),
+                    ));
+                }
                 vec![]
             }
             Button::Pull => {

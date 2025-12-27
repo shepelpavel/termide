@@ -19,6 +19,7 @@ pub mod base;
 pub use base::{
     check_mouse_click, check_mouse_click_with_item_height, CursorNavigation, MouseClickResult,
 };
+pub mod commit;
 pub mod confirm;
 pub mod conflict;
 pub mod content_search;
@@ -35,6 +36,7 @@ pub mod search;
 pub mod select;
 pub mod sessions;
 
+pub use commit::CommitModal;
 pub use confirm::ConfirmModal;
 pub use conflict::{ConflictModal, ConflictResolution};
 pub use content_search::{ContentSearchModal, ContentSearchResultItem};
@@ -56,6 +58,8 @@ pub use sessions::{SessionItem, SessionsModal};
 /// Contains all possible modal types in boxed form for dynamic dispatch.
 #[derive(Debug)]
 pub enum ActiveModal {
+    /// Git commit modal
+    Commit(Box<CommitModal>),
     /// Confirmation modal (Yes/No)
     Confirm(Box<ConfirmModal>),
     /// Text input modal

@@ -38,6 +38,7 @@ impl App {
         if let Some(modal) = self.state.get_active_modal_mut() {
             // Handle event in corresponding modal window
             let modal_result = match modal {
+                ActiveModal::Commit(m) => m.handle_key(key)?.map(box_modal_result),
                 ActiveModal::Confirm(m) => m.handle_key(key)?.map(box_modal_result),
                 ActiveModal::Input(m) => m.handle_key(key)?.map(box_modal_result),
                 ActiveModal::Select(m) => m.handle_key(key)?.map(box_modal_result),
@@ -125,6 +126,12 @@ impl App {
         if let Some(modal) = self.state.get_active_modal_mut() {
             // Handle event in corresponding modal window
             let modal_result = match modal {
+                ActiveModal::Commit(m) => m.handle_mouse(mouse, modal_area)?.map(|r| match r {
+                    ModalResult::Confirmed(value) => {
+                        ModalResult::Confirmed(Box::new(value) as Box<dyn std::any::Any>)
+                    }
+                    ModalResult::Cancelled => ModalResult::Cancelled,
+                }),
                 ActiveModal::Confirm(m) => m.handle_mouse(mouse, modal_area)?.map(|r| match r {
                     ModalResult::Confirmed(value) => {
                         ModalResult::Confirmed(Box::new(value) as Box<dyn std::any::Any>)
@@ -364,6 +371,10 @@ impl App {
                     repo_path,
                 } => {
                     self.handle_git_file_action(value, &file_path, &repo_path)?;
+                }
+                // Git commit action
+                PendingAction::GitCommit { repo_path } => {
+                    self.handle_git_commit(value, &repo_path)?;
                 }
             }
         }
@@ -645,6 +656,43 @@ impl App {
             }
         }
         Ok(())
+    }
+
+    /// Handle git commit action from CommitModal
+    fn handle_git_commit(
+        &mut self,
+        value: Box<dyn std::any::Any>,
+        repo_path: &std::path::Path,
+    ) -> Result<()> {
+        // value is the commit message (String)
+        if let Some(message) = value.downcast_ref::<String>() {
+            match termide_git::commit(repo_path, message) {
+                Ok(commit_id) => {
+                    self.state.set_info(format!(
+                        "Committed: {}",
+                        &commit_id[..8.min(commit_id.len())]
+                    ));
+                    // Trigger git update event to refresh panels
+                    self.send_git_update(repo_path);
+                }
+                Err(e) => {
+                    self.state.set_error(format!("Commit failed: {}", e));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Send git update event to refresh git panels
+    fn send_git_update(&mut self, repo_path: &std::path::Path) {
+        use termide_core::PanelCommand;
+        // Send OnGitUpdate command to all panels
+        let repo_paths: Vec<&std::path::Path> = vec![repo_path];
+        for panel in self.layout_manager.iter_all_panels_mut() {
+            let _ = panel.handle_command(PanelCommand::OnGitUpdate {
+                repo_paths: &repo_paths,
+            });
+        }
     }
 
     /// Open a terminal panel with a command

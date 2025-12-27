@@ -791,6 +791,13 @@ impl Translation for RuntimeTranslation {
         self.get_string("git_action_pull")
     }
 
+    fn git_commit_title(&self, count: usize, repo: &str, branch: &str) -> String {
+        self.get_string("git_commit_title")
+            .replace("{count}", &count.to_string())
+            .replace("{repo}", repo)
+            .replace("{branch}", branch)
+    }
+
     fn git_file_properties_title(&self) -> &str {
         self.get_string("git_file_properties_title")
     }

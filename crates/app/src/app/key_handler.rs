@@ -100,7 +100,7 @@ impl App {
     }
 
     /// Handle modal request from panel
-    fn handle_modal_request(
+    pub(super) fn handle_modal_request(
         &mut self,
         mut action: PendingAction,
         mut modal: ActiveModal,
@@ -135,7 +135,8 @@ impl App {
             | PendingAction::ChangeRootPath
             | PendingAction::OpenGitStatus
             | PendingAction::OpenGitLog
-            | PendingAction::GitFileAction { .. } => {
+            | PendingAction::GitFileAction { .. }
+            | PendingAction::GitCommit { .. } => {
                 // These actions don't require panel_index update
             }
         }

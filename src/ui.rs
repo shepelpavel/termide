@@ -111,6 +111,7 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
     if let Some(modal) = state.get_active_modal_mut() {
         let area = frame.area();
         match modal {
+            ActiveModal::Commit(m) => m.render(area, frame.buffer_mut(), theme),
             ActiveModal::Confirm(m) => m.render(area, frame.buffer_mut(), theme),
             ActiveModal::Input(m) => m.render(area, frame.buffer_mut(), theme),
             ActiveModal::Select(m) => m.render(area, frame.buffer_mut(), theme),

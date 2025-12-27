@@ -448,6 +448,11 @@ pub enum PendingAction {
         /// Repository root path
         repo_path: PathBuf,
     },
+    /// Git commit action
+    GitCommit {
+        /// Repository root path
+        repo_path: PathBuf,
+    },
 }
 
 #[cfg(test)]
