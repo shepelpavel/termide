@@ -1115,8 +1115,8 @@ impl Panel for Terminal {
             }
             KeyCode::Enter => {
                 if key.modifiers.contains(KeyModifiers::SHIFT) {
-                    // Shift+Enter sends CSI u sequence
-                    let _ = self.send_input(b"\x1b[13;2u");
+                    // Shift+Enter sends newline for multi-line input
+                    let _ = self.send_input(b"\n");
                 } else {
                     let _ = self.send_input(b"\r");
                 }
