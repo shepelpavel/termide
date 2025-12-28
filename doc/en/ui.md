@@ -35,6 +35,7 @@ Menu activation/deactivation and each item can be accessed by mouse click or [ke
 - `Files` opens a panel with file manager
 - `Terminal` opens a panel with terminal
 - `Editor` opens a panel with new file editor
+- `Git` opens a git status panel
 - `Log` opens a log panel
 - `Preferences` opens configuration file in editor
 - `Help` opens help window
@@ -53,6 +54,7 @@ The area always contains a non-closable file manager panel on the left, and othe
 - [file manager](file-manager.md)
 - [terminal](terminal.md)
 - [text editor](editor.md)
+- [git status](git-status.md)
 
 **Features of closeable panels:**
 - Have `[X]` close button in panel title (clickable with mouse)
@@ -96,6 +98,7 @@ The device name is automatically detected from the filesystem:
 | `Alt+F`           | Open file manager panel                    |
 | `Alt+T`           | Open terminal panel                        |
 | `Alt+E`           | Open new file editor panel                 |
+| `Alt+G`           | Open git status panel                      |
 | `Alt+L`           | Open log panel                             |
 | `Alt+P`           | Open configuration file in editor          |
 | `Alt+H`           | Open help window                           |

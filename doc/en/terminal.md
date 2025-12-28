@@ -12,6 +12,7 @@ The terminal panel provides a full-featured terminal emulator with pseudotermina
 
 | Shortcut               | Action                                     |
 |------------------------|--------------------------------------------|
+| `Shift+Enter`          | Insert newline (multi-line input)          |
 | `Shift+PageUp`         | Scroll output history up                   |
 | `Shift+PageDown`       | Scroll output history down                 |
 | `Shift+Home`           | Go to beginning of output history          |
