@@ -1557,15 +1557,20 @@ impl Panel for GitStatusPanel {
                 if self.current_section == Section::Files {
                     let max = self.total_virtual_lines();
                     let page_size = self.viewport_height.max(1);
-                    let mut new_cursor = (self.cursor + page_size).min(max.saturating_sub(1));
-                    // Find nearest selectable line
-                    while new_cursor + 1 < max && !self.is_selectable_line(new_cursor) {
-                        new_cursor += 1;
+                    let target = (self.cursor + page_size).min(max.saturating_sub(1));
+                    // Find nearest selectable line, searching backward from target
+                    let mut new_cursor = target;
+                    while new_cursor > self.cursor && !self.is_selectable_line(new_cursor) {
+                        new_cursor -= 1;
                     }
-                    if self.is_selectable_line(new_cursor) {
+                    if new_cursor > self.cursor && self.is_selectable_line(new_cursor) {
                         self.cursor = new_cursor;
                     }
                     self.ensure_cursor_visible();
+                    // If cursor is at last selectable line, scroll to show all content
+                    if self.cursor == self.last_selectable_line() && max > self.viewport_height {
+                        self.scroll_offset = max.saturating_sub(self.viewport_height);
+                    }
                 }
             }
             KeyCode::Left => match self.current_section {
