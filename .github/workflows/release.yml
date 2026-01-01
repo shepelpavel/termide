@@ -49,11 +49,11 @@ jobs:
         include:
           # Linux x86_64 (also works in WSL)
           - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: ubuntu-22.04  # Use older Ubuntu for glibc compatibility
             archive: tar.gz
           # Linux aarch64 (ARM servers, Raspberry Pi)
           - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: ubuntu-22.04  # Use older Ubuntu for glibc compatibility
             archive: tar.gz
             cross: true
           # macOS x86_64 (Intel Macs)
@@ -109,7 +109,7 @@ jobs:
   build-deb:
     name: Build .deb packages
     needs: quality-checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04  # Use older Ubuntu for glibc compatibility with Debian 12
     strategy:
       fail-fast: false
       matrix:
@@ -147,7 +147,7 @@ jobs:
   build-rpm:
     name: Build .rpm packages
     needs: quality-checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04  # Use older Ubuntu for glibc compatibility
     strategy:
       fail-fast: false
       matrix:
