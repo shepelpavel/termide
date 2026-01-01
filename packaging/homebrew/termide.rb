@@ -1,29 +1,29 @@
 class Termide < Formula
   desc "Cross-platform terminal IDE, file manager and virtual terminal"
   homepage "https://github.com/termide/termide"
-  version "0.8.1"
+  version "0.8.2"
   license "MIT"
 
   on_macos do
     on_intel do
-      url "https://github.com/termide/termide/releases/download/0.8.1/termide-0.8.1-x86_64-apple-darwin.tar.gz"
+      url "https://github.com/termide/termide/releases/download/0.8.2/termide-0.8.2-x86_64-apple-darwin.tar.gz"
       sha256 "REPLACE_WITH_ACTUAL_SHA256_x86_64_darwin"  # Update after release
     end
 
     on_arm do
-      url "https://github.com/termide/termide/releases/download/0.8.1/termide-0.8.1-aarch64-apple-darwin.tar.gz"
+      url "https://github.com/termide/termide/releases/download/0.8.2/termide-0.8.2-aarch64-apple-darwin.tar.gz"
       sha256 "REPLACE_WITH_ACTUAL_SHA256_aarch64_darwin"  # Update after release
     end
   end
 
   on_linux do
     on_intel do
-      url "https://github.com/termide/termide/releases/download/0.8.1/termide-0.8.1-x86_64-unknown-linux-gnu.tar.gz"
+      url "https://github.com/termide/termide/releases/download/0.8.2/termide-0.8.2-x86_64-unknown-linux-gnu.tar.gz"
       sha256 "REPLACE_WITH_ACTUAL_SHA256_x86_64_linux"  # Update after release
     end
 
     on_arm do
-      url "https://github.com/termide/termide/releases/download/0.8.1/termide-0.8.1-aarch64-unknown-linux-gnu.tar.gz"
+      url "https://github.com/termide/termide/releases/download/0.8.2/termide-0.8.2-aarch64-unknown-linux-gnu.tar.gz"
       sha256 "REPLACE_WITH_ACTUAL_SHA256_aarch64_linux"  # Update after release
     end
   end

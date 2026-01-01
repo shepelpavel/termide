@@ -5,6 +5,19 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.2] - 2026-01-01
+
+### Added
+- **Inline diff visualization**: Character-level diff highlighting for modified lines in editor (deleted text in red, inserted in green)
+- **Git gutter markers**: Visual indicators in editor line numbers (`+` for added, `~` for modified lines)
+- **Revert button**: Quick revert action for individual files in Git Status panel
+
+### Fixed
+- Git commands now properly detect repository when editing files in subdirectories
+- Inline diff line mapping correctly tracks modified lines when other lines are added/deleted above
+- Debian package (.deb) now includes binary in `/usr/bin/`
+- README.md download links corrected for .deb and .rpm packages
+
 ## [0.8.1] - 2025-12-28
 
 ### Added
@@ -513,6 +526,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pre-commit hooks for code quality
 - Comprehensive test suite
 
+[0.8.2]: https://github.com/termide/termide/releases/tag/0.8.2
 [0.8.1]: https://github.com/termide/termide/releases/tag/0.8.1
 [0.8.0]: https://github.com/termide/termide/releases/tag/0.8.0
 [0.7.0]: https://github.com/termide/termide/releases/tag/0.7.0
