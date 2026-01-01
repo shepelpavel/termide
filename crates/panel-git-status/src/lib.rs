@@ -575,14 +575,12 @@ impl GitStatusPanel {
             (t.git_props_status().to_string(), status_str),
         ];
 
-        // Build action buttons
-        let mut buttons = Vec::new();
-        buttons.push(ActionButton::new(t.git_action_diff(), "diff"));
-        if !is_staged {
-            // Only show Revert for unstaged files
-            buttons.push(ActionButton::new(t.git_action_revert(), "revert"));
-        }
-        buttons.push(ActionButton::new(t.git_action_close(), "close"));
+        // Build action buttons (Revert shown for all files - staged files will be unstaged first)
+        let buttons = vec![
+            ActionButton::new(t.git_action_diff(), "diff"),
+            ActionButton::new(t.git_action_revert(), "revert"),
+            ActionButton::new(t.git_action_close(), "close"),
+        ];
 
         // Select Close button by default
         let selected_button = buttons.len().saturating_sub(1);
@@ -596,6 +594,7 @@ impl GitStatusPanel {
             PendingAction::GitFileAction {
                 file_path,
                 repo_path,
+                is_staged,
             },
             ActiveModal::InfoAction(Box::new(modal)),
         ));
@@ -1571,6 +1570,55 @@ impl Panel for GitStatusPanel {
                     if self.cursor == self.last_selectable_line() && max > self.viewport_height {
                         self.scroll_offset = max.saturating_sub(self.viewport_height);
                     }
+                }
+            }
+            KeyCode::Home => {
+                if self.current_section == Section::Files {
+                    // Go to first item in current section (unstaged or staged)
+                    let unstaged_end = 1 + self.unstaged_files.len();
+                    let staged_header = unstaged_end;
+
+                    if self.cursor < staged_header {
+                        // In unstaged section - go to first unstaged file or header
+                        if !self.unstaged_files.is_empty() {
+                            self.cursor = 1; // First unstaged file
+                        } else {
+                            self.cursor = 0; // Unstaged header
+                        }
+                    } else {
+                        // In staged section - go to first staged file or header
+                        if !self.staged_files.is_empty() {
+                            self.cursor = staged_header + 1; // First staged file
+                        } else {
+                            self.cursor = staged_header; // Staged header
+                        }
+                    }
+                    self.ensure_cursor_visible();
+                }
+            }
+            KeyCode::End => {
+                if self.current_section == Section::Files {
+                    // Go to last item in current section (unstaged or staged)
+                    let unstaged_end = 1 + self.unstaged_files.len();
+                    let staged_header = unstaged_end;
+                    let staged_end = staged_header + 1 + self.staged_files.len();
+
+                    if self.cursor < staged_header {
+                        // In unstaged section - go to last unstaged file or header
+                        if !self.unstaged_files.is_empty() {
+                            self.cursor = unstaged_end - 1; // Last unstaged file
+                        } else {
+                            self.cursor = 0; // Unstaged header
+                        }
+                    } else {
+                        // In staged section - go to last staged file or header
+                        if !self.staged_files.is_empty() {
+                            self.cursor = staged_end - 1; // Last staged file
+                        } else {
+                            self.cursor = staged_header; // Staged header
+                        }
+                    }
+                    self.ensure_cursor_visible();
                 }
             }
             KeyCode::Left => match self.current_section {

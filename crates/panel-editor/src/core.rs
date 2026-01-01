@@ -178,8 +178,18 @@ impl Editor {
         // Initialize git integration
         let mut git = GitIntegration::new();
         let mut cache = GitDiffCache::new(path.clone());
-        if cache.update().is_ok() {
-            git.diff_cache = Some(cache);
+        match cache.update() {
+            Ok(()) => {
+                log::debug!(
+                    "Editor: GitDiffCache initialized for {:?}, has {} statuses",
+                    path,
+                    cache.line_status_count()
+                );
+                git.diff_cache = Some(cache);
+            }
+            Err(e) => {
+                log::warn!("Editor: GitDiffCache update failed for {:?}: {}", path, e);
+            }
         }
 
         Ok(Self {

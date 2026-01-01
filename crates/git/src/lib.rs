@@ -26,7 +26,10 @@ fn git_command_stdout(dir: &Path, args: &[&str]) -> Option<String> {
     git_command(dir, args).and_then(|output| String::from_utf8(output.stdout).ok())
 }
 
-pub use diff::{load_original_async, GitDiffAsyncResult, GitDiffCache, LineStatus};
+pub use diff::{
+    compute_inline_diff, load_original_async, GitDiffAsyncResult, GitDiffCache, InlineChange,
+    InlineChangeType, LineStatus,
+};
 
 /// Get git status for a specific file relative to repo root.
 pub fn file_status(repo_root: &Path, file_path: &Path) -> GitStatus {

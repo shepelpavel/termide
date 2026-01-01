@@ -369,12 +369,21 @@ impl App {
                 PendingAction::GitFileAction {
                     file_path,
                     repo_path,
+                    is_staged,
                 } => {
-                    self.handle_git_file_action(value, &file_path, &repo_path)?;
+                    self.handle_git_file_action(value, &file_path, &repo_path, is_staged)?;
                 }
                 // Git commit action
                 PendingAction::GitCommit { repo_path } => {
                     self.handle_git_commit(value, &repo_path)?;
+                }
+                // Git revert file action (with confirmation)
+                PendingAction::GitRevertFile {
+                    file_path,
+                    repo_path,
+                    is_staged,
+                } => {
+                    self.handle_git_revert_file(value, &file_path, &repo_path, is_staged)?;
                 }
             }
         }
@@ -593,6 +602,7 @@ impl App {
         value: Box<dyn std::any::Any>,
         file_path: &std::path::Path,
         repo_path: &std::path::Path,
+        is_staged: bool,
     ) -> Result<()> {
         use termide_modal::InfoActionResult;
 
@@ -634,17 +644,37 @@ impl App {
                         }
                     }
                     "diff" => {
-                        // Show diff in status message for now
-                        // Full implementation would open diff in a panel
-                        self.state
-                            .set_info("Diff view not yet implemented".to_string());
+                        // Open file in editor (editor shows git diff markers)
+                        let full_path = repo_path.join(file_path);
+                        use termide_panel_editor::Editor;
+                        match Editor::open_file_with_config(
+                            full_path.clone(),
+                            self.state.editor_config(),
+                        ) {
+                            Ok(editor_panel) => {
+                                self.add_panel(Box::new(editor_panel));
+                                self.auto_save_session();
+                            }
+                            Err(e) => {
+                                self.state.set_error(format!("Open error: {}", e));
+                            }
+                        }
                     }
                     "revert" => {
-                        if let Err(e) = termide_git::revert_file(repo_path, file_path) {
-                            self.state.set_error(format!("Revert error: {}", e));
-                        } else {
-                            self.state.set_info("File reverted".to_string());
-                        }
+                        // Open confirmation modal before reverting
+                        let t = termide_i18n::t();
+                        let confirm_msg =
+                            format!("{}\n\n{}", file_path.display(), t.git_revert_confirm());
+                        let modal =
+                            termide_modal::ConfirmModal::new(t.git_action_revert(), &confirm_msg);
+                        self.state.set_pending_action(
+                            termide_state::PendingAction::GitRevertFile {
+                                file_path: file_path.to_path_buf(),
+                                repo_path: repo_path.to_path_buf(),
+                                is_staged,
+                            },
+                            ActiveModal::Confirm(Box::new(modal)),
+                        );
                     }
                     _ => {
                         // Close the modal for "close" or any unknown action
@@ -677,6 +707,37 @@ impl App {
                 }
                 Err(e) => {
                     self.state.set_error(format!("Commit failed: {}", e));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Handle git revert file action (after confirmation)
+    fn handle_git_revert_file(
+        &mut self,
+        value: Box<dyn std::any::Any>,
+        file_path: &std::path::Path,
+        repo_path: &std::path::Path,
+        is_staged: bool,
+    ) -> Result<()> {
+        // value is bool from ConfirmModal
+        if let Some(&confirmed) = value.downcast_ref::<bool>() {
+            if confirmed {
+                // If file is staged, unstage it first
+                if is_staged {
+                    if let Err(e) = termide_git::unstage_file(repo_path, file_path) {
+                        self.state.set_error(format!("Unstage error: {}", e));
+                        return Ok(());
+                    }
+                }
+                // Now revert the file
+                if let Err(e) = termide_git::revert_file(repo_path, file_path) {
+                    self.state.set_error(format!("Revert error: {}", e));
+                } else {
+                    self.state.set_info("File reverted".to_string());
+                    // Trigger git update event to refresh panels
+                    self.send_git_update(repo_path);
                 }
             }
         }

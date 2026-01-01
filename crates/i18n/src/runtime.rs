@@ -791,6 +791,10 @@ impl Translation for RuntimeTranslation {
         self.get_string("git_action_pull")
     }
 
+    fn git_revert_confirm(&self) -> &str {
+        self.get_string("git_revert_confirm")
+    }
+
     fn git_commit_title(&self, count: usize, repo: &str, branch: &str) -> String {
         self.get_string("git_commit_title")
             .replace("{count}", &count.to_string())

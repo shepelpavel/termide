@@ -447,11 +447,22 @@ pub enum PendingAction {
         file_path: PathBuf,
         /// Repository root path
         repo_path: PathBuf,
+        /// Whether the file is staged
+        is_staged: bool,
     },
     /// Git commit action
     GitCommit {
         /// Repository root path
         repo_path: PathBuf,
+    },
+    /// Git revert file action (with confirmation)
+    GitRevertFile {
+        /// The file path to revert
+        file_path: PathBuf,
+        /// Repository root path
+        repo_path: PathBuf,
+        /// Whether the file is staged
+        is_staged: bool,
     },
 }
 

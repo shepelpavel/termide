@@ -73,13 +73,9 @@ tar xzf termide-0.8.1-aarch64-unknown-linux-gnu.tar.gz
 Download and install the `.deb` package from [GitHub Releases](https://github.com/termide/termide/releases):
 
 ```bash
-# x86_64
-wget https://github.com/termide/termide/releases/download/0.8.1/termide_0.8.1_amd64.deb
-sudo dpkg -i termide_0.8.1_amd64.deb
-
-# ARM64
-wget https://github.com/termide/termide/releases/download/0.8.1/termide_0.8.1_arm64.deb
-sudo dpkg -i termide_0.8.1_arm64.deb
+# x86_64 only (ARM64 use tar.gz above)
+wget https://github.com/termide/termide/releases/latest/download/termide_0.8.1-1_amd64.deb
+sudo dpkg -i termide_0.8.1-1_amd64.deb
 ```
 
 </details>
@@ -90,13 +86,9 @@ sudo dpkg -i termide_0.8.1_arm64.deb
 Download and install the `.rpm` package from [GitHub Releases](https://github.com/termide/termide/releases):
 
 ```bash
-# x86_64
-wget https://github.com/termide/termide/releases/download/0.8.1/termide-0.8.1-1.x86_64.rpm
+# x86_64 only (ARM64 use tar.gz above)
+wget https://github.com/termide/termide/releases/latest/download/termide-0.8.1-1.x86_64.rpm
 sudo rpm -i termide-0.8.1-1.x86_64.rpm
-
-# ARM64
-wget https://github.com/termide/termide/releases/download/0.8.1/termide-0.8.1-1.aarch64.rpm
-sudo rpm -i termide-0.8.1-1.aarch64.rpm
 ```
 
 </details>

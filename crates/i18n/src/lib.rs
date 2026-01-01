@@ -227,6 +227,7 @@ pub trait Translation: Send + Sync {
     fn git_action_commit(&self) -> &str;
     fn git_action_push(&self) -> &str;
     fn git_action_pull(&self) -> &str;
+    fn git_revert_confirm(&self) -> &str;
 
     // Git commit modal
     fn git_commit_title(&self, count: usize, repo: &str, branch: &str) -> String;

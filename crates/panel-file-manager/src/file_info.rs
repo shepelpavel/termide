@@ -225,6 +225,7 @@ impl FileManager {
                         PendingAction::GitFileAction {
                             file_path: file_path.clone(),
                             repo_path: repo,
+                            is_staged: false, // File manager shows unstaged files
                         },
                         ActiveModal::InfoAction(Box::new(modal)),
                     ));

@@ -146,8 +146,8 @@ pub fn get_git_line_info(
 
             // Status marker and color
             let (status_color, status_marker) = match status {
-                LineStatus::Added => (theme.success, ' '),
-                LineStatus::Modified => (theme.warning, ' '),
+                LineStatus::Added => (theme.success, '+'),
+                LineStatus::Modified => (theme.warning, '~'),
                 LineStatus::Unchanged => (theme.disabled, ' '),
                 LineStatus::DeletedAfter => (theme.disabled, ' '),
             };

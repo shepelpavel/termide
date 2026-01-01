@@ -78,6 +78,7 @@ depends = "$auto"
 section = "utils"
 priority = "optional"
 assets = [
+    ["target/release/termide", "usr/bin/", "755"],
     ["README.md", "usr/share/doc/termide/", "644"],
     ["LICENSE", "usr/share/doc/termide/", "644"],
     ["crates/panel-misc/help/en.txt", "usr/share/termide/help/", "644"],
