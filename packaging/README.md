@@ -54,25 +54,22 @@ makepkg -p PKGBUILD-bin -si
 
 ## Homebrew (macOS/Linux)
 
-Formula is provided in `homebrew/termide.rb`.
+Formula is maintained in a separate tap repository: [termide/homebrew-termide](https://github.com/termide/homebrew-termide)
 
-**For tap repository (recommended):**
-1. Create GitHub repo: `homebrew-termide`
-2. Add formula to `Formula/termide.rb`
-3. Users install with: `brew install termide/termide/termide`
-
-**Update SHA256 checksums:**
-After creating a GitHub release, download each tarball and compute SHA256:
+**Installation:**
 ```bash
-shasum -a 256 termide-0.1.3-*.tar.gz
+brew tap termide/termide
+brew install termide
 ```
 
-Update the corresponding `sha256` values in `termide.rb`.
-
-**Local testing:**
+**Update SHA256 checksums after release:**
 ```bash
-brew install --build-from-source packaging/homebrew/termide.rb
+for arch in x86_64-apple-darwin aarch64-apple-darwin x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
+  curl -sL "https://github.com/termide/termide/releases/download/VERSION/termide-VERSION-${arch}.tar.gz" | sha256sum
+done
 ```
+
+Update the corresponding `sha256` values in `homebrew-termide/Formula/termide.rb`.
 
 ## GitHub Actions
 
