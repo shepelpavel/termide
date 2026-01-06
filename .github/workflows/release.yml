@@ -241,10 +241,11 @@ jobs:
 
           # Generate .SRCINFO using Docker (run as non-root user)
           docker run --rm -v "$PWD:/pkg" archlinux:base bash -c "
-            pacman -Sy --noconfirm pacman-contrib sudo
+            pacman -Sy --noconfirm pacman-contrib sudo fakeroot
             useradd -m builder
-            chown -R builder:builder /pkg
+            chown builder:builder /pkg/PKGBUILD
             cd /pkg && sudo -u builder makepkg --printsrcinfo > .SRCINFO
+            chown $(stat -c %u:%g /pkg/.git) /pkg/.SRCINFO
           "
 
           git config user.email "github-actions@termide.dev"
@@ -266,10 +267,11 @@ jobs:
 
           # Generate .SRCINFO using Docker (run as non-root user)
           docker run --rm -v "$PWD:/pkg" archlinux:base bash -c "
-            pacman -Sy --noconfirm pacman-contrib sudo
+            pacman -Sy --noconfirm pacman-contrib sudo fakeroot
             useradd -m builder
-            chown -R builder:builder /pkg
+            chown builder:builder /pkg/PKGBUILD
             cd /pkg && sudo -u builder makepkg --printsrcinfo > .SRCINFO
+            chown $(stat -c %u:%g /pkg/.git) /pkg/.SRCINFO
           "
 
           git config user.email "github-actions@termide.dev"
