@@ -29,28 +29,23 @@ Output: `target/generate-rpm/termide-<version>-1.<arch>.rpm`
 
 ## Arch Linux (AUR)
 
-Two PKGBUILD variants are provided in `aur/`:
-- `PKGBUILD` - Builds from source
-- `PKGBUILD-bin` - Uses pre-built binaries from GitHub releases
+Two packages are available on [AUR](https://aur.archlinux.org/):
+- `termide` - Builds from source
+- `termide-bin` - Uses pre-built binaries from GitHub releases
 
-**For source package (termide):**
+**Installation (using yay or paru):**
 ```bash
-cd aur
-makepkg -si
+yay -S termide      # or termide-bin
 ```
 
-**For binary package (termide-bin):**
+**Local testing:**
 ```bash
 cd aur
-makepkg -p PKGBUILD-bin -si
+makepkg -si                     # source package
+makepkg -p PKGBUILD-bin -si     # binary package
 ```
 
-**Publishing to AUR:**
-1. Update sha256sums after creating release
-2. Generate .SRCINFO: `makepkg --printsrcinfo > .SRCINFO`
-3. Clone AUR repo: `git clone ssh://aur@aur.archlinux.org/termide.git`
-4. Copy PKGBUILD and .SRCINFO to AUR repo
-5. Commit and push to AUR
+> **Note:** AUR packages are automatically updated via GitHub Actions when a new release is tagged.
 
 ## Homebrew (macOS/Linux)
 
@@ -62,24 +57,23 @@ brew tap termide/termide
 brew install termide
 ```
 
-**Update SHA256 checksums after release:**
-```bash
-for arch in x86_64-apple-darwin aarch64-apple-darwin x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
-  curl -sL "https://github.com/termide/termide/releases/download/VERSION/termide-VERSION-${arch}.tar.gz" | sha256sum
-done
-```
-
-Update the corresponding `sha256` values in `homebrew-termide/Formula/termide.rb`.
+> **Note:** Homebrew formula is automatically updated via GitHub Actions when a new release is tagged.
 
 ## GitHub Actions
 
 Automated packaging is configured in `.github/workflows/release.yml`.
 
-On each tag push, the workflow:
-1. Builds binaries for all platforms
-2. Creates .deb and .rpm packages
-3. Uploads all artifacts to GitHub Releases
-4. Optionally updates Homebrew tap formula
+On each tag push, the workflow automatically:
+1. Runs quality checks (fmt, clippy, tests)
+2. Builds binaries for all platforms (Linux x64/arm64, macOS x64/arm64)
+3. Creates .deb and .rpm packages
+4. Uploads all artifacts to GitHub Releases
+5. Updates AUR packages (termide and termide-bin)
+6. Updates Homebrew tap formula
+
+**Required secrets for automation:**
+- `AUR_SSH_KEY` - Private SSH key for pushing to AUR
+- `HOMEBREW_TAP_TOKEN` - GitHub PAT with access to homebrew-termide repo
 
 ## NixOS
 
@@ -97,6 +91,6 @@ nix run github:termide/termide
 
 ## Notes
 
-- All packages require updating version numbers and checksums after each release
-- GitHub Actions workflow automatically handles binary builds and package creation
+- Version numbers and checksums are automatically updated by GitHub Actions for AUR and Homebrew
 - For official repository inclusion (Debian, Fedora, Homebrew Core), additional review processes apply
+- NixOS flake.nix needs manual version update in the release process
