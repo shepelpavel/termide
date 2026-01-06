@@ -5,6 +5,19 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.4] - 2026-01-06
+
+### Added
+- **CI/CD automation**: Automatic AUR and Homebrew updates on release via GitHub Actions
+- **AUR packages published**: `termide` (source) and `termide-bin` (binary) now available on AUR
+
+### Fixed
+- **Terminal text selection**: Selection now uses absolute buffer coordinates
+- **Selection persistence**: Selection follows text when scrolling through scrollback
+- **Ctrl+Shift+C**: Keyboard shortcut for copying terminal selection
+- **Selection cleanup**: Selection cleared on keyboard input
+- **Trailing whitespace**: Preserved when copying selected text
+
 ## [0.8.3] - 2026-01-01
 
 ### Fixed
