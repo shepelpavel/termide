@@ -398,4 +398,58 @@ impl TerminalScreen {
             self.wrap_pending = false;
         }
     }
+
+    /// Convert visual row (0-based on screen) to absolute buffer index
+    /// Absolute index: 0..scrollback.len() = scrollback, scrollback.len()..scrollback.len()+rows = active buffer
+    pub fn visual_to_absolute(&self, visual_row: usize) -> usize {
+        if self.use_alt_screen {
+            // Alt screen has no scrollback
+            visual_row
+        } else {
+            // view_start is the absolute index of visual row 0
+            let view_start = self.scrollback.len().saturating_sub(self.scroll_offset);
+            view_start + visual_row
+        }
+    }
+
+    /// Convert absolute buffer index to visual row (if visible)
+    /// Returns None if the row is not currently visible
+    pub fn absolute_to_visual(&self, abs_row: usize) -> Option<usize> {
+        if self.use_alt_screen {
+            if abs_row < self.rows {
+                Some(abs_row)
+            } else {
+                None
+            }
+        } else {
+            let view_start = self.scrollback.len().saturating_sub(self.scroll_offset);
+            let view_end = view_start + self.rows;
+
+            if abs_row >= view_start && abs_row < view_end {
+                Some(abs_row - view_start)
+            } else {
+                None
+            }
+        }
+    }
+
+    /// Clear text selection
+    pub fn clear_selection(&mut self) {
+        self.selection_start = None;
+        self.selection_end = None;
+    }
+
+    /// Get line by absolute index (from scrollback or active buffer)
+    pub fn get_line_by_absolute(&self, abs_row: usize) -> Option<&Vec<Cell>> {
+        if self.use_alt_screen {
+            self.alt_lines.get(abs_row)
+        } else {
+            let scrollback_len = self.scrollback.len();
+            if abs_row < scrollback_len {
+                self.scrollback.get(abs_row)
+            } else {
+                self.lines.get(abs_row - scrollback_len)
+            }
+        }
+    }
 }

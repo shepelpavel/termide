@@ -42,10 +42,15 @@ pub fn copy(text: &str) -> Result<(), String> {
             .map_err(|e| format!("Failed to set clipboard text: {}", e))?;
 
         // Copy to PRIMARY selection (middle-click/Shift+Insert)
-        let _ = clipboard
+        if let Err(e) = clipboard
             .set()
             .clipboard(LinuxClipboardKind::Primary)
-            .text(text.to_string());
+            .text(text.to_string())
+        {
+            #[cfg(debug_assertions)]
+            eprintln!("Warning: Failed to set PRIMARY selection: {}", e);
+            let _ = e; // Suppress unused warning in release
+        }
     }
 
     #[cfg(not(target_os = "linux"))]

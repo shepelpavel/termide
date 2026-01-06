@@ -487,7 +487,7 @@ impl Terminal {
         Ok(())
     }
 
-    /// Get selected text
+    /// Get selected text using absolute buffer coordinates
     fn get_selected_text(&self) -> String {
         let screen = self.screen.read().expect("Terminal screen lock poisoned");
         let (start, end) = match (screen.selection_start, screen.selection_end) {
@@ -495,24 +495,24 @@ impl Terminal {
             _ => return String::new(),
         };
 
-        // Normalize
+        // Normalize: start should be before end
         let (start, end) = if start <= end {
             (start, end)
         } else {
             (end, start)
         };
 
-        let buffer = screen.active_buffer();
         let mut result = String::new();
 
-        for row_idx in start.0..=end.0 {
-            if row_idx >= buffer.len() {
-                break;
-            }
+        // Selection coordinates are absolute buffer positions
+        for abs_row in start.0..=end.0 {
+            // Get row from scrollback or active buffer
+            let Some(row) = screen.get_line_by_absolute(abs_row) else {
+                continue;
+            };
 
-            let row = &buffer[row_idx];
-            let col_start = if row_idx == start.0 { start.1 } else { 0 };
-            let col_end = if row_idx == end.0 {
+            let col_start = if abs_row == start.0 { start.1 } else { 0 };
+            let col_end = if abs_row == end.0 {
                 end.1.min(row.len().saturating_sub(1))
             } else {
                 row.len().saturating_sub(1)
@@ -528,17 +528,13 @@ impl Terminal {
             }
 
             // Add line break between lines (but not at the end)
-            if row_idx < end.0 {
+            if abs_row < end.0 {
                 result.push('\n');
             }
         }
 
-        // Trim trailing whitespace from each line
+        // Return without trimming - preserve trailing whitespace as selected
         result
-            .lines()
-            .map(|line| line.trim_end())
-            .collect::<Vec<_>>()
-            .join("\n")
     }
 
     /// Copy selected text to clipboard
@@ -752,7 +748,7 @@ impl Terminal {
             show_cursor && cursor_visible
         };
 
-        // Pre-compute selection bounds if selection exists
+        // Pre-compute selection bounds if selection exists (now in absolute coordinates)
         let selection_bounds = if has_selection {
             let (start, end) = (selection_start.unwrap(), selection_end.unwrap());
             let (start, end) = if start <= end {
@@ -765,17 +761,30 @@ impl Terminal {
             None
         };
 
-        // Helper to check selection (inlined for performance)
-        let is_in_selection = |row: usize, col: usize| -> bool {
+        // Calculate base for converting visual row to absolute
+        // When scrolled: view_start is already the absolute index
+        // When not scrolled: visual row 0 = scrollback.len() (start of active buffer)
+        let scrollback_len = screen.scrollback.len();
+
+        // Helper to check selection using absolute coordinates
+        let is_in_selection = |visual_row: usize, col: usize| -> bool {
             if let Some((start, end)) = selection_bounds {
-                if row < start.0 || row > end.0 {
+                // Convert visual row to absolute
+                let abs_row = if scrollback_slice {
+                    view_start + visual_row
+                } else {
+                    scrollback_len + visual_row
+                };
+
+                // Compare with absolute selection bounds
+                if abs_row < start.0 || abs_row > end.0 {
                     return false;
                 }
-                if row == start.0 && row == end.0 {
+                if abs_row == start.0 && abs_row == end.0 {
                     col >= start.1 && col <= end.1
-                } else if row == start.0 {
+                } else if abs_row == start.0 {
                     col >= start.1
-                } else if row == end.0 {
+                } else if abs_row == end.0 {
                     col <= end.1
                 } else {
                     true
@@ -1049,6 +1058,11 @@ impl Panel for Terminal {
                 let _ = self.paste_from_clipboard();
                 return vec![];
             }
+            (KeyCode::Char('C'), modifiers) if modifiers.contains(KeyModifiers::CONTROL) => {
+                // Ctrl+Shift+C - copy selection to clipboard
+                let _ = self.copy_selection_to_clipboard();
+                return vec![];
+            }
             _ => {}
         }
 
@@ -1083,10 +1097,11 @@ impl Panel for Terminal {
             }
         }
 
-        // Reset scroll on input and cache application_cursor_keys - single lock
+        // Reset scroll and clear selection on input, cache application_cursor_keys - single lock
         let application_cursor_keys = {
             let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
             screen.reset_scroll();
+            screen.clear_selection();
             screen.application_cursor_keys
         };
 
@@ -1303,45 +1318,49 @@ impl Panel for Terminal {
                 if !is_inside {
                     return vec![];
                 }
-                // Start text selection
+                // Start text selection with absolute coordinates
                 let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
-                screen.selection_start = Some((inner_row, inner_col));
-                screen.selection_end = Some((inner_row, inner_col)); // Set immediately for visibility
+                let abs_row = screen.visual_to_absolute(inner_row);
+                screen.selection_start = Some((abs_row, inner_col));
+                screen.selection_end = Some((abs_row, inner_col)); // Set immediately for visibility
                 drop(screen);
 
                 // Also send click to PTY if mouse tracking is enabled
                 let _ = self.send_mouse_to_pty(&mouse, panel_area);
             }
             MouseEventKind::Drag(MouseButton::Left) => {
-                // Update selection end (using clamped coordinates)
+                // Update selection end with absolute coordinates
                 let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
                 if screen.selection_start.is_some() {
-                    screen.selection_end = Some((inner_row, inner_col));
+                    let abs_row = screen.visual_to_absolute(inner_row);
+                    screen.selection_end = Some((abs_row, inner_col));
                 }
             }
             MouseEventKind::Up(MouseButton::Left) => {
-                // Finalize selection and copy only if dragged (not single click)
-                let should_copy = {
+                // Finalize selection
+                let (should_copy, is_single_click) = {
                     let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
+                    let abs_row = screen.visual_to_absolute(inner_row);
                     if let Some(start) = screen.selection_start {
-                        screen.selection_end = Some((inner_row, inner_col));
+                        screen.selection_end = Some((abs_row, inner_col));
                         // Copy only if selection is non-empty (actual drag occurred)
-                        start != (inner_row, inner_col)
+                        let is_drag = start != (abs_row, inner_col);
+                        (is_drag, !is_drag)
                     } else {
-                        false
+                        (false, false)
                     }
                 };
 
                 // Copy selected text to CLIPBOARD only if dragged
                 if should_copy {
                     let _ = self.copy_selection_to_clipboard();
+                    // Keep selection visible after copy (don't clear)
                 }
 
-                // Clear selection after copying
-                {
+                // Clear selection on single click (no drag)
+                if is_single_click {
                     let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
-                    screen.selection_start = None;
-                    screen.selection_end = None;
+                    screen.clear_selection();
                 }
 
                 // Send release to PTY if mouse tracking is enabled (only if inside)
