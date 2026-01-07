@@ -588,6 +588,151 @@ impl GitStatusPanel {
         }
     }
 
+    // =========================================================================
+    // Keyboard Navigation Helpers
+    // =========================================================================
+
+    /// Handle Up key navigation
+    fn handle_up_key(&mut self) {
+        match self.current_section {
+            Section::RepoSelector => {
+                if self.repo_dropdown_open && self.dropdown_cursor > 0 {
+                    self.dropdown_cursor -= 1;
+                }
+            }
+            Section::BranchSelector => {
+                if self.branch_dropdown_open && self.dropdown_cursor > 0 {
+                    self.dropdown_cursor -= 1;
+                }
+            }
+            Section::Files => {
+                let first = self.first_selectable_line();
+                if self.cursor == first {
+                    self.current_section = Section::BranchSelector;
+                } else {
+                    let mut new_cursor = self.cursor;
+                    while new_cursor > 0 {
+                        new_cursor -= 1;
+                        if self.is_selectable_line(new_cursor) {
+                            self.cursor = new_cursor;
+                            self.ensure_cursor_visible();
+                            break;
+                        }
+                    }
+                }
+            }
+            Section::Buttons => {
+                if self.has_any_files() {
+                    self.current_section = Section::Files;
+                    self.cursor = self.last_selectable_line();
+                    self.ensure_cursor_visible();
+                } else {
+                    self.current_section = Section::BranchSelector;
+                }
+            }
+        }
+    }
+
+    /// Handle Down key navigation
+    fn handle_down_key(&mut self) {
+        match self.current_section {
+            Section::RepoSelector => {
+                if self.repo_dropdown_open {
+                    if self.dropdown_cursor + 1 < self.repos.len() {
+                        self.dropdown_cursor += 1;
+                    }
+                } else if self.has_any_files() {
+                    self.current_section = Section::Files;
+                    self.cursor = self.first_selectable_line();
+                    self.ensure_cursor_visible();
+                } else {
+                    self.current_section = Section::Buttons;
+                }
+            }
+            Section::BranchSelector => {
+                if self.branch_dropdown_open {
+                    if self.dropdown_cursor + 1 < self.branches.len() {
+                        self.dropdown_cursor += 1;
+                    }
+                } else if self.has_any_files() {
+                    self.current_section = Section::Files;
+                    self.cursor = self.first_selectable_line();
+                    self.ensure_cursor_visible();
+                } else {
+                    self.current_section = Section::Buttons;
+                }
+            }
+            Section::Files => {
+                let last = self.last_selectable_line();
+                if self.cursor == last {
+                    self.current_section = Section::Buttons;
+                    let total = self.total_virtual_lines();
+                    if total > self.viewport_height {
+                        self.scroll_offset = total - self.viewport_height;
+                    }
+                } else {
+                    let max = self.total_virtual_lines();
+                    let mut new_cursor = self.cursor;
+                    while new_cursor + 1 < max {
+                        new_cursor += 1;
+                        if self.is_selectable_line(new_cursor) {
+                            self.cursor = new_cursor;
+                            self.ensure_cursor_visible();
+                            break;
+                        }
+                    }
+                }
+            }
+            Section::Buttons => {
+                // At bottom, do nothing
+            }
+        }
+    }
+
+    /// Handle Enter key
+    fn handle_enter_key(&mut self) -> Vec<PanelEvent> {
+        match self.current_section {
+            Section::Files => {
+                match self.get_selection() {
+                    Some(Selection::UnstagedHeader) => self.do_stage_all(),
+                    Some(Selection::StagedHeader) => self.do_unstage_all(),
+                    Some(Selection::UnstagedFile(_)) => self.do_stage(),
+                    Some(Selection::StagedFile(_)) => self.do_unstage(),
+                    None => {}
+                }
+                vec![]
+            }
+            Section::RepoSelector => {
+                if self.repo_dropdown_open {
+                    if self.dropdown_cursor != self.selected_repo {
+                        self.selected_repo = self.dropdown_cursor;
+                        self.refresh();
+                    }
+                    self.repo_dropdown_open = false;
+                } else {
+                    self.repo_dropdown_open = true;
+                    self.dropdown_cursor = self.selected_repo;
+                }
+                vec![]
+            }
+            Section::BranchSelector => {
+                if self.branch_dropdown_open {
+                    self.switch_to_branch(self.dropdown_cursor);
+                    self.branch_dropdown_open = false;
+                } else {
+                    self.branch_dropdown_open = true;
+                    self.dropdown_cursor = self
+                        .branches
+                        .iter()
+                        .position(|b| Some(b.as_str()) == self.branch.as_deref())
+                        .unwrap_or(0);
+                }
+                vec![]
+            }
+            Section::Buttons => self.execute_button(),
+        }
+    }
+
     /// Get list of buttons that should be visible based on current state
     fn get_visible_buttons(&self) -> Vec<Button> {
         let mut buttons = Vec::new();
@@ -1398,117 +1543,8 @@ impl Panel for GitStatusPanel {
             KeyCode::BackTab => {
                 self.prev_section();
             }
-            KeyCode::Up => {
-                match self.current_section {
-                    Section::RepoSelector => {
-                        // Navigate in dropdown if open
-                        if self.repo_dropdown_open && self.dropdown_cursor > 0 {
-                            self.dropdown_cursor -= 1;
-                        }
-                    }
-                    Section::BranchSelector => {
-                        // Navigate in dropdown if open
-                        if self.branch_dropdown_open && self.dropdown_cursor > 0 {
-                            self.dropdown_cursor -= 1;
-                        }
-                    }
-                    Section::Files => {
-                        // Check if at first selectable line
-                        let first = self.first_selectable_line();
-                        if self.cursor == first {
-                            // At top - go to BranchSelector
-                            self.current_section = Section::BranchSelector;
-                        } else {
-                            // Move cursor up, skipping non-selectable lines
-                            let mut new_cursor = self.cursor;
-                            while new_cursor > 0 {
-                                new_cursor -= 1;
-                                if self.is_selectable_line(new_cursor) {
-                                    self.cursor = new_cursor;
-                                    self.ensure_cursor_visible();
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    Section::Buttons => {
-                        // Navigate up from buttons goes to Files (or BranchSelector if no files)
-                        if self.has_any_files() {
-                            self.current_section = Section::Files;
-                            self.cursor = self.last_selectable_line();
-                            self.ensure_cursor_visible();
-                        } else {
-                            self.current_section = Section::BranchSelector;
-                        }
-                    }
-                }
-            }
-            KeyCode::Down => {
-                match self.current_section {
-                    Section::RepoSelector => {
-                        if self.repo_dropdown_open {
-                            // Navigate in dropdown
-                            if self.dropdown_cursor + 1 < self.repos.len() {
-                                self.dropdown_cursor += 1;
-                            }
-                        } else {
-                            // Go to Files or Buttons
-                            if self.has_any_files() {
-                                self.current_section = Section::Files;
-                                self.cursor = self.first_selectable_line();
-                                self.ensure_cursor_visible();
-                            } else {
-                                self.current_section = Section::Buttons;
-                            }
-                        }
-                    }
-                    Section::BranchSelector => {
-                        if self.branch_dropdown_open {
-                            // Navigate in dropdown
-                            if self.dropdown_cursor + 1 < self.branches.len() {
-                                self.dropdown_cursor += 1;
-                            }
-                        } else {
-                            // Go to Files or Buttons
-                            if self.has_any_files() {
-                                self.current_section = Section::Files;
-                                self.cursor = self.first_selectable_line();
-                                self.ensure_cursor_visible();
-                            } else {
-                                self.current_section = Section::Buttons;
-                            }
-                        }
-                    }
-                    Section::Files => {
-                        // Check if at last selectable line
-                        let last = self.last_selectable_line();
-                        if self.cursor == last {
-                            // At bottom - go to Buttons
-                            self.current_section = Section::Buttons;
-                            // Scroll viewport to show all content (including empty headers)
-                            let total = self.total_virtual_lines();
-                            if total > self.viewport_height {
-                                self.scroll_offset = total - self.viewport_height;
-                            }
-                        } else {
-                            // Move cursor down, skipping non-selectable lines
-                            let max = self.total_virtual_lines();
-                            let mut new_cursor = self.cursor;
-                            while new_cursor + 1 < max {
-                                new_cursor += 1;
-                                if self.is_selectable_line(new_cursor) {
-                                    self.cursor = new_cursor;
-                                    self.ensure_cursor_visible();
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    Section::Buttons => {
-                        // Do nothing, at bottom
-                    }
-                }
-            }
+            KeyCode::Up => self.handle_up_key(),
+            KeyCode::Down => self.handle_down_key(),
             KeyCode::PageUp => {
                 if self.current_section == Section::Files {
                     let page_size = self.viewport_height.max(1);
@@ -1647,49 +1683,7 @@ impl Panel for GitStatusPanel {
                 self.status_message = Some("Refreshed".to_string());
             }
             KeyCode::Enter => {
-                match self.current_section {
-                    // Enter in Files zone - stage/unstage depending on selection
-                    Section::Files => match self.get_selection() {
-                        Some(Selection::UnstagedHeader) => self.do_stage_all(),
-                        Some(Selection::StagedHeader) => self.do_unstage_all(),
-                        Some(Selection::UnstagedFile(_)) => self.do_stage(),
-                        Some(Selection::StagedFile(_)) => self.do_unstage(),
-                        None => {}
-                    },
-                    Section::RepoSelector => {
-                        if self.repo_dropdown_open {
-                            // Select repo and close dropdown
-                            if self.dropdown_cursor != self.selected_repo {
-                                self.selected_repo = self.dropdown_cursor;
-                                self.refresh();
-                            }
-                            self.repo_dropdown_open = false;
-                        } else {
-                            // Open dropdown
-                            self.repo_dropdown_open = true;
-                            self.dropdown_cursor = self.selected_repo;
-                        }
-                    }
-                    Section::BranchSelector => {
-                        if self.branch_dropdown_open {
-                            // Select branch and close dropdown
-                            self.switch_to_branch(self.dropdown_cursor);
-                            self.branch_dropdown_open = false;
-                        } else {
-                            // Open dropdown
-                            self.branch_dropdown_open = true;
-                            // Set cursor to current branch
-                            self.dropdown_cursor = self
-                                .branches
-                                .iter()
-                                .position(|b| Some(b.as_str()) == self.branch.as_deref())
-                                .unwrap_or(0);
-                        }
-                    }
-                    Section::Buttons => {
-                        return self.execute_button();
-                    }
-                }
+                return self.handle_enter_key();
             }
             KeyCode::Esc => {
                 // Close any open dropdown
