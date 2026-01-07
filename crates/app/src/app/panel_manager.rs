@@ -74,9 +74,9 @@ impl App {
         // No need to manually update active_panel index
     }
 
-    /// Find all panels that have working directories
-    /// Returns deduplicated and sorted list of paths from all panel types (FM, Terminal, Editor)
-    pub(super) fn find_all_other_panel_paths(&self) -> Vec<termide_modal::SelectOption> {
+    /// Collect all working directory paths from all panels
+    /// Returns deduplicated list of paths from all panel types (FM, Terminal, Editor, etc.)
+    pub(super) fn collect_panel_paths(&self) -> Vec<PathBuf> {
         use std::collections::HashSet;
 
         let mut unique_paths: HashSet<PathBuf> = HashSet::new();
@@ -91,8 +91,15 @@ impl App {
             }
         }
 
-        // Convert to Vec and sort by path
-        let mut options: Vec<_> = unique_paths
+        unique_paths.into_iter().collect()
+    }
+
+    /// Find all panels that have working directories
+    /// Returns deduplicated and sorted list of paths from all panel types (FM, Terminal, Editor)
+    pub(super) fn find_all_other_panel_paths(&self) -> Vec<termide_modal::SelectOption> {
+        // Convert paths to SelectOptions
+        let mut options: Vec<_> = self
+            .collect_panel_paths()
             .into_iter()
             .map(|path| {
                 let path_str = path.display().to_string();

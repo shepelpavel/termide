@@ -140,20 +140,10 @@ pub struct GitStatusPanel {
 }
 
 impl GitStatusPanel {
-    /// Create a new Git Status panel
-    pub fn new(project_root: &Path) -> Self {
-        // Find all repos in session
-        let repos = git::find_all_repos(project_root, 3);
-        let repos = if repos.is_empty() {
-            // Use project root if it's a git repo
-            if git::find_repo_root(project_root).is_some() {
-                vec![project_root.to_path_buf()]
-            } else {
-                vec![]
-            }
-        } else {
-            repos
-        };
+    /// Create a new Git Status panel from a list of paths (from panels/session)
+    pub fn new(paths: &[PathBuf]) -> Self {
+        // Find all repos based on paths from panels
+        let repos = git::find_repos_from_paths(paths, 2);
 
         let mut panel = Self {
             repos,
@@ -240,6 +230,23 @@ impl GitStatusPanel {
     /// Get current repository path
     fn current_repo(&self) -> Option<&Path> {
         self.repos.get(self.selected_repo).map(|p| p.as_path())
+    }
+
+    /// Update repository list based on new paths from panels
+    pub fn update_repos(&mut self, paths: &[PathBuf]) {
+        let current_repo = self.current_repo().map(|p| p.to_path_buf());
+        let new_repos = git::find_repos_from_paths(paths, 2);
+
+        if new_repos != self.repos {
+            self.repos = new_repos;
+            // Try to keep the same repo selected
+            if let Some(current) = current_repo {
+                self.selected_repo = self.repos.iter().position(|r| r == &current).unwrap_or(0);
+            } else {
+                self.selected_repo = 0;
+            }
+            self.refresh();
+        }
     }
 
     /// Refresh git status

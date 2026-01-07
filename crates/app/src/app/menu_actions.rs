@@ -604,8 +604,8 @@ impl App {
         self.close_welcome_panels();
 
         if !self.find_and_focus_panel_by_name("git_status") {
-            let git_status_panel =
-                termide_panel_git_status::GitStatusPanel::new(&self.project_root);
+            let paths = self.collect_panel_paths();
+            let git_status_panel = termide_panel_git_status::GitStatusPanel::new(&paths);
             self.add_panel(Box::new(git_status_panel));
         }
         self.auto_save_session();
@@ -617,7 +617,8 @@ impl App {
         logger::debug("Opening Git Log panel");
         self.close_welcome_panels();
 
-        let git_log_panel = termide_panel_git_log::GitLogPanel::new_for_project(&self.project_root);
+        let paths = self.collect_panel_paths();
+        let git_log_panel = termide_panel_git_log::GitLogPanel::new(&paths);
         self.add_panel(Box::new(git_log_panel));
         self.auto_save_session();
         Ok(())
