@@ -1825,6 +1825,12 @@ impl Panel for Editor {
     fn prepare_render(&mut self, theme: &Theme, config: &Config) {
         self.render_cache.theme = *theme;
         self.render_cache.config = config.clone();
+
+        // Sync EditorConfig with global Config.editor settings
+        // This ensures runtime config changes are applied to the editor
+        self.config.word_wrap = config.editor.word_wrap;
+        self.config.tab_size = config.editor.tab_size;
+
         // Sync highlight cache with theme's light/dark mode and default foreground color
         self.render_cache
             .highlight
