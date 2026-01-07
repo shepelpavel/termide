@@ -13,7 +13,7 @@ use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
 };
-use unicode_width::UnicodeWidthStr;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use termide_config::Config;
 use termide_core::{
@@ -1124,12 +1124,8 @@ impl GitStatusPanel {
 
         let path_str = file.path.to_string_lossy();
         let line = format!(" {}", path_str);
-        let truncated = if line.width() > width as usize {
-            &line[..width as usize]
-        } else {
-            &line
-        };
-        buf.set_string(x, y, truncated, style);
+        let truncated = truncate_to_width(&line, width as usize);
+        buf.set_string(x, y, &truncated, style);
     }
 
     /// Render a single staged file line
@@ -1174,12 +1170,8 @@ impl GitStatusPanel {
 
         let path_str = file.path.to_string_lossy();
         let line = format!(" {}", path_str);
-        let truncated = if line.width() > width as usize {
-            &line[..width as usize]
-        } else {
-            &line
-        };
-        buf.set_string(x, y, truncated, style);
+        let truncated = truncate_to_width(&line, width as usize);
+        buf.set_string(x, y, &truncated, style);
     }
 
     fn render_buttons(
@@ -1999,4 +1991,21 @@ impl Panel for GitStatusPanel {
     fn get_working_directory(&self) -> Option<PathBuf> {
         self.current_repo().map(|p| p.to_path_buf())
     }
+}
+
+/// Truncate a string to fit within a given display width, respecting Unicode character boundaries.
+fn truncate_to_width(s: &str, max_width: usize) -> String {
+    let mut result = String::new();
+    let mut width = 0;
+
+    for c in s.chars() {
+        let char_width = c.width().unwrap_or(0);
+        if width + char_width > max_width {
+            break;
+        }
+        result.push(c);
+        width += char_width;
+    }
+
+    result
 }
