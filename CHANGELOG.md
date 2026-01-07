@@ -5,6 +5,22 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.5] - 2026-01-07
+
+### Added
+- **Universal install script**: New `install.sh` for easy cross-platform installation
+
+### Fixed
+- **Config hot-reload**: Editor now applies settings (theme, word_wrap, tab_size) when saving config.toml
+- **UTF-8 paths**: Git Status panel correctly handles non-ASCII file paths in truncation
+
+### Changed
+- **Git repo discovery**: Repositories now discovered from panel paths instead of project root
+- **Performance**: O(n²) → O(n log n) optimization in nested paths removal algorithm
+- **Performance**: Reduced allocations in search replace using `take()` instead of `clone()`
+- **Code quality**: Extracted helper methods in GitStatusPanel (git operations, rendering, navigation, mouse handling)
+- **Code quality**: Removed unused `SearchDirection` and `Action::Group` from buffer module
+
 ## [0.8.4] - 2026-01-06
 
 ### Added
