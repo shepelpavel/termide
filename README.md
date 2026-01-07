@@ -342,13 +342,13 @@ fm_extended_view_width = 50
 **Theme Examples:**
 
 <p align="center">
-  <img src="assets/screenshots/dracula.png" alt="Dracula Theme" width="600">
+  <img src="assets/screenshots/themes/dracula.png" alt="Dracula Theme" width="600">
   <br>
   <em>Dracula Theme</em>
 </p>
 
 <p align="center">
-  <img src="assets/screenshots/monokai.png" alt="Monokai Theme" width="600">
+  <img src="assets/screenshots/themes/monokai.png" alt="Monokai Theme" width="600">
   <br>
   <em>Monokai Theme</em>
 </p>
