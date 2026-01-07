@@ -11,7 +11,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent,
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Modifier, Style},
+    style::{Color, Modifier, Style},
 };
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -438,95 +438,56 @@ impl GitStatusPanel {
         }
     }
 
-    /// Execute stage action
-    fn do_stage(&mut self) {
+    /// Execute a git file operation with common error handling
+    fn execute_git_op<F>(&mut self, files: Vec<PathBuf>, op: F, action: &str)
+    where
+        F: FnOnce(&Path, &[PathBuf]) -> Result<(), String>,
+    {
+        if files.is_empty() {
+            return;
+        }
         if let Some(repo) = self.current_repo() {
-            let files = self.get_selected_unstaged();
-            if !files.is_empty() {
-                match git::stage_files(repo, &files) {
-                    Ok(()) => {
-                        self.status_message = Some(format!("Staged {} file(s)", files.len()));
-                        self.refresh();
-                    }
-                    Err(e) => {
-                        self.status_message = Some(format!("Stage error: {}", e));
-                    }
+            match op(repo, &files) {
+                Ok(()) => {
+                    self.status_message = Some(format!("{} {} file(s)", action, files.len()));
+                    self.refresh();
+                }
+                Err(e) => {
+                    self.status_message = Some(format!("{} error: {}", action, e));
                 }
             }
         }
     }
 
+    /// Execute stage action
+    fn do_stage(&mut self) {
+        let files = self.get_selected_unstaged();
+        self.execute_git_op(files, git::stage_files, "Staged");
+    }
+
     /// Execute unstage action
     fn do_unstage(&mut self) {
-        if let Some(repo) = self.current_repo() {
-            let files = self.get_selected_staged();
-            if !files.is_empty() {
-                match git::unstage_files(repo, &files) {
-                    Ok(()) => {
-                        self.status_message = Some(format!("Unstaged {} file(s)", files.len()));
-                        self.refresh();
-                    }
-                    Err(e) => {
-                        self.status_message = Some(format!("Unstage error: {}", e));
-                    }
-                }
-            }
-        }
+        let files = self.get_selected_staged();
+        self.execute_git_op(files, git::unstage_files, "Unstaged");
     }
 
     /// Execute revert action
     #[allow(dead_code)]
     fn do_revert(&mut self) {
-        if let Some(repo) = self.current_repo() {
-            let files = self.get_selected_unstaged();
-            if !files.is_empty() {
-                match git::revert_files(repo, &files) {
-                    Ok(()) => {
-                        self.status_message = Some(format!("Reverted {} file(s)", files.len()));
-                        self.refresh();
-                    }
-                    Err(e) => {
-                        self.status_message = Some(format!("Revert error: {}", e));
-                    }
-                }
-            }
-        }
+        let files = self.get_selected_unstaged();
+        self.execute_git_op(files, git::revert_files, "Reverted");
     }
 
     /// Stage all unstaged files
     fn do_stage_all(&mut self) {
-        if let Some(repo) = self.current_repo() {
-            let files: Vec<PathBuf> = self.unstaged_files.iter().map(|f| f.path.clone()).collect();
-            if !files.is_empty() {
-                match git::stage_files(repo, &files) {
-                    Ok(()) => {
-                        self.status_message = Some(format!("Staged {} file(s)", files.len()));
-                        self.refresh();
-                    }
-                    Err(e) => {
-                        self.status_message = Some(format!("Stage error: {}", e));
-                    }
-                }
-            }
-        }
+        let files: Vec<PathBuf> = self.unstaged_files.iter().map(|f| f.path.clone()).collect();
+        self.execute_git_op(files, git::stage_files, "Staged");
     }
 
     /// Unstage all staged files
     fn do_unstage_all(&mut self) {
-        if let Some(repo) = self.current_repo() {
-            let files: Vec<PathBuf> = self.staged_files.iter().map(|f| f.path.clone()).collect();
-            if !files.is_empty() {
-                match git::unstage_files(repo, &files) {
-                    Ok(()) => {
-                        self.status_message = Some(format!("Unstaged {} file(s)", files.len()));
-                        self.refresh();
-                    }
-                    Err(e) => {
-                        self.status_message = Some(format!("Unstage error: {}", e));
-                    }
-                }
-            }
-        }
+        let files: Vec<PathBuf> = self.staged_files.iter().map(|f| f.path.clone()).collect();
+        self.execute_git_op(files, git::unstage_files, "Unstaged");
     }
 
     /// Show file properties modal with Diff/Revert actions
@@ -1086,10 +1047,25 @@ impl GitStatusPanel {
         }
     }
 
-    /// Render a single unstaged file line
-    fn render_unstaged_file_line(
-        &self,
-        file_idx: usize,
+    /// Get color and modifier for file status
+    fn get_file_style(status: char, untracked: bool, theme: &ThemeColors) -> (Color, Modifier) {
+        if untracked {
+            (theme.success, Modifier::empty())
+        } else {
+            match status {
+                'M' => (theme.warning, Modifier::empty()),
+                'D' => (theme.error, Modifier::CROSSED_OUT),
+                'A' | 'R' => (theme.success, Modifier::empty()),
+                _ => (theme.fg, Modifier::empty()),
+            }
+        }
+    }
+
+    /// Render a single file line (works for both staged and unstaged files)
+    fn render_file_line(
+        path: &Path,
+        status: char,
+        untracked: bool,
         is_selected: bool,
         x: u16,
         y: u16,
@@ -1098,21 +1074,7 @@ impl GitStatusPanel {
         theme: &ThemeColors,
         is_focused: bool,
     ) {
-        let file = match self.unstaged_files.get(file_idx) {
-            Some(f) => f,
-            None => return,
-        };
-
-        let (fg_color, extra_modifier) = if file.untracked {
-            (theme.success, Modifier::empty())
-        } else {
-            match file.status {
-                'M' => (theme.warning, Modifier::empty()),
-                'D' => (theme.error, Modifier::CROSSED_OUT),
-                'A' => (theme.success, Modifier::empty()),
-                _ => (theme.fg, Modifier::empty()),
-            }
-        };
+        let (fg_color, extra_modifier) = Self::get_file_style(status, untracked, theme);
 
         let style = if is_selected && is_focused {
             Style::default()
@@ -1129,10 +1091,38 @@ impl GitStatusPanel {
             }
         }
 
-        let path_str = file.path.to_string_lossy();
+        let path_str = path.to_string_lossy();
         let line = format!(" {}", path_str);
         let truncated = truncate_to_width(&line, width as usize);
         buf.set_string(x, y, &truncated, style);
+    }
+
+    /// Render a single unstaged file line
+    fn render_unstaged_file_line(
+        &self,
+        file_idx: usize,
+        is_selected: bool,
+        x: u16,
+        y: u16,
+        width: u16,
+        buf: &mut Buffer,
+        theme: &ThemeColors,
+        is_focused: bool,
+    ) {
+        if let Some(file) = self.unstaged_files.get(file_idx) {
+            Self::render_file_line(
+                &file.path,
+                file.status,
+                file.untracked,
+                is_selected,
+                x,
+                y,
+                width,
+                buf,
+                theme,
+                is_focused,
+            );
+        }
     }
 
     /// Render a single staged file line
@@ -1147,38 +1137,20 @@ impl GitStatusPanel {
         theme: &ThemeColors,
         is_focused: bool,
     ) {
-        let file = match self.staged_files.get(file_idx) {
-            Some(f) => f,
-            None => return,
-        };
-
-        let (fg_color, extra_modifier) = match file.status {
-            'M' => (theme.warning, Modifier::empty()),
-            'D' => (theme.error, Modifier::CROSSED_OUT),
-            'A' => (theme.success, Modifier::empty()),
-            'R' => (theme.success, Modifier::empty()),
-            _ => (theme.fg, Modifier::empty()),
-        };
-
-        let style = if is_selected && is_focused {
-            Style::default()
-                .fg(theme.bg)
-                .bg(fg_color)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(fg_color).add_modifier(extra_modifier)
-        };
-
-        if is_selected && is_focused {
-            for dx in 0..width {
-                buf[(x + dx, y)].set_symbol(" ").set_style(style);
-            }
+        if let Some(file) = self.staged_files.get(file_idx) {
+            Self::render_file_line(
+                &file.path,
+                file.status,
+                false, // staged files are never untracked
+                is_selected,
+                x,
+                y,
+                width,
+                buf,
+                theme,
+                is_focused,
+            );
         }
-
-        let path_str = file.path.to_string_lossy();
-        let line = format!(" {}", path_str);
-        let truncated = truncate_to_width(&line, width as usize);
-        buf.set_string(x, y, &truncated, style);
     }
 
     fn render_buttons(
