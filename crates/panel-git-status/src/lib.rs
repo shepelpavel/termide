@@ -733,6 +733,36 @@ impl GitStatusPanel {
         }
     }
 
+    /// Check if current click is a double-click on the same item
+    fn check_double_click(&self, now: std::time::Instant, vline: usize) -> bool {
+        if let (Some(last_time), Some(last_section), Some(last_idx)) = (
+            self.last_click_time,
+            self.last_click_section,
+            self.last_click_index,
+        ) {
+            now.duration_since(last_time).as_millis()
+                < termide_config::constants::DOUBLE_CLICK_INTERVAL_MS
+                && last_section == Section::Files
+                && last_idx == vline
+        } else {
+            false
+        }
+    }
+
+    /// Reset double-click tracking state
+    fn reset_click_state(&mut self) {
+        self.last_click_time = None;
+        self.last_click_section = None;
+        self.last_click_index = None;
+    }
+
+    /// Record click for double-click detection
+    fn record_click(&mut self, now: std::time::Instant, vline: usize) {
+        self.last_click_time = Some(now);
+        self.last_click_section = Some(Section::Files);
+        self.last_click_index = Some(vline);
+    }
+
     /// Get list of buttons that should be visible based on current state
     fn get_visible_buttons(&self) -> Vec<Button> {
         let mut buttons = Vec::new();
@@ -1805,81 +1835,39 @@ impl Panel for GitStatusPanel {
                         // Clicked on unstaged header (with Stage all button)
                         self.current_section = Section::Files;
                         self.cursor = vline;
-                        self.last_click_time = Some(now);
-                        self.last_click_section = Some(Section::Files);
-                        self.last_click_index = Some(vline);
+                        self.record_click(now, vline);
                     } else if vline >= unstaged_files_start && vline < unstaged_files_end {
                         // Clicked on unstaged file
-                        // Check for double-click
-                        let is_double_click =
-                            if let (Some(last_time), Some(last_section), Some(last_idx)) = (
-                                self.last_click_time,
-                                self.last_click_section,
-                                self.last_click_index,
-                            ) {
-                                now.duration_since(last_time).as_millis()
-                                    < termide_config::constants::DOUBLE_CLICK_INTERVAL_MS
-                                    && last_section == Section::Files
-                                    && last_idx == vline
-                            } else {
-                                false
-                            };
-
-                        if is_double_click {
+                        if self.check_double_click(now, vline) {
                             // Double-click on unstaged = stage file
                             self.cursor = vline;
                             self.current_section = Section::Files;
                             self.do_stage();
-                            self.last_click_time = None;
-                            self.last_click_section = None;
-                            self.last_click_index = None;
+                            self.reset_click_state();
                         } else {
                             // Single click - select item
                             self.current_section = Section::Files;
                             self.cursor = vline;
-                            self.last_click_time = Some(now);
-                            self.last_click_section = Some(Section::Files);
-                            self.last_click_index = Some(vline);
+                            self.record_click(now, vline);
                         }
                     } else if vline == staged_header_line && !self.staged_files.is_empty() {
                         // Clicked on staged header (with Unstage all button)
                         self.current_section = Section::Files;
                         self.cursor = vline;
-                        self.last_click_time = Some(now);
-                        self.last_click_section = Some(Section::Files);
-                        self.last_click_index = Some(vline);
+                        self.record_click(now, vline);
                     } else if vline >= staged_files_start && vline < staged_files_end {
                         // Clicked on staged file
-                        // Check for double-click
-                        let is_double_click =
-                            if let (Some(last_time), Some(last_section), Some(last_idx)) = (
-                                self.last_click_time,
-                                self.last_click_section,
-                                self.last_click_index,
-                            ) {
-                                now.duration_since(last_time).as_millis()
-                                    < termide_config::constants::DOUBLE_CLICK_INTERVAL_MS
-                                    && last_section == Section::Files
-                                    && last_idx == vline
-                            } else {
-                                false
-                            };
-
-                        if is_double_click {
+                        if self.check_double_click(now, vline) {
                             // Double-click on staged = unstage file
                             self.cursor = vline;
                             self.current_section = Section::Files;
                             self.do_unstage();
-                            self.last_click_time = None;
-                            self.last_click_section = None;
-                            self.last_click_index = None;
+                            self.reset_click_state();
                         } else {
                             // Single click - select item
                             self.current_section = Section::Files;
                             self.cursor = vline;
-                            self.last_click_time = Some(now);
-                            self.last_click_section = Some(Section::Files);
-                            self.last_click_index = Some(vline);
+                            self.record_click(now, vline);
                         }
                     }
                     // Clicks on empty header lines are ignored
@@ -1909,9 +1897,7 @@ impl Panel for GitStatusPanel {
                         }
                     }
                     // Reset click state for non-file areas
-                    self.last_click_time = None;
-                    self.last_click_section = None;
-                    self.last_click_index = None;
+                    self.reset_click_state();
                 }
                 // Check if click is on buttons row
                 else if row == self.buttons_y {
@@ -1935,9 +1921,7 @@ impl Panel for GitStatusPanel {
                         btn_x += btn_width + 1;
                     }
                     // Reset click state for non-file areas
-                    self.last_click_time = None;
-                    self.last_click_section = None;
-                    self.last_click_index = None;
+                    self.reset_click_state();
                 }
             }
 
