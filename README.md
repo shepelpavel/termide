@@ -1,7 +1,6 @@
 # TermIDE
 
 [![GitHub Release](https://img.shields.io/github/v/release/termide/termide)](https://github.com/termide/termide/releases)
-[![GitHub Stars](https://img.shields.io/github/stars/termide/termide?style=social)](https://github.com/termide/termide)
 [![CI](https://github.com/termide/termide/actions/workflows/release.yml/badge.svg)](https://github.com/termide/termide/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
@@ -39,7 +38,7 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 - **Cross-platform** - Works on Linux (x86_64, ARM64), macOS (Intel, Apple Silicon), and Windows (via WSL)
 - **Git Integration** - See file status and changes at a glance with color-coded indicators and automatic updates
 - **12 Built-in Themes** - Choose from popular themes like Dracula, Nord, Monokai, Solarized, and more
-- **Custom Theme Support** - Create and load your own themes from config directory
+sss- **Custom Theme Support** - Create and load your own themes from config directory
 - **System Resource Monitoring** - Real-time CPU, RAM, and disk usage indicators with device names and color-coded alerts
 - **Batch Operations** - Copy, move, and manage multiple files efficiently
 - **Search and Replace** - Interactive modals with live search preview, match counter, Tab/Shift+Tab navigation, replace counter feedback, and state preservation
