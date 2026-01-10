@@ -1,14 +1,33 @@
 # TermIDE
 
 [![GitHub Release](https://img.shields.io/github/v/release/termide/termide)](https://github.com/termide/termide/releases)
+[![GitHub Stars](https://img.shields.io/github/stars/termide/termide?style=social)](https://github.com/termide/termide)
 [![CI](https://github.com/termide/termide/actions/workflows/release.yml/badge.svg)](https://github.com/termide/termide/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 A cross-platform terminal-based IDE, file manager, and virtual terminal written in Rust.
 
+**[Website](https://termide.github.io)** | **[Documentation](doc/en/README.md)** | **[Releases](https://github.com/termide/termide/releases)**
+
 <p align="center">
   <img src="assets/termide.jpg" alt="TermIDE Screenshot" width="800">
 </p>
+
+## Why TermIDE?
+
+Unlike traditional terminal editors that need extensive plugin configuration, TermIDE works out of the box:
+
+| Feature | TermIDE | Vim/Neovim | Helix | Micro |
+|---------|:-------:|:----------:|:-----:|:-----:|
+| Built-in Terminal | ✓ | plugin | ✗ | ✗ |
+| File Manager | ✓ | plugin | ✗ | ✗ |
+| Git Integration | ✓ | plugin | ✗ | ✗ |
+| Syntax Highlighting | ✓ | ✓ | ✓ | ✓ |
+| Zero Config | ✓ | ✗ | ✓ | ✓ |
+| Resource Monitor | ✓ | ✗ | ✗ | ✗ |
+| Sessions | ✓ | plugin | ✗ | ✗ |
+
+**TermIDE = Editor + File Manager + Terminal in one TUI application.**
 
 ## Features
 
