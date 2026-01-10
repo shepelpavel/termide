@@ -328,7 +328,9 @@ impl App {
 
             let theme_names = Theme::all_theme_names();
             let nested_width = theme_names.iter().map(|n| n.len()).max().unwrap_or(10) as u16 + 6;
-            let nested_height = theme_names.len().min(12) as u16 + 2;
+            // Must match ThemeDropdown::max_visible
+            let max_visible = 25;
+            let nested_height = theme_names.len().min(max_visible) as u16 + 2;
 
             // Check click on theme dropdown
             if x >= nested_x
@@ -336,8 +338,14 @@ impl App {
                 && y >= nested_y
                 && y < nested_y + nested_height
             {
+                // Calculate scroll offset same as ThemeDropdown
+                let scroll_offset = if self.state.ui.selected_nested_item >= max_visible {
+                    self.state.ui.selected_nested_item - max_visible + 1
+                } else {
+                    0
+                };
                 let item_y = y.saturating_sub(nested_y + 1); // -1 for top border
-                let item_index = item_y as usize;
+                let item_index = scroll_offset + item_y as usize;
                 if item_index < theme_names.len() {
                     // Clear preview state - theme is confirmed
                     self.state.ui.theme_preview_original = None;
