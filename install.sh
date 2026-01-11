@@ -76,7 +76,7 @@ has_cmd() {
 # Install using deb package
 install_deb() {
     info "Installing via deb package..."
-    URL="https://github.com/$REPO/releases/download/v$VERSION/termide_${VERSION}-1_amd64.deb"
+    URL="https://github.com/$REPO/releases/download/$VERSION/termide_${VERSION}-1_amd64.deb"
     TMP_FILE="/tmp/termide_${VERSION}.deb"
     curl -fsSL "$URL" -o "$TMP_FILE"
     sudo dpkg -i "$TMP_FILE"
@@ -86,7 +86,7 @@ install_deb() {
 # Install using rpm package
 install_rpm() {
     info "Installing via rpm package..."
-    URL="https://github.com/$REPO/releases/download/v$VERSION/termide-${VERSION}-1.x86_64.rpm"
+    URL="https://github.com/$REPO/releases/download/$VERSION/termide-${VERSION}-1.x86_64.rpm"
     sudo dnf install -y "$URL" || sudo rpm -i "$URL"
 }
 
@@ -100,7 +100,7 @@ install_binary() {
         TARGET="${ARCH}-apple-darwin"
     fi
 
-    URL="https://github.com/$REPO/releases/download/v$VERSION/termide-${VERSION}-${TARGET}.tar.gz"
+    URL="https://github.com/$REPO/releases/download/$VERSION/termide-${VERSION}-${TARGET}.tar.gz"
     TMP_DIR=$(mktemp -d)
 
     curl -fsSL "$URL" | tar xz -C "$TMP_DIR"
