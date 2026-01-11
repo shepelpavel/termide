@@ -235,7 +235,7 @@ main() {
     esac
 
     printf "\n"
-    info "${GREEN}TermIDE $VERSION installed successfully!${RESET}"
+    info "TermIDE $VERSION installed successfully!"
     info "Run 'termide' to start."
 }
 
