@@ -5,6 +5,19 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.6] - 2026-01-11
+
+### Added
+- **i18n**: 25 missing translation keys for Git panel and preferences in 7 languages (de, es, fr, hi, pt, th, zh)
+
+### Fixed
+- **Theme dropdown**: Mouse clicks now work correctly for all items (not just first 12)
+- **Terminal paste**: Removed explicit flush preventing React/Ink TUI app overflow errors (e.g., Claude Code)
+
+### Changed
+- **README**: Added "Why TermIDE?" comparison table and quick navigation links
+- **README**: Fixed theme screenshot paths
+
 ## [0.8.5] - 2026-01-07
 
 ### Added
