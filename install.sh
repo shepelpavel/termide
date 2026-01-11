@@ -123,7 +123,7 @@ install_cargo() {
 # Install using Nix
 install_nix() {
     info "Installing via Nix..."
-    nix profile install github:termide/termide
+    nix profile install github:termide/termide --refresh
 }
 
 # Show menu and get choice
