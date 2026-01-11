@@ -81,13 +81,6 @@
                 pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
               ];
 
-            # Install help files and themes
-            postInstall = ''
-              mkdir -p $out/share/termide/{help,themes}
-              cp -r ${./help}/*.txt $out/share/termide/help/
-              cp -r ${./themes}/*.toml $out/share/termide/themes/
-            '';
-
             meta = with pkgs.lib; {
               description = "Cross-platform terminal IDE, file manager and virtual terminal";
               homepage = "https://github.com/termide/termide";
