@@ -120,6 +120,12 @@ install_cargo() {
     cargo install termide
 }
 
+# Install using Nix
+install_nix() {
+    info "Installing via Nix..."
+    nix profile install github:termide/termide
+}
+
 # Show menu and get choice
 show_menu() {
     printf "\n${BOLD}TermIDE Installer${RESET}\n"
@@ -133,8 +139,18 @@ show_menu() {
     N=1
     METHODS=""
 
+    # Check if Nix is the recommended method (NixOS with nix available)
+    NIX_RECOMMENDED=""
+    if [ "$DISTRO" = "nixos" ] && has_cmd nix; then
+        NIX_RECOMMENDED="yes"
+    fi
+
     # Binary is always available
-    printf "  ${GREEN}%d${RESET}) Binary (recommended)\n" "$N"
+    if [ -n "$NIX_RECOMMENDED" ]; then
+        printf "  ${GREEN}%d${RESET}) Binary\n" "$N"
+    else
+        printf "  ${GREEN}%d${RESET}) Binary (recommended)\n" "$N"
+    fi
     METHODS="${METHODS}binary "
     N=$((N + 1))
 
@@ -155,6 +171,16 @@ show_menu() {
     if has_cmd brew; then
         printf "  ${GREEN}%d${RESET}) Homebrew\n" "$N"
         METHODS="${METHODS}homebrew "
+        N=$((N + 1))
+    fi
+
+    if has_cmd nix; then
+        if [ -n "$NIX_RECOMMENDED" ]; then
+            printf "  ${GREEN}%d${RESET}) Nix (recommended for NixOS)\n" "$N"
+        else
+            printf "  ${GREEN}%d${RESET}) Nix\n" "$N"
+        fi
+        METHODS="${METHODS}nix "
         N=$((N + 1))
     fi
 
@@ -203,6 +229,7 @@ main() {
         deb) install_deb ;;
         rpm) install_rpm ;;
         homebrew) install_homebrew ;;
+        nix) install_nix ;;
         cargo) install_cargo ;;
         *) error "Unknown method: $METHOD" ;;
     esac
