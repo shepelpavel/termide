@@ -13,5 +13,6 @@ crossterm.workspace = true
 
 # Foundation crates
 termide-app-core = { path = "../app-core" }
+termide-config = { path = "../config" }
 
 [dev-dependencies]

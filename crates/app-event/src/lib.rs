@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use termide_app_core::{AppCommand, Direction, PanelType};
+use termide_config::{GlobalKeybindings, KeyBinding as ConfigKeyBinding};
 
 // ============================================================================
 // Key Binding Types
@@ -399,6 +400,172 @@ impl DefaultHotkeyProcessor {
         }
 
         Self { bindings }
+    }
+
+    /// Create a processor from configuration, falling back to defaults.
+    pub fn from_config(config: &GlobalKeybindings) -> Self {
+        let mut processor = Self::new();
+
+        // Helper to add binding from config or keep default
+        let add_binding =
+            |processor: &mut Self, binding: &Option<ConfigKeyBinding>, action: HotkeyAction| {
+                if let Some(kb) = binding {
+                    // Remove existing bindings for this action
+                    processor.bindings.retain(|_, a| a != &action);
+                    // Add new bindings from config
+                    for parsed in kb.parse() {
+                        processor.bindings.insert(
+                            KeyBinding::new(parsed.key, parsed.modifiers),
+                            action.clone(),
+                        );
+                    }
+                }
+            };
+
+        // Menu & UI
+        add_binding(
+            &mut processor,
+            &config.toggle_menu,
+            HotkeyAction::ToggleMenu,
+        );
+
+        // Panel creation
+        add_binding(
+            &mut processor,
+            &config.new_file_manager,
+            HotkeyAction::NewFileManager,
+        );
+        add_binding(
+            &mut processor,
+            &config.new_terminal,
+            HotkeyAction::NewTerminal,
+        );
+        add_binding(&mut processor, &config.new_editor, HotkeyAction::NewEditor);
+        add_binding(
+            &mut processor,
+            &config.new_log_panel,
+            HotkeyAction::NewDebug,
+        );
+        add_binding(&mut processor, &config.open_help, HotkeyAction::OpenHelp);
+        add_binding(
+            &mut processor,
+            &config.open_preferences,
+            HotkeyAction::OpenPreferences,
+        );
+        add_binding(
+            &mut processor,
+            &config.open_sessions,
+            HotkeyAction::OpenSessions,
+        );
+        add_binding(
+            &mut processor,
+            &config.open_git_status,
+            HotkeyAction::OpenGitStatus,
+        );
+
+        // Panel management
+        add_binding(
+            &mut processor,
+            &config.close_panel,
+            HotkeyAction::ClosePanel,
+        );
+        add_binding(
+            &mut processor,
+            &config.toggle_stack,
+            HotkeyAction::ToggleStacking,
+        );
+        add_binding(
+            &mut processor,
+            &config.swap_left,
+            HotkeyAction::SwapPanelLeft,
+        );
+        add_binding(
+            &mut processor,
+            &config.swap_right,
+            HotkeyAction::SwapPanelRight,
+        );
+        add_binding(
+            &mut processor,
+            &config.move_first,
+            HotkeyAction::MoveToFirst,
+        );
+        add_binding(&mut processor, &config.move_last, HotkeyAction::MoveToLast);
+        add_binding(
+            &mut processor,
+            &config.resize_smaller,
+            HotkeyAction::ResizePanel(-1),
+        );
+        add_binding(
+            &mut processor,
+            &config.resize_larger,
+            HotkeyAction::ResizePanel(1),
+        );
+
+        // Navigation
+        add_binding(&mut processor, &config.prev_group, HotkeyAction::PrevGroup);
+        add_binding(&mut processor, &config.next_group, HotkeyAction::NextGroup);
+        add_binding(
+            &mut processor,
+            &config.prev_panel,
+            HotkeyAction::PrevInGroup,
+        );
+        add_binding(
+            &mut processor,
+            &config.next_panel,
+            HotkeyAction::NextInGroup,
+        );
+
+        // Panel selection by number
+        add_binding(
+            &mut processor,
+            &config.goto_panel_1,
+            HotkeyAction::GoToPanel(1),
+        );
+        add_binding(
+            &mut processor,
+            &config.goto_panel_2,
+            HotkeyAction::GoToPanel(2),
+        );
+        add_binding(
+            &mut processor,
+            &config.goto_panel_3,
+            HotkeyAction::GoToPanel(3),
+        );
+        add_binding(
+            &mut processor,
+            &config.goto_panel_4,
+            HotkeyAction::GoToPanel(4),
+        );
+        add_binding(
+            &mut processor,
+            &config.goto_panel_5,
+            HotkeyAction::GoToPanel(5),
+        );
+        add_binding(
+            &mut processor,
+            &config.goto_panel_6,
+            HotkeyAction::GoToPanel(6),
+        );
+        add_binding(
+            &mut processor,
+            &config.goto_panel_7,
+            HotkeyAction::GoToPanel(7),
+        );
+        add_binding(
+            &mut processor,
+            &config.goto_panel_8,
+            HotkeyAction::GoToPanel(8),
+        );
+        add_binding(
+            &mut processor,
+            &config.goto_panel_9,
+            HotkeyAction::GoToPanel(9),
+        );
+
+        // Application
+        add_binding(&mut processor, &config.quit, HotkeyAction::RequestQuit);
+
+        processor
     }
 
     /// Add or replace a hotkey binding.
