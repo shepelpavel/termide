@@ -63,23 +63,23 @@ Download the latest release for your platform from [GitHub Releases](https://git
 
 ```bash
 # Linux x86_64 (also works in WSL)
-wget https://github.com/termide/termide/releases/latest/download/termide-0.8.6-x86_64-unknown-linux-gnu.tar.gz
-tar xzf termide-0.8.6-x86_64-unknown-linux-gnu.tar.gz
+wget https://github.com/termide/termide/releases/latest/download/termide-0.8.7-x86_64-unknown-linux-gnu.tar.gz
+tar xzf termide-0.8.7-x86_64-unknown-linux-gnu.tar.gz
 ./termide
 
 # macOS Intel (x86_64)
-curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.8.6-x86_64-apple-darwin.tar.gz
-tar xzf termide-0.8.6-x86_64-apple-darwin.tar.gz
+curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.8.7-x86_64-apple-darwin.tar.gz
+tar xzf termide-0.8.7-x86_64-apple-darwin.tar.gz
 ./termide
 
 # macOS Apple Silicon (ARM64)
-curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.8.6-aarch64-apple-darwin.tar.gz
-tar xzf termide-0.8.6-aarch64-apple-darwin.tar.gz
+curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.8.7-aarch64-apple-darwin.tar.gz
+tar xzf termide-0.8.7-aarch64-apple-darwin.tar.gz
 ./termide
 
 # Linux ARM64 (Raspberry Pi, ARM servers)
-wget https://github.com/termide/termide/releases/latest/download/termide-0.8.6-aarch64-unknown-linux-gnu.tar.gz
-tar xzf termide-0.8.6-aarch64-unknown-linux-gnu.tar.gz
+wget https://github.com/termide/termide/releases/latest/download/termide-0.8.7-aarch64-unknown-linux-gnu.tar.gz
+tar xzf termide-0.8.7-aarch64-unknown-linux-gnu.tar.gz
 ./termide
 ```
 
@@ -92,8 +92,8 @@ Download and install the `.deb` package from [GitHub Releases](https://github.co
 
 ```bash
 # x86_64 only (ARM64 use tar.gz above)
-wget https://github.com/termide/termide/releases/latest/download/termide_0.8.6-1_amd64.deb
-sudo dpkg -i termide_0.8.6-1_amd64.deb
+wget https://github.com/termide/termide/releases/latest/download/termide_0.8.7-1_amd64.deb
+sudo dpkg -i termide_0.8.7-1_amd64.deb
 ```
 
 </details>
@@ -105,8 +105,8 @@ Download and install the `.rpm` package from [GitHub Releases](https://github.co
 
 ```bash
 # x86_64 only (ARM64 use tar.gz above)
-wget https://github.com/termide/termide/releases/latest/download/termide-0.8.6-1.x86_64.rpm
-sudo rpm -i termide-0.8.6-1.x86_64.rpm
+wget https://github.com/termide/termide/releases/latest/download/termide-0.8.7-1.x86_64.rpm
+sudo rpm -i termide-0.8.7-1.x86_64.rpm
 ```
 
 </details>

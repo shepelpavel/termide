@@ -5,6 +5,23 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.7] - 2026-01-12
+
+### Added
+- **Install script**: Nix installation method with `nix profile install` for NixOS users
+- **Install script**: Nix shown as "(recommended for NixOS)" on NixOS systems
+
+### Fixed
+- **Install script**: Works correctly when piped via `curl | sh` (reads from /dev/tty)
+- **Install script**: Fixed download URLs (removed incorrect `v` prefix from version)
+- **Install script**: Fixed ANSI escape codes appearing literally in success message
+- **Install script**: Added `--refresh` flag to ensure latest version is installed via Nix
+
+### Changed
+- **Build**: Enabled LTO and strip for release builds (-14% binary size: 29→25 MiB)
+- **Packaging**: Removed obsolete help/themes install steps (files are embedded in binary)
+- **Nix**: Track Cargo.lock for reproducible flake builds
+
 ## [0.8.6] - 2026-01-11
 
 ### Added
