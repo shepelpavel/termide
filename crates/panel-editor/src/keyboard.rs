@@ -5,6 +5,7 @@
 
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use termide_config::{matches_binding_or_default, matches_binding_or_defaults, EditorKeybindings};
 
 /// Editor command representing a user action.
 ///
@@ -106,12 +107,202 @@ impl EditorCommand {
     /// * `read_only` - Whether the editor is in read-only mode
     /// * `has_search` - Whether there's an active search
     /// * `has_selection` - Whether there's an active text selection
+    /// * `keybindings` - Configurable keybindings from config
     pub fn from_key_event(
         key: KeyEvent,
         read_only: bool,
         has_search: bool,
         has_selection: bool,
+        keybindings: &EditorKeybindings,
     ) -> Self {
+        // Check configurable bindings first (order matters for conflicts)
+        // File operations
+        if !read_only
+            && matches_binding_or_default(
+                &keybindings.save,
+                &key,
+                KeyCode::Char('s'),
+                KeyModifiers::CONTROL,
+            )
+        {
+            return Self::Save;
+        }
+        if !read_only
+            && matches_binding_or_default(
+                &keybindings.force_save,
+                &key,
+                KeyCode::Char('S'),
+                KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+            )
+        {
+            return Self::ForceSave;
+        }
+        if matches_binding_or_default(
+            &keybindings.reload,
+            &key,
+            KeyCode::Char('R'),
+            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+        ) {
+            return Self::ReloadFromDisk;
+        }
+
+        // Undo/Redo
+        if !read_only
+            && matches_binding_or_default(
+                &keybindings.undo,
+                &key,
+                KeyCode::Char('z'),
+                KeyModifiers::CONTROL,
+            )
+        {
+            return Self::Undo;
+        }
+        if !read_only
+            && matches_binding_or_default(
+                &keybindings.redo,
+                &key,
+                KeyCode::Char('y'),
+                KeyModifiers::CONTROL,
+            )
+        {
+            return Self::Redo;
+        }
+
+        // Search & Replace
+        if matches_binding_or_default(
+            &keybindings.search,
+            &key,
+            KeyCode::Char('f'),
+            KeyModifiers::CONTROL,
+        ) {
+            return Self::StartSearch;
+        }
+        if matches_binding_or_default(
+            &keybindings.search_next,
+            &key,
+            KeyCode::F(3),
+            KeyModifiers::NONE,
+        ) {
+            return Self::SearchNextOrOpen;
+        }
+        if matches_binding_or_default(
+            &keybindings.search_prev,
+            &key,
+            KeyCode::F(3),
+            KeyModifiers::SHIFT,
+        ) {
+            return Self::SearchPrevOrOpen;
+        }
+        if !read_only
+            && matches_binding_or_default(
+                &keybindings.replace,
+                &key,
+                KeyCode::Char('h'),
+                KeyModifiers::CONTROL,
+            )
+        {
+            return Self::StartReplace;
+        }
+        if !read_only
+            && matches_binding_or_default(
+                &keybindings.replace_all,
+                &key,
+                KeyCode::Char('r'),
+                KeyModifiers::CONTROL | KeyModifiers::ALT,
+            )
+        {
+            return Self::ReplaceAll;
+        }
+        if !read_only
+            && matches_binding_or_default(
+                &keybindings.replace_current,
+                &key,
+                KeyCode::Char('r'),
+                KeyModifiers::CONTROL,
+            )
+        {
+            return Self::ReplaceNext;
+        }
+
+        // Selection
+        if matches_binding_or_default(
+            &keybindings.select_all,
+            &key,
+            KeyCode::Char('a'),
+            KeyModifiers::CONTROL,
+        ) {
+            return Self::SelectAll;
+        }
+
+        // Clipboard - copy with multiple defaults
+        if matches_binding_or_defaults(
+            &keybindings.copy,
+            &key,
+            &[
+                (KeyCode::Char('c'), KeyModifiers::CONTROL),
+                (KeyCode::Insert, KeyModifiers::CONTROL),
+                (
+                    KeyCode::Char('c'),
+                    KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+                ),
+                (
+                    KeyCode::Char('C'),
+                    KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+                ),
+            ],
+        ) {
+            return Self::Copy;
+        }
+
+        // Cut with multiple defaults
+        if !read_only
+            && matches_binding_or_defaults(
+                &keybindings.cut,
+                &key,
+                &[
+                    (KeyCode::Char('x'), KeyModifiers::CONTROL),
+                    (KeyCode::Delete, KeyModifiers::SHIFT),
+                ],
+            )
+        {
+            return Self::Cut;
+        }
+
+        // Paste with multiple defaults
+        if !read_only
+            && matches_binding_or_defaults(
+                &keybindings.paste,
+                &key,
+                &[
+                    (KeyCode::Char('v'), KeyModifiers::CONTROL),
+                    (KeyCode::Insert, KeyModifiers::SHIFT),
+                    (
+                        KeyCode::Char('v'),
+                        KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+                    ),
+                    (
+                        KeyCode::Char('V'),
+                        KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+                    ),
+                ],
+            )
+        {
+            return Self::Paste;
+        }
+
+        // Advanced editing
+        if !read_only
+            && matches_binding_or_default(
+                &keybindings.duplicate_line,
+                &key,
+                KeyCode::Char('d'),
+                KeyModifiers::CONTROL,
+            )
+        {
+            return Self::DuplicateLine;
+        }
+
+        // Non-configurable bindings (navigation, basic editing)
         match (key.code, key.modifiers) {
             // Navigation (clears selection and closes search)
             (KeyCode::Up, KeyModifiers::NONE) => Self::MoveCursorUp,
@@ -171,40 +362,6 @@ impl EditorCommand {
             (KeyCode::Backspace, KeyModifiers::NONE) if !read_only => Self::Backspace,
             (KeyCode::Delete, KeyModifiers::NONE) if !read_only => Self::Delete,
 
-            // Ctrl+S - save (only if not read-only)
-            (KeyCode::Char('s'), KeyModifiers::CONTROL) if !read_only => Self::Save,
-
-            // Ctrl+Shift+S - force save (ignore external changes, only if not read-only)
-            (KeyCode::Char('S'), mods)
-                if !read_only
-                    && mods.contains(KeyModifiers::CONTROL)
-                    && mods.contains(KeyModifiers::SHIFT) =>
-            {
-                Self::ForceSave
-            }
-
-            // Ctrl+Shift+R - reload from disk
-            (KeyCode::Char('R'), mods)
-                if mods.contains(KeyModifiers::CONTROL) && mods.contains(KeyModifiers::SHIFT) =>
-            {
-                Self::ReloadFromDisk
-            }
-
-            // Ctrl+Z - undo (only if not read-only)
-            (KeyCode::Char('z'), KeyModifiers::CONTROL) if !read_only => Self::Undo,
-
-            // Ctrl+Y - redo (only if not read-only)
-            (KeyCode::Char('y'), KeyModifiers::CONTROL) if !read_only => Self::Redo,
-
-            // Ctrl+F - search
-            (KeyCode::Char('f'), KeyModifiers::CONTROL) => Self::StartSearch,
-
-            // F3 - next match (or open search if no active search)
-            (KeyCode::F(3), KeyModifiers::NONE) => Self::SearchNextOrOpen,
-
-            // Shift+F3 - previous match (or open search if no active search)
-            (KeyCode::F(3), KeyModifiers::SHIFT) => Self::SearchPrevOrOpen,
-
             // Esc - close search
             (KeyCode::Esc, KeyModifiers::NONE) if has_search => Self::CloseSearch,
 
@@ -216,73 +373,6 @@ impl EditorCommand {
             // Shift+Tab - previous match (when search is active), or unindent lines
             (KeyCode::BackTab, _) if has_search => Self::SearchPrev,
             (KeyCode::BackTab, _) if !read_only => Self::UnindentLines,
-
-            // Ctrl+H - text replacement (only if not read-only)
-            (KeyCode::Char('h'), KeyModifiers::CONTROL) if !read_only => Self::StartReplace,
-
-            // Ctrl+Alt+R - replace all matches (must be before Ctrl+R)
-            (KeyCode::Char('r'), mods)
-                if !read_only
-                    && mods.contains(KeyModifiers::CONTROL)
-                    && mods.contains(KeyModifiers::ALT) =>
-            {
-                Self::ReplaceAll
-            }
-
-            // Ctrl+R - replace current match (only if not read-only)
-            (KeyCode::Char('r'), KeyModifiers::CONTROL) if !read_only => Self::ReplaceNext,
-
-            // Ctrl+A - select all
-            (KeyCode::Char('a'), KeyModifiers::CONTROL) => Self::SelectAll,
-
-            // Ctrl+C - copy
-            (KeyCode::Char('c'), KeyModifiers::CONTROL) => Self::Copy,
-
-            // Ctrl+D - duplicate line
-            (KeyCode::Char('d'), KeyModifiers::CONTROL) if !read_only => Self::DuplicateLine,
-
-            // Ctrl+Insert - copy
-            (KeyCode::Insert, KeyModifiers::CONTROL) => Self::Copy,
-
-            // Ctrl+Shift+C - copy (terminal shortcut)
-            (KeyCode::Char('c'), mods)
-                if mods.contains(KeyModifiers::CONTROL) && mods.contains(KeyModifiers::SHIFT) =>
-            {
-                Self::Copy
-            }
-            (KeyCode::Char('C'), mods)
-                if mods.contains(KeyModifiers::CONTROL) && mods.contains(KeyModifiers::SHIFT) =>
-            {
-                Self::Copy
-            }
-
-            // Ctrl+X - cut (only if not read-only)
-            (KeyCode::Char('x'), KeyModifiers::CONTROL) if !read_only => Self::Cut,
-
-            // Shift+Delete - cut (only if not read-only)
-            (KeyCode::Delete, KeyModifiers::SHIFT) if !read_only => Self::Cut,
-
-            // Ctrl+V - paste (only if not read-only)
-            (KeyCode::Char('v'), KeyModifiers::CONTROL) if !read_only => Self::Paste,
-
-            // Shift+Insert - paste (only if not read-only)
-            (KeyCode::Insert, KeyModifiers::SHIFT) if !read_only => Self::Paste,
-
-            // Ctrl+Shift+V - paste (terminal shortcut)
-            (KeyCode::Char('v'), mods)
-                if !read_only
-                    && mods.contains(KeyModifiers::CONTROL)
-                    && mods.contains(KeyModifiers::SHIFT) =>
-            {
-                Self::Paste
-            }
-            (KeyCode::Char('V'), mods)
-                if !read_only
-                    && mods.contains(KeyModifiers::CONTROL)
-                    && mods.contains(KeyModifiers::SHIFT) =>
-            {
-                Self::Paste
-            }
 
             // Default - no operation
             _ => Self::None,

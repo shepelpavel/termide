@@ -276,6 +276,7 @@ impl AppState {
         let mut config = EditorConfig::default();
         config.tab_size = self.config.editor.tab_size;
         config.word_wrap = self.config.editor.word_wrap;
+        config.keybindings = self.config.editor.keybindings.clone();
         config
     }
 

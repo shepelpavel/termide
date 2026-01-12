@@ -1,6 +1,7 @@
 //! Editor configuration and information types.
 
 use std::path::PathBuf;
+use termide_config::EditorKeybindings;
 
 /// Editor mode configuration
 #[derive(Debug, Clone)]
@@ -15,6 +16,8 @@ pub struct EditorConfig {
     pub tab_size: usize,
     /// Initial directory for new buffers (used in SaveAs dialog)
     pub initial_directory: Option<PathBuf>,
+    /// Keyboard shortcuts configuration
+    pub keybindings: EditorKeybindings,
 }
 
 impl Default for EditorConfig {
@@ -25,6 +28,7 @@ impl Default for EditorConfig {
             word_wrap: true,
             tab_size: 4,
             initial_directory: None,
+            keybindings: EditorKeybindings::default(),
         }
     }
 }
@@ -38,6 +42,7 @@ impl EditorConfig {
             word_wrap: true,
             tab_size: 4,
             initial_directory: None,
+            keybindings: EditorKeybindings::default(),
         }
     }
 }

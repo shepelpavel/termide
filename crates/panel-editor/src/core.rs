@@ -1864,6 +1864,7 @@ impl Panel for Editor {
             self.config.read_only,
             self.search.state.is_some(),
             self.selection.is_some(),
+            &self.config.keybindings,
         );
 
         // Collect events from internal state
