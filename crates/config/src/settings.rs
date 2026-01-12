@@ -3,6 +3,10 @@
 use serde::{Deserialize, Serialize};
 
 use crate::defaults;
+use crate::keybindings::{
+    EditorKeybindings, FileManagerKeybindings, GitStatusKeybindings, GlobalKeybindings,
+    TerminalKeybindings,
+};
 
 /// Application configuration with nested sections.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -18,6 +22,14 @@ pub struct Config {
     /// File manager settings
     #[serde(default)]
     pub file_manager: FileManagerSettings,
+
+    /// Git status panel settings
+    #[serde(default)]
+    pub git_status: GitStatusSettings,
+
+    /// Terminal panel settings
+    #[serde(default)]
+    pub terminal: TerminalSettings,
 
     /// Logging settings
     #[serde(default)]
@@ -46,6 +58,10 @@ pub struct GeneralSettings {
     /// Session retention period in days
     #[serde(default = "default_session_retention_days")]
     pub session_retention_days: u32,
+
+    /// Global keyboard shortcuts
+    #[serde(default)]
+    pub keybindings: GlobalKeybindings,
 }
 
 /// Editor settings.
@@ -66,6 +82,10 @@ pub struct EditorSettings {
     /// File size threshold in MB for disabling smart features
     #[serde(default = "default_large_file_threshold_mb")]
     pub large_file_threshold_mb: u64,
+
+    /// Editor keyboard shortcuts
+    #[serde(default)]
+    pub keybindings: EditorKeybindings,
 }
 
 /// File manager settings.
@@ -78,6 +98,26 @@ pub struct FileManagerSettings {
     /// Maximum file size in MB for content search (skip larger files)
     #[serde(default = "default_content_search_max_file_size_mb")]
     pub content_search_max_file_size_mb: u64,
+
+    /// File manager keyboard shortcuts
+    #[serde(default)]
+    pub keybindings: FileManagerKeybindings,
+}
+
+/// Git status panel settings.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GitStatusSettings {
+    /// Git status panel keyboard shortcuts
+    #[serde(default)]
+    pub keybindings: GitStatusKeybindings,
+}
+
+/// Terminal panel settings.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TerminalSettings {
+    /// Terminal keyboard shortcuts
+    #[serde(default)]
+    pub keybindings: TerminalKeybindings,
 }
 
 /// Logging settings.
@@ -187,17 +227,22 @@ impl From<LegacyConfig> for Config {
                 auto_stack_threshold: legacy.min_panel_width, // migrate old field
                 min_panel_width: default_min_panel_width(),
                 session_retention_days: legacy.session_retention_days,
+                keybindings: GlobalKeybindings::default(),
             },
             editor: EditorSettings {
                 tab_size: legacy.tab_size,
                 show_git_diff: legacy.show_git_diff,
                 word_wrap: legacy.word_wrap,
                 large_file_threshold_mb: legacy.large_file_threshold_mb,
+                keybindings: EditorKeybindings::default(),
             },
             file_manager: FileManagerSettings {
                 extended_view_width: legacy.fm_extended_view_width,
                 content_search_max_file_size_mb: defaults::CONTENT_SEARCH_MAX_FILE_SIZE_MB,
+                keybindings: FileManagerKeybindings::default(),
             },
+            git_status: GitStatusSettings::default(),
+            terminal: TerminalSettings::default(),
             logging: LoggingSettings {
                 file_path: legacy.log_file_path,
                 min_level: legacy.min_log_level,
@@ -216,6 +261,7 @@ impl Default for GeneralSettings {
             auto_stack_threshold: default_auto_stack_threshold(),
             min_panel_width: default_min_panel_width(),
             session_retention_days: default_session_retention_days(),
+            keybindings: GlobalKeybindings::default(),
         }
     }
 }
@@ -227,6 +273,7 @@ impl Default for EditorSettings {
             show_git_diff: default_show_git_diff(),
             word_wrap: default_word_wrap(),
             large_file_threshold_mb: default_large_file_threshold_mb(),
+            keybindings: EditorKeybindings::default(),
         }
     }
 }
@@ -236,6 +283,7 @@ impl Default for FileManagerSettings {
         Self {
             extended_view_width: default_extended_view_width(),
             content_search_max_file_size_mb: default_content_search_max_file_size_mb(),
+            keybindings: FileManagerKeybindings::default(),
         }
     }
 }

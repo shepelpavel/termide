@@ -4,11 +4,18 @@
 //! with support for TOML format and XDG directory conventions.
 
 pub mod constants;
+pub mod keybindings;
 mod settings;
 mod xdg;
 
+pub use keybindings::{
+    matches_binding_or_default, matches_binding_or_defaults, parse_keybinding, EditorKeybindings,
+    FileManagerKeybindings, GitStatusKeybindings, GlobalKeybindings, KeyBinding, ParsedKeyBinding,
+    TerminalKeybindings,
+};
 pub use settings::{
-    Config, EditorSettings, FileManagerSettings, GeneralSettings, LegacyConfig, LoggingSettings,
+    Config, EditorSettings, FileManagerSettings, GeneralSettings, GitStatusSettings, LegacyConfig,
+    LoggingSettings, TerminalSettings,
 };
 pub use xdg::{get_cache_dir, get_config_dir, get_data_dir};
 

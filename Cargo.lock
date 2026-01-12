@@ -1833,6 +1833,7 @@ name = "termide-config"
 version = "0.8.7"
 dependencies = [
  "anyhow",
+ "crossterm",
  "dirs",
  "serde",
  "toml",
