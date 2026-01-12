@@ -15,7 +15,9 @@ use ratatui::{
 };
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-use termide_config::Config;
+use termide_config::{
+    matches_binding_or_default, matches_binding_or_defaults, Config, GitStatusKeybindings,
+};
 use termide_core::{
     CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel, ThemeColors,
 };
@@ -99,6 +101,8 @@ pub struct GitStatusPanel {
     viewport_height: usize,
     /// Cached theme colors for rendering
     cached_theme: ThemeColors,
+    /// Cached keybindings for keyboard handling
+    keybindings: GitStatusKeybindings,
     /// Last render area (for mouse handling)
     last_area: Rect,
     /// Status message
@@ -160,6 +164,7 @@ impl GitStatusPanel {
             scroll_offset: 0,
             viewport_height: 0,
             cached_theme: ThemeColors::default(),
+            keybindings: GitStatusKeybindings::default(),
             last_area: Rect::default(),
             status_message: None,
             repo_dropdown_open: false,
@@ -202,6 +207,7 @@ impl GitStatusPanel {
             scroll_offset: 0,
             viewport_height: 0,
             cached_theme: ThemeColors::default(),
+            keybindings: GitStatusKeybindings::default(),
             last_area: Rect::default(),
             status_message: None,
             repo_dropdown_open: false,
@@ -1513,8 +1519,9 @@ impl Panel for GitStatusPanel {
         }
     }
 
-    fn prepare_render(&mut self, theme: &Theme, _config: &Config) {
+    fn prepare_render(&mut self, theme: &Theme, config: &Config) {
         self.cached_theme = ThemeColors::from(theme);
+        self.keybindings = config.git_status.keybindings.clone();
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
@@ -1562,6 +1569,66 @@ impl Panel for GitStatusPanel {
         // Clear status message on any key
         self.status_message = None;
 
+        let kb = &self.keybindings;
+
+        // Configurable keybindings (checked first)
+
+        // Stage file (Insert, Ctrl+S)
+        if matches_binding_or_defaults(
+            &kb.stage_file,
+            &key,
+            &[
+                (KeyCode::Insert, KeyModifiers::NONE),
+                (KeyCode::Char('s'), KeyModifiers::CONTROL),
+            ],
+        ) {
+            if self.current_section == Section::Files
+                && matches!(self.get_selection(), Some(Selection::UnstagedFile(_)))
+            {
+                self.do_stage();
+            }
+            return vec![];
+        }
+
+        // Unstage file (Delete, Ctrl+U)
+        if matches_binding_or_defaults(
+            &kb.unstage_file,
+            &key,
+            &[
+                (KeyCode::Delete, KeyModifiers::NONE),
+                (KeyCode::Char('u'), KeyModifiers::CONTROL),
+            ],
+        ) {
+            if self.current_section == Section::Files
+                && matches!(self.get_selection(), Some(Selection::StagedFile(_)))
+            {
+                self.do_unstage();
+            }
+            return vec![];
+        }
+
+        // Refresh (Ctrl+R)
+        if matches_binding_or_default(&kb.refresh, &key, KeyCode::Char('r'), KeyModifiers::CONTROL)
+        {
+            self.refresh();
+            self.status_message = Some("Refreshed".to_string());
+            return vec![];
+        }
+
+        // Next section (Tab)
+        if matches_binding_or_default(&kb.next_section, &key, KeyCode::Tab, KeyModifiers::NONE) {
+            self.next_section();
+            return vec![];
+        }
+
+        // Prev section (Shift+Tab/BackTab)
+        if matches_binding_or_default(&kb.prev_section, &key, KeyCode::BackTab, KeyModifiers::NONE)
+        {
+            self.prev_section();
+            return vec![];
+        }
+
+        // Non-configurable bindings (navigation)
         match key.code {
             KeyCode::Tab => {
                 if key.modifiers.contains(KeyModifiers::SHIFT) {
@@ -1692,26 +1759,6 @@ impl Panel for GitStatusPanel {
                     return self.show_file_properties();
                 }
             }
-            // Insert - stage file (if cursor is on unstaged file)
-            KeyCode::Insert => {
-                if self.current_section == Section::Files
-                    && matches!(self.get_selection(), Some(Selection::UnstagedFile(_)))
-                {
-                    self.do_stage();
-                }
-            }
-            // Delete - unstage file (if cursor is on staged file)
-            KeyCode::Delete => {
-                if self.current_section == Section::Files
-                    && matches!(self.get_selection(), Some(Selection::StagedFile(_)))
-                {
-                    self.do_unstage();
-                }
-            }
-            KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.refresh();
-                self.status_message = Some("Refreshed".to_string());
-            }
             KeyCode::Enter => {
                 return self.handle_enter_key();
             }
@@ -1722,13 +1769,6 @@ impl Panel for GitStatusPanel {
                 } else if self.repo_dropdown_open {
                     self.repo_dropdown_open = false;
                 }
-            }
-            // Shortcut keys for actions
-            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.do_stage();
-            }
-            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.do_unstage();
             }
             _ => {}
         }

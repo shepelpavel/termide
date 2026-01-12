@@ -28,7 +28,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use vte::Parser;
 
-use termide_config::Config;
+use termide_config::{matches_binding_or_default, Config, TerminalKeybindings};
 use termide_core::{CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel};
 use termide_theme::Theme;
 use termide_ui::{system_monitor::DiskSpaceInfo, ScrollBar};
@@ -55,6 +55,8 @@ pub struct Terminal {
     initial_cwd: std::path::PathBuf,
     /// Cached theme for rendering
     cached_theme: Theme,
+    /// Cached keybindings for keyboard handling
+    keybindings: TerminalKeybindings,
     /// Flag set by PTY thread when new data arrives (triggers redraw)
     has_new_data: Arc<AtomicBool>,
     /// Cached rendered lines to avoid re-rendering when nothing changed
@@ -207,6 +209,7 @@ impl Terminal {
             title_prefix,
             initial_cwd: working_dir,
             cached_theme: Theme::default(),
+            keybindings: TerminalKeybindings::default(),
             has_new_data,
             cached_lines: None,
             cached_cursor: (0, 0),
@@ -981,12 +984,13 @@ impl Panel for Terminal {
         format!("{} ({})", self.title_prefix, self.get_foreground_command())
     }
 
-    fn prepare_render(&mut self, theme: &Theme, _config: &Config) {
+    fn prepare_render(&mut self, theme: &Theme, config: &Config) {
         // Invalidate cache if theme changed
         if self.cached_theme != *theme {
             self.cached_lines = None;
         }
         self.cached_theme = *theme;
+        self.keybindings = config.terminal.keybindings.clone();
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
@@ -1056,51 +1060,66 @@ impl Panel for Terminal {
         // Translate Cyrillic to Latin for hotkeys
         let key = termide_keyboard::translate_hotkey(key);
 
-        // Handle paste from clipboard (Ctrl+Shift+V)
-        // When Shift is pressed with a letter, crossterm returns the uppercase character
-        // with only CONTROL in modifiers (Shift is "applied" to the character)
-        match (key.code, key.modifiers) {
-            (KeyCode::Char('V'), modifiers) if modifiers.contains(KeyModifiers::CONTROL) => {
-                let _ = self.paste_from_clipboard();
-                return vec![];
-            }
-            (KeyCode::Char('C'), modifiers) if modifiers.contains(KeyModifiers::CONTROL) => {
-                // Ctrl+Shift+C - copy selection to clipboard
-                let _ = self.copy_selection_to_clipboard();
-                return vec![];
-            }
-            _ => {}
+        let kb = &self.keybindings;
+
+        // Configurable clipboard operations
+        // Paste (Ctrl+Shift+V)
+        if matches_binding_or_default(
+            &kb.paste,
+            &key,
+            KeyCode::Char('V'),
+            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+        ) {
+            let _ = self.paste_from_clipboard();
+            return vec![];
         }
 
-        // Handle history scrolling (Shift+PageUp/PageDown) - single lock per operation
-        if key.modifiers.contains(KeyModifiers::SHIFT) {
-            match key.code {
-                KeyCode::PageUp => {
-                    let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
-                    let scroll_amount = screen.rows.saturating_sub(1);
-                    screen.scroll_view_up(scroll_amount);
-                    return vec![];
-                }
-                KeyCode::PageDown => {
-                    let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
-                    let scroll_amount = screen.rows.saturating_sub(1);
-                    screen.scroll_view_down(scroll_amount);
-                    return vec![];
-                }
-                KeyCode::Home => {
-                    let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
-                    screen.scroll_offset = screen.scrollback.len();
-                    return vec![];
-                }
-                KeyCode::End => {
-                    self.screen
-                        .write()
-                        .expect("Terminal screen lock poisoned")
-                        .reset_scroll();
-                    return vec![];
-                }
-                _ => {}
-            }
+        // Copy (Ctrl+Shift+C)
+        if matches_binding_or_default(
+            &kb.copy,
+            &key,
+            KeyCode::Char('C'),
+            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+        ) {
+            let _ = self.copy_selection_to_clipboard();
+            return vec![];
+        }
+
+        // Scroll up (Shift+PageUp)
+        if matches_binding_or_default(&kb.scroll_up, &key, KeyCode::PageUp, KeyModifiers::SHIFT) {
+            let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
+            let scroll_amount = screen.rows.saturating_sub(1);
+            screen.scroll_view_up(scroll_amount);
+            return vec![];
+        }
+
+        // Scroll down (Shift+PageDown)
+        if matches_binding_or_default(
+            &kb.scroll_down,
+            &key,
+            KeyCode::PageDown,
+            KeyModifiers::SHIFT,
+        ) {
+            let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
+            let scroll_amount = screen.rows.saturating_sub(1);
+            screen.scroll_view_down(scroll_amount);
+            return vec![];
+        }
+
+        // Scroll top (Shift+Home)
+        if matches_binding_or_default(&kb.scroll_top, &key, KeyCode::Home, KeyModifiers::SHIFT) {
+            let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
+            screen.scroll_offset = screen.scrollback.len();
+            return vec![];
+        }
+
+        // Scroll bottom (Shift+End)
+        if matches_binding_or_default(&kb.scroll_bottom, &key, KeyCode::End, KeyModifiers::SHIFT) {
+            self.screen
+                .write()
+                .expect("Terminal screen lock poisoned")
+                .reset_scroll();
+            return vec![];
         }
 
         // Reset scroll and clear selection on input, cache application_cursor_keys - single lock
