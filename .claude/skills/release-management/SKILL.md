@@ -172,10 +172,6 @@ flake_version=$(grep 'version = ' flake.nix | head -1 | sed 's/.*version = "\(.*
 
 # Last git tag
 git_version=$(git describe --tags --abbrev=0 2>/dev/null || echo "none")
-
-# i18n files
-en_version=$(grep -A 1 'pub fn help_version' src/i18n/en.rs | grep return | sed 's/.*"\(.*\)".*/\1/')
-ru_version=$(grep -A 1 'pub fn help_version' src/i18n/ru.rs | grep return | sed 's/.*"\(.*\)".*/\1/')
 ```
 
 **If versions match:** Use that version as current.
@@ -190,12 +186,10 @@ File                     Version
 Cargo.toml              0.2.0
 flake.nix               0.1.5  ⚠️
 Last git tag            0.2.0
-src/i18n/en.rs          0.1.5  ⚠️
-src/i18n/ru.rs          0.1.5  ⚠️
 
 Which version is correct as the current version?
 1. 0.2.0 (Cargo.toml + git tag)
-2. 0.1.5 (flake.nix + i18n)
+2. 0.1.5 (flake.nix)
 3. Other (specify manually)
 ```
 
@@ -240,7 +234,7 @@ Proceed? [yes/no]
 
 ### Step 5: Update Version in All Files
 
-Update version `NEW_VERSION` in these 12+ files using Edit tool:
+Update version `NEW_VERSION` in these 8 files using Edit tool:
 
 #### 1. Cargo.toml
 ```toml
@@ -279,23 +273,7 @@ Same pattern as README.md for download URLs.
 #### 5. doc/ru/installation.md (4 occurrences)
 Same pattern as README.md for download URLs.
 
-#### 6. src/i18n/en.rs
-```rust
-pub fn help_version(&self) -> &'static str {
-    "NEW_VERSION"
-}
-```
-Line ~222, replace string literal.
-
-#### 7. src/i18n/ru.rs
-```rust
-pub fn help_version(&self) -> &'static str {
-    "NEW_VERSION"
-}
-```
-Line ~236, replace string literal.
-
-#### 8. packaging/homebrew/termide.rb (5 occurrences)
+#### 6. packaging/homebrew/termide.rb (5 occurrences)
 ```ruby
 version "NEW_VERSION"
 url "https://github.com/termide/termide/archive/refs/tags/NEW_VERSION.tar.gz"
@@ -304,13 +282,13 @@ sha256 "..."  # This will need to be updated AFTER release
 
 Update version and URL, note that sha256 will be wrong until after release.
 
-#### 9. packaging/aur/PKGBUILD
+#### 7. packaging/aur/PKGBUILD
 ```bash
 pkgver=NEW_VERSION
 ```
 Line 4, simple replacement.
 
-#### 10. packaging/aur/PKGBUILD-bin
+#### 8. packaging/aur/PKGBUILD-bin
 ```bash
 pkgver=NEW_VERSION
 ```

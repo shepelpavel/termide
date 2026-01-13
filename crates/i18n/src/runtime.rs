@@ -317,7 +317,7 @@ impl Translation for RuntimeTranslation {
     }
 
     fn help_version(&self) -> &str {
-        self.get_string("help_version")
+        env!("CARGO_PKG_VERSION")
     }
 
     fn help_global_keys(&self) -> &str {
