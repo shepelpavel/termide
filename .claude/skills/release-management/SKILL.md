@@ -590,7 +590,7 @@ Commit: abc1234 chore: release version 0.3.0
 Message: Release 0.3.0
 ```
 
-### Step 11: Push to Remote
+### Step 11: Push and Create Release
 
 **IMPORTANT:** Ask user before pushing!
 
@@ -601,12 +601,15 @@ This will push to origin (github.com/termide/termide):
 - Commit: abc1234 chore: release version 0.3.0
 - Tag: 0.3.0
 
-This will trigger GitHub Actions workflow which will:
-1. Run quality checks (fmt, clippy, test)
-2. Build cross-platform binaries (Linux x86/ARM, macOS x86/ARM)
-3. Build .deb packages (Debian/Ubuntu)
-4. Build .rpm packages (Fedora/RHEL)
-5. Create GitHub Release with all artifacts
+This will:
+1. Push commit and tag to GitHub
+2. Create GitHub Release with CHANGELOG description
+3. Trigger GitHub Actions workflow which will:
+   - Run quality checks (fmt, clippy, test)
+   - Build cross-platform binaries (Linux x86/ARM, macOS x86/ARM)
+   - Build .deb packages (Debian/Ubuntu)
+   - Build .rpm packages (Fedora/RHEL)
+   - Upload artifacts to the Release
 
 Expected workflow duration: ~15-20 minutes
 
@@ -617,7 +620,16 @@ Use AskUserQuestion tool.
 
 **If yes:**
 ```bash
+# Push commit and tag
 git push && git push origin NEW_VERSION
+
+# Extract changelog section for this version
+changelog_content=$(awk '/^## \[NEW_VERSION\]/{flag=1; next} /^## \[/{flag=0} flag' CHANGELOG.md)
+
+# Create GitHub release with changelog as description
+gh release create NEW_VERSION \
+  --title "Release NEW_VERSION" \
+  --notes "$changelog_content"
 ```
 
 **If no:**
@@ -626,6 +638,8 @@ Release prepared locally but not pushed.
 
 To push later, run:
   git push && git push origin 0.3.0
+  changelog=$(awk '/^## \[0.3.0\]/{flag=1; next} /^## \[/{flag=0} flag' CHANGELOG.md)
+  gh release create 0.3.0 --title "Release 0.3.0" --notes "$changelog"
 
 To undo this release:
   git tag -d 0.3.0
