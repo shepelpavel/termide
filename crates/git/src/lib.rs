@@ -309,23 +309,24 @@ impl GitStatusCache {
     }
 
     /// Check if path (relative to repo root) is ignored or inside an ignored directory.
+    ///
+    /// Uses path component comparison to avoid string allocations in hot path.
     pub fn is_path_in_ignored(&self, relative_path: &Path) -> bool {
-        let path_str = relative_path.to_string_lossy();
+        // Check if exact path is ignored
+        if self.ignored_files.contains(relative_path) {
+            return true;
+        }
 
-        self.ignored_files.iter().any(|ignored| {
-            let ignored_str = ignored.to_string_lossy();
-            // Normalize: remove trailing slash for comparison
-            let ignored_normalized = ignored_str.trim_end_matches('/');
-
-            // Exact match (file or directory name)
-            if path_str == ignored_normalized {
+        // Check if any ancestor is ignored (path is inside ignored directory)
+        let mut ancestor = relative_path;
+        while let Some(parent) = ancestor.parent() {
+            if !parent.as_os_str().is_empty() && self.ignored_files.contains(parent) {
                 return true;
             }
+            ancestor = parent;
+        }
 
-            // Check if path is inside ignored directory
-            let prefix = format!("{}/", ignored_normalized);
-            path_str.starts_with(&prefix)
-        })
+        false
     }
 }
 

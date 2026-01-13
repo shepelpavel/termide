@@ -30,14 +30,16 @@ fn screen_col_to_grapheme_idx(text: &str, target_col: usize) -> usize {
     use unicode_width::UnicodeWidthStr;
 
     let mut col = 0;
+    let mut last_idx = 0;
     for (idx, g) in text.graphemes(true).enumerate() {
         let w = g.width();
         if col + w > target_col {
             return idx;
         }
         col += w;
+        last_idx = idx + 1; // Track grapheme count as we iterate
     }
-    text.graphemes(true).count()
+    last_idx // Return count without re-iterating
 }
 
 /// Editor panel with syntax highlighting
@@ -1199,14 +1201,10 @@ impl Editor {
                 self.render_cache.use_smart_wrap,
             );
 
-            // Add deletion markers if git diff is shown
+            // Add deletion markers if git diff is shown (O(1) lookup)
             if config.editor.show_git_diff {
                 if let Some(git_diff) = &self.git.diff_cache {
-                    let buffer_line_count = self.buffer.line_count();
-                    let deletion_marker_count = (0..buffer_line_count)
-                        .filter(|&idx| git_diff.has_deletion_marker(idx))
-                        .count();
-                    return total_visual_rows + deletion_marker_count;
+                    return total_visual_rows + git_diff.deletion_marker_count();
                 }
             }
 
@@ -1214,21 +1212,16 @@ impl Editor {
         }
 
         // No word wrap - use old logic with buffer lines + deletion markers
-        if !config.editor.show_git_diff || self.git.diff_cache.is_none() {
-            return self.buffer.line_count();
-        }
-
         let buffer_line_count = self.buffer.line_count();
-        let deletion_marker_count = self
-            .git
-            .diff_cache
-            .as_ref()
-            .map(|cache| {
-                (0..buffer_line_count)
-                    .filter(|&idx| cache.has_deletion_marker(idx))
-                    .count()
-            })
-            .unwrap_or(0);
+        let deletion_marker_count = if config.editor.show_git_diff {
+            self.git
+                .diff_cache
+                .as_ref()
+                .map(|cache| cache.deletion_marker_count())
+                .unwrap_or(0)
+        } else {
+            0
+        };
 
         buffer_line_count + deletion_marker_count
     }

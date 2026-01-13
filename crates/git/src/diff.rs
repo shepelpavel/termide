@@ -357,6 +357,14 @@ impl GitDiffCache {
         self.deleted_after_lines.get(&line).copied().unwrap_or(0)
     }
 
+    /// Get total number of lines with deletion markers.
+    ///
+    /// This is O(1) - simply returns the number of entries in the map.
+    /// Used for virtual line count calculation.
+    pub fn deletion_marker_count(&self) -> usize {
+        self.deleted_after_lines.len()
+    }
+
     /// Get original line content from HEAD by original line index
     /// Returns None if original content is not loaded or line doesn't exist
     fn get_original_line_by_idx(&self, original_idx: usize) -> Option<&str> {

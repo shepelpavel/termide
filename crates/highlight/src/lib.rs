@@ -631,6 +631,8 @@ impl HighlightCache {
     }
 
     /// Remove oldest entries from cache (LRU).
+    ///
+    /// Uses partial sort (select_nth_unstable) for O(n) performance instead of O(n log n).
     fn evict_lru(&mut self) {
         let evict_count = MAX_CACHE_SIZE / 5;
 
@@ -640,8 +642,15 @@ impl HighlightCache {
             .map(|(line_idx, (_, access_time))| (*line_idx, *access_time))
             .collect();
 
-        entries.sort_by_key(|(_, access_time)| *access_time);
+        if entries.len() <= evict_count {
+            return;
+        }
 
+        // Partial sort: elements before evict_count are the smallest (oldest)
+        // This is O(n) on average vs O(n log n) for full sort
+        entries.select_nth_unstable_by_key(evict_count, |(_, access_time)| *access_time);
+
+        // Remove the oldest entries (those before the partition point)
         for (line_idx, _) in entries.iter().take(evict_count) {
             self.lines.remove(line_idx);
         }
