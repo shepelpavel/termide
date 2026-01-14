@@ -12,7 +12,7 @@ use std::path::PathBuf;
 
 use super::App;
 use crate::PanelExt;
-use termide_core::PanelEvent;
+use termide_core::{GitOperationType, PanelEvent};
 use termide_i18n as i18n;
 use termide_logger as logger;
 use termide_panel_editor::Editor;
@@ -183,6 +183,13 @@ impl App {
 
             PanelEvent::SplitPanel { direction, .. } => {
                 self.event_split_panel(direction);
+            }
+
+            PanelEvent::GitOperation {
+                operation,
+                repo_path,
+            } => {
+                self.event_git_operation(operation, repo_path)?;
             }
         }
         Ok(())
@@ -689,6 +696,103 @@ impl App {
             logger::debug(format!("Focused panel: {}", title));
         } else {
             logger::debug(format!("Panel not found: {}", name));
+        }
+    }
+
+    /// Handle GitOperation event - run git push/pull in background and show result modal
+    fn event_git_operation(
+        &mut self,
+        operation: GitOperationType,
+        repo_path: PathBuf,
+    ) -> Result<()> {
+        use crate::state::ActiveModal;
+        use std::process::Command;
+        use termide_modal::InfoModal;
+
+        // Prevent multiple concurrent operations
+        if self.state.ui.git_operation_in_progress {
+            logger::debug("Git operation already in progress, ignoring");
+            return Ok(());
+        }
+        self.state.ui.git_operation_in_progress = true;
+
+        let cmd = match operation {
+            GitOperationType::Push => "push",
+            GitOperationType::Pull => "pull",
+        };
+
+        logger::info(format!("Running git {} in {:?}", cmd, repo_path));
+
+        let output = Command::new("git")
+            .arg(cmd)
+            .current_dir(&repo_path)
+            .output();
+
+        self.state.ui.git_operation_in_progress = false;
+
+        match output {
+            Ok(output) => {
+                let success = output.status.success();
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+
+                let t = i18n::t();
+                let title = if success {
+                    match operation {
+                        GitOperationType::Push => t.git_push_success(),
+                        GitOperationType::Pull => t.git_pull_success(),
+                    }
+                } else {
+                    match operation {
+                        GitOperationType::Push => t.git_push_failed(),
+                        GitOperationType::Pull => t.git_pull_failed(),
+                    }
+                };
+
+                let mut lines = vec![];
+                if !stdout.trim().is_empty() {
+                    lines.push((t.git_output(), stdout.trim().to_string()));
+                }
+                if !stderr.trim().is_empty() {
+                    let label = if success {
+                        t.git_output()
+                    } else {
+                        t.git_error()
+                    };
+                    lines.push((label, stderr.trim().to_string()));
+                }
+                if lines.is_empty() {
+                    lines.push((t.git_status_label(), t.git_completed()));
+                }
+
+                let modal = InfoModal::new(title, lines);
+                self.state.active_modal = Some(ActiveModal::Info(Box::new(modal)));
+
+                // Refresh git status after operation
+                self.refresh_all_git_panels();
+            }
+            Err(e) => {
+                let t = i18n::t();
+                let title = match operation {
+                    GitOperationType::Push => t.git_push_failed(),
+                    GitOperationType::Pull => t.git_pull_failed(),
+                };
+                let modal = InfoModal::new(title, vec![(t.git_error(), e.to_string())]);
+                self.state.active_modal = Some(ActiveModal::Info(Box::new(modal)));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Refresh all git panels after git operation
+    fn refresh_all_git_panels(&mut self) {
+        for group in &mut self.layout_manager.panel_groups {
+            for panel in group.panels_mut() {
+                if let Some(git_status) = panel.as_git_status_mut() {
+                    git_status.refresh();
+                }
+            }
         }
     }
 }

@@ -59,6 +59,13 @@ impl EventHandler {
     }
 }
 
+/// Type of git operation to execute in background.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GitOperationType {
+    Push,
+    Pull,
+}
+
 /// Events emitted by panels to communicate with the application.
 #[derive(Debug, Clone)]
 pub enum PanelEvent {
@@ -164,6 +171,12 @@ pub enum PanelEvent {
     // === Git integration ===
     /// Request git status refresh for path
     RefreshGitStatus(PathBuf),
+
+    /// Execute git operation (push/pull) in background
+    GitOperation {
+        operation: GitOperationType,
+        repo_path: PathBuf,
+    },
 
     // === Clipboard ===
     /// Copy text to clipboard

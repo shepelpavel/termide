@@ -834,6 +834,38 @@ impl Translation for RuntimeTranslation {
         self.get_string("git_status_untracked").to_string()
     }
 
+    fn git_push_success(&self) -> String {
+        self.get_string("git_push_success").to_string()
+    }
+
+    fn git_push_failed(&self) -> String {
+        self.get_string("git_push_failed").to_string()
+    }
+
+    fn git_pull_success(&self) -> String {
+        self.get_string("git_pull_success").to_string()
+    }
+
+    fn git_pull_failed(&self) -> String {
+        self.get_string("git_pull_failed").to_string()
+    }
+
+    fn git_output(&self) -> String {
+        self.get_string("git_output").to_string()
+    }
+
+    fn git_error(&self) -> String {
+        self.get_string("git_error").to_string()
+    }
+
+    fn git_status_label(&self) -> String {
+        self.get_string("git_status_label").to_string()
+    }
+
+    fn git_completed(&self) -> String {
+        self.get_string("git_completed").to_string()
+    }
+
     fn preferences_themes(&self) -> &str {
         self.get_string("preferences_themes")
     }

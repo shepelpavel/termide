@@ -158,6 +158,8 @@ pub struct UiState {
     pub tools_submenu_open: bool,
     /// Selected item in Tools submenu
     pub selected_tools_item: usize,
+    /// Is git operation (push/pull) in progress
+    pub git_operation_in_progress: bool,
 }
 
 /// Terminal state (dimensions)

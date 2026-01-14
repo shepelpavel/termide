@@ -19,7 +19,8 @@ use termide_config::{
     matches_binding_or_default, matches_binding_or_defaults, Config, GitStatusKeybindings,
 };
 use termide_core::{
-    CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel, ThemeColors,
+    CommandResult, GitOperationType, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel,
+    ThemeColors,
 };
 use termide_git::{self as git, truncate_to_width, RepoManager, StagedFile, UnstagedFile};
 use termide_modal::{ActionButton, ActiveModal, InfoActionModal};
@@ -776,9 +777,9 @@ impl GitStatusPanel {
             }
             Button::Pull => {
                 if let Some(repo) = self.repo_manager.current() {
-                    vec![PanelEvent::RunCommand {
-                        command: "git pull".to_string(),
-                        cwd: Some(repo.to_path_buf()),
+                    vec![PanelEvent::GitOperation {
+                        operation: GitOperationType::Pull,
+                        repo_path: repo.to_path_buf(),
                     }]
                 } else {
                     vec![]
@@ -786,9 +787,9 @@ impl GitStatusPanel {
             }
             Button::Push => {
                 if let Some(repo) = self.repo_manager.current() {
-                    vec![PanelEvent::RunCommand {
-                        command: "git push".to_string(),
-                        cwd: Some(repo.to_path_buf()),
+                    vec![PanelEvent::GitOperation {
+                        operation: GitOperationType::Push,
+                        repo_path: repo.to_path_buf(),
                     }]
                 } else {
                     vec![]

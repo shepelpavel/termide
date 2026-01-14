@@ -10,8 +10,8 @@ pub mod util;
 
 pub use command::{CommandResult, PanelCommand};
 pub use event::{
-    ConfirmAction, ConflictResolution, Event, EventHandler, InputAction, PanelEvent, SelectAction,
-    SplitDirection,
+    ConfirmAction, ConflictResolution, Event, EventHandler, GitOperationType, InputAction,
+    PanelEvent, SelectAction, SplitDirection,
 };
 pub use panel::{Panel, PanelConfig, RenderContext, SessionPanel, ThemeColors};
 

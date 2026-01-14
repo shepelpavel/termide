@@ -244,6 +244,16 @@ pub trait Translation: Send + Sync {
     fn git_status_renamed(&self) -> String;
     fn git_status_untracked(&self) -> String;
 
+    // Git operation result messages
+    fn git_push_success(&self) -> String;
+    fn git_push_failed(&self) -> String;
+    fn git_pull_success(&self) -> String;
+    fn git_pull_failed(&self) -> String;
+    fn git_output(&self) -> String;
+    fn git_error(&self) -> String;
+    fn git_status_label(&self) -> String;
+    fn git_completed(&self) -> String;
+
     // Preferences submenu
     fn preferences_themes(&self) -> &str;
     fn preferences_edit(&self) -> &str;
