@@ -316,10 +316,11 @@ impl Modal for InfoModal {
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<Option<ModalResult<Self::Result>>> {
-        // Close on any key
+        // Close only on Escape or Enter
         match key.code {
             KeyCode::Esc => Ok(Some(ModalResult::Cancelled)),
-            _ => Ok(Some(ModalResult::Confirmed(()))),
+            KeyCode::Enter => Ok(Some(ModalResult::Confirmed(()))),
+            _ => Ok(None),
         }
     }
 
