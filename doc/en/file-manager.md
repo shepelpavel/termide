@@ -28,7 +28,7 @@ The file manager panel provides an intuitive interface for navigating the file s
 
 | Shortcut           | Action                                     |
 |-------------------|--------------------------------------------|
-| `F`               | Create new file                            |
+| `Ctrl+N` / `F`    | Create new file                            |
 | `D` / `F7`        | Create new directory                       |
 | `Delete` / `F8`   | Delete selected files/directories          |
 | `C` / `F5`        | Copy selected files/directories            |

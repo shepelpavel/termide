@@ -1,6 +1,6 @@
 # Темы
 
-TermIDE поставляется с 12 встроенными темами и поддерживает пользовательские темы. Вы можете переключать темы редактируя файл конфигурации.
+TermIDE поставляется с 20 встроенными темами и поддерживает пользовательские темы. Вы можете переключать темы редактируя файл конфигурации.
 
 ## Встроенные темы
 
@@ -8,13 +8,14 @@ TermIDE поставляется с 12 встроенными темами и п
 
 | Название темы | Описание |
 |--------------|----------|
-| `default` | Стандартная тёмная тема с зелёными акцентами |
-| `midnight` | Классическая синяя тема в стиле Midnight Commander |
+| `windows-xp` | Стандартная тема (стиль Windows XP) |
 | `dracula` | Популярная тема Dracula с фиолетовыми акцентами |
-| `onedark` | Тема Atom One Dark |
 | `monokai` | Классическая тема Monokai с яркими цветами |
 | `nord` | Тема Nord с холодными синими тонами |
+| `onedark` | Тема Atom One Dark |
 | `solarized-dark` | Тёмный вариант цветовой схемы Solarized |
+| `midnight` | Классическая синяя тема в стиле Midnight Commander |
+| `macos-dark` | Тема в стиле macOS dark |
 
 ### Светлые темы
 
@@ -25,6 +26,18 @@ TermIDE поставляется с 12 встроенными темами и п
 | `github-light` | Тема GitHub Light |
 | `material-lighter` | Тема Material Lighter |
 | `solarized-light` | Светлый вариант цветовой схемы Solarized |
+| `macos-light` | Тема в стиле macOS light |
+
+### Ретро-темы
+
+| Название темы | Описание |
+|--------------|----------|
+| `far-manager` | Тема в стиле FAR Manager |
+| `norton-commander` | Тема в стиле Norton Commander |
+| `dos-navigator` | Тема в стиле DOS Navigator |
+| `volkov-commander` | Тема в стиле Volkov Commander |
+| `windows-95` | Тема в стиле Windows 95 |
+| `windows-98` | Тема в стиле Windows 98 |
 
 ## Переключение тем
 

@@ -1,6 +1,6 @@
 # Themes
 
-TermIDE comes with 12 built-in themes and supports custom user themes. You can switch themes by editing the configuration file.
+TermIDE comes with 20 built-in themes and supports custom user themes. You can switch themes by editing the configuration file.
 
 ## Built-in Themes
 
@@ -8,13 +8,14 @@ TermIDE comes with 12 built-in themes and supports custom user themes. You can s
 
 | Theme Name | Description |
 |-----------|-------------|
-| `default` | Default dark theme with green accents |
-| `midnight` | Midnight Commander inspired classic blue theme |
+| `windows-xp` | Default theme (Windows XP style) |
 | `dracula` | Popular Dracula theme with purple accents |
-| `onedark` | Atom One Dark theme |
 | `monokai` | Classic Monokai theme with vibrant colors |
 | `nord` | Nord theme with cool blue tones |
+| `onedark` | Atom One Dark theme |
 | `solarized-dark` | Dark variant of the Solarized color scheme |
+| `midnight` | Midnight Commander inspired classic blue theme |
+| `macos-dark` | macOS dark style theme |
 
 ### Light Themes
 
@@ -25,6 +26,18 @@ TermIDE comes with 12 built-in themes and supports custom user themes. You can s
 | `github-light` | GitHub Light theme |
 | `material-lighter` | Material Lighter theme |
 | `solarized-light` | Light variant of the Solarized color scheme |
+| `macos-light` | macOS light style theme |
+
+### Retro Themes
+
+| Theme Name | Description |
+|-----------|-------------|
+| `far-manager` | FAR Manager style theme |
+| `norton-commander` | Norton Commander style theme |
+| `dos-navigator` | DOS Navigator style theme |
+| `volkov-commander` | Volkov Commander style theme |
+| `windows-95` | Windows 95 style theme |
+| `windows-98` | Windows 98 style theme |
 
 ## Switching Themes
 
