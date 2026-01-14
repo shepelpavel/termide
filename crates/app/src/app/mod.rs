@@ -196,6 +196,9 @@ impl App {
                     // Check pending git diff updates (debounced)
                     self.check_pending_git_diff_updates();
 
+                    // Check background git operation result (push/pull)
+                    self.check_git_operation_result();
+
                     // Update system resource monitoring (CPU, RAM)
                     self.update_system_resources();
 
@@ -456,6 +459,81 @@ impl App {
                     self.state.last_spinner_update = Some(std::time::Instant::now());
                     self.state.needs_redraw = true;
                 }
+            }
+        }
+    }
+
+    /// Check for background git operation result (push/pull)
+    fn check_git_operation_result(&mut self) {
+        use crate::state::ActiveModal;
+        use std::sync::mpsc::TryRecvError;
+        use termide_core::PanelCommand;
+        use termide_modal::InfoModal;
+
+        let rx = match self.state.git_operation_receiver.take() {
+            Some(rx) => rx,
+            None => return,
+        };
+
+        match rx.try_recv() {
+            Ok(result) => {
+                self.state.ui.git_operation_in_progress = false;
+                self.state.clear_status();
+                // Notify all panels about git operation completed (shows Push/Pull buttons)
+                self.notify_git_operation_state(false);
+
+                // Show result modal
+                let t = termide_i18n::t();
+                let title = if result.success {
+                    if result.operation == "push" {
+                        t.git_push_success()
+                    } else {
+                        t.git_pull_success()
+                    }
+                } else if result.operation == "push" {
+                    t.git_push_failed()
+                } else {
+                    t.git_pull_failed()
+                };
+
+                let mut lines = vec![];
+                if !result.stdout.trim().is_empty() {
+                    lines.push((t.git_output(), result.stdout.trim().to_string()));
+                }
+                if !result.stderr.trim().is_empty() {
+                    let label = if result.success {
+                        t.git_output()
+                    } else {
+                        t.git_error()
+                    };
+                    lines.push((label, result.stderr.trim().to_string()));
+                }
+                if lines.is_empty() {
+                    lines.push((t.git_status_label(), t.git_completed()));
+                }
+
+                let modal = InfoModal::new(title, lines);
+                self.state.active_modal = Some(ActiveModal::Info(Box::new(modal)));
+                self.state.needs_redraw = true;
+
+                // Refresh all git panels
+                for panel in self.layout_manager.iter_all_panels_mut() {
+                    panel.handle_command(PanelCommand::Reload);
+                }
+            }
+            Err(TryRecvError::Empty) => {
+                // Operation still in progress, put receiver back
+                self.state.git_operation_receiver = Some(rx);
+                // Advance spinner frame for animation
+                self.state.ui.spinner_frame = self.state.ui.spinner_frame.wrapping_add(1);
+                self.state.needs_redraw = true;
+            }
+            Err(TryRecvError::Disconnected) => {
+                // Thread finished without sending (shouldn't happen)
+                self.state.ui.git_operation_in_progress = false;
+                self.state.clear_status();
+                // Notify all panels about git operation completed (shows Push/Pull buttons)
+                self.notify_git_operation_state(false);
             }
         }
     }

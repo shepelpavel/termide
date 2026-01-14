@@ -354,6 +354,8 @@ fn render_status_bar_for_active(
             terminal_width: state.terminal.width,
             terminal_height: state.terminal.height,
             recommended_layout: state.get_recommended_layout(),
+            git_operation_in_progress: state.ui.git_operation_in_progress,
+            spinner_frame: state.ui.spinner_frame,
         };
         StatusBar::render(
             frame.buffer_mut(),

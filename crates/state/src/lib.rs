@@ -160,6 +160,8 @@ pub struct UiState {
     pub selected_tools_item: usize,
     /// Is git operation (push/pull) in progress
     pub git_operation_in_progress: bool,
+    /// Spinner frame for animated loading indicators
+    pub spinner_frame: usize,
 }
 
 /// Terminal state (dimensions)

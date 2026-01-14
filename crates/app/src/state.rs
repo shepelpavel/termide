@@ -27,6 +27,19 @@ pub use termide_state::{
 // Re-export ActiveModal from modal crate
 pub use termide_modal::ActiveModal;
 
+/// Result of background git operation (push/pull)
+#[derive(Debug)]
+pub struct GitOperationResult {
+    /// Operation type: "push" or "pull"
+    pub operation: String,
+    /// Whether the operation succeeded
+    pub success: bool,
+    /// Standard output
+    pub stdout: String,
+    /// Standard error
+    pub stderr: String,
+}
+
 /// Global application state
 #[derive(Debug)]
 pub struct AppState {
@@ -46,6 +59,8 @@ pub struct AppState {
     pub pending_action: Option<PendingAction>,
     /// Receiver channel for background directory size calculation results
     pub dir_size_receiver: Option<mpsc::Receiver<DirSizeResult>>,
+    /// Receiver channel for background git operation results
+    pub git_operation_receiver: Option<mpsc::Receiver<GitOperationResult>>,
     /// Unified watcher for filesystem and git changes
     pub watcher: Option<UnifiedWatcher>,
     /// Current theme
@@ -98,6 +113,7 @@ impl AppState {
             active_modal: None,
             pending_action: None,
             dir_size_receiver: None,
+            git_operation_receiver: None,
             watcher: None,
             theme,
             config,

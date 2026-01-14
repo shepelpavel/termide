@@ -86,6 +86,15 @@ pub enum PanelCommand<'a> {
     /// Refresh file manager directory listing.
     /// Response: `CommandResult::NeedsRedraw(bool)`
     RefreshDirectory,
+
+    // === Git operation state ===
+    /// Notify panel about git operation in progress state.
+    /// Used to hide Push/Pull buttons during background git operations.
+    /// Response: `CommandResult::NeedsRedraw(bool)`
+    SetGitOperationInProgress {
+        /// Whether git operation is in progress
+        in_progress: bool,
+    },
 }
 
 /// Result of handling a panel command.

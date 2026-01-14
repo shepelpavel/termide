@@ -699,15 +699,16 @@ impl App {
         }
     }
 
-    /// Handle GitOperation event - run git push/pull in background and show result modal
+    /// Handle GitOperation event - run git push/pull in background thread
     fn event_git_operation(
         &mut self,
         operation: GitOperationType,
         repo_path: PathBuf,
     ) -> Result<()> {
-        use crate::state::ActiveModal;
+        use crate::state::GitOperationResult;
         use std::process::Command;
-        use termide_modal::InfoModal;
+        use std::sync::mpsc;
+        use std::thread;
 
         // Prevent multiple concurrent operations
         if self.state.ui.git_operation_in_progress {
@@ -715,84 +716,63 @@ impl App {
             return Ok(());
         }
         self.state.ui.git_operation_in_progress = true;
+        // Notify all panels about git operation starting (hides Push/Pull buttons)
+        self.notify_git_operation_state(true);
 
         let cmd = match operation {
             GitOperationType::Push => "push",
             GitOperationType::Pull => "pull",
         };
 
+        // Show status message with spinner
+        let t = i18n::t();
+        let msg = match operation {
+            GitOperationType::Push => t.git_push_in_progress(),
+            GitOperationType::Pull => t.git_pull_in_progress(),
+        };
+        self.state.set_info(msg);
+
         logger::info(format!("Running git {} in {:?}", cmd, repo_path));
 
-        let output = Command::new("git")
-            .arg(cmd)
-            .current_dir(&repo_path)
-            .output();
+        // Spawn background thread
+        let (tx, rx) = mpsc::channel();
+        let cmd_str = cmd.to_string();
 
-        self.state.ui.git_operation_in_progress = false;
+        thread::spawn(move || {
+            let output = Command::new("git")
+                .arg(&cmd_str)
+                .current_dir(&repo_path)
+                .output();
 
-        match output {
-            Ok(output) => {
-                let success = output.status.success();
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                let stderr = String::from_utf8_lossy(&output.stderr);
+            let result = match output {
+                Ok(out) => GitOperationResult {
+                    operation: cmd_str,
+                    success: out.status.success(),
+                    stdout: String::from_utf8_lossy(&out.stdout).to_string(),
+                    stderr: String::from_utf8_lossy(&out.stderr).to_string(),
+                },
+                Err(e) => GitOperationResult {
+                    operation: cmd_str,
+                    success: false,
+                    stdout: String::new(),
+                    stderr: e.to_string(),
+                },
+            };
+            let _ = tx.send(result);
+        });
 
-                let t = i18n::t();
-                let title = if success {
-                    match operation {
-                        GitOperationType::Push => t.git_push_success(),
-                        GitOperationType::Pull => t.git_pull_success(),
-                    }
-                } else {
-                    match operation {
-                        GitOperationType::Push => t.git_push_failed(),
-                        GitOperationType::Pull => t.git_pull_failed(),
-                    }
-                };
-
-                let mut lines = vec![];
-                if !stdout.trim().is_empty() {
-                    lines.push((t.git_output(), stdout.trim().to_string()));
-                }
-                if !stderr.trim().is_empty() {
-                    let label = if success {
-                        t.git_output()
-                    } else {
-                        t.git_error()
-                    };
-                    lines.push((label, stderr.trim().to_string()));
-                }
-                if lines.is_empty() {
-                    lines.push((t.git_status_label(), t.git_completed()));
-                }
-
-                let modal = InfoModal::new(title, lines);
-                self.state.active_modal = Some(ActiveModal::Info(Box::new(modal)));
-
-                // Refresh git status after operation
-                self.refresh_all_git_panels();
-            }
-            Err(e) => {
-                let t = i18n::t();
-                let title = match operation {
-                    GitOperationType::Push => t.git_push_failed(),
-                    GitOperationType::Pull => t.git_pull_failed(),
-                };
-                let modal = InfoModal::new(title, vec![(t.git_error(), e.to_string())]);
-                self.state.active_modal = Some(ActiveModal::Info(Box::new(modal)));
-            }
-        }
+        // Store receiver for polling in main loop
+        self.state.git_operation_receiver = Some(rx);
 
         Ok(())
     }
 
-    /// Refresh all git panels after git operation
-    fn refresh_all_git_panels(&mut self) {
-        for group in &mut self.layout_manager.panel_groups {
-            for panel in group.panels_mut() {
-                if let Some(git_status) = panel.as_git_status_mut() {
-                    git_status.refresh();
-                }
-            }
+    /// Notify all panels about git operation in progress state
+    pub(super) fn notify_git_operation_state(&mut self, in_progress: bool) {
+        use termide_core::PanelCommand;
+
+        for panel in self.layout_manager.iter_all_panels_mut() {
+            panel.handle_command(PanelCommand::SetGitOperationInProgress { in_progress });
         }
     }
 }

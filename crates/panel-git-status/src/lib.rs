@@ -137,6 +137,8 @@ pub struct GitStatusPanel {
     modal_request: Option<(termide_state::PendingAction, termide_modal::ActiveModal)>,
     /// Loading indicator flag
     is_loading: bool,
+    /// Whether git operation (push/pull) is in progress
+    git_operation_in_progress: bool,
 }
 
 impl GitStatusPanel {
@@ -174,6 +176,7 @@ impl GitStatusPanel {
             click_tracker: IndexClickTracker::new(),
             modal_request: None,
             is_loading: false,
+            git_operation_in_progress: false,
         };
 
         panel.refresh();
@@ -214,6 +217,7 @@ impl GitStatusPanel {
             click_tracker: IndexClickTracker::new(),
             modal_request: None,
             is_loading: false,
+            git_operation_in_progress: false,
         };
 
         panel.refresh();
@@ -735,14 +739,17 @@ impl GitStatusPanel {
             buttons.push(Button::Commit);
         }
 
-        // Push - only if ahead > 0
-        if self.ahead > 0 {
-            buttons.push(Button::Push);
-        }
+        // Push/Pull - only if not currently in progress
+        if !self.git_operation_in_progress {
+            // Push - only if ahead > 0
+            if self.ahead > 0 {
+                buttons.push(Button::Push);
+            }
 
-        // Pull - only if behind > 0
-        if self.behind > 0 {
-            buttons.push(Button::Pull);
+            // Pull - only if behind > 0
+            if self.behind > 0 {
+                buttons.push(Button::Pull);
+            }
         }
 
         buttons
@@ -1521,6 +1528,18 @@ impl Panel for GitStatusPanel {
                         self.refresh();
                         return CommandResult::NeedsRedraw(true);
                     }
+                }
+                CommandResult::NeedsRedraw(false)
+            }
+            PanelCommand::SetGitOperationInProgress { in_progress } => {
+                if self.git_operation_in_progress != in_progress {
+                    self.git_operation_in_progress = in_progress;
+                    // Adjust selected button if Push/Pull disappeared
+                    let buttons = self.get_visible_buttons();
+                    if self.selected_button >= buttons.len() {
+                        self.selected_button = buttons.len().saturating_sub(1);
+                    }
+                    return CommandResult::NeedsRedraw(true);
                 }
                 CommandResult::NeedsRedraw(false)
             }

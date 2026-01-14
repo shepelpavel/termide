@@ -2130,7 +2130,8 @@ impl Panel for Editor {
             // Commands not applicable to Editor
             PanelCommand::SetFsWatchRoot { .. }
             | PanelCommand::Resize { .. }
-            | PanelCommand::RefreshDirectory => CommandResult::None,
+            | PanelCommand::RefreshDirectory
+            | PanelCommand::SetGitOperationInProgress { .. } => CommandResult::None,
         }
     }
 

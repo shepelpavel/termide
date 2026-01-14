@@ -19,6 +19,9 @@ use termide_theme::Theme;
 
 use super::menu::resource_color;
 
+/// Spinner frames for animated loading indicator
+const SPINNER_FRAMES: [char; 6] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴'];
+
 /// Status bar rendering parameters (extracted from AppState to avoid cyclic deps)
 pub struct StatusBarParams<'a> {
     /// Theme reference
@@ -30,6 +33,10 @@ pub struct StatusBarParams<'a> {
     pub terminal_height: u16,
     /// Recommended layout string (for Debug panel)
     pub recommended_layout: &'a str,
+    /// Whether git operation is in progress (for spinner)
+    pub git_operation_in_progress: bool,
+    /// Spinner frame index (for animation)
+    pub spinner_frame: usize,
 }
 
 /// Calculate width of spans accounting for unicode characters.
@@ -137,7 +144,7 @@ impl StatusBar {
         let theme = params.theme;
 
         // If there's an ERROR message, show it with priority
-        // Info messages don't block file_info display
+        // Info messages don't block file_info display (unless git operation in progress)
         if let Some((message, is_error)) = params.status_message {
             if *is_error {
                 let msg_style = Style::default()
@@ -145,6 +152,20 @@ impl StatusBar {
                     .add_modifier(Modifier::BOLD);
 
                 return vec![Span::styled(format!(" {} ", message), msg_style)];
+            }
+
+            // Show info message with spinner if git operation is in progress
+            if params.git_operation_in_progress {
+                let spinner = SPINNER_FRAMES[params.spinner_frame % SPINNER_FRAMES.len()];
+                let msg_style = Style::default()
+                    .fg(theme.accented_fg)
+                    .bg(theme.accented_bg)
+                    .add_modifier(Modifier::BOLD);
+
+                return vec![Span::styled(
+                    format!(" {} {} ", spinner, message),
+                    msg_style,
+                )];
             }
         }
 

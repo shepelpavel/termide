@@ -1496,7 +1496,8 @@ impl Panel for Terminal {
             | PanelCommand::GetModificationStatus
             | PanelCommand::Save
             | PanelCommand::CloseWithoutSaving
-            | PanelCommand::RefreshDirectory => CommandResult::None,
+            | PanelCommand::RefreshDirectory
+            | PanelCommand::SetGitOperationInProgress { .. } => CommandResult::None,
         }
     }
 

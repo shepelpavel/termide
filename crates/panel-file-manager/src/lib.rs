@@ -1359,7 +1359,8 @@ impl Panel for FileManager {
             | PanelCommand::Resize { .. }
             | PanelCommand::GetModificationStatus
             | PanelCommand::Save
-            | PanelCommand::CloseWithoutSaving => CommandResult::None,
+            | PanelCommand::CloseWithoutSaving
+            | PanelCommand::SetGitOperationInProgress { .. } => CommandResult::None,
         }
     }
 
