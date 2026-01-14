@@ -208,22 +208,6 @@ pub enum Message {
         /// New height in rows
         height: u16,
     },
-
-    /// Terminal focus changed
-    FocusChange {
-        /// Whether the terminal has focus
-        focused: bool,
-    },
-
-    // === Deferred operations ===
-    /// Request to refresh panels for given paths
-    RefreshPanels {
-        /// Paths that need refreshing
-        paths: Vec<PathBuf>,
-    },
-
-    /// Request to save current session
-    SaveSession,
 }
 
 /// Trait for receiving messages from background tasks.

@@ -11,7 +11,7 @@ use unicode_width::UnicodeWidthStr;
 
 use termide_config::Config;
 use termide_core::{Panel, PanelEvent, RenderContext, SessionPanel, ThemeColors};
-use termide_git::{self as git, CommitInfo};
+use termide_git::{self as git, truncate_to_width, CommitInfo, RepoManager};
 use termide_theme::Theme;
 use termide_ui::ScrollBar;
 
@@ -26,10 +26,8 @@ pub enum Section {
 
 /// Git Log Panel
 pub struct GitLogPanel {
-    /// Available repositories
-    repos: Vec<PathBuf>,
-    /// Currently selected repository index
-    selected_repo: usize,
+    /// Repository manager
+    repo_manager: RepoManager,
     /// Current section
     current_section: Section,
     /// Current branch name
@@ -53,12 +51,8 @@ pub struct GitLogPanel {
 impl GitLogPanel {
     /// Create a new Git Log panel from a list of paths (from panels/session)
     pub fn new(paths: &[PathBuf]) -> Self {
-        // Find all repos based on paths from panels
-        let repos = git::find_repos_from_paths(paths, 2);
-
         let mut panel = Self {
-            repos,
-            selected_repo: 0,
+            repo_manager: RepoManager::new(paths),
             current_section: Section::Commits,
             branch: None,
             commits: Vec::new(),
@@ -77,8 +71,7 @@ impl GitLogPanel {
     /// Create panel for a specific repository (used for session restore)
     pub fn new_for_repo(repo_path: PathBuf) -> Self {
         let mut panel = Self {
-            repos: vec![repo_path],
-            selected_repo: 0,
+            repo_manager: RepoManager::for_repo(repo_path),
             current_section: Section::Commits,
             branch: None,
             commits: Vec::new(),
@@ -94,31 +87,16 @@ impl GitLogPanel {
         panel
     }
 
-    /// Get current repository path
-    fn current_repo(&self) -> Option<&Path> {
-        self.repos.get(self.selected_repo).map(|p| p.as_path())
-    }
-
     /// Update repository list based on new paths from panels
     pub fn update_repos(&mut self, paths: &[PathBuf]) {
-        let current_repo = self.current_repo().map(|p| p.to_path_buf());
-        let new_repos = git::find_repos_from_paths(paths, 2);
-
-        if new_repos != self.repos {
-            self.repos = new_repos;
-            // Try to keep the same repo selected
-            if let Some(current) = current_repo {
-                self.selected_repo = self.repos.iter().position(|r| r == &current).unwrap_or(0);
-            } else {
-                self.selected_repo = 0;
-            }
+        if self.repo_manager.update(paths) {
             self.refresh();
         }
     }
 
     /// Refresh the commit log
     pub fn refresh(&mut self) {
-        let Some(repo) = self.current_repo() else {
+        let Some(repo) = self.repo_manager.current() else {
             return;
         };
         let repo = repo.to_path_buf();
@@ -139,7 +117,7 @@ impl GitLogPanel {
         self.current_section = match self.current_section {
             Section::RepoSelector => Section::Commits,
             Section::Commits => {
-                if self.repos.len() > 1 {
+                if self.repo_manager.has_multiple() {
                     Section::RepoSelector
                 } else {
                     Section::Commits
@@ -153,7 +131,7 @@ impl GitLogPanel {
         self.current_section = match self.current_section {
             Section::RepoSelector => Section::Commits,
             Section::Commits => {
-                if self.repos.len() > 1 {
+                if self.repo_manager.has_multiple() {
                     Section::RepoSelector
                 } else {
                     Section::Commits
@@ -241,7 +219,7 @@ impl GitLogPanel {
             return vec![];
         }
 
-        let Some(repo) = self.current_repo() else {
+        let Some(repo) = self.repo_manager.current() else {
             return vec![];
         };
 
@@ -280,7 +258,7 @@ impl GitLogPanel {
             Style::default().fg(theme.fg)
         };
 
-        if let Some(repo) = self.current_repo() {
+        if let Some(repo) = self.repo_manager.current() {
             let name = git::get_repo_name(repo);
             let text = format!("[{}]", name);
             buf.set_string(x, y, &text, style);
@@ -311,7 +289,7 @@ impl GitLogPanel {
         let mut y_offset = 0u16;
 
         // Render repo selector if multiple repos
-        if self.repos.len() > 1 {
+        if self.repo_manager.has_multiple() {
             self.render_repo_selector(
                 content_area.x,
                 content_area.y,
@@ -594,23 +572,6 @@ fn truncate_str(s: &str, max: usize) -> String {
     }
 }
 
-/// Truncate string to max display width
-fn truncate_to_width(s: &str, max_width: usize) -> String {
-    let mut result = String::new();
-    let mut width = 0;
-
-    for c in s.chars() {
-        let char_width = unicode_width::UnicodeWidthChar::width(c).unwrap_or(0);
-        if width + char_width > max_width {
-            break;
-        }
-        result.push(c);
-        width += char_width;
-    }
-
-    result
-}
-
 impl Panel for GitLogPanel {
     fn name(&self) -> &'static str {
         "git_log"
@@ -618,7 +579,8 @@ impl Panel for GitLogPanel {
 
     fn title(&self) -> String {
         let repo_name = self
-            .current_repo()
+            .repo_manager
+            .current()
             .map(git::get_repo_name)
             .unwrap_or_else(|| "No repo".to_string());
         let branch = self.branch.as_deref().unwrap_or("(detached)");
@@ -650,8 +612,8 @@ impl Panel for GitLogPanel {
             }
             KeyCode::Up | KeyCode::Char('k') => match self.current_section {
                 Section::RepoSelector => {
-                    if self.selected_repo > 0 {
-                        self.selected_repo -= 1;
+                    if self.repo_manager.selected_index() > 0 {
+                        self.repo_manager.select_prev();
                         self.selected = 0;
                         self.refresh();
                     }
@@ -660,8 +622,8 @@ impl Panel for GitLogPanel {
             },
             KeyCode::Down | KeyCode::Char('j') => match self.current_section {
                 Section::RepoSelector => {
-                    if self.selected_repo + 1 < self.repos.len() {
-                        self.selected_repo += 1;
+                    if self.repo_manager.selected_index() + 1 < self.repo_manager.len() {
+                        self.repo_manager.select_next();
                         self.selected = 0;
                         self.refresh();
                     }
@@ -727,9 +689,11 @@ impl Panel for GitLogPanel {
     }
 
     fn to_session(&self, _session_dir: &Path) -> Option<SessionPanel> {
-        self.current_repo().map(|repo| SessionPanel::GitLog {
-            repo_path: repo.to_path_buf(),
-        })
+        self.repo_manager
+            .current()
+            .map(|repo| SessionPanel::GitLog {
+                repo_path: repo.to_path_buf(),
+            })
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -741,6 +705,6 @@ impl Panel for GitLogPanel {
     }
 
     fn get_working_directory(&self) -> Option<PathBuf> {
-        self.current_repo().map(|p| p.to_path_buf())
+        self.repo_manager.current().map(|p| p.to_path_buf())
     }
 }

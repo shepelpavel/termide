@@ -13,7 +13,7 @@ use ratatui::{
     layout::Rect,
     style::{Color, Modifier, Style},
 };
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use unicode_width::UnicodeWidthStr;
 
 use termide_config::{
     matches_binding_or_default, matches_binding_or_defaults, Config, GitStatusKeybindings,
@@ -21,7 +21,7 @@ use termide_config::{
 use termide_core::{
     CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel, ThemeColors,
 };
-use termide_git::{self as git, StagedFile, UnstagedFile};
+use termide_git::{self as git, truncate_to_width, RepoManager, StagedFile, UnstagedFile};
 use termide_modal::{ActionButton, ActiveModal, InfoActionModal};
 use termide_state::PendingAction;
 use termide_theme::Theme;
@@ -74,10 +74,8 @@ impl Button {
 
 /// Git Status Panel
 pub struct GitStatusPanel {
-    /// Available repositories in session
-    repos: Vec<PathBuf>,
-    /// Currently selected repository index
-    selected_repo: usize,
+    /// Repository manager
+    repo_manager: RepoManager,
     /// Current branch name
     branch: Option<String>,
     /// Available branches for current repo
@@ -143,12 +141,8 @@ pub struct GitStatusPanel {
 impl GitStatusPanel {
     /// Create a new Git Status panel from a list of paths (from panels/session)
     pub fn new(paths: &[PathBuf]) -> Self {
-        // Find all repos based on paths from panels
-        let repos = git::find_repos_from_paths(paths, 2);
-
         let mut panel = Self {
-            repos,
-            selected_repo: 0,
+            repo_manager: RepoManager::new(paths),
             branch: None,
             branches: Vec::new(),
             ahead: 0,
@@ -188,8 +182,7 @@ impl GitStatusPanel {
     /// Create panel for a specific repository
     pub fn new_for_repo(repo_path: PathBuf) -> Self {
         let mut panel = Self {
-            repos: vec![repo_path],
-            selected_repo: 0,
+            repo_manager: RepoManager::for_repo(repo_path),
             branch: None,
             branches: Vec::new(),
             ahead: 0,
@@ -226,24 +219,9 @@ impl GitStatusPanel {
         panel
     }
 
-    /// Get current repository path
-    fn current_repo(&self) -> Option<&Path> {
-        self.repos.get(self.selected_repo).map(|p| p.as_path())
-    }
-
     /// Update repository list based on new paths from panels
     pub fn update_repos(&mut self, paths: &[PathBuf]) {
-        let current_repo = self.current_repo().map(|p| p.to_path_buf());
-        let new_repos = git::find_repos_from_paths(paths, 2);
-
-        if new_repos != self.repos {
-            self.repos = new_repos;
-            // Try to keep the same repo selected
-            if let Some(current) = current_repo {
-                self.selected_repo = self.repos.iter().position(|r| r == &current).unwrap_or(0);
-            } else {
-                self.selected_repo = 0;
-            }
+        if self.repo_manager.update(paths) {
             self.refresh();
         }
     }
@@ -252,8 +230,8 @@ impl GitStatusPanel {
     pub fn refresh(&mut self) {
         self.is_loading = true;
 
-        let repo = match self.repos.get(self.selected_repo) {
-            Some(r) => r.clone(),
+        let repo = match self.repo_manager.current() {
+            Some(r) => r.to_path_buf(),
             None => {
                 self.is_loading = false;
                 return;
@@ -445,7 +423,7 @@ impl GitStatusPanel {
         if files.is_empty() {
             return;
         }
-        if let Some(repo) = self.current_repo() {
+        if let Some(repo) = self.repo_manager.current() {
             match op(repo, &files) {
                 Ok(()) => {
                     self.status_message = Some(format!("{} {} file(s)", action, files.len()));
@@ -529,7 +507,7 @@ impl GitStatusPanel {
             return vec![];
         };
 
-        let Some(repo_path) = self.current_repo().map(|p| p.to_path_buf()) else {
+        let Some(repo_path) = self.repo_manager.current().map(|p| p.to_path_buf()) else {
             return vec![];
         };
 
@@ -572,7 +550,7 @@ impl GitStatusPanel {
     /// Switch to a different branch
     fn switch_to_branch(&mut self, branch_idx: usize) {
         if let Some(branch_name) = self.branches.get(branch_idx) {
-            if let Some(repo) = self.current_repo() {
+            if let Some(repo) = self.repo_manager.current() {
                 let branch_name = branch_name.clone();
                 match git::checkout_branch(repo, &branch_name) {
                     Ok(()) => {
@@ -637,7 +615,7 @@ impl GitStatusPanel {
         match self.current_section {
             Section::RepoSelector => {
                 if self.repo_dropdown_open {
-                    if self.dropdown_cursor + 1 < self.repos.len() {
+                    if self.dropdown_cursor + 1 < self.repo_manager.len() {
                         self.dropdown_cursor += 1;
                     }
                 } else if self.has_any_files() {
@@ -703,14 +681,14 @@ impl GitStatusPanel {
             }
             Section::RepoSelector => {
                 if self.repo_dropdown_open {
-                    if self.dropdown_cursor != self.selected_repo {
-                        self.selected_repo = self.dropdown_cursor;
+                    if self.dropdown_cursor != self.repo_manager.selected_index() {
+                        self.repo_manager.select(self.dropdown_cursor);
                         self.refresh();
                     }
                     self.repo_dropdown_open = false;
                 } else {
                     self.repo_dropdown_open = true;
-                    self.dropdown_cursor = self.selected_repo;
+                    self.dropdown_cursor = self.repo_manager.selected_index();
                 }
                 vec![]
             }
@@ -778,7 +756,7 @@ impl GitStatusPanel {
         let button = buttons[self.selected_button];
         match button {
             Button::Commit => {
-                if let Some(repo) = self.current_repo() {
+                if let Some(repo) = self.repo_manager.current() {
                     let staged_count = self.staged_files.len();
                     let repo_name = git::get_repo_name(repo);
                     let branch_name = self
@@ -797,7 +775,7 @@ impl GitStatusPanel {
                 vec![]
             }
             Button::Pull => {
-                if let Some(repo) = self.current_repo() {
+                if let Some(repo) = self.repo_manager.current() {
                     vec![PanelEvent::RunCommand {
                         command: "git pull".to_string(),
                         cwd: Some(repo.to_path_buf()),
@@ -807,7 +785,7 @@ impl GitStatusPanel {
                 }
             }
             Button::Push => {
-                if let Some(repo) = self.current_repo() {
+                if let Some(repo) = self.repo_manager.current() {
                     vec![PanelEvent::RunCommand {
                         command: "git push".to_string(),
                         cwd: Some(repo.to_path_buf()),
@@ -867,7 +845,8 @@ impl GitStatusPanel {
         self.selector_y = y;
 
         let repo_name = self
-            .current_repo()
+            .repo_manager
+            .current()
             .map(git::get_repo_name)
             .unwrap_or_else(|| "No repo".to_string());
         let repo_focused = self.current_section == Section::RepoSelector && is_focused;
@@ -1073,8 +1052,12 @@ impl GitStatusPanel {
         if self.repo_dropdown_open {
             let dropdown_y = content_area.y + 1;
             let max_dropdown_height = content_area.height.saturating_sub(3) as usize;
-            let repo_names: Vec<String> =
-                self.repos.iter().map(|p| git::get_repo_name(p)).collect();
+            let repo_names: Vec<String> = self
+                .repo_manager
+                .repos()
+                .iter()
+                .map(|p| git::get_repo_name(p))
+                .collect();
             let visible_count = repo_names.len().min(max_dropdown_height);
             let scroll_offset = if self.dropdown_cursor >= visible_count {
                 self.dropdown_cursor - visible_count + 1
@@ -1090,7 +1073,7 @@ impl GitStatusPanel {
             });
             self.render_dropdown_list(
                 &repo_names,
-                self.selected_repo,
+                self.repo_manager.selected_index(),
                 self.dropdown_cursor,
                 content_area.x,
                 dropdown_y,
@@ -1479,7 +1462,8 @@ impl Panel for GitStatusPanel {
         use termide_config::constants::LOADING_INDICATOR;
 
         let repo_name = self
-            .current_repo()
+            .repo_manager
+            .current()
             .map(git::get_repo_name)
             .unwrap_or_else(|| "No repo".to_string());
         let branch = self.branch.as_deref().unwrap_or("(detached)");
@@ -1518,7 +1502,7 @@ impl Panel for GitStatusPanel {
         match cmd {
             PanelCommand::OnGitUpdate { repo_paths } => {
                 // Check if current repo is in the updated list
-                if let Some(current_repo) = self.current_repo() {
+                if let Some(current_repo) = self.repo_manager.current() {
                     let should_refresh = repo_paths
                         .iter()
                         .any(|p| current_repo.starts_with(p) || p.starts_with(current_repo));
@@ -1531,7 +1515,7 @@ impl Panel for GitStatusPanel {
             }
             PanelCommand::OnFsUpdate { changed_path } => {
                 // Refresh on file changes within current repo
-                if let Some(current_repo) = self.current_repo() {
+                if let Some(current_repo) = self.repo_manager.current() {
                     if changed_path.starts_with(current_repo) {
                         self.refresh();
                         return CommandResult::NeedsRedraw(true);
@@ -1784,10 +1768,10 @@ impl Panel for GitStatusPanel {
                             // Calculate which item was clicked (accounting for border)
                             let relative_row = row.saturating_sub(dropdown_area.y + 1) as usize;
                             let clicked_idx = self.dropdown_scroll + relative_row;
-                            if clicked_idx < self.repos.len()
+                            if clicked_idx < self.repo_manager.len()
                                 && relative_row < dropdown_area.height.saturating_sub(2) as usize
                             {
-                                self.selected_repo = clicked_idx;
+                                self.repo_manager.select(clicked_idx);
                                 self.refresh();
                             }
                             self.repo_dropdown_open = false;
@@ -1899,7 +1883,7 @@ impl Panel for GitStatusPanel {
                         self.branch_dropdown_open = false;
                         self.repo_dropdown_open = !self.repo_dropdown_open;
                         if self.repo_dropdown_open {
-                            self.dropdown_cursor = self.selected_repo;
+                            self.dropdown_cursor = self.repo_manager.selected_index();
                         }
                     } else {
                         self.current_section = Section::BranchSelector;
@@ -1950,9 +1934,11 @@ impl Panel for GitStatusPanel {
     }
 
     fn to_session(&self, _session_dir: &Path) -> Option<SessionPanel> {
-        self.current_repo().map(|repo| SessionPanel::GitStatus {
-            repo_path: repo.to_path_buf(),
-        })
+        self.repo_manager
+            .current()
+            .map(|repo| SessionPanel::GitStatus {
+                repo_path: repo.to_path_buf(),
+            })
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -1964,23 +1950,6 @@ impl Panel for GitStatusPanel {
     }
 
     fn get_working_directory(&self) -> Option<PathBuf> {
-        self.current_repo().map(|p| p.to_path_buf())
+        self.repo_manager.current().map(|p| p.to_path_buf())
     }
-}
-
-/// Truncate a string to fit within a given display width, respecting Unicode character boundaries.
-fn truncate_to_width(s: &str, max_width: usize) -> String {
-    let mut result = String::new();
-    let mut width = 0;
-
-    for c in s.chars() {
-        let char_width = c.width().unwrap_or(0);
-        if width + char_width > max_width {
-            break;
-        }
-        result.push(c);
-        width += char_width;
-    }
-
-    result
 }

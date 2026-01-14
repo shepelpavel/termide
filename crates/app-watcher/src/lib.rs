@@ -1,9 +1,9 @@
 //! Background task coordination and message polling for termide.
 //!
 //! This crate provides:
-//! - `WatcherRegistry` trait for registering/unregistering watches
 //! - `MessageCollector` for aggregating messages from multiple sources
 //! - `UpdateThrottler` for rate-limiting updates
+//! - `DebouncedUpdateManager` for debounced path updates
 //!
 //! # Architecture
 //!
@@ -21,31 +21,6 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use termide_app_core::{FileChange, GitStatus, Message};
-
-// ============================================================================
-// Watcher Registry Trait
-// ============================================================================
-
-/// Trait for registering and unregistering filesystem watches.
-pub trait WatcherRegistry {
-    /// Register a git repository for watching.
-    fn register_git_repo(&mut self, path: &Path) -> anyhow::Result<()>;
-
-    /// Unregister a git repository from watching.
-    fn unregister_git_repo(&mut self, path: &Path);
-
-    /// Check if a git repository is being watched.
-    fn is_watching_git_repo(&self, path: &Path) -> bool;
-
-    /// Register a directory for watching (non-recursive).
-    fn register_directory(&mut self, path: &Path) -> anyhow::Result<()>;
-
-    /// Unregister a directory from watching.
-    fn unregister_directory(&mut self, path: &Path);
-
-    /// Check if a directory is being watched.
-    fn is_watching_directory(&self, path: &Path) -> bool;
-}
 
 // ============================================================================
 // Message Collector

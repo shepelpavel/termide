@@ -1,24 +1,11 @@
-//! Panel factory and lifecycle management for termide.
+//! Panel lifecycle management for termide.
 //!
 //! This crate provides:
-//! - `PanelFactory` trait for creating panel instances
 //! - `PanelLifecycle` trait for managing panel close/cleanup
 //! - `CloseDecision` enum for close confirmation results
-//!
-//! # Architecture
-//!
-//! Panel creation follows a factory pattern that abstracts the concrete
-//! panel types, enabling testability and future plugin support.
-//!
-//! ```text
-//! PanelType → PanelFactory → Box<dyn Panel>
-//!                  ↓
-//!             Configuration
-//! ```
+//! - Panel creation configuration types
 
 use std::path::PathBuf;
-
-use anyhow::Result;
 
 use termide_app_core::{Panel, PanelType};
 
@@ -93,35 +80,6 @@ impl From<PanelType> for PanelCreationConfig {
             PanelType::Welcome => PanelCreationConfig::Welcome,
         }
     }
-}
-
-// ============================================================================
-// Panel Factory Trait
-// ============================================================================
-
-/// Trait for creating panel instances.
-///
-/// Implementations provide concrete panel creation logic,
-/// allowing the app orchestrator to remain decoupled from
-/// specific panel implementations.
-pub trait PanelFactory {
-    /// Create a panel from configuration.
-    fn create(&self, config: PanelCreationConfig) -> Result<Box<dyn Panel>>;
-
-    /// Create an editor panel.
-    fn create_editor(&self, config: EditorCreationConfig) -> Result<Box<dyn Panel>>;
-
-    /// Create a terminal panel.
-    fn create_terminal(&self, config: TerminalCreationConfig) -> Result<Box<dyn Panel>>;
-
-    /// Create a file manager panel.
-    fn create_file_manager(&self, config: FileManagerCreationConfig) -> Result<Box<dyn Panel>>;
-
-    /// Create a log viewer panel.
-    fn create_log_viewer(&self) -> Result<Box<dyn Panel>>;
-
-    /// Create a welcome panel.
-    fn create_welcome(&self) -> Result<Box<dyn Panel>>;
 }
 
 // ============================================================================

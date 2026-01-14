@@ -57,9 +57,9 @@ pub use termide_app_core::{
 };
 pub use termide_app_event::{DefaultHotkeyProcessor, HotkeyAction, HotkeyProcessor};
 pub use termide_app_modal::{BatchOperationProcessor, BatchOperationState, ConflictResult};
-pub use termide_app_panel::{CloseDecision, ConfirmationType, PanelFactory, PanelLifecycle};
+pub use termide_app_panel::{CloseDecision, ConfirmationType, PanelLifecycle};
 pub use termide_app_session::{AutoSaveConfig, SessionManager, SessionState};
-pub use termide_app_watcher::{MessageCollector, UpdateThrottler, WatcherRegistry};
+pub use termide_app_watcher::{MessageCollector, UpdateThrottler};
 
 // ============================================================================
 // App Context Trait

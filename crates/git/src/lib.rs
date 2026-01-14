@@ -9,6 +9,11 @@ use std::sync::mpsc;
 use std::sync::OnceLock;
 
 pub mod diff;
+mod repo_manager;
+mod utils;
+
+pub use repo_manager::RepoManager;
+pub use utils::truncate_to_width;
 
 /// Execute a git command in the specified directory.
 /// Returns None if the command fails or git is not available.

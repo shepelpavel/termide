@@ -14,3 +14,4 @@ regex.workspace = true
 similar.workspace = true
 notify.workspace = true
 notify-debouncer-mini.workspace = true
+unicode-width.workspace = true
