@@ -178,6 +178,9 @@ pub enum PanelEvent {
         repo_path: PathBuf,
     },
 
+    /// Cancel current git operation (kill process)
+    CancelGitOperation,
+
     // === Clipboard ===
     /// Copy text to clipboard
     CopyToClipboard(String),

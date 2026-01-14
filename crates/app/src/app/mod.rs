@@ -123,7 +123,23 @@ impl App {
     }
 
     /// Add a panel (automatically stacks if width threshold is reached)
-    pub fn add_panel(&mut self, panel: Box<dyn Panel>) {
+    pub fn add_panel(&mut self, mut panel: Box<dyn Panel>) {
+        use termide_core::PanelCommand;
+
+        // Notify new panel about current git operation state
+        if self.state.ui.git_operation_in_progress {
+            let operation = self
+                .state
+                .git_operation_handle
+                .as_ref()
+                .map(|h| h.operation.clone());
+            panel.handle_command(PanelCommand::SetGitOperationInProgress {
+                in_progress: true,
+                operation,
+                spinner_frame: self.state.ui.spinner_frame,
+            });
+        }
+
         let terminal_width = self.state.terminal.width;
         let config = &self.state.config;
         self.layout_manager.add_panel(panel, config, terminal_width);
@@ -470,17 +486,17 @@ impl App {
         use termide_core::PanelCommand;
         use termide_modal::InfoModal;
 
-        let rx = match self.state.git_operation_receiver.take() {
-            Some(rx) => rx,
+        let handle = match self.state.git_operation_handle.take() {
+            Some(h) => h,
             None => return,
         };
 
-        match rx.try_recv() {
+        match handle.receiver.try_recv() {
             Ok(result) => {
                 self.state.ui.git_operation_in_progress = false;
                 self.state.clear_status();
                 // Notify all panels about git operation completed (shows Push/Pull buttons)
-                self.notify_git_operation_state(false);
+                self.notify_git_operation_state(false, None, 0);
 
                 // Show result modal
                 let t = termide_i18n::t();
@@ -522,10 +538,23 @@ impl App {
                 }
             }
             Err(TryRecvError::Empty) => {
-                // Operation still in progress, put receiver back
-                self.state.git_operation_receiver = Some(rx);
+                // Operation still in progress
                 // Advance spinner frame for animation
                 self.state.ui.spinner_frame = self.state.ui.spinner_frame.wrapping_add(1);
+
+                // Notify all panels with updated spinner frame
+                let operation = Some(handle.operation.clone());
+                let spinner_frame = self.state.ui.spinner_frame;
+                for panel in self.layout_manager.iter_all_panels_mut() {
+                    panel.handle_command(PanelCommand::SetGitOperationInProgress {
+                        in_progress: true,
+                        operation: operation.clone(),
+                        spinner_frame,
+                    });
+                }
+
+                // Put handle back
+                self.state.git_operation_handle = Some(handle);
                 self.state.needs_redraw = true;
             }
             Err(TryRecvError::Disconnected) => {
@@ -533,7 +562,7 @@ impl App {
                 self.state.ui.git_operation_in_progress = false;
                 self.state.clear_status();
                 // Notify all panels about git operation completed (shows Push/Pull buttons)
-                self.notify_git_operation_state(false);
+                self.notify_git_operation_state(false, None, 0);
             }
         }
     }
@@ -673,9 +702,8 @@ impl PanelProvider for App {
 
 impl LayoutController for App {
     fn add_panel(&mut self, panel: Box<dyn Panel>) {
-        let terminal_width = self.state.terminal.width;
-        let config = &self.state.config;
-        self.layout_manager.add_panel(panel, config, terminal_width);
+        // Use the main add_panel method which handles git operation state notification
+        App::add_panel(self, panel);
     }
 
     fn close_active(&mut self) -> Result<()> {

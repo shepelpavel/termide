@@ -61,14 +61,29 @@ pub enum Button {
     Commit,
     Pull,
     Push,
+    /// Push operation in progress (shows spinner, click cancels)
+    Pushing,
+    /// Pull operation in progress (shows spinner, click cancels)
+    Pulling,
 }
 
+/// Spinner animation frames
+const SPINNER_FRAMES: [char; 6] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴'];
+
 impl Button {
-    fn label(&self) -> &'static str {
+    fn label(&self, spinner_frame: usize) -> String {
         match self {
-            Button::Commit => "Commit",
-            Button::Pull => "Pull",
-            Button::Push => "Push",
+            Button::Commit => "Commit".to_string(),
+            Button::Pull => "Pull".to_string(),
+            Button::Push => "Push".to_string(),
+            Button::Pushing => {
+                let s = SPINNER_FRAMES[spinner_frame % SPINNER_FRAMES.len()];
+                format!("{} Pushing...", s)
+            }
+            Button::Pulling => {
+                let s = SPINNER_FRAMES[spinner_frame % SPINNER_FRAMES.len()];
+                format!("{} Pulling...", s)
+            }
         }
     }
 }
@@ -139,6 +154,10 @@ pub struct GitStatusPanel {
     is_loading: bool,
     /// Whether git operation (push/pull) is in progress
     git_operation_in_progress: bool,
+    /// Current git operation name ("push" or "pull")
+    current_operation: Option<String>,
+    /// Spinner animation frame for Pushing/Pulling buttons
+    spinner_frame: usize,
 }
 
 impl GitStatusPanel {
@@ -177,6 +196,8 @@ impl GitStatusPanel {
             modal_request: None,
             is_loading: false,
             git_operation_in_progress: false,
+            current_operation: None,
+            spinner_frame: 0,
         };
 
         panel.refresh();
@@ -218,6 +239,8 @@ impl GitStatusPanel {
             modal_request: None,
             is_loading: false,
             git_operation_in_progress: false,
+            current_operation: None,
+            spinner_frame: 0,
         };
 
         panel.refresh();
@@ -739,8 +762,14 @@ impl GitStatusPanel {
             buttons.push(Button::Commit);
         }
 
-        // Push/Pull - only if not currently in progress
-        if !self.git_operation_in_progress {
+        // Show spinner button if operation in progress
+        if self.git_operation_in_progress {
+            match self.current_operation.as_deref() {
+                Some("push") => buttons.push(Button::Pushing),
+                Some("pull") => buttons.push(Button::Pulling),
+                _ => {} // Unknown operation, don't show button
+            }
+        } else {
             // Push - only if ahead > 0
             if self.ahead > 0 {
                 buttons.push(Button::Push);
@@ -801,6 +830,10 @@ impl GitStatusPanel {
                 } else {
                     vec![]
                 }
+            }
+            Button::Pushing | Button::Pulling => {
+                // Click on spinner button cancels the operation
+                vec![PanelEvent::CancelGitOperation]
             }
         }
     }
@@ -1317,7 +1350,7 @@ impl GitStatusPanel {
 
         for (i, button) in buttons.iter().enumerate() {
             let is_selected = self.current_section == Section::Buttons && i == self.selected_button;
-            let label = format!("[{}]", button.label());
+            let label = format!("[{}]", button.label(self.spinner_frame));
 
             let style = if is_selected && is_focused {
                 // Inverted cursor style - only when focused
@@ -1531,9 +1564,18 @@ impl Panel for GitStatusPanel {
                 }
                 CommandResult::NeedsRedraw(false)
             }
-            PanelCommand::SetGitOperationInProgress { in_progress } => {
-                if self.git_operation_in_progress != in_progress {
+            PanelCommand::SetGitOperationInProgress {
+                in_progress,
+                operation,
+                spinner_frame,
+            } => {
+                let changed = self.git_operation_in_progress != in_progress
+                    || self.current_operation != operation
+                    || self.spinner_frame != spinner_frame;
+                if changed {
                     self.git_operation_in_progress = in_progress;
+                    self.current_operation = operation;
+                    self.spinner_frame = spinner_frame;
                     // Adjust selected button if Push/Pull disappeared
                     let buttons = self.get_visible_buttons();
                     if self.selected_button >= buttons.len() {
@@ -1933,7 +1975,7 @@ impl Panel for GitStatusPanel {
                     let content_x = self.last_area.x + 1;
                     let mut btn_x = content_x;
                     for (i, button) in buttons.iter().enumerate() {
-                        let label = format!("[{}]", button.label());
+                        let label = format!("[{}]", button.label(self.spinner_frame));
                         let btn_width = label.width() as u16;
                         if col >= btn_x && col < btn_x + btn_width {
                             self.selected_button = i;

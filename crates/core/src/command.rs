@@ -89,11 +89,15 @@ pub enum PanelCommand<'a> {
 
     // === Git operation state ===
     /// Notify panel about git operation in progress state.
-    /// Used to hide Push/Pull buttons during background git operations.
+    /// Used to show spinner button during background git operations.
     /// Response: `CommandResult::NeedsRedraw(bool)`
     SetGitOperationInProgress {
         /// Whether git operation is in progress
         in_progress: bool,
+        /// Current operation name ("push" or "pull")
+        operation: Option<String>,
+        /// Spinner animation frame
+        spinner_frame: usize,
     },
 }
 

@@ -191,6 +191,10 @@ impl App {
             } => {
                 self.event_git_operation(operation, repo_path)?;
             }
+
+            PanelEvent::CancelGitOperation => {
+                self.event_cancel_git_operation();
+            }
         }
         Ok(())
     }
@@ -705,7 +709,7 @@ impl App {
         operation: GitOperationType,
         repo_path: PathBuf,
     ) -> Result<()> {
-        use crate::state::GitOperationResult;
+        use crate::state::{GitOperationHandle, GitOperationResult};
         use std::process::Command;
         use std::sync::mpsc;
         use std::thread;
@@ -715,16 +719,38 @@ impl App {
             logger::debug("Git operation already in progress, ignoring");
             return Ok(());
         }
-        self.state.ui.git_operation_in_progress = true;
-        // Notify all panels about git operation starting (hides Push/Pull buttons)
-        self.notify_git_operation_state(true);
 
         let cmd = match operation {
             GitOperationType::Push => "push",
             GitOperationType::Pull => "pull",
         };
+        let cmd_str = cmd.to_string();
 
-        // Show status message with spinner
+        // Spawn the git process
+        let child = match Command::new("git")
+            .arg(&cmd_str)
+            .current_dir(&repo_path)
+            .spawn()
+        {
+            Ok(child) => child,
+            Err(e) => {
+                self.state.set_error(format!("Failed to spawn git: {}", e));
+                return Ok(());
+            }
+        };
+
+        // Get PID before moving child to thread
+        let pid = child.id();
+        logger::info(format!(
+            "Running git {} in {:?} (PID: {})",
+            cmd, repo_path, pid
+        ));
+
+        // Set operation state
+        self.state.ui.git_operation_in_progress = true;
+        self.notify_git_operation_state(true, Some(cmd_str.clone()), 0);
+
+        // Show status message
         let t = i18n::t();
         let msg = match operation {
             GitOperationType::Push => t.git_push_in_progress(),
@@ -732,27 +758,22 @@ impl App {
         };
         self.state.set_info(msg);
 
-        logger::info(format!("Running git {} in {:?}", cmd, repo_path));
-
-        // Spawn background thread
+        // Spawn background thread to wait for result
         let (tx, rx) = mpsc::channel();
-        let cmd_str = cmd.to_string();
+        let cmd_for_thread = cmd_str.clone();
 
         thread::spawn(move || {
-            let output = Command::new("git")
-                .arg(&cmd_str)
-                .current_dir(&repo_path)
-                .output();
+            let output = child.wait_with_output();
 
             let result = match output {
                 Ok(out) => GitOperationResult {
-                    operation: cmd_str,
+                    operation: cmd_for_thread,
                     success: out.status.success(),
                     stdout: String::from_utf8_lossy(&out.stdout).to_string(),
                     stderr: String::from_utf8_lossy(&out.stderr).to_string(),
                 },
                 Err(e) => GitOperationResult {
-                    operation: cmd_str,
+                    operation: cmd_for_thread,
                     success: false,
                     stdout: String::new(),
                     stderr: e.to_string(),
@@ -761,18 +782,63 @@ impl App {
             let _ = tx.send(result);
         });
 
-        // Store receiver for polling in main loop
-        self.state.git_operation_receiver = Some(rx);
+        // Store handle for polling and cancellation
+        self.state.git_operation_handle = Some(GitOperationHandle {
+            receiver: rx,
+            pid,
+            operation: cmd_str,
+        });
 
         Ok(())
     }
 
+    /// Handle CancelGitOperation event - kill running git process
+    fn event_cancel_git_operation(&mut self) {
+        if let Some(handle) = self.state.git_operation_handle.take() {
+            logger::info(format!(
+                "Cancelling git {} (PID: {})",
+                handle.operation, handle.pid
+            ));
+
+            // Kill process by PID
+            #[cfg(unix)]
+            {
+                let _ = std::process::Command::new("kill")
+                    .arg("-TERM")
+                    .arg(handle.pid.to_string())
+                    .status();
+            }
+            #[cfg(windows)]
+            {
+                let _ = std::process::Command::new("taskkill")
+                    .args(["/PID", &handle.pid.to_string(), "/F"])
+                    .status();
+            }
+        }
+
+        self.state.ui.git_operation_in_progress = false;
+        self.notify_git_operation_state(false, None, 0);
+
+        // Show cancellation message
+        let t = i18n::t();
+        self.state.set_info(t.git_operation_cancelled().to_string());
+    }
+
     /// Notify all panels about git operation in progress state
-    pub(super) fn notify_git_operation_state(&mut self, in_progress: bool) {
+    pub(super) fn notify_git_operation_state(
+        &mut self,
+        in_progress: bool,
+        operation: Option<String>,
+        spinner_frame: usize,
+    ) {
         use termide_core::PanelCommand;
 
         for panel in self.layout_manager.iter_all_panels_mut() {
-            panel.handle_command(PanelCommand::SetGitOperationInProgress { in_progress });
+            panel.handle_command(PanelCommand::SetGitOperationInProgress {
+                in_progress,
+                operation: operation.clone(),
+                spinner_frame,
+            });
         }
     }
 }

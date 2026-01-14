@@ -38,6 +38,7 @@ pub trait Translation: Send + Sync {
     fn fm_search_prompt(&self) -> &str;
     fn fm_no_results(&self) -> &str;
     fn fm_operation_cancelled(&self) -> &str;
+    fn git_operation_cancelled(&self) -> &str;
 
     // Modal buttons
     fn modal_yes(&self) -> &str;

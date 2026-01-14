@@ -40,6 +40,25 @@ pub struct GitOperationResult {
     pub stderr: String,
 }
 
+/// Handle for background git operation (allows cancellation)
+pub struct GitOperationHandle {
+    /// Receiver for operation result
+    pub receiver: mpsc::Receiver<GitOperationResult>,
+    /// Process ID for cancellation
+    pub pid: u32,
+    /// Operation type: "push" or "pull"
+    pub operation: String,
+}
+
+impl std::fmt::Debug for GitOperationHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GitOperationHandle")
+            .field("pid", &self.pid)
+            .field("operation", &self.operation)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Global application state
 #[derive(Debug)]
 pub struct AppState {
@@ -59,8 +78,8 @@ pub struct AppState {
     pub pending_action: Option<PendingAction>,
     /// Receiver channel for background directory size calculation results
     pub dir_size_receiver: Option<mpsc::Receiver<DirSizeResult>>,
-    /// Receiver channel for background git operation results
-    pub git_operation_receiver: Option<mpsc::Receiver<GitOperationResult>>,
+    /// Handle for background git operation (allows cancellation)
+    pub git_operation_handle: Option<GitOperationHandle>,
     /// Unified watcher for filesystem and git changes
     pub watcher: Option<UnifiedWatcher>,
     /// Current theme
@@ -113,7 +132,7 @@ impl AppState {
             active_modal: None,
             pending_action: None,
             dir_size_receiver: None,
-            git_operation_receiver: None,
+            git_operation_handle: None,
             watcher: None,
             theme,
             config,

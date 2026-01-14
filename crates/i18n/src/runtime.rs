@@ -122,6 +122,10 @@ impl Translation for RuntimeTranslation {
         self.get_string("fm_operation_cancelled")
     }
 
+    fn git_operation_cancelled(&self) -> &str {
+        self.get_string("git_operation_cancelled")
+    }
+
     fn modal_yes(&self) -> &str {
         self.get_string("modal_yes")
     }
