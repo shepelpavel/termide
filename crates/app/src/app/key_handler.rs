@@ -41,12 +41,12 @@ impl App {
             return self.handle_sessions_submenu_key(key);
         }
 
-        // If Git submenu is open, handle its navigation
-        if self.state.ui.git_submenu_open {
-            return self.handle_git_submenu_key(key);
+        // If Tools submenu is open, handle its navigation
+        if self.state.ui.tools_submenu_open {
+            return self.handle_tools_submenu_key(key);
         }
 
-        // If Preferences submenu is open, handle submenu navigation
+        // If Options submenu is open, handle submenu navigation
         if self.state.ui.submenu_open {
             return self.handle_submenu_key(key);
         }

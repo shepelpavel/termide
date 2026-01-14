@@ -14,10 +14,10 @@ use termide_panel_file_manager::FileManager;
 use termide_panel_terminal::Terminal;
 use termide_theme::Theme;
 use termide_ui_render::{
-    get_git_items, get_menu_item_x_position, get_preferences_items, get_sessions_items,
+    get_menu_item_x_position, get_options_items, get_sessions_items, get_tools_items,
     render_collapsed_panel, render_dividers, render_expanded_panel, render_menu, Dropdown,
-    ExpandedPanelParams, MenuRenderParams, ThemeDropdown, GIT_MENU_INDEX, PREFERENCES_MENU_INDEX,
-    SESSIONS_MENU_INDEX,
+    ExpandedPanelParams, MenuRenderParams, ThemeDropdown, OPTIONS_MENU_INDEX, SESSIONS_MENU_INDEX,
+    TOOLS_MENU_INDEX,
 };
 
 use termide_modal::Modal;
@@ -48,20 +48,20 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
         dropdown.render(frame.buffer_mut());
     }
 
-    // Render Git submenu if open
+    // Render Tools submenu if open
     if state.ui.menu_open
-        && state.ui.selected_menu_item == Some(GIT_MENU_INDEX)
-        && state.ui.git_submenu_open
+        && state.ui.selected_menu_item == Some(TOOLS_MENU_INDEX)
+        && state.ui.tools_submenu_open
     {
-        // Calculate position of Git menu item
-        let menu_x = get_menu_item_x_position(GIT_MENU_INDEX);
+        // Calculate position of Tools menu item
+        let menu_x = get_menu_item_x_position(TOOLS_MENU_INDEX);
         let dropdown_y = 1_u16; // Below menu bar
 
-        // Render Git submenu
-        let git_items = get_git_items();
+        // Render Tools submenu
+        let tools_items = get_tools_items();
         let dropdown = Dropdown::new(
-            &git_items,
-            state.ui.selected_git_item,
+            &tools_items,
+            state.ui.selected_tools_item,
             menu_x,
             dropdown_y,
             theme,
@@ -69,19 +69,19 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
         dropdown.render(frame.buffer_mut());
     }
 
-    // Render Preferences submenu if open
+    // Render Options submenu if open
     if state.ui.menu_open
-        && state.ui.selected_menu_item == Some(PREFERENCES_MENU_INDEX)
+        && state.ui.selected_menu_item == Some(OPTIONS_MENU_INDEX)
         && state.ui.submenu_open
     {
-        // Calculate position of Preferences menu item
-        let menu_x = get_menu_item_x_position(PREFERENCES_MENU_INDEX);
+        // Calculate position of Options menu item
+        let menu_x = get_menu_item_x_position(OPTIONS_MENU_INDEX);
         let dropdown_y = 1_u16; // Below menu bar
 
-        // Render Preferences submenu
-        let pref_items = get_preferences_items();
+        // Render Options submenu
+        let options_items = get_options_items();
         let dropdown = Dropdown::new(
-            &pref_items,
+            &options_items,
             state.ui.selected_submenu_item,
             menu_x,
             dropdown_y,
@@ -91,7 +91,7 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
 
         // If Themes is selected and nested submenu is open
         if state.ui.nested_submenu_open && state.ui.selected_submenu_item == 0 {
-            // Calculate position: to the right of preferences dropdown
+            // Calculate position: to the right of options dropdown
             let nested_x = menu_x + dropdown.width();
             let nested_y = dropdown_y + 1; // Align with "Themes" item (inside border)
 
@@ -155,6 +155,14 @@ pub fn render_layout_with_accordion(
 
     // Render menu
     let (ram_value, ram_unit) = state.system_monitor.format_ram();
+    let toggle_menu_key = state
+        .config
+        .general
+        .keybindings
+        .toggle_menu
+        .as_ref()
+        .map(|k| k.display())
+        .unwrap_or("Alt+M");
     let menu_params = MenuRenderParams {
         theme: state.theme,
         selected_menu_item: state.ui.selected_menu_item,
@@ -163,6 +171,7 @@ pub fn render_layout_with_accordion(
         ram_percent: state.system_monitor.ram_usage_percent(),
         ram_value,
         ram_unit,
+        toggle_menu_key,
     };
     render_menu(frame, main_chunks[0], &menu_params);
 

@@ -154,10 +154,10 @@ pub struct UiState {
     pub sessions_submenu_open: bool,
     /// Selected item in Sessions submenu
     pub selected_sessions_item: usize,
-    /// Is Git submenu open
-    pub git_submenu_open: bool,
-    /// Selected item in Git submenu
-    pub selected_git_item: usize,
+    /// Is Tools submenu open
+    pub tools_submenu_open: bool,
+    /// Selected item in Tools submenu
+    pub selected_tools_item: usize,
 }
 
 /// Terminal state (dimensions)

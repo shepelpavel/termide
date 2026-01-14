@@ -203,20 +203,22 @@ pub trait Translation: Send + Sync {
 
     // Menu
     fn menu_sessions(&self) -> &str;
-    fn menu_files(&self) -> &str;
-    fn menu_terminal(&self) -> &str;
-    fn menu_editor(&self) -> &str;
-    fn menu_git(&self) -> &str;
-    fn menu_debug(&self) -> &str;
-    fn menu_preferences(&self) -> &str;
-    fn menu_help(&self) -> &str;
+    fn menu_tools(&self) -> &str;
+    fn menu_options(&self) -> &str;
     fn menu_quit(&self) -> &str;
     fn menu_navigate_hint(&self) -> &str;
-    fn menu_open_hint(&self) -> &str;
+    fn menu_open_hint_label(&self) -> &str;
 
-    // Git submenu
-    fn git_status(&self) -> &str;
-    fn git_log(&self) -> &str;
+    // Tools submenu
+    fn tools_files(&self) -> &str;
+    fn tools_terminal(&self) -> &str;
+    fn tools_editor(&self) -> &str;
+    fn tools_git_status(&self) -> &str;
+    fn tools_git_log(&self) -> &str;
+    fn tools_journal(&self) -> &str;
+
+    // Options submenu
+    fn options_help(&self) -> &str;
 
     // Git action buttons
     fn git_action_stage(&self) -> &str;

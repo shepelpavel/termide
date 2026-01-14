@@ -25,6 +25,8 @@ pub struct MenuRenderParams<'a> {
     pub ram_percent: u8,
     pub ram_value: String,
     pub ram_unit: RamUnit,
+    /// Toggle menu keybinding display string (e.g., "Alt+M")
+    pub toggle_menu_key: &'a str,
 }
 
 /// Get menu items with translations
@@ -32,28 +34,22 @@ pub fn get_menu_items() -> Vec<String> {
     let t = i18n::t();
     vec![
         t.menu_sessions().to_string(),
-        t.menu_files().to_string(),
-        t.menu_terminal().to_string(),
-        t.menu_editor().to_string(),
-        t.menu_git().to_string(),
-        t.menu_debug().to_string(),
-        t.menu_preferences().to_string(),
-        t.menu_help().to_string(),
-        t.menu_quit().to_string(),
+        t.menu_tools().to_string(),
+        t.menu_options().to_string(),
     ]
 }
 
 /// Number of menu items
-pub const MENU_ITEM_COUNT: usize = 9;
+pub const MENU_ITEM_COUNT: usize = 3;
 
 /// Index of Sessions menu item (no keyboard accelerator highlighting)
 pub const SESSIONS_MENU_INDEX: usize = 0;
 
-/// Index of Git menu item (for submenu positioning)
-pub const GIT_MENU_INDEX: usize = 4;
+/// Index of Tools menu item (for submenu positioning)
+pub const TOOLS_MENU_INDEX: usize = 1;
 
-/// Index of Preferences menu item (for submenu positioning)
-pub const PREFERENCES_MENU_INDEX: usize = 6;
+/// Index of Options menu item (for submenu positioning)
+pub const OPTIONS_MENU_INDEX: usize = 2;
 
 /// Calculate x position of a menu item by index.
 /// Used for positioning submenus next to their parent menu item.
@@ -104,47 +100,24 @@ pub fn render_menu(frame: &mut Frame, area: Rect, params: &MenuRenderParams) {
     for (i, item) in menu_items.iter().enumerate() {
         // Determine menu item style
         let is_selected = params.selected_menu_item == Some(i);
-        let (base_style, accent_style) = if is_selected && params.menu_open {
-            let base = Style::default()
+        let style = if is_selected && params.menu_open {
+            Style::default()
                 .fg(params.theme.selected_fg)
                 .bg(params.theme.selected_bg)
-                .add_modifier(Modifier::BOLD);
-            (base, base)
+                .add_modifier(Modifier::BOLD)
         } else {
-            let base = Style::default().fg(params.theme.fg);
-            let accent = Style::default()
-                .fg(params.theme.accented_fg)
-                .add_modifier(Modifier::BOLD);
-            (base, accent)
+            Style::default().fg(params.theme.fg)
         };
 
-        // Highlight first letter (keyboard accelerator) only for English locale
-        // In other locales, menu text doesn't match keyboard shortcuts
-        // Sessions menu item never gets first letter highlighting (no keyboard shortcut)
-        if i18n::current_language() == "en" && i != SESSIONS_MENU_INDEX {
-            // English: Split menu item and highlight first letter
-            if let Some(first_char) = item.chars().next() {
-                let first = first_char.to_string();
-                let rest = &item[first.len()..];
-
-                spans.push(Span::styled(first, accent_style));
-                if !rest.is_empty() {
-                    spans.push(Span::styled(rest, base_style));
-                }
-            }
-        } else {
-            // Non-English or Sessions: Don't highlight first letter
-            spans.push(Span::styled(item.as_str(), base_style));
-        }
-
+        spans.push(Span::styled(item.as_str(), style));
         spans.push(Span::raw("  "));
     }
 
     // Add hint, resource indicators, and clock on the right
-    let hint = if params.menu_open {
-        t.menu_navigate_hint()
+    let hint: std::borrow::Cow<str> = if params.menu_open {
+        t.menu_navigate_hint().into()
     } else {
-        t.menu_open_hint()
+        format!("{} {}", params.toggle_menu_key, t.menu_open_hint_label()).into()
     };
 
     // System resource info

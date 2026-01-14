@@ -190,15 +190,6 @@ impl<'a> Dropdown<'a> {
     }
 }
 
-/// Get preferences submenu items
-pub fn get_preferences_items() -> Vec<DropdownItem> {
-    let t = i18n::t();
-    vec![
-        DropdownItem::new(t.preferences_themes(), "themes").with_submenu(),
-        DropdownItem::new(t.preferences_edit(), "edit_preferences"),
-    ]
-}
-
 /// Get sessions submenu items
 pub fn get_sessions_items() -> Vec<DropdownItem> {
     let t = i18n::t();
@@ -212,14 +203,32 @@ pub fn get_sessions_items() -> Vec<DropdownItem> {
 /// Number of items in Sessions submenu
 pub const SESSIONS_SUBMENU_ITEM_COUNT: usize = 3;
 
-/// Get git submenu items
-pub fn get_git_items() -> Vec<DropdownItem> {
+/// Get tools submenu items
+pub fn get_tools_items() -> Vec<DropdownItem> {
     let t = i18n::t();
     vec![
-        DropdownItem::new(t.git_status(), "git_status"),
-        DropdownItem::new(t.git_log(), "git_log"),
+        DropdownItem::new(t.tools_files(), "files"),
+        DropdownItem::new(t.tools_terminal(), "terminal"),
+        DropdownItem::new(t.tools_editor(), "editor"),
+        DropdownItem::new(t.tools_git_status(), "git_status"),
+        DropdownItem::new(t.tools_git_log(), "git_log"),
+        DropdownItem::new(t.tools_journal(), "journal"),
     ]
 }
 
-/// Number of items in Git submenu
-pub const GIT_SUBMENU_ITEM_COUNT: usize = 2;
+/// Number of items in Tools submenu
+pub const TOOLS_SUBMENU_ITEM_COUNT: usize = 6;
+
+/// Get options submenu items
+pub fn get_options_items() -> Vec<DropdownItem> {
+    let t = i18n::t();
+    vec![
+        DropdownItem::new(t.preferences_themes(), "themes").with_submenu(),
+        DropdownItem::new(t.preferences_edit(), "edit_preferences"),
+        DropdownItem::new(t.options_help(), "help"),
+        DropdownItem::new(t.menu_quit(), "quit"),
+    ]
+}
+
+/// Number of items in Options submenu
+pub const OPTIONS_SUBMENU_ITEM_COUNT: usize = 4;

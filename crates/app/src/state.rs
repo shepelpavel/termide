@@ -134,7 +134,7 @@ impl AppState {
         self.ui.selected_dropdown_item = 0;
         self.close_submenu();
         self.close_sessions_submenu();
-        self.close_git_submenu();
+        self.close_tools_submenu();
     }
 
     /// Open submenu (e.g., Preferences dropdown)
@@ -164,16 +164,16 @@ impl AppState {
         self.ui.selected_sessions_item = 0;
     }
 
-    /// Open Git submenu
-    pub fn open_git_submenu(&mut self) {
-        self.ui.git_submenu_open = true;
-        self.ui.selected_git_item = 0;
+    /// Open Tools submenu
+    pub fn open_tools_submenu(&mut self) {
+        self.ui.tools_submenu_open = true;
+        self.ui.selected_tools_item = 0;
     }
 
-    /// Close Git submenu
-    pub fn close_git_submenu(&mut self) {
-        self.ui.git_submenu_open = false;
-        self.ui.selected_git_item = 0;
+    /// Close Tools submenu
+    pub fn close_tools_submenu(&mut self) {
+        self.ui.tools_submenu_open = false;
+        self.ui.selected_tools_item = 0;
     }
 
     /// Open nested submenu (e.g., Themes list)

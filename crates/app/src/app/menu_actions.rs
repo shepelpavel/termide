@@ -52,52 +52,12 @@ impl App {
                     self.state.open_sessions_submenu();
                 }
                 1 => {
-                    // Files - open new file manager panel
-                    self.handle_new_file_manager()?;
-                    self.state.close_menu();
+                    // Tools - open submenu dropdown (keep menu open)
+                    self.state.open_tools_submenu();
                 }
                 2 => {
-                    // Terminal - open new terminal panel
-                    self.handle_new_terminal()?;
-                    self.state.close_menu();
-                }
-                3 => {
-                    // Editor - open new editor panel
-                    self.handle_new_editor()?;
-                    self.state.close_menu();
-                }
-                4 => {
-                    // Git - open submenu dropdown (keep menu open)
-                    self.state.open_git_submenu();
-                }
-                5 => {
-                    // Debug - open debug panel
-                    self.handle_new_debug()?;
-                    self.state.close_menu();
-                }
-                6 => {
-                    // Preferences - open submenu dropdown (keep menu open)
+                    // Options - open submenu dropdown (keep menu open)
                     self.state.open_submenu();
-                }
-                7 => {
-                    // Help - show help
-                    self.state.close_menu();
-                    self.handle_new_help()?;
-                }
-                8 => {
-                    // Quit - exit
-                    self.state.close_menu();
-                    if self.has_panels_requiring_confirmation() {
-                        let t = i18n::t();
-                        let modal =
-                            termide_modal::ConfirmModal::new(t.modal_yes(), t.app_quit_confirm());
-                        self.state.set_pending_action(
-                            PendingAction::QuitApplication,
-                            ActiveModal::Confirm(Box::new(modal)),
-                        );
-                    } else {
-                        self.state.quit();
-                    }
                 }
                 _ => {}
             }
@@ -317,14 +277,14 @@ impl App {
     // Submenu handling
     // =========================================================================
 
-    /// Handle keyboard event in submenu (Preferences dropdown)
+    /// Handle keyboard event in submenu (Options dropdown)
     pub(super) fn handle_submenu_key(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
         // If nested submenu is open, delegate to nested handler
         if self.state.ui.nested_submenu_open {
             return self.handle_nested_submenu_key(key);
         }
 
-        const SUBMENU_ITEM_COUNT: usize = 2; // Themes, Edit preferences
+        use termide_ui_render::OPTIONS_SUBMENU_ITEM_COUNT;
 
         match key.code {
             KeyCode::Esc | KeyCode::Left => {
@@ -335,12 +295,12 @@ impl App {
                 if self.state.ui.selected_submenu_item > 0 {
                     self.state.ui.selected_submenu_item -= 1;
                 } else {
-                    self.state.ui.selected_submenu_item = SUBMENU_ITEM_COUNT - 1;
+                    self.state.ui.selected_submenu_item = OPTIONS_SUBMENU_ITEM_COUNT - 1;
                 }
             }
             KeyCode::Down => {
                 self.state.ui.selected_submenu_item =
-                    (self.state.ui.selected_submenu_item + 1) % SUBMENU_ITEM_COUNT;
+                    (self.state.ui.selected_submenu_item + 1) % OPTIONS_SUBMENU_ITEM_COUNT;
             }
             KeyCode::Right | KeyCode::Enter => {
                 self.execute_submenu_action()?;
@@ -350,7 +310,7 @@ impl App {
         Ok(())
     }
 
-    /// Execute action for selected submenu item
+    /// Execute action for selected Options submenu item
     fn execute_submenu_action(&mut self) -> Result<()> {
         match self.state.ui.selected_submenu_item {
             0 => {
@@ -368,6 +328,26 @@ impl App {
                 // Edit preferences - close menu and open config
                 self.state.close_menu();
                 self.open_config_in_editor()?;
+            }
+            2 => {
+                // Help - show help
+                self.state.close_menu();
+                self.handle_new_help()?;
+            }
+            3 => {
+                // Quit - exit
+                self.state.close_menu();
+                if self.has_panels_requiring_confirmation() {
+                    let t = i18n::t();
+                    let modal =
+                        termide_modal::ConfirmModal::new(t.modal_yes(), t.app_quit_confirm());
+                    self.state.set_pending_action(
+                        PendingAction::QuitApplication,
+                        ActiveModal::Confirm(Box::new(modal)),
+                    );
+                } else {
+                    self.state.quit();
+                }
             }
             _ => {}
         }
@@ -549,49 +529,72 @@ impl App {
     }
 
     // =========================================================================
-    // Git submenu handling
+    // Tools submenu handling
     // =========================================================================
 
-    /// Handle keyboard event in Git submenu
-    pub(super) fn handle_git_submenu_key(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
-        use termide_ui_render::GIT_SUBMENU_ITEM_COUNT;
+    /// Handle keyboard event in Tools submenu
+    pub(super) fn handle_tools_submenu_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> Result<()> {
+        use termide_ui_render::TOOLS_SUBMENU_ITEM_COUNT;
 
         match key.code {
             KeyCode::Esc | KeyCode::Left => {
                 // Close submenu, return to menu
-                self.state.close_git_submenu();
+                self.state.close_tools_submenu();
             }
             KeyCode::Up => {
-                if self.state.ui.selected_git_item > 0 {
-                    self.state.ui.selected_git_item -= 1;
+                if self.state.ui.selected_tools_item > 0 {
+                    self.state.ui.selected_tools_item -= 1;
                 } else {
-                    self.state.ui.selected_git_item = GIT_SUBMENU_ITEM_COUNT - 1;
+                    self.state.ui.selected_tools_item = TOOLS_SUBMENU_ITEM_COUNT - 1;
                 }
             }
             KeyCode::Down => {
-                self.state.ui.selected_git_item =
-                    (self.state.ui.selected_git_item + 1) % GIT_SUBMENU_ITEM_COUNT;
+                self.state.ui.selected_tools_item =
+                    (self.state.ui.selected_tools_item + 1) % TOOLS_SUBMENU_ITEM_COUNT;
             }
             KeyCode::Right | KeyCode::Enter => {
-                self.execute_git_submenu_action()?;
+                self.execute_tools_submenu_action()?;
             }
             _ => {}
         }
         Ok(())
     }
 
-    /// Execute action for selected Git submenu item
-    pub(super) fn execute_git_submenu_action(&mut self) -> Result<()> {
-        match self.state.ui.selected_git_item {
+    /// Execute action for selected Tools submenu item
+    pub(super) fn execute_tools_submenu_action(&mut self) -> Result<()> {
+        match self.state.ui.selected_tools_item {
             0 => {
+                // Files - open new file manager panel
+                self.state.close_menu();
+                self.handle_new_file_manager()?;
+            }
+            1 => {
+                // Terminal - open new terminal panel
+                self.state.close_menu();
+                self.handle_new_terminal()?;
+            }
+            2 => {
+                // Editor - open new editor panel
+                self.state.close_menu();
+                self.handle_new_editor()?;
+            }
+            3 => {
                 // Git Status - open Git Status panel
                 self.state.close_menu();
                 self.handle_open_git_status()?;
             }
-            1 => {
+            4 => {
                 // Git Log - open Git Log panel
                 self.state.close_menu();
                 self.handle_open_git_log()?;
+            }
+            5 => {
+                // Journal - open debug panel
+                self.state.close_menu();
+                self.handle_new_debug()?;
             }
             _ => {}
         }

@@ -711,32 +711,12 @@ impl Translation for RuntimeTranslation {
         self.get_string("menu_sessions")
     }
 
-    fn menu_files(&self) -> &str {
-        self.get_string("menu_files")
+    fn menu_tools(&self) -> &str {
+        self.get_string("menu_tools")
     }
 
-    fn menu_terminal(&self) -> &str {
-        self.get_string("menu_terminal")
-    }
-
-    fn menu_editor(&self) -> &str {
-        self.get_string("menu_editor")
-    }
-
-    fn menu_git(&self) -> &str {
-        self.get_string("menu_git")
-    }
-
-    fn menu_debug(&self) -> &str {
-        self.get_string("menu_debug")
-    }
-
-    fn menu_preferences(&self) -> &str {
-        self.get_string("menu_preferences")
-    }
-
-    fn menu_help(&self) -> &str {
-        self.get_string("menu_help")
+    fn menu_options(&self) -> &str {
+        self.get_string("menu_options")
     }
 
     fn menu_quit(&self) -> &str {
@@ -747,16 +727,36 @@ impl Translation for RuntimeTranslation {
         self.get_string("menu_navigate_hint")
     }
 
-    fn menu_open_hint(&self) -> &str {
-        self.get_string("menu_open_hint")
+    fn menu_open_hint_label(&self) -> &str {
+        self.get_string("menu_open_hint_label")
     }
 
-    fn git_status(&self) -> &str {
-        self.get_string("git_status")
+    fn tools_files(&self) -> &str {
+        self.get_string("tools_files")
     }
 
-    fn git_log(&self) -> &str {
-        self.get_string("git_log")
+    fn tools_terminal(&self) -> &str {
+        self.get_string("tools_terminal")
+    }
+
+    fn tools_editor(&self) -> &str {
+        self.get_string("tools_editor")
+    }
+
+    fn tools_git_status(&self) -> &str {
+        self.get_string("tools_git_status")
+    }
+
+    fn tools_git_log(&self) -> &str {
+        self.get_string("tools_git_log")
+    }
+
+    fn tools_journal(&self) -> &str {
+        self.get_string("tools_journal")
+    }
+
+    fn options_help(&self) -> &str {
+        self.get_string("options_help")
     }
 
     fn git_action_stage(&self) -> &str {

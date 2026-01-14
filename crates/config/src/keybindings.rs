@@ -55,6 +55,14 @@ impl KeyBinding {
                 .collect(),
         }
     }
+
+    /// Get the first keybinding as a display string.
+    pub fn display(&self) -> &str {
+        match self {
+            KeyBinding::Single(s) => s.as_str(),
+            KeyBinding::Multiple(v) => v.first().map(|s| s.as_str()).unwrap_or(""),
+        }
+    }
 }
 
 /// A parsed keybinding ready for runtime matching.

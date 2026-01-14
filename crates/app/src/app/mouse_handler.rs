@@ -7,8 +7,8 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use super::App;
 use termide_theme::Theme;
 use termide_ui_render::{
-    get_menu_item_x_position, get_preferences_items, get_sessions_items, PREFERENCES_MENU_INDEX,
-    SESSIONS_MENU_INDEX,
+    get_menu_item_x_position, get_options_items, get_sessions_items, get_tools_items,
+    OPTIONS_MENU_INDEX, SESSIONS_MENU_INDEX, TOOLS_MENU_INDEX,
 };
 
 impl App {
@@ -73,10 +73,10 @@ impl App {
             return Ok(());
         }
 
-        // Handle Git submenu clicks when it's open
-        if self.state.ui.git_submenu_open
+        // Handle Tools submenu clicks when it's open
+        if self.state.ui.tools_submenu_open
             && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
-            && self.handle_git_submenu_click(mouse.column, mouse.row)?
+            && self.handle_tools_submenu_click(mouse.column, mouse.row)?
         {
             return Ok(());
         }
@@ -308,22 +308,27 @@ impl App {
         Ok(())
     }
 
-    /// Handle click on submenu dropdowns
+    /// Handle click on Options submenu dropdown
     /// Returns true if click was handled
     fn handle_submenu_click(&mut self, x: u16, y: u16) -> Result<bool> {
-        // Get Preferences dropdown position
-        let menu_x = get_menu_item_x_position(PREFERENCES_MENU_INDEX);
+        // Get Options dropdown position
+        let menu_x = get_menu_item_x_position(OPTIONS_MENU_INDEX);
         let dropdown_y = 1_u16;
 
-        // Calculate Preferences dropdown dimensions
-        let pref_items = get_preferences_items();
-        let pref_width = pref_items.iter().map(|i| i.label.len()).max().unwrap_or(10) as u16 + 4;
-        let pref_height = pref_items.len() as u16 + 2; // +2 for borders
+        // Calculate Options dropdown dimensions
+        let options_items = get_options_items();
+        let options_width = options_items
+            .iter()
+            .map(|i| i.label.len())
+            .max()
+            .unwrap_or(10) as u16
+            + 4;
+        let options_height = options_items.len() as u16 + 2; // +2 for borders
 
         // Check if nested submenu (Themes) is open
         if self.state.ui.nested_submenu_open && self.state.ui.selected_submenu_item == 0 {
-            // Theme dropdown is to the right of Preferences dropdown
-            let nested_x = menu_x + pref_width;
+            // Theme dropdown is to the right of Options dropdown
+            let nested_x = menu_x + options_width;
             let nested_y = dropdown_y + 1;
 
             let theme_names = Theme::all_theme_names();
@@ -359,12 +364,15 @@ impl App {
             }
         }
 
-        // Check click on Preferences dropdown
-        if x >= menu_x && x < menu_x + pref_width && y >= dropdown_y && y < dropdown_y + pref_height
+        // Check click on Options dropdown
+        if x >= menu_x
+            && x < menu_x + options_width
+            && y >= dropdown_y
+            && y < dropdown_y + options_height
         {
             let item_y = y.saturating_sub(dropdown_y + 1); // -1 for top border
             let item_index = item_y as usize;
-            if item_index < pref_items.len() {
+            if item_index < options_items.len() {
                 self.state.ui.selected_submenu_item = item_index;
                 match item_index {
                     0 => {
@@ -393,6 +401,30 @@ impl App {
                         // Edit preferences
                         self.state.close_menu();
                         self.open_config_in_editor()?;
+                    }
+                    2 => {
+                        // Help
+                        self.state.close_menu();
+                        self.handle_new_help()?;
+                    }
+                    3 => {
+                        // Quit
+                        self.state.close_menu();
+                        if self.has_panels_requiring_confirmation() {
+                            use crate::state::{ActiveModal, PendingAction};
+                            use termide_i18n as i18n;
+                            let t = i18n::t();
+                            let modal = termide_modal::ConfirmModal::new(
+                                t.modal_yes(),
+                                t.app_quit_confirm(),
+                            );
+                            self.state.set_pending_action(
+                                PendingAction::QuitApplication,
+                                ActiveModal::Confirm(Box::new(modal)),
+                            );
+                        } else {
+                            self.state.quit();
+                        }
                     }
                     _ => {}
                 }
@@ -443,28 +475,35 @@ impl App {
         Ok(true)
     }
 
-    /// Handle click on Git submenu dropdown
+    /// Handle click on Tools submenu dropdown
     /// Returns true if click was handled
-    fn handle_git_submenu_click(&mut self, x: u16, y: u16) -> Result<bool> {
-        use termide_ui_render::{get_git_items, get_menu_item_x_position, GIT_MENU_INDEX};
-
-        // Get Git dropdown position
-        let menu_x = get_menu_item_x_position(GIT_MENU_INDEX);
+    fn handle_tools_submenu_click(&mut self, x: u16, y: u16) -> Result<bool> {
+        // Get Tools dropdown position
+        let menu_x = get_menu_item_x_position(TOOLS_MENU_INDEX);
         let dropdown_y = 1_u16;
 
-        // Calculate Git dropdown dimensions
-        let git_items = get_git_items();
-        let git_width = git_items.iter().map(|i| i.label.len()).max().unwrap_or(10) as u16 + 4;
-        let git_height = git_items.len() as u16 + 2; // +2 for borders
+        // Calculate Tools dropdown dimensions
+        let tools_items = get_tools_items();
+        let tools_width = tools_items
+            .iter()
+            .map(|i| i.label.len())
+            .max()
+            .unwrap_or(10) as u16
+            + 4;
+        let tools_height = tools_items.len() as u16 + 2; // +2 for borders
 
-        // Check click on Git dropdown
-        if x >= menu_x && x < menu_x + git_width && y >= dropdown_y && y < dropdown_y + git_height {
+        // Check click on Tools dropdown
+        if x >= menu_x
+            && x < menu_x + tools_width
+            && y >= dropdown_y
+            && y < dropdown_y + tools_height
+        {
             let item_y = y.saturating_sub(dropdown_y + 1); // -1 for top border
             let item_index = item_y as usize;
-            if item_index < git_items.len() {
-                self.state.ui.selected_git_item = item_index;
+            if item_index < tools_items.len() {
+                self.state.ui.selected_tools_item = item_index;
                 // Execute the action for the selected item
-                self.execute_git_submenu_action()?;
+                self.execute_tools_submenu_action()?;
                 return Ok(true);
             }
         }
