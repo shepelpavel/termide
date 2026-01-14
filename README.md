@@ -12,6 +12,8 @@ A cross-platform terminal-based IDE, file manager, and virtual terminal written 
   <img src="assets/termide.jpg" alt="TermIDE Screenshot" width="800">
 </p>
 
+**[Screenshot Gallery](https://ibb.co/album/nPX6p6)** - more screenshots showing features and themes.
+
 ## Why TermIDE?
 
 Unlike traditional terminal editors that need extensive plugin configuration, TermIDE works out of the box:
