@@ -1002,24 +1002,39 @@ fn find_repos_recursive(dir: &Path, depth: usize, max_depth: usize, repos: &mut 
     }
 
     // Check if this directory is a git repo
-    if dir.join(".git").exists() {
-        repos.push(dir.to_path_buf());
-        // Don't recurse into git repos (nested repos are unusual)
+    if !dir.join(".git").exists() {
+        // Not a git repo, scan subdirectories
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                        if !name.starts_with('.') {
+                            find_repos_recursive(&path, depth + 1, max_depth, repos);
+                        }
+                    }
+                }
+            }
+        }
         return;
     }
 
-    // Scan subdirectories
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                // Skip hidden directories (except .git which we check above)
-                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    if name.starts_with('.') {
-                        continue;
+    // This is a git repo
+    repos.push(dir.to_path_buf());
+
+    // Parse .gitmodules to find submodules
+    let gitmodules_path = dir.join(".gitmodules");
+    if gitmodules_path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&gitmodules_path) {
+            for line in content.lines() {
+                let line = line.trim();
+                if let Some(path_value) = line.strip_prefix("path = ") {
+                    let submodule_path = dir.join(path_value.trim());
+                    if submodule_path.join(".git").exists() {
+                        // Recursively find submodules in this submodule
+                        find_repos_recursive(&submodule_path, depth + 1, max_depth, repos);
                     }
                 }
-                find_repos_recursive(&path, depth + 1, max_depth, repos);
             }
         }
     }

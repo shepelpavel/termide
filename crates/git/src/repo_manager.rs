@@ -25,10 +25,10 @@ impl RepoManager {
         }
     }
 
-    /// Create a repo manager for a specific repository.
+    /// Create a repo manager for a specific repository (including its submodules).
     pub fn for_repo(repo_path: PathBuf) -> Self {
         Self {
-            repos: vec![repo_path],
+            repos: find_repos_from_paths(&[repo_path], 2),
             selected: 0,
         }
     }
@@ -120,16 +120,15 @@ mod tests {
 
     #[test]
     fn test_for_repo() {
+        // for_repo now searches for submodules, so with a non-existent path it returns empty
         let manager = RepoManager::for_repo(PathBuf::from("/test/repo"));
-        assert_eq!(manager.len(), 1);
-        assert_eq!(manager.current(), Some(Path::new("/test/repo")));
-        assert!(!manager.has_multiple());
+        assert!(manager.is_empty()); // No actual git repo at this path
     }
 
     #[test]
     fn test_select_bounds() {
-        let mut manager = RepoManager::for_repo(PathBuf::from("/test/repo"));
-        manager.select(10); // Out of bounds
+        let mut manager = RepoManager::new(&[]);
+        manager.select(10); // Out of bounds on empty
         assert_eq!(manager.selected_index(), 0); // Unchanged
     }
 }
