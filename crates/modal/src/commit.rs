@@ -5,12 +5,12 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent,
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style},
+    style::Style,
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Widget},
 };
 
-use crate::base::render_modal_block;
+use crate::base::{button_style, render_modal_block};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use termide_clipboard as clipboard;
@@ -247,23 +247,14 @@ impl Modal for CommitModal {
         let commit_label = format!("[ {} ]", t.git_action_commit());
         let cancel_label = format!("[ {} ]", t.ui_cancel());
 
-        let commit_style = if self.focus == FocusArea::Buttons && self.selected_button == 0 {
-            Style::default()
-                .fg(theme.fg)
-                .bg(theme.accented_fg)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(theme.accented_fg)
-        };
-
-        let cancel_style = if self.focus == FocusArea::Buttons && self.selected_button == 1 {
-            Style::default()
-                .fg(theme.fg)
-                .bg(theme.accented_fg)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(theme.accented_fg)
-        };
+        let commit_style = button_style(
+            self.focus == FocusArea::Buttons && self.selected_button == 0,
+            theme,
+        );
+        let cancel_style = button_style(
+            self.focus == FocusArea::Buttons && self.selected_button == 1,
+            theme,
+        );
 
         let buttons = Line::from(vec![
             Span::styled(commit_label, commit_style),

@@ -5,12 +5,12 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style},
+    style::Style,
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Widget},
 };
 
-use crate::base::render_modal_block;
+use crate::base::{button_style, render_modal_block};
 
 use termide_config::constants::MODAL_BUTTON_SPACING;
 use termide_i18n as i18n;
@@ -170,23 +170,14 @@ impl Modal for InputModal {
         // Render buttons
         let t = i18n::t();
 
-        let ok_style = if self.focus == FocusArea::Buttons && self.selected_button == 0 {
-            Style::default()
-                .fg(theme.fg)
-                .bg(theme.accented_fg)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(theme.accented_fg)
-        };
-
-        let cancel_style = if self.focus == FocusArea::Buttons && self.selected_button == 1 {
-            Style::default()
-                .fg(theme.fg)
-                .bg(theme.accented_fg)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(theme.accented_fg)
-        };
+        let ok_style = button_style(
+            self.focus == FocusArea::Buttons && self.selected_button == 0,
+            theme,
+        );
+        let cancel_style = button_style(
+            self.focus == FocusArea::Buttons && self.selected_button == 1,
+            theme,
+        );
 
         let buttons = Line::from(vec![
             Span::styled(format!("[ {} ]", t.ui_ok()), ok_style),

@@ -88,6 +88,21 @@ pub fn render_modal_block(area: Rect, buf: &mut Buffer, title: &str, theme: &The
     inner
 }
 
+/// Create a style for a button based on selection state.
+///
+/// Selected buttons have inverted colors (fg on accented_fg) and bold text.
+/// Unselected buttons have accented_fg color only.
+pub fn button_style(is_selected: bool, theme: &Theme) -> Style {
+    if is_selected {
+        Style::default()
+            .fg(theme.fg)
+            .bg(theme.accented_fg)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(theme.accented_fg)
+    }
+}
+
 /// Render a text input field with cursor and selection support.
 ///
 /// Parameters:

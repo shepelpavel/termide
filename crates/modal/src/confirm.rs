@@ -5,7 +5,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style},
+    style::Style,
     text::{Line, Span},
     widgets::{Paragraph, Widget},
 };
@@ -15,8 +15,9 @@ use termide_i18n as i18n;
 use termide_theme::Theme;
 
 use crate::{
-    base::render_modal_block, calculate_modal_width, centered_rect_with_size, max_line_width,
-    Modal, ModalResult, ModalWidthConfig,
+    base::{button_style, render_modal_block},
+    calculate_modal_width, centered_rect_with_size, max_line_width, Modal, ModalResult,
+    ModalWidthConfig,
 };
 
 /// Confirmation modal window (Yes/No)
@@ -88,23 +89,8 @@ impl Modal for ConfirmModal {
         // Render buttons
         let t = i18n::t();
 
-        let yes_style = if self.selected {
-            Style::default()
-                .fg(theme.fg)
-                .bg(theme.accented_fg)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(theme.accented_fg)
-        };
-
-        let no_style = if !self.selected {
-            Style::default()
-                .fg(theme.fg)
-                .bg(theme.accented_fg)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(theme.accented_fg)
-        };
+        let yes_style = button_style(self.selected, theme);
+        let no_style = button_style(!self.selected, theme);
 
         let buttons = Line::from(vec![
             Span::styled(format!("[ {} ]", t.ui_yes()), yes_style),
