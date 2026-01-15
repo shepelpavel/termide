@@ -55,6 +55,45 @@ impl LayoutManager {
         }
     }
 
+    /// Add panel without changing focus.
+    /// Used for preview panels where focus should stay on the source panel.
+    pub fn add_panel_without_focus(
+        &mut self,
+        panel: Box<dyn Panel>,
+        config: &Config,
+        terminal_width: u16,
+    ) {
+        let saved_focus = self.focus;
+        self.add_panel(panel, config, terminal_width);
+        self.focus = saved_focus;
+    }
+
+    /// Find panel by name, expand it in its group, return mutable reference.
+    /// Does NOT change focus. Used for reusing existing panels.
+    pub fn find_and_expand_panel_by_name(&mut self, name: &str) -> Option<&mut Box<dyn Panel>> {
+        // First pass: find the group and panel index
+        let mut found: Option<(usize, usize)> = None;
+        for (group_idx, group) in self.panel_groups.iter().enumerate() {
+            for (panel_idx, panel) in group.panels().iter().enumerate() {
+                if panel.name() == name {
+                    found = Some((group_idx, panel_idx));
+                    break;
+                }
+            }
+            if found.is_some() {
+                break;
+            }
+        }
+
+        // Second pass: expand and return mutable reference
+        if let Some((group_idx, panel_idx)) = found {
+            let group = &mut self.panel_groups[group_idx];
+            group.set_expanded(panel_idx);
+            return group.panels_mut().get_mut(panel_idx);
+        }
+        None
+    }
+
     /// Toggle panel stacking/unstacking with smart direction choice.
     pub fn toggle_panel_stacking(&mut self, available_width: u16) -> Result<()> {
         let active_group_idx = self.focus;

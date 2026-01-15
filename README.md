@@ -31,6 +31,8 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 - **Integrated Terminal** - Full PTY support, VT100 escape sequences, mouse tracking
 - **Git Integration** - Status panel, commit log with ASCII graph, staging/unstaging, branch switching
 - **Multi-panel Layout** - Accordion system with smart auto-stacking
+- **Image Viewer** - Native graphics in Kitty, WezTerm, iTerm2, Ghostty, foot terminals
+- **External Apps** - Open files with system default applications (Shift+Enter)
 - **20 Built-in Themes** - Dark, light, and retro themes (Dracula, Nord, Monokai, Solarized, etc.)
 - **Custom Themes** - Create your own themes in TOML format
 - **9 UI Languages** - English, Chinese, French, German, Hindi, Portuguese, Russian, Spanish, Thai

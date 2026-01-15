@@ -337,11 +337,21 @@ impl App {
 
         // Try native graphics rendering for images if protocol is available
         if is_image && ImagePanel::graphics_available() {
-            self.close_welcome_panels();
+            // Try to reuse existing ImagePanel
+            if let Some(panel) = self.layout_manager.find_and_expand_panel_by_name("image") {
+                if let Some(image_panel) = panel.as_any_mut().downcast_mut::<ImagePanel>() {
+                    image_panel.set_image(file_path);
+                    self.state.needs_redraw = true;
+                    logger::info(format!("Updating preview to '{}'", filename));
+                    return Ok(());
+                }
+            }
 
+            // No existing panel - create new one without changing focus
+            self.close_welcome_panels();
             match ImagePanel::new(file_path.clone()) {
                 Ok(panel) => {
-                    self.add_panel(Box::new(panel));
+                    self.add_panel_without_focus(Box::new(panel));
                     self.auto_save_session();
                     logger::info(format!("Previewing '{}' with native graphics", filename));
                     return Ok(());

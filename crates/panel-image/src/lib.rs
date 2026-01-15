@@ -66,6 +66,17 @@ impl ImagePanel {
         Picker::from_query_stdio().is_ok()
     }
 
+    /// Update the displayed image to a new path.
+    pub fn set_image(&mut self, path: PathBuf) {
+        self.file_path = path.clone();
+        self.title = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("Image")
+            .to_string();
+        self.load_image(&path);
+    }
+
     /// Load image from file path.
     fn load_image(&mut self, path: &Path) {
         // Initialize picker if not already done

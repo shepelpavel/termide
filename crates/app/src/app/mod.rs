@@ -145,6 +145,31 @@ impl App {
         self.layout_manager.add_panel(panel, config, terminal_width);
     }
 
+    /// Add panel without changing focus.
+    /// Used for preview panels where focus should stay on the source panel.
+    pub fn add_panel_without_focus(&mut self, mut panel: Box<dyn Panel>) {
+        use termide_core::PanelCommand;
+
+        // Notify new panel about current git operation state
+        if self.state.ui.git_operation_in_progress {
+            let operation = self
+                .state
+                .git_operation_handle
+                .as_ref()
+                .map(|h| h.operation.clone());
+            panel.handle_command(PanelCommand::SetGitOperationInProgress {
+                in_progress: true,
+                operation,
+                spinner_frame: self.state.ui.spinner_frame,
+            });
+        }
+
+        let terminal_width = self.state.terminal.width;
+        let config = &self.state.config;
+        self.layout_manager
+            .add_panel_without_focus(panel, config, terminal_width);
+    }
+
     /// Run the main application loop
     pub fn run<B: Backend>(
         &mut self,
