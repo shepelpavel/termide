@@ -587,18 +587,6 @@ pub fn get_unstaged_files(repo: &Path) -> Vec<UnstagedFile> {
     result
 }
 
-/// Check if a file is staged (in the git index)
-pub fn is_file_staged(repo: &Path, file: &Path) -> bool {
-    let staged = get_staged_files(repo);
-    let file_str = file.to_string_lossy();
-
-    // Check if the file path matches any staged file
-    staged.iter().any(|s| {
-        let staged_path = repo.join(&s.path);
-        staged_path == file || s.path.to_string_lossy() == file_str
-    })
-}
-
 /// Stage a file (add to index)
 pub fn stage_file(repo: &Path, file: &Path) -> Result<(), String> {
     let file_str = file.to_string_lossy();
@@ -704,25 +692,6 @@ pub fn revert_file(repo: &Path, file: &Path) -> Result<(), String> {
     }
 }
 
-/// Revert multiple files
-pub fn revert_files(repo: &Path, files: &[PathBuf]) -> Result<(), String> {
-    if files.is_empty() {
-        return Ok(());
-    }
-
-    let mut args = vec!["checkout", "--"];
-    let file_strs: Vec<String> = files
-        .iter()
-        .map(|f| f.to_string_lossy().to_string())
-        .collect();
-    args.extend(file_strs.iter().map(|s| s.as_str()));
-
-    match git_command(repo, &args) {
-        Some(_) => Ok(()),
-        None => Err("Failed to revert files".to_string()),
-    }
-}
-
 /// Push to remote
 pub fn push(repo: &Path) -> Result<(), String> {
     let output = Command::new("git")
@@ -752,36 +721,6 @@ pub fn pull(repo: &Path) -> Result<(), String> {
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
         Err(format!("Pull failed: {}", stderr.trim()))
-    }
-}
-
-/// Fetch from remote
-pub fn fetch(repo: &Path) -> Result<(), String> {
-    let output = Command::new("git")
-        .args(["fetch"])
-        .current_dir(repo)
-        .output()
-        .map_err(|e| format!("Failed to run git fetch: {}", e))?;
-
-    if output.status.success() {
-        Ok(())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(format!("Fetch failed: {}", stderr.trim()))
-    }
-}
-
-/// Stash changes
-pub fn stash(repo: &Path, message: Option<&str>) -> Result<(), String> {
-    let args = if let Some(msg) = message {
-        vec!["stash", "push", "-m", msg]
-    } else {
-        vec!["stash", "push"]
-    };
-
-    match git_command(repo, &args) {
-        Some(_) => Ok(()),
-        None => Err("Failed to stash changes".to_string()),
     }
 }
 

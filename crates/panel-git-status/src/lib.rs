@@ -476,13 +476,6 @@ impl GitStatusPanel {
         self.execute_git_op(files, git::unstage_files, "Unstaged");
     }
 
-    /// Execute revert action
-    #[allow(dead_code)]
-    fn do_revert(&mut self) {
-        let files = self.get_selected_unstaged();
-        self.execute_git_op(files, git::revert_files, "Reverted");
-    }
-
     /// Stage all unstaged files
     fn do_stage_all(&mut self) {
         let files: Vec<PathBuf> = self.unstaged_files.iter().map(|f| f.path.clone()).collect();

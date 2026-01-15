@@ -86,8 +86,6 @@ pub struct FileManager {
 pub(crate) struct FileEntry {
     pub name: String,
     pub is_dir: bool,
-    #[allow(dead_code)]
-    pub is_hidden: bool,
     pub is_symlink: bool,
     pub is_executable: bool,
     pub is_readonly: bool,
@@ -288,7 +286,6 @@ impl FileManager {
             self.entries.push(FileEntry {
                 name: "..".to_string(),
                 is_dir: true,
-                is_hidden: false,
                 is_symlink: false,
                 is_executable: false,
                 is_readonly: false,
@@ -303,7 +300,6 @@ impl FileManager {
             for entry in read_dir.flatten() {
                 if let Ok(metadata) = entry.metadata() {
                     let name = entry.file_name().to_string_lossy().to_string();
-                    let is_hidden = name.starts_with('.');
 
                     // Determine git status for this entry
                     let git_status = if metadata.is_dir() {
@@ -357,7 +353,6 @@ impl FileManager {
                     self.entries.push(FileEntry {
                         name,
                         is_dir: metadata.is_dir(),
-                        is_hidden,
                         is_symlink,
                         is_executable,
                         is_readonly,
@@ -623,7 +618,6 @@ impl FileManager {
                 self.entries.push(FileEntry {
                     name: deleted_name,
                     is_dir: false,
-                    is_hidden: false,
                     is_symlink: false,
                     is_executable: false,
                     is_readonly: false,
