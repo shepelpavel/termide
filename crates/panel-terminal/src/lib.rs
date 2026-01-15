@@ -68,6 +68,10 @@ pub struct Terminal {
     cached_cursor_shown: bool,
     /// Last focus state (for cache invalidation)
     cached_focus: bool,
+    /// Currently hovered URL (url, abs_row, start_col, end_col)
+    hovered_url: Option<(String, usize, usize, usize)>,
+    /// Whether Ctrl key is pressed (tracked for URL highlighting)
+    ctrl_pressed: bool,
 }
 
 impl Terminal {
@@ -215,6 +219,8 @@ impl Terminal {
             cached_cursor: (0, 0),
             cached_cursor_shown: false,
             cached_focus: false,
+            hovered_url: None,
+            ctrl_pressed: false,
         })
     }
 
@@ -868,6 +874,31 @@ impl Terminal {
             }
         };
 
+        // Extract URL highlighting info before the render loop
+        let url_highlight = if self.ctrl_pressed {
+            self.hovered_url
+                .as_ref()
+                .map(|(_, url_row, start, end)| (*url_row, *start, *end))
+        } else {
+            None
+        };
+
+        // Helper to check if cell is in hovered URL
+        let is_in_url = |visual_row: usize, col: usize| -> bool {
+            if let Some((url_row, start, end)) = url_highlight {
+                // Convert visual row to absolute
+                let abs_row = if scrollback_slice {
+                    view_start + visual_row
+                } else {
+                    scrollback_len + visual_row
+                };
+
+                abs_row == url_row && col >= start && col < end
+            } else {
+                false
+            }
+        };
+
         // Render directly from screen buffer (zero-copy)
         for row_idx in 0..visible_rows {
             // Get row reference without cloning
@@ -928,6 +959,11 @@ impl Terminal {
                 // Check if cell is in selection (optimized - skips if no selection)
                 if is_in_selection(row_idx, col_idx) {
                     style = Style::default().fg(Color::Black).bg(Color::LightYellow);
+                }
+
+                // Check if cell is in hovered URL (Ctrl+hover)
+                if is_in_url(row_idx, col_idx) {
+                    style = style.fg(Color::Cyan).add_modifier(Modifier::UNDERLINED);
                 }
 
                 // If this is cursor position and needs showing, use inverse colors
@@ -1015,6 +1051,25 @@ impl Terminal {
     /// Check if PTY has new data that needs rendering
     pub fn has_pending_output(&self) -> bool {
         self.has_new_data.swap(false, Ordering::AcqRel)
+    }
+
+    /// Detect URL at given position in a line.
+    /// Returns (url_string, start_col, end_col) if found.
+    fn detect_url_at_position(line: &[Cell], col: usize) -> Option<(String, usize, usize)> {
+        // Build the line text
+        let text: String = line.iter().map(|c| c.ch).collect();
+
+        // URL regex pattern - matches http://, https://, ftp://
+        // Pattern stops at whitespace or common URL-terminating characters
+        let url_pattern = regex::Regex::new(r#"(?:https?|ftp)://[^\s)>\]\}"'`<]+"#).ok()?;
+
+        // Find all URLs in line and check if col is within any
+        for m in url_pattern.find_iter(&text) {
+            if col >= m.start() && col < m.end() {
+                return Some((m.as_str().to_string(), m.start(), m.end()));
+            }
+        }
+        None
     }
 
     /// Get the name of the currently running foreground command
@@ -1371,6 +1426,48 @@ impl Panel for Terminal {
             && mouse.row >= inner_y_min
             && mouse.row <= inner_y_max;
 
+        // Track Ctrl key state for URL highlighting
+        let ctrl_pressed = mouse.modifiers.contains(KeyModifiers::CONTROL);
+        self.ctrl_pressed = ctrl_pressed;
+
+        // Detect URL under cursor when Ctrl is pressed
+        if ctrl_pressed && is_inside {
+            let screen = self.screen.read().expect("Terminal screen lock poisoned");
+            let abs_row = screen.visual_to_absolute(inner_row);
+
+            if let Some(line) = screen.get_line_by_absolute(abs_row) {
+                if let Some((url, start, end)) = Self::detect_url_at_position(line, inner_col) {
+                    // URL found - store it and copy to clipboard if it's a new URL
+                    let is_new_url = self.hovered_url.as_ref().map(|(u, _, _, _)| u) != Some(&url);
+                    drop(screen);
+
+                    if is_new_url {
+                        // Copy new URL to clipboard
+                        let _ = termide_ui::clipboard::copy(&url);
+                    }
+                    self.hovered_url = Some((url, abs_row, start, end));
+                    self.cached_lines = None; // Force redraw
+                } else {
+                    // No URL under cursor
+                    drop(screen);
+                    if self.hovered_url.is_some() {
+                        self.hovered_url = None;
+                        self.cached_lines = None; // Force redraw
+                    }
+                }
+            } else {
+                drop(screen);
+                if self.hovered_url.is_some() {
+                    self.hovered_url = None;
+                    self.cached_lines = None;
+                }
+            }
+        } else if !ctrl_pressed && self.hovered_url.is_some() {
+            // Ctrl not pressed - clear URL highlight
+            self.hovered_url = None;
+            self.cached_lines = None; // Force redraw
+        }
+
         // Handle scroll events first - they should work even when cursor is near border
         match mouse.kind {
             MouseEventKind::ScrollUp => {
@@ -1408,6 +1505,15 @@ impl Panel for Terminal {
                 if !is_inside {
                     return vec![];
                 }
+
+                // Ctrl+Click on URL opens it in browser
+                if ctrl_pressed {
+                    if let Some((ref url, _, _, _)) = self.hovered_url {
+                        let _ = open::that(url);
+                        return vec![];
+                    }
+                }
+
                 // Start text selection with absolute coordinates
                 let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
                 let abs_row = screen.visual_to_absolute(inner_row);
