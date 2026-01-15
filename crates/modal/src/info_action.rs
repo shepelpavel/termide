@@ -48,6 +48,8 @@ pub struct InfoActionModal {
     selected_button: usize,
     spinner_frame: usize,
     last_button_areas: Vec<Rect>,
+    /// Git operation in progress (action name like "push" or "pull")
+    operation_in_progress: Option<String>,
 }
 
 impl InfoActionModal {
@@ -64,6 +66,7 @@ impl InfoActionModal {
             selected_button: 0,
             spinner_frame: 0,
             last_button_areas: Vec::new(),
+            operation_in_progress: None,
         }
     }
 
@@ -78,6 +81,16 @@ impl InfoActionModal {
         if let Some(line) = self.lines.iter_mut().find(|(k, _)| k == key) {
             line.1 = new_value;
         }
+    }
+
+    /// Set operation in progress (for animated button)
+    pub fn set_operation_in_progress(&mut self, action: Option<String>) {
+        self.operation_in_progress = action;
+    }
+
+    /// Check if operation is in progress
+    pub fn is_operation_in_progress(&self) -> bool {
+        self.operation_in_progress.is_some()
     }
 
     /// Advance the spinner frame counter (for animation)
@@ -338,10 +351,34 @@ impl Modal for InfoActionModal {
         // Render action buttons
         self.last_button_areas.clear();
 
+        // Build button labels (with spinner for operation in progress)
+        let button_labels: Vec<String> = self
+            .buttons
+            .iter()
+            .map(|button| {
+                if self.operation_in_progress.as_ref() == Some(&button.action) {
+                    let spinner = self.get_spinner_char();
+                    match button.action.as_str() {
+                        "push" => format!("{} {}", spinner, t.git_push_in_progress()),
+                        "pull" => format!("{} {}", spinner, t.git_pull_in_progress()),
+                        _ => button.label.clone(),
+                    }
+                } else {
+                    button.label.clone()
+                }
+            })
+            .collect();
+
         let mut button_spans = Vec::new();
-        for (i, button) in self.buttons.iter().enumerate() {
+        for (i, (button, label)) in self.buttons.iter().zip(button_labels.iter()).enumerate() {
             let is_selected = i == self.selected_button;
-            let style = if is_selected {
+            let is_in_progress = self.operation_in_progress.as_ref() == Some(&button.action);
+            let style = if is_in_progress {
+                // Animated button style
+                Style::default()
+                    .fg(theme.accented_fg)
+                    .add_modifier(Modifier::BOLD)
+            } else if is_selected {
                 Style::default()
                     .fg(theme.fg)
                     .bg(theme.accented_fg)
@@ -353,7 +390,7 @@ impl Modal for InfoActionModal {
             if i > 0 {
                 button_spans.push(Span::raw("  "));
             }
-            button_spans.push(Span::styled(format!("[ {} ]", button.label), style));
+            button_spans.push(Span::styled(format!("[ {} ]", label), style));
         }
 
         let buttons_line = Line::from(button_spans);
@@ -361,10 +398,9 @@ impl Modal for InfoActionModal {
         button_paragraph.render(chunks[3], buf);
 
         // Calculate button areas for mouse handling
-        let buttons_total_width: usize = self
-            .buttons
+        let buttons_total_width: usize = button_labels
             .iter()
-            .map(|b| b.label.width() + 4)
+            .map(|label| label.width() + 4)
             .sum::<usize>()
             + self.buttons.len().saturating_sub(1) * 2;
 
@@ -372,8 +408,8 @@ impl Modal for InfoActionModal {
             chunks[3].x + (chunks[3].width.saturating_sub(buttons_total_width as u16)) / 2;
         let mut current_x = start_x;
 
-        for button in &self.buttons {
-            let btn_width = (button.label.width() + 4) as u16;
+        for label in &button_labels {
+            let btn_width = (label.width() + 4) as u16;
             self.last_button_areas.push(Rect {
                 x: current_x,
                 y: chunks[3].y,
@@ -385,6 +421,11 @@ impl Modal for InfoActionModal {
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<Option<ModalResult<Self::Result>>> {
+        // Block all actions while operation is in progress
+        if self.operation_in_progress.is_some() {
+            return Ok(None);
+        }
+
         match key.code {
             KeyCode::Esc => Ok(Some(ModalResult::Cancelled)),
             KeyCode::Enter | KeyCode::Char(' ') => {
@@ -413,6 +454,11 @@ impl Modal for InfoActionModal {
         mouse: MouseEvent,
         _modal_area: Rect,
     ) -> Result<Option<ModalResult<Self::Result>>> {
+        // Block all actions while operation is in progress
+        if self.operation_in_progress.is_some() {
+            return Ok(None);
+        }
+
         if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
             return Ok(None);
         }

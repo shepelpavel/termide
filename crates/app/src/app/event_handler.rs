@@ -714,7 +714,7 @@ impl App {
     }
 
     /// Handle GitOperation event - run git push/pull in background thread
-    fn event_git_operation(
+    pub(super) fn event_git_operation(
         &mut self,
         operation: GitOperationType,
         repo_path: PathBuf,

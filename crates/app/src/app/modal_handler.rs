@@ -246,6 +246,11 @@ impl App {
                     return Ok(());
                 }
 
+                // Check if this is a git push/pull action that should keep modal open
+                if self.handle_git_push_pull_from_modal(&result)? {
+                    return Ok(());
+                }
+
                 self.state.close_modal();
                 if let ModalResult::Confirmed(value) = result {
                     self.handle_modal_result(value)?;
@@ -771,5 +776,51 @@ impl App {
             self.add_panel(Box::new(terminal));
             self.auto_save_session();
         }
+    }
+
+    /// Handle git push/pull actions from InfoActionModal
+    /// Returns true if the action was handled (and modal should stay open)
+    fn handle_git_push_pull_from_modal(
+        &mut self,
+        result: &ModalResult<Box<dyn std::any::Any>>,
+    ) -> Result<bool> {
+        use termide_core::GitOperationType;
+        use termide_modal::InfoActionResult;
+        use termide_state::PendingAction;
+
+        // Check if the pending action is a git file action
+        let pending = match &self.state.pending_action {
+            Some(PendingAction::GitFileAction { repo_path, .. }) => Some(repo_path.clone()),
+            _ => None,
+        };
+
+        let repo_path = match pending {
+            Some(path) => path,
+            None => return Ok(false),
+        };
+
+        // Check if result is push or pull action
+        if let ModalResult::Confirmed(value) = result {
+            if let Some(InfoActionResult::Action(action)) = value.downcast_ref::<InfoActionResult>()
+            {
+                let operation = match action.as_str() {
+                    "push" => GitOperationType::Push,
+                    "pull" => GitOperationType::Pull,
+                    _ => return Ok(false),
+                };
+
+                // Set operation in progress on the modal
+                if let Some(ActiveModal::InfoAction(modal)) = &mut self.state.active_modal {
+                    modal.set_operation_in_progress(Some(action.clone()));
+                }
+
+                // Start background git operation
+                self.event_git_operation(operation, repo_path)?;
+
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
     }
 }

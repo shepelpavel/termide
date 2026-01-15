@@ -586,6 +586,13 @@ impl App {
                     });
                 }
 
+                // Also advance spinner on InfoActionModal if open
+                if let Some(ActiveModal::InfoAction(ref mut modal)) = self.state.active_modal {
+                    if modal.is_operation_in_progress() {
+                        modal.advance_spinner();
+                    }
+                }
+
                 // Put handle back
                 self.state.git_operation_handle = Some(handle);
                 self.state.needs_redraw = true;
