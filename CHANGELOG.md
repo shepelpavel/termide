@@ -5,6 +5,24 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.9] - 2026-01-15
+
+### Added
+- **Terminal URL detection**: Ctrl+hover highlights URLs (cyan + underline), copies to clipboard, Ctrl+click opens in browser
+- **ImagePanel reuse**: Browsing images reuses existing panel instead of creating new ones
+- **Git async operations**: Push/Pull run in background with spinner indicator and result modal
+
+### Fixed
+- **Modal UX**: InfoModal closes only on Enter, Escape, or button click (not any key press)
+- **Modal display**: Git operation results show actual output without "Error:"/"Status:" labels
+- **Unicode click detection**: Fixed button click detection for Unicode text using grapheme width
+- **Git TUI corruption**: Stdout/stderr piped to prevent git output from corrupting terminal display
+
+### Changed
+- **Git spinner location**: Moved from status bar to GitStatusPanel for better visibility during panel switches
+- **UI cleanup**: Consolidated duplicate code and removed dead code
+- **Menu structure**: Restructured menu and fixed log viewer truncation
+
 ## [0.8.8] - 2026-01-13
 
 ### Security
@@ -624,3 +642,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.1.2]: https://github.com/termide/termide/releases/tag/0.1.2
 [0.1.1]: https://github.com/termide/termide/releases/tag/0.1.1
 [0.1.0]: https://github.com/termide/termide/releases/tag/0.1.0
+[0.8.9]: https://github.com/termide/termide/releases/tag/0.8.9
