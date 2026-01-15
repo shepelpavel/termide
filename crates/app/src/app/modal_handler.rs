@@ -126,109 +126,39 @@ impl App {
         if let Some(modal) = self.state.get_active_modal_mut() {
             // Handle event in corresponding modal window
             let modal_result = match modal {
-                ActiveModal::Commit(m) => m.handle_mouse(mouse, modal_area)?.map(|r| match r {
-                    ModalResult::Confirmed(value) => {
-                        ModalResult::Confirmed(Box::new(value) as Box<dyn std::any::Any>)
-                    }
-                    ModalResult::Cancelled => ModalResult::Cancelled,
-                }),
-                ActiveModal::Confirm(m) => m.handle_mouse(mouse, modal_area)?.map(|r| match r {
-                    ModalResult::Confirmed(value) => {
-                        ModalResult::Confirmed(Box::new(value) as Box<dyn std::any::Any>)
-                    }
-                    ModalResult::Cancelled => ModalResult::Cancelled,
-                }),
-                ActiveModal::Input(m) => m.handle_mouse(mouse, modal_area)?.map(|r| match r {
-                    ModalResult::Confirmed(value) => {
-                        ModalResult::Confirmed(Box::new(value) as Box<dyn std::any::Any>)
-                    }
-                    ModalResult::Cancelled => ModalResult::Cancelled,
-                }),
-                ActiveModal::Select(m) => m.handle_mouse(mouse, modal_area)?.map(|r| match r {
-                    ModalResult::Confirmed(value) => {
-                        ModalResult::Confirmed(Box::new(value) as Box<dyn std::any::Any>)
-                    }
-                    ModalResult::Cancelled => ModalResult::Cancelled,
-                }),
-                ActiveModal::Overwrite(m) => m.handle_mouse(mouse, modal_area)?.map(|r| match r {
-                    ModalResult::Confirmed(value) => {
-                        ModalResult::Confirmed(Box::new(value) as Box<dyn std::any::Any>)
-                    }
-                    ModalResult::Cancelled => ModalResult::Cancelled,
-                }),
-                ActiveModal::Conflict(m) => m.handle_mouse(mouse, modal_area)?.map(|r| match r {
-                    ModalResult::Confirmed(value) => {
-                        ModalResult::Confirmed(Box::new(value) as Box<dyn std::any::Any>)
-                    }
-                    ModalResult::Cancelled => ModalResult::Cancelled,
-                }),
-                ActiveModal::Info(m) => m.handle_mouse(mouse, modal_area)?.map(|r| match r {
-                    ModalResult::Confirmed(value) => {
-                        ModalResult::Confirmed(Box::new(value) as Box<dyn std::any::Any>)
-                    }
-                    ModalResult::Cancelled => ModalResult::Cancelled,
-                }),
-                ActiveModal::InfoAction(m) => m.handle_mouse(mouse, modal_area)?.map(|r| match r {
-                    ModalResult::Confirmed(value) => {
-                        ModalResult::Confirmed(Box::new(value) as Box<dyn std::any::Any>)
-                    }
-                    ModalResult::Cancelled => ModalResult::Cancelled,
-                }),
+                ActiveModal::Commit(m) => m.handle_mouse(mouse, modal_area)?.map(box_modal_result),
+                ActiveModal::Confirm(m) => m.handle_mouse(mouse, modal_area)?.map(box_modal_result),
+                ActiveModal::Input(m) => m.handle_mouse(mouse, modal_area)?.map(box_modal_result),
+                ActiveModal::Select(m) => m.handle_mouse(mouse, modal_area)?.map(box_modal_result),
+                ActiveModal::Overwrite(m) => {
+                    m.handle_mouse(mouse, modal_area)?.map(box_modal_result)
+                }
+                ActiveModal::Conflict(m) => {
+                    m.handle_mouse(mouse, modal_area)?.map(box_modal_result)
+                }
+                ActiveModal::Info(m) => m.handle_mouse(mouse, modal_area)?.map(box_modal_result),
+                ActiveModal::InfoAction(m) => {
+                    m.handle_mouse(mouse, modal_area)?.map(box_modal_result)
+                }
                 ActiveModal::RenamePattern(m) => {
-                    m.handle_mouse(mouse, modal_area)?.map(|r| match r {
-                        ModalResult::Confirmed(value) => {
-                            ModalResult::Confirmed(Box::new(value) as Box<dyn std::any::Any>)
-                        }
-                        ModalResult::Cancelled => ModalResult::Cancelled,
-                    })
+                    m.handle_mouse(mouse, modal_area)?.map(box_modal_result)
                 }
                 ActiveModal::EditableSelect(m) => {
-                    m.handle_mouse(mouse, modal_area)?.map(|r| match r {
-                        ModalResult::Confirmed(value) => {
-                            ModalResult::Confirmed(Box::new(value) as Box<dyn std::any::Any>)
-                        }
-                        ModalResult::Cancelled => ModalResult::Cancelled,
-                    })
+                    m.handle_mouse(mouse, modal_area)?.map(box_modal_result)
                 }
-                ActiveModal::Search(m) => m.handle_mouse(mouse, modal_area)?.map(|r| match r {
-                    ModalResult::Confirmed(value) => {
-                        ModalResult::Confirmed(Box::new(value) as Box<dyn std::any::Any>)
-                    }
-                    ModalResult::Cancelled => ModalResult::Cancelled,
-                }),
-                ActiveModal::Replace(m) => m.handle_mouse(mouse, modal_area)?.map(|r| match r {
-                    ModalResult::Confirmed(value) => {
-                        ModalResult::Confirmed(Box::new(value) as Box<dyn std::any::Any>)
-                    }
-                    ModalResult::Cancelled => ModalResult::Cancelled,
-                }),
-                ActiveModal::Sessions(m) => m.handle_mouse(mouse, modal_area)?.map(|r| match r {
-                    ModalResult::Confirmed(value) => {
-                        ModalResult::Confirmed(Box::new(value) as Box<dyn std::any::Any>)
-                    }
-                    ModalResult::Cancelled => ModalResult::Cancelled,
-                }),
-                ActiveModal::FileSearch(m) => m.handle_mouse(mouse, modal_area)?.map(|r| match r {
-                    ModalResult::Confirmed(value) => {
-                        ModalResult::Confirmed(Box::new(value) as Box<dyn std::any::Any>)
-                    }
-                    ModalResult::Cancelled => ModalResult::Cancelled,
-                }),
+                ActiveModal::Search(m) => m.handle_mouse(mouse, modal_area)?.map(box_modal_result),
+                ActiveModal::Replace(m) => m.handle_mouse(mouse, modal_area)?.map(box_modal_result),
+                ActiveModal::Sessions(m) => {
+                    m.handle_mouse(mouse, modal_area)?.map(box_modal_result)
+                }
+                ActiveModal::FileSearch(m) => {
+                    m.handle_mouse(mouse, modal_area)?.map(box_modal_result)
+                }
                 ActiveModal::ContentSearch(m) => {
-                    m.handle_mouse(mouse, modal_area)?.map(|r| match r {
-                        ModalResult::Confirmed(value) => {
-                            ModalResult::Confirmed(Box::new(value) as Box<dyn std::any::Any>)
-                        }
-                        ModalResult::Cancelled => ModalResult::Cancelled,
-                    })
+                    m.handle_mouse(mouse, modal_area)?.map(box_modal_result)
                 }
                 ActiveModal::DirectoryPicker(m) => {
-                    m.handle_mouse(mouse, modal_area)?.map(|r| match r {
-                        ModalResult::Confirmed(value) => {
-                            ModalResult::Confirmed(Box::new(value) as Box<dyn std::any::Any>)
-                        }
-                        ModalResult::Cancelled => ModalResult::Cancelled,
-                    })
+                    m.handle_mouse(mouse, modal_area)?.map(box_modal_result)
                 }
             };
 
