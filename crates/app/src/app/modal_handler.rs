@@ -578,6 +578,23 @@ impl App {
                             self.state.set_info("File unstaged".to_string());
                         }
                     }
+                    "edit" => {
+                        // Open file in editor normally (without diff mode emphasis)
+                        let full_path = repo_path.join(file_path);
+                        use termide_panel_editor::Editor;
+                        match Editor::open_file_with_config(
+                            full_path.clone(),
+                            self.state.editor_config(),
+                        ) {
+                            Ok(editor_panel) => {
+                                self.add_panel(Box::new(editor_panel));
+                                self.auto_save_session();
+                            }
+                            Err(e) => {
+                                self.state.set_error(format!("Open error: {}", e));
+                            }
+                        }
+                    }
                     "diff" => {
                         // Open file in editor (editor shows git diff markers)
                         let full_path = repo_path.join(file_path);

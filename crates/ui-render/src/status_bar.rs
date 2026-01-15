@@ -264,20 +264,13 @@ impl StatusBar {
             spans.push(Span::styled(format!("{} ", editor_status), highlight_style));
 
             spans
+        } else if let Some(disk) = disk_space {
+            // Panels with disk space info (like git status): show title + disk info
+            let mut spans = vec![Span::styled(format!(" {}", panel_title), highlight_style)];
+            append_disk_space(&mut spans, disk, theme, total_width);
+            spans
         } else {
             match panel_title {
-                "Terminal" => {
-                    // Terminal: current directory
-                    vec![
-                        Span::styled(format!(" {} ", t.status_cwd()), base_style),
-                        Span::styled("~/Documents/Repos", highlight_style),
-                        Span::styled(
-                            format!("{}{} ", t.ui_hint_separator(), t.status_shell()),
-                            base_style,
-                        ),
-                        Span::styled("bash", highlight_style),
-                    ]
-                }
                 "Debug" => {
                     // Debug: layout mode and dimensions
                     let terminal_info =
@@ -294,19 +287,8 @@ impl StatusBar {
                     ]
                 }
                 _ => {
-                    // Default: general information
-                    let panel_info = format!(" {}{}", t.status_panel(), panel_title);
-                    let term_info = format!(
-                        "{}{}x{}",
-                        t.ui_hint_separator(),
-                        params.terminal_width,
-                        params.terminal_height
-                    );
-
-                    vec![
-                        Span::styled(panel_info, base_style),
-                        Span::styled(term_info, base_style),
-                    ]
+                    // Default: simple title display
+                    vec![Span::styled(format!(" {}", panel_title), highlight_style)]
                 }
             }
         }

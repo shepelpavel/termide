@@ -239,6 +239,10 @@ pub trait Translation: Send + Sync {
     fn git_file_properties_title(&self) -> &str;
     fn git_props_path(&self) -> &str;
     fn git_props_status(&self) -> &str;
+    fn git_props_size(&self) -> &str;
+    fn git_props_diff(&self) -> &str;
+    fn git_props_deleted(&self) -> &str;
+    fn git_action_edit(&self) -> &str;
     fn git_status_added(&self) -> String;
     fn git_status_deleted(&self) -> String;
     fn git_status_modified(&self) -> String;

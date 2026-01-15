@@ -8,5 +8,6 @@ repository.workspace = true
 description = "System resource monitoring for termide"
 
 [dependencies]
+libc.workspace = true
 sysinfo.workspace = true
 termide-i18n = { path = "../i18n" }

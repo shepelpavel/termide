@@ -11,6 +11,7 @@ use termide_app::AppState;
 use termide_layout::LayoutManager;
 use termide_panel_editor::Editor;
 use termide_panel_file_manager::FileManager;
+use termide_panel_git_status::GitStatusPanel;
 use termide_panel_terminal::Terminal;
 use termide_theme::Theme;
 use termide_ui_render::{
@@ -344,6 +345,10 @@ fn render_status_bar_for_active(
             (None, None, None, Some(editor.get_editor_info()), None)
         } else if let Some(terminal) = (&mut **panel as &mut dyn Any).downcast_mut::<Terminal>() {
             (None, None, None, None, Some(terminal.get_terminal_info()))
+        } else if let Some(git_panel) =
+            (&mut **panel as &mut dyn Any).downcast_mut::<GitStatusPanel>()
+        {
+            (None, None, git_panel.get_disk_space_info(), None, None)
         } else {
             (None, None, None, None, None)
         };

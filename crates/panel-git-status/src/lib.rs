@@ -25,6 +25,7 @@ use termide_core::{
 use termide_git::{self as git, truncate_to_width, RepoManager, StagedFile, UnstagedFile};
 use termide_modal::{ActionButton, ActiveModal, InfoActionModal};
 use termide_state::PendingAction;
+use termide_system_monitor::format_bytes;
 use termide_theme::Theme;
 use termide_ui::{IndexClickTracker, ScrollBar};
 use termide_ui_render::InlineSelector;
@@ -488,7 +489,7 @@ impl GitStatusPanel {
         self.execute_git_op(files, git::unstage_files, "Unstaged");
     }
 
-    /// Show file properties modal with Diff/Revert actions
+    /// Show file properties modal with Edit/Diff/Revert actions
     fn show_file_properties(&mut self) -> Vec<PanelEvent> {
         let t = termide_i18n::t();
 
@@ -532,17 +533,38 @@ impl GitStatusPanel {
             return vec![];
         };
 
+        // Get full path for file stats
+        let full_path = repo_path.join(&file_path);
+
+        // Get file metadata (size + line count combined)
+        let size_info = if full_path.exists() {
+            let size = std::fs::metadata(&full_path).map(|m| m.len()).unwrap_or(0);
+            let lines = std::fs::read_to_string(&full_path)
+                .map(|s| s.lines().count())
+                .unwrap_or(0);
+            format!("{} ({} LOC)", format_bytes(size), lines)
+        } else {
+            t.git_props_deleted().to_string()
+        };
+
+        // Get diff stats
+        let diff_stats = git::get_file_diff_stats(&repo_path, &file_path, is_staged);
+        let diff_info = format!("+{} -{}", diff_stats.additions, diff_stats.deletions);
+
         // Build data for modal
         let data = vec![
             (
                 t.git_props_path().to_string(),
                 file_path.display().to_string(),
             ),
+            (t.git_props_size().to_string(), size_info),
             (t.git_props_status().to_string(), status_str),
+            (t.git_props_diff().to_string(), diff_info),
         ];
 
         // Build action buttons (Revert shown for all files - staged files will be unstaged first)
         let buttons = vec![
+            ActionButton::new(t.git_action_edit(), "edit"),
             ActionButton::new(t.git_action_diff(), "diff"),
             ActionButton::new(t.git_action_revert(), "revert"),
             ActionButton::new(t.git_action_close(), "close"),
@@ -1485,6 +1507,13 @@ impl GitStatusPanel {
     pub fn take_modal_request(&mut self) -> Option<(PendingAction, ActiveModal)> {
         self.modal_request.take()
     }
+
+    /// Get disk space information for the current repository.
+    pub fn get_disk_space_info(&self) -> Option<termide_system_monitor::DiskSpaceInfo> {
+        self.repo_manager
+            .current()
+            .and_then(termide_system_monitor::get_disk_space_info)
+    }
 }
 
 impl Panel for GitStatusPanel {
@@ -1507,11 +1536,11 @@ impl Panel for GitStatusPanel {
 
         if self.is_loading {
             format!(
-                "{} Git: {} ({}) {}",
+                "{} {} ({}) {}",
                 LOADING_INDICATOR, repo_name, branch, status
             )
         } else {
-            format!("Git: {} ({}) {}", repo_name, branch, status)
+            format!("{} ({}) {}", repo_name, branch, status)
         }
     }
 

@@ -818,6 +818,22 @@ impl Translation for RuntimeTranslation {
         self.get_string("git_props_status")
     }
 
+    fn git_props_size(&self) -> &str {
+        self.get_string("git_props_size")
+    }
+
+    fn git_props_diff(&self) -> &str {
+        self.get_string("git_props_diff")
+    }
+
+    fn git_props_deleted(&self) -> &str {
+        self.get_string("git_props_deleted")
+    }
+
+    fn git_action_edit(&self) -> &str {
+        self.get_string("git_action_edit")
+    }
+
     fn git_status_added(&self) -> String {
         self.get_string("git_status_added").to_string()
     }

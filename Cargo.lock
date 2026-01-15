@@ -2693,6 +2693,7 @@ dependencies = [
  "termide-keyboard",
  "termide-modal",
  "termide-state",
+ "termide-system-monitor",
  "termide-theme",
  "termide-ui",
  "termide-watcher",
@@ -2729,6 +2730,7 @@ dependencies = [
  "termide-modal",
  "termide-session",
  "termide-state",
+ "termide-system-monitor",
  "termide-theme",
  "termide-ui",
  "termide-ui-render",
@@ -2815,6 +2817,7 @@ dependencies = [
 name = "termide-system-monitor"
 version = "0.8.9"
 dependencies = [
+ "libc",
  "sysinfo",
  "termide-i18n",
 ]

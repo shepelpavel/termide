@@ -846,6 +846,41 @@ pub fn get_file_diff(repo: &Path, file: &Path, staged: bool) -> Option<String> {
     }
 }
 
+/// Diff statistics for a file.
+#[derive(Debug, Clone, Default)]
+pub struct DiffStats {
+    /// Number of lines added.
+    pub additions: usize,
+    /// Number of lines deleted.
+    pub deletions: usize,
+}
+
+/// Get diff stats for a file (additions/deletions count).
+pub fn get_file_diff_stats(repo: &Path, file: &Path, staged: bool) -> DiffStats {
+    let file_str = file.to_string_lossy();
+    let args: Vec<&str> = if staged {
+        vec!["diff", "--cached", "--numstat", "--", &file_str]
+    } else {
+        vec!["diff", "--numstat", "--", &file_str]
+    };
+
+    let output = git_command_stdout(repo, &args);
+
+    // Parse: "10\t5\tfilename" -> additions=10, deletions=5
+    if let Some(text) = output {
+        if let Some(line) = text.lines().next() {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() >= 2 {
+                return DiffStats {
+                    additions: parts[0].parse().unwrap_or(0),
+                    deletions: parts[1].parse().unwrap_or(0),
+                };
+            }
+        }
+    }
+    DiffStats::default()
+}
+
 /// Find all git repositories under a root directory up to max_depth
 pub fn find_all_repos(root: &Path, max_depth: usize) -> Vec<PathBuf> {
     let mut repos = Vec::new();
