@@ -255,8 +255,8 @@ pub trait Panel: Any {
     /// Terminate all child processes (for terminal).
     fn kill_processes(&mut self) {}
 
-    /// Check if this is a Welcome panel.
-    fn is_welcome_panel(&self) -> bool {
+    /// Check if this is a Help panel.
+    fn is_help_panel(&self) -> bool {
         false
     }
 }

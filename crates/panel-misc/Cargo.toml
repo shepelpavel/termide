@@ -19,3 +19,4 @@ termide-keyboard = { path = "../keyboard" }
 termide-logger = { path = "../logger" }
 termide-panel-editor = { path = "../panel-editor" }
 termide-theme = { path = "../theme" }
+termide-ui = { path = "../ui" }

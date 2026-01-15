@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use super::App;
 use crate::PanelExt;
-use termide_panel_misc::WelcomePanel as Welcome;
+use termide_panel_misc::HelpPanel as Help;
 
 impl App {
     /// Close panel by index and switch focus to next visible panel
@@ -66,7 +66,7 @@ impl App {
         let should_add_welcome = self.layout_manager.panel_groups.is_empty();
 
         if should_add_welcome {
-            let welcome = Welcome::new();
+            let welcome = Help::new(&self.state.config);
             self.add_panel(Box::new(welcome));
         }
 

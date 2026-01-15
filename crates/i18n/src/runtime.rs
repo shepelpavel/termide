@@ -158,6 +158,10 @@ impl Translation for RuntimeTranslation {
         self.get_string("panel_welcome")
     }
 
+    fn panel_help(&self) -> &str {
+        self.get_string("panel_help")
+    }
+
     fn editor_close_unsaved(&self) -> &str {
         self.get_string("editor_close_unsaved")
     }
@@ -348,10 +352,6 @@ impl Translation for RuntimeTranslation {
         self.get_string("help_clipboard_operations")
     }
 
-    fn help_close_hint(&self) -> &str {
-        self.get_string("help_close_hint")
-    }
-
     fn help_desc_menu(&self) -> &str {
         self.get_string("help_desc_menu")
     }
@@ -498,6 +498,182 @@ impl Translation for RuntimeTranslation {
 
     fn help_desc_git_deleted(&self) -> &str {
         self.get_string("help_desc_git_deleted")
+    }
+
+    fn help_section_panels(&self) -> &str {
+        self.get_string("help_section_panels")
+    }
+
+    fn help_section_git_status(&self) -> &str {
+        self.get_string("help_section_git_status")
+    }
+
+    fn help_desc_new_file_manager(&self) -> &str {
+        self.get_string("help_desc_new_file_manager")
+    }
+
+    fn help_desc_new_editor(&self) -> &str {
+        self.get_string("help_desc_new_editor")
+    }
+
+    fn help_desc_new_log_panel(&self) -> &str {
+        self.get_string("help_desc_new_log_panel")
+    }
+
+    fn help_desc_open_preferences(&self) -> &str {
+        self.get_string("help_desc_open_preferences")
+    }
+
+    fn help_desc_open_sessions(&self) -> &str {
+        self.get_string("help_desc_open_sessions")
+    }
+
+    fn help_desc_open_git_status(&self) -> &str {
+        self.get_string("help_desc_open_git_status")
+    }
+
+    fn help_desc_toggle_stack(&self) -> &str {
+        self.get_string("help_desc_toggle_stack")
+    }
+
+    fn help_desc_swap_left(&self) -> &str {
+        self.get_string("help_desc_swap_left")
+    }
+
+    fn help_desc_swap_right(&self) -> &str {
+        self.get_string("help_desc_swap_right")
+    }
+
+    fn help_desc_move_first(&self) -> &str {
+        self.get_string("help_desc_move_first")
+    }
+
+    fn help_desc_move_last(&self) -> &str {
+        self.get_string("help_desc_move_last")
+    }
+
+    fn help_desc_resize_smaller(&self) -> &str {
+        self.get_string("help_desc_resize_smaller")
+    }
+
+    fn help_desc_resize_larger(&self) -> &str {
+        self.get_string("help_desc_resize_larger")
+    }
+
+    fn help_desc_prev_group(&self) -> &str {
+        self.get_string("help_desc_prev_group")
+    }
+
+    fn help_desc_next_group(&self) -> &str {
+        self.get_string("help_desc_next_group")
+    }
+
+    fn help_desc_prev_panel(&self) -> &str {
+        self.get_string("help_desc_prev_panel")
+    }
+
+    fn help_desc_next_panel(&self) -> &str {
+        self.get_string("help_desc_next_panel")
+    }
+
+    fn help_desc_goto_panel(&self) -> &str {
+        self.get_string("help_desc_goto_panel")
+    }
+
+    fn help_desc_force_save(&self) -> &str {
+        self.get_string("help_desc_force_save")
+    }
+
+    fn help_desc_reload(&self) -> &str {
+        self.get_string("help_desc_reload")
+    }
+
+    fn help_desc_duplicate_line(&self) -> &str {
+        self.get_string("help_desc_duplicate_line")
+    }
+
+    fn help_desc_search_next(&self) -> &str {
+        self.get_string("help_desc_search_next")
+    }
+
+    fn help_desc_search_prev(&self) -> &str {
+        self.get_string("help_desc_search_prev")
+    }
+
+    fn help_desc_replace(&self) -> &str {
+        self.get_string("help_desc_replace")
+    }
+
+    fn help_desc_replace_current(&self) -> &str {
+        self.get_string("help_desc_replace_current")
+    }
+
+    fn help_desc_replace_all(&self) -> &str {
+        self.get_string("help_desc_replace_all")
+    }
+
+    fn help_desc_view_file(&self) -> &str {
+        self.get_string("help_desc_view_file")
+    }
+
+    fn help_desc_edit_file(&self) -> &str {
+        self.get_string("help_desc_edit_file")
+    }
+
+    fn help_desc_search_content(&self) -> &str {
+        self.get_string("help_desc_search_content")
+    }
+
+    fn help_desc_go_home(&self) -> &str {
+        self.get_string("help_desc_go_home")
+    }
+
+    fn help_desc_refresh(&self) -> &str {
+        self.get_string("help_desc_refresh")
+    }
+
+    fn help_desc_open_external(&self) -> &str {
+        self.get_string("help_desc_open_external")
+    }
+
+    fn help_desc_stage_file(&self) -> &str {
+        self.get_string("help_desc_stage_file")
+    }
+
+    fn help_desc_unstage_file(&self) -> &str {
+        self.get_string("help_desc_unstage_file")
+    }
+
+    fn help_desc_next_section(&self) -> &str {
+        self.get_string("help_desc_next_section")
+    }
+
+    fn help_desc_prev_section(&self) -> &str {
+        self.get_string("help_desc_prev_section")
+    }
+
+    fn help_desc_terminal_copy(&self) -> &str {
+        self.get_string("help_desc_terminal_copy")
+    }
+
+    fn help_desc_terminal_paste(&self) -> &str {
+        self.get_string("help_desc_terminal_paste")
+    }
+
+    fn help_desc_scroll_up(&self) -> &str {
+        self.get_string("help_desc_scroll_up")
+    }
+
+    fn help_desc_scroll_down(&self) -> &str {
+        self.get_string("help_desc_scroll_down")
+    }
+
+    fn help_desc_scroll_top(&self) -> &str {
+        self.get_string("help_desc_scroll_top")
+    }
+
+    fn help_desc_scroll_bottom(&self) -> &str {
+        self.get_string("help_desc_scroll_bottom")
     }
 
     fn status_file_created(&self, name: &str) -> String {

@@ -51,6 +51,7 @@ pub trait Translation: Send + Sync {
     fn panel_editor(&self, filename: &str) -> String;
     fn panel_terminal(&self) -> &str;
     fn panel_welcome(&self) -> &str;
+    fn panel_help(&self) -> &str;
 
     // Editor
     fn editor_close_unsaved(&self) -> &str;
@@ -110,7 +111,6 @@ pub trait Translation: Send + Sync {
     fn help_terminal_keys(&self) -> &str;
     fn help_git_integration(&self) -> &str;
     fn help_clipboard_operations(&self) -> &str;
-    fn help_close_hint(&self) -> &str;
 
     // Help key descriptions
     fn help_desc_menu(&self) -> &str;
@@ -150,6 +150,54 @@ pub trait Translation: Send + Sync {
     fn help_desc_git_modified(&self) -> &str;
     fn help_desc_git_added(&self) -> &str;
     fn help_desc_git_deleted(&self) -> &str;
+
+    // Help section headers
+    fn help_section_panels(&self) -> &str;
+    fn help_section_git_status(&self) -> &str;
+
+    // Additional help key descriptions
+    fn help_desc_new_file_manager(&self) -> &str;
+    fn help_desc_new_editor(&self) -> &str;
+    fn help_desc_new_log_panel(&self) -> &str;
+    fn help_desc_open_preferences(&self) -> &str;
+    fn help_desc_open_sessions(&self) -> &str;
+    fn help_desc_open_git_status(&self) -> &str;
+    fn help_desc_toggle_stack(&self) -> &str;
+    fn help_desc_swap_left(&self) -> &str;
+    fn help_desc_swap_right(&self) -> &str;
+    fn help_desc_move_first(&self) -> &str;
+    fn help_desc_move_last(&self) -> &str;
+    fn help_desc_resize_smaller(&self) -> &str;
+    fn help_desc_resize_larger(&self) -> &str;
+    fn help_desc_prev_group(&self) -> &str;
+    fn help_desc_next_group(&self) -> &str;
+    fn help_desc_prev_panel(&self) -> &str;
+    fn help_desc_next_panel(&self) -> &str;
+    fn help_desc_goto_panel(&self) -> &str;
+    fn help_desc_force_save(&self) -> &str;
+    fn help_desc_reload(&self) -> &str;
+    fn help_desc_duplicate_line(&self) -> &str;
+    fn help_desc_search_next(&self) -> &str;
+    fn help_desc_search_prev(&self) -> &str;
+    fn help_desc_replace(&self) -> &str;
+    fn help_desc_replace_current(&self) -> &str;
+    fn help_desc_replace_all(&self) -> &str;
+    fn help_desc_view_file(&self) -> &str;
+    fn help_desc_edit_file(&self) -> &str;
+    fn help_desc_search_content(&self) -> &str;
+    fn help_desc_go_home(&self) -> &str;
+    fn help_desc_refresh(&self) -> &str;
+    fn help_desc_open_external(&self) -> &str;
+    fn help_desc_stage_file(&self) -> &str;
+    fn help_desc_unstage_file(&self) -> &str;
+    fn help_desc_next_section(&self) -> &str;
+    fn help_desc_prev_section(&self) -> &str;
+    fn help_desc_terminal_copy(&self) -> &str;
+    fn help_desc_terminal_paste(&self) -> &str;
+    fn help_desc_scroll_up(&self) -> &str;
+    fn help_desc_scroll_down(&self) -> &str;
+    fn help_desc_scroll_top(&self) -> &str;
+    fn help_desc_scroll_bottom(&self) -> &str;
 
     // File operation status
     fn status_file_created(&self, name: &str) -> String;

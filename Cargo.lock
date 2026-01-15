@@ -2766,6 +2766,7 @@ dependencies = [
  "termide-logger",
  "termide-panel-editor",
  "termide-theme",
+ "termide-ui",
  "unicode-width",
 ]
 

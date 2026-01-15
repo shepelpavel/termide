@@ -17,7 +17,7 @@ use termide_i18n as i18n;
 use termide_logger as logger;
 use termide_panel_editor::Editor;
 use termide_panel_file_manager::FileManager;
-use termide_panel_misc::{LogViewerPanel as LogViewer, WelcomePanel as Welcome};
+use termide_panel_misc::{HelpPanel as Help, LogViewerPanel as LogViewer};
 use termide_panel_terminal::Terminal;
 use termide_theme::Theme;
 use termide_ui_render::menu::MENU_ITEM_COUNT;
@@ -208,7 +208,7 @@ impl App {
     /// Open or switch to help panel (Welcome)
     pub(super) fn handle_new_help(&mut self) -> Result<()> {
         logger::debug("Opening new Help/Welcome panel");
-        let welcome = Welcome::new();
+        let welcome = Help::new(&self.state.config);
         self.add_panel(Box::new(welcome));
         self.auto_save_session();
         Ok(())

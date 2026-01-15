@@ -104,7 +104,7 @@ impl App {
 
                 for panel_idx in (0..group.len()).rev() {
                     if let Some(panel) = group.panels().get(panel_idx) {
-                        if panel.is_welcome_panel() {
+                        if panel.is_help_panel() {
                             panels_to_remove.push(panel_idx);
                         }
                     }
