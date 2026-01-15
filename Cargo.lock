@@ -2667,6 +2667,7 @@ dependencies = [
  "termide-modal",
  "termide-session",
  "termide-state",
+ "termide-system-monitor",
  "termide-theme",
  "termide-ui",
  "unicode-segmentation",

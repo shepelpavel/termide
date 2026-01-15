@@ -342,7 +342,13 @@ fn render_status_bar_for_active(
                 None,
             )
         } else if let Some(editor) = (&mut **panel as &mut dyn Any).downcast_mut::<Editor>() {
-            (None, None, None, Some(editor.get_editor_info()), None)
+            (
+                None,
+                None,
+                editor.get_disk_space_info(),
+                Some(editor.get_editor_info()),
+                None,
+            )
         } else if let Some(terminal) = (&mut **panel as &mut dyn Any).downcast_mut::<Terminal>() {
             (None, None, None, None, Some(terminal.get_terminal_info()))
         } else if let Some(git_panel) =

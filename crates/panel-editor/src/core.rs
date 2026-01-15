@@ -431,6 +431,12 @@ impl Editor {
         }
     }
 
+    /// Get disk space information for the file's storage device.
+    pub fn get_disk_space_info(&self) -> Option<termide_system_monitor::DiskSpaceInfo> {
+        self.file_path()
+            .and_then(termide_system_monitor::get_disk_space_info)
+    }
+
     // ===== LogViewer support methods =====
 
     /// Get immutable reference to buffer.

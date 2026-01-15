@@ -231,37 +231,46 @@ impl StatusBar {
 
             spans
         } else if let Some(info) = editor_info {
-            // Editor: cursor position, tab size, encoding, file type, modes
-            let mut parts = vec![
-                format!("{} {}:{}", t.status_pos(), info.line, info.column),
-                format!("{} {}", t.status_tab(), info.tab_size),
-                info.encoding.clone(),
-            ];
-
-            // Add file type only if highlighting is enabled
-            if info.syntax_highlighting {
-                parts.push(info.file_type.clone());
-            } else {
-                parts.push(t.status_plain_text().to_string());
-            }
-
-            // Add read-only indicator
-            if info.read_only {
-                parts.push(t.status_readonly().to_string());
-            }
-
-            let editor_status = parts.join(t.ui_hint_separator());
-            let status_width = editor_status.width();
-
-            // Add left padding to align to right edge
-            let padding = (total_width as usize).saturating_sub(status_width + 1);
+            // Editor: cursor position, tab size, encoding, file type, modes on the left
+            // disk space on the right
             let mut spans = vec![];
 
-            if padding > 0 {
-                spans.push(Span::raw(" ".repeat(padding)));
+            // Position
+            spans.push(Span::styled(format!(" {} ", t.status_pos()), base_style));
+            spans.push(Span::styled(
+                format!("{}:{}", info.line, info.column),
+                highlight_style,
+            ));
+
+            // Tab size
+            spans.push(Span::styled(
+                format!("{}{} ", t.ui_hint_separator(), t.status_tab()),
+                base_style,
+            ));
+            spans.push(Span::styled(format!("{}", info.tab_size), highlight_style));
+
+            // Encoding
+            spans.push(Span::styled(t.ui_hint_separator(), base_style));
+            spans.push(Span::styled(info.encoding.as_str(), highlight_style));
+
+            // File type
+            spans.push(Span::styled(t.ui_hint_separator(), base_style));
+            if info.syntax_highlighting {
+                spans.push(Span::styled(info.file_type.as_str(), highlight_style));
+            } else {
+                spans.push(Span::styled(t.status_plain_text(), highlight_style));
             }
 
-            spans.push(Span::styled(format!("{} ", editor_status), highlight_style));
+            // Read-only indicator
+            if info.read_only {
+                spans.push(Span::styled(t.ui_hint_separator(), base_style));
+                spans.push(Span::styled(t.status_readonly(), highlight_style));
+            }
+
+            // If there's disk information, add it on the right
+            if let Some(disk) = disk_space {
+                append_disk_space(&mut spans, disk, theme, total_width);
+            }
 
             spans
         } else if let Some(disk) = disk_space {
