@@ -688,6 +688,9 @@ impl App {
                 InfoActionResult::Closed => {
                     // Just close the modal
                 }
+                InfoActionResult::CancelOperation => {
+                    // This is handled in handle_git_push_pull_from_modal, should not reach here
+                }
             }
         }
         Ok(())
@@ -779,7 +782,7 @@ impl App {
     }
 
     /// Handle git push/pull actions from InfoActionModal
-    /// Returns true if the action was handled (and modal should stay open)
+    /// Returns true if the action was handled (and modal should stay open or closed by us)
     fn handle_git_push_pull_from_modal(
         &mut self,
         result: &ModalResult<Box<dyn std::any::Any>>,
@@ -789,35 +792,57 @@ impl App {
         use termide_state::PendingAction;
 
         // Check if the pending action is a git file action
-        let pending = match &self.state.pending_action {
-            Some(PendingAction::GitFileAction { repo_path, .. }) => Some(repo_path.clone()),
-            _ => None,
-        };
+        let is_git_file_action = matches!(
+            &self.state.pending_action,
+            Some(PendingAction::GitFileAction { .. })
+        );
 
-        let repo_path = match pending {
-            Some(path) => path,
-            None => return Ok(false),
-        };
+        if !is_git_file_action {
+            return Ok(false);
+        }
 
-        // Check if result is push or pull action
+        // Check if result is push, pull, or cancel operation
         if let ModalResult::Confirmed(value) = result {
-            if let Some(InfoActionResult::Action(action)) = value.downcast_ref::<InfoActionResult>()
-            {
-                let operation = match action.as_str() {
-                    "push" => GitOperationType::Push,
-                    "pull" => GitOperationType::Pull,
+            if let Some(action_result) = value.downcast_ref::<InfoActionResult>() {
+                match action_result {
+                    InfoActionResult::Action(action) => {
+                        let operation = match action.as_str() {
+                            "push" => GitOperationType::Push,
+                            "pull" => GitOperationType::Pull,
+                            _ => return Ok(false),
+                        };
+
+                        // Get repo_path from pending action
+                        let repo_path = match &self.state.pending_action {
+                            Some(PendingAction::GitFileAction { repo_path, .. }) => {
+                                repo_path.clone()
+                            }
+                            _ => return Ok(false),
+                        };
+
+                        // Set operation in progress on the modal
+                        if let Some(ActiveModal::InfoAction(modal)) = &mut self.state.active_modal {
+                            modal.set_operation_in_progress(Some(action.clone()));
+                        }
+
+                        // Start background git operation
+                        self.event_git_operation(operation, repo_path)?;
+
+                        return Ok(true);
+                    }
+                    InfoActionResult::CancelOperation => {
+                        // Cancel the running git operation
+                        self.event_cancel_git_operation();
+
+                        // Clear operation state on modal but keep it open
+                        if let Some(ActiveModal::InfoAction(modal)) = &mut self.state.active_modal {
+                            modal.set_operation_in_progress(None);
+                        }
+
+                        return Ok(true);
+                    }
                     _ => return Ok(false),
-                };
-
-                // Set operation in progress on the modal
-                if let Some(ActiveModal::InfoAction(modal)) = &mut self.state.active_modal {
-                    modal.set_operation_in_progress(Some(action.clone()));
                 }
-
-                // Start background git operation
-                self.event_git_operation(operation, repo_path)?;
-
-                return Ok(true);
             }
         }
 

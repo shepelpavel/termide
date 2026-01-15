@@ -234,6 +234,8 @@ pub enum InfoActionResult {
     Action(String),
     /// User closed the modal
     Closed,
+    /// User cancelled an in-progress operation
+    CancelOperation,
 }
 
 impl Modal for InfoActionModal {
@@ -352,6 +354,7 @@ impl Modal for InfoActionModal {
         self.last_button_areas.clear();
 
         // Build button labels (with spinner for operation in progress)
+        // Use same format as git status panel: "Pushing..." / "Pulling..."
         let button_labels: Vec<String> = self
             .buttons
             .iter()
@@ -359,8 +362,8 @@ impl Modal for InfoActionModal {
                 if self.operation_in_progress.as_ref() == Some(&button.action) {
                     let spinner = self.get_spinner_char();
                     match button.action.as_str() {
-                        "push" => format!("{} {}", spinner, t.git_push_in_progress()),
-                        "pull" => format!("{} {}", spinner, t.git_pull_in_progress()),
+                        "push" => format!("{} Pushing...", spinner),
+                        "pull" => format!("{} Pulling...", spinner),
                         _ => button.label.clone(),
                     }
                 } else {
@@ -421,9 +424,16 @@ impl Modal for InfoActionModal {
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<Option<ModalResult<Self::Result>>> {
-        // Block all actions while operation is in progress
+        // If operation is in progress, only allow Enter/Space to cancel
         if self.operation_in_progress.is_some() {
-            return Ok(None);
+            match key.code {
+                KeyCode::Enter | KeyCode::Char(' ') => {
+                    return Ok(Some(ModalResult::Confirmed(
+                        InfoActionResult::CancelOperation,
+                    )));
+                }
+                _ => return Ok(None),
+            }
         }
 
         match key.code {
@@ -454,11 +464,6 @@ impl Modal for InfoActionModal {
         mouse: MouseEvent,
         _modal_area: Rect,
     ) -> Result<Option<ModalResult<Self::Result>>> {
-        // Block all actions while operation is in progress
-        if self.operation_in_progress.is_some() {
-            return Ok(None);
-        }
-
         if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
             return Ok(None);
         }
@@ -470,6 +475,16 @@ impl Modal for InfoActionModal {
                 && mouse.column < button_area.x + button_area.width
             {
                 if let Some(button) = self.buttons.get(i) {
+                    // If operation is in progress and clicked on the animated button, cancel
+                    if self.operation_in_progress.as_ref() == Some(&button.action) {
+                        return Ok(Some(ModalResult::Confirmed(
+                            InfoActionResult::CancelOperation,
+                        )));
+                    }
+                    // If operation is in progress, block clicks on other buttons
+                    if self.operation_in_progress.is_some() {
+                        return Ok(None);
+                    }
                     return Ok(Some(ModalResult::Confirmed(InfoActionResult::Action(
                         button.action.clone(),
                     ))));

@@ -806,7 +806,7 @@ impl App {
     }
 
     /// Handle CancelGitOperation event - kill running git process
-    fn event_cancel_git_operation(&mut self) {
+    pub(super) fn event_cancel_git_operation(&mut self) {
         if let Some(handle) = self.state.git_operation_handle.take() {
             logger::info(format!(
                 "Cancelling git {} (PID: {})",
