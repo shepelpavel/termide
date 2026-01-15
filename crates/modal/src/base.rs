@@ -60,6 +60,34 @@ pub fn render_modal_frame(
     (inner, close_button_area)
 }
 
+/// Create a styled modal block with title.
+///
+/// This is the common style used across all modals:
+/// - Inverted colors (bg on fg)
+/// - Bold title with padding
+/// - All borders
+pub fn create_modal_block(title: &str, theme: &Theme) -> Block<'static> {
+    Block::default()
+        .title(Span::styled(
+            format!(" {} ", title),
+            Style::default().fg(theme.bg).add_modifier(Modifier::BOLD),
+        ))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.bg))
+        .style(Style::default().bg(theme.fg))
+}
+
+/// Render a modal block and return its inner area.
+///
+/// Clears the area, renders the block, and returns the inner content area.
+pub fn render_modal_block(area: Rect, buf: &mut Buffer, title: &str, theme: &Theme) -> Rect {
+    Clear.render(area, buf);
+    let block = create_modal_block(title, theme);
+    let inner = block.inner(area);
+    block.render(area, buf);
+    inner
+}
+
 /// Render a text input field with cursor and selection support.
 ///
 /// Parameters:

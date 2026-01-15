@@ -7,14 +7,14 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Widget},
+    widgets::{List, ListItem, Paragraph, Widget},
 };
 
 use termide_theme::Theme;
 
 use crate::{
-    calculate_modal_width, centered_rect_with_size, max_item_width, max_line_width, Modal,
-    ModalResult, ModalWidthConfig,
+    base::render_modal_block, calculate_modal_width, centered_rect_with_size, max_item_width,
+    max_line_width, Modal, ModalResult, ModalWidthConfig,
 };
 
 /// Selection modal window (single selection only)
@@ -81,20 +81,7 @@ impl Modal for SelectModal {
 
         // Create centered area
         let modal_area = centered_rect_with_size(modal_width, modal_height, area);
-        Clear.render(modal_area, buf);
-
-        // Create block with inverted colors
-        let block = Block::default()
-            .title(Span::styled(
-                format!(" {} ", self.title),
-                Style::default().fg(theme.bg).add_modifier(Modifier::BOLD),
-            ))
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(theme.bg))
-            .style(Style::default().bg(theme.fg));
-
-        let inner = block.inner(modal_area);
-        block.render(modal_area, buf);
+        let inner = render_modal_block(modal_area, buf, &self.title, theme);
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)

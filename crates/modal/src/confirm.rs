@@ -7,7 +7,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph, Widget},
+    widgets::{Paragraph, Widget},
 };
 
 use termide_config::constants::MODAL_BUTTON_SPACING;
@@ -15,8 +15,8 @@ use termide_i18n as i18n;
 use termide_theme::Theme;
 
 use crate::{
-    calculate_modal_width, centered_rect_with_size, max_line_width, Modal, ModalResult,
-    ModalWidthConfig,
+    base::render_modal_block, calculate_modal_width, centered_rect_with_size, max_line_width,
+    Modal, ModalResult, ModalWidthConfig,
 };
 
 /// Confirmation modal window (Yes/No)
@@ -68,21 +68,7 @@ impl Modal for ConfirmModal {
         // Create centered area with calculated dimensions
         let modal_area = centered_rect_with_size(modal_width, modal_height, area);
 
-        // Clear the area
-        Clear.render(modal_area, buf);
-
-        // Create block with inverted colors
-        let block = Block::default()
-            .title(Span::styled(
-                format!(" {} ", self.title),
-                Style::default().fg(theme.bg).add_modifier(Modifier::BOLD),
-            ))
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(theme.bg))
-            .style(Style::default().bg(theme.fg));
-
-        let inner = block.inner(modal_area);
-        block.render(modal_area, buf);
+        let inner = render_modal_block(modal_area, buf, &self.title, theme);
 
         // Split into: message, buttons
         let chunks = Layout::default()

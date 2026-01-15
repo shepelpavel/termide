@@ -7,8 +7,10 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph, Widget},
+    widgets::{Block, Borders, Paragraph, Widget},
 };
+
+use crate::base::render_modal_block;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use termide_clipboard as clipboard;
@@ -189,28 +191,11 @@ impl Modal for CommitModal {
         let (modal_width, modal_height) = self.calculate_modal_size(area.width, area.height);
         let modal_area = centered_rect_with_size(modal_width, modal_height, area);
 
-        // Clear the area
-        Clear.render(modal_area, buf);
-
         // Title with file count, repo and branch
         let t = i18n::t();
-        let title = format!(
-            " {} ",
-            t.git_commit_title(self.staged_count, &self.repo_name, &self.branch_name)
-        );
+        let title = t.git_commit_title(self.staged_count, &self.repo_name, &self.branch_name);
 
-        // Create block with inverted colors (like other modals)
-        let block = Block::default()
-            .title(Span::styled(
-                title,
-                Style::default().fg(theme.bg).add_modifier(Modifier::BOLD),
-            ))
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(theme.bg))
-            .style(Style::default().bg(theme.fg));
-
-        let inner = block.inner(modal_area);
-        block.render(modal_area, buf);
+        let inner = render_modal_block(modal_area, buf, &title, theme);
 
         // Split inner area: textarea + buttons
         let chunks = Layout::default()

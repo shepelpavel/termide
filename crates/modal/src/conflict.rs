@@ -9,8 +9,10 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Widget},
+    widgets::{List, ListItem, Paragraph, Widget},
 };
+
+use crate::base::render_modal_block;
 
 use termide_config::constants::{
     MODAL_MAX_WIDTH_PERCENTAGE_DEFAULT, MODAL_MIN_WIDTH_DEFAULT, MODAL_PADDING_WITH_BORDER,
@@ -209,20 +211,8 @@ impl Modal for ConflictModal {
 
         // Create centered area
         let modal_area = centered_rect_with_size(modal_width, modal_height, area);
-        Clear.render(modal_area, buf);
 
-        // Create block with inverted colors
-        let block = Block::default()
-            .title(Span::styled(
-                format!(" {} ", self.title),
-                Style::default().fg(theme.bg).add_modifier(Modifier::BOLD),
-            ))
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(theme.bg))
-            .style(Style::default().bg(theme.fg));
-
-        let inner = block.inner(modal_area);
-        block.render(modal_area, buf);
+        let inner = render_modal_block(modal_area, buf, &self.title, theme);
 
         // Calculate list constraint based on number of options
         let list_constraint = if self.remaining_items == 0 {

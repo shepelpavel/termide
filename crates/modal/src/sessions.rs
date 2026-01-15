@@ -7,8 +7,10 @@ use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem, Widget},
+    widgets::{List, ListItem, Widget},
 };
+
+use crate::base::render_modal_block;
 use std::path::PathBuf;
 use unicode_width::UnicodeWidthStr;
 
@@ -137,20 +139,8 @@ impl Modal for SessionsModal {
         let modal_height = 2 + list_height;
 
         let modal_area = centered_rect_with_size(modal_width, modal_height, area);
-        Clear.render(modal_area, buf);
 
-        // Create block with inverted colors
-        let block = Block::default()
-            .title(Span::styled(
-                format!(" {} ", self.title),
-                Style::default().fg(theme.bg).add_modifier(Modifier::BOLD),
-            ))
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(theme.bg))
-            .style(Style::default().bg(theme.fg));
-
-        let inner = block.inner(modal_area);
-        block.render(modal_area, buf);
+        let inner = render_modal_block(modal_area, buf, &self.title, theme);
 
         // Build list items (2 lines per session)
         let mut list_items: Vec<ListItem> = Vec::new();

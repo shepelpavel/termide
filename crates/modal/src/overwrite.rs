@@ -7,8 +7,10 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Widget},
+    widgets::{List, ListItem, Paragraph, Widget},
 };
+
+use crate::base::render_modal_block;
 
 use termide_theme::Theme;
 
@@ -107,20 +109,8 @@ impl Modal for OverwriteModal {
 
         // Create centered area
         let modal_area = centered_rect_with_size(modal_width, modal_height, area);
-        Clear.render(modal_area, buf);
 
-        // Create block with inverted colors
-        let block = Block::default()
-            .title(Span::styled(
-                " File already exists ",
-                Style::default().fg(theme.bg).add_modifier(Modifier::BOLD),
-            ))
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(theme.bg))
-            .style(Style::default().bg(theme.fg));
-
-        let inner = block.inner(modal_area);
-        block.render(modal_area, buf);
+        let inner = render_modal_block(modal_area, buf, "File already exists", theme);
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)

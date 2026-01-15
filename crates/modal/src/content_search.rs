@@ -7,8 +7,10 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph, Widget},
+    widgets::{Block, Borders, Paragraph, Widget},
 };
+
+use crate::base::render_modal_block;
 use regex::Regex;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -508,20 +510,8 @@ impl Modal for ContentSearchModal {
 
         let modal_area = centered_rect_with_size(modal_width, modal_height, area);
         self.last_modal_area = Some(modal_area);
-        Clear.render(modal_area, buf);
 
-        // Create block with inverted colors
-        let block = Block::default()
-            .title(Span::styled(
-                format!(" {} ", self.title),
-                Style::default().fg(theme.bg).add_modifier(Modifier::BOLD),
-            ))
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(theme.bg))
-            .style(Style::default().bg(theme.fg));
-
-        let inner = block.inner(modal_area);
-        block.render(modal_area, buf);
+        let inner = render_modal_block(modal_area, buf, &self.title, theme);
 
         // Split into input field and results list
         let chunks = Layout::default()
