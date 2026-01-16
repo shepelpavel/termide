@@ -173,7 +173,7 @@ pub struct GlobalKeybindings {
     pub new_file_manager: Option<KeyBinding>,
     pub new_terminal: Option<KeyBinding>,
     pub new_editor: Option<KeyBinding>,
-    pub new_log_panel: Option<KeyBinding>,
+    pub new_journal: Option<KeyBinding>,
     pub open_help: Option<KeyBinding>,
     pub open_preferences: Option<KeyBinding>,
     pub open_sessions: Option<KeyBinding>,
@@ -312,7 +312,7 @@ impl GlobalKeybindings {
         set_default!(new_file_manager, "Alt+F");
         set_default!(new_terminal, "Alt+T");
         set_default!(new_editor, "Alt+E");
-        set_default!(new_log_panel, "Alt+L");
+        set_default!(new_journal, "Alt+L");
         set_default!(open_help, "Alt+H");
         set_default!(open_preferences, "Alt+P");
         set_default!(open_sessions, "Alt+/");

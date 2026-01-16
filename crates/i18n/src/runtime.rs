@@ -162,6 +162,10 @@ impl Translation for RuntimeTranslation {
         self.get_string("panel_help")
     }
 
+    fn panel_journal(&self) -> &str {
+        self.get_string("panel_journal")
+    }
+
     fn editor_close_unsaved(&self) -> &str {
         self.get_string("editor_close_unsaved")
     }
@@ -528,8 +532,8 @@ impl Translation for RuntimeTranslation {
         self.get_string("help_desc_new_editor")
     }
 
-    fn help_desc_new_log_panel(&self) -> &str {
-        self.get_string("help_desc_new_log_panel")
+    fn help_desc_new_journal(&self) -> &str {
+        self.get_string("help_desc_new_journal")
     }
 
     fn help_desc_open_preferences(&self) -> &str {
@@ -938,6 +942,14 @@ impl Translation for RuntimeTranslation {
         self.get_string("menu_tools")
     }
 
+    fn menu_actions(&self) -> &str {
+        self.get_string("menu_actions")
+    }
+
+    fn menu_actions_add(&self) -> &str {
+        self.get_string("menu_actions_add")
+    }
+
     fn menu_options(&self) -> &str {
         self.get_string("menu_options")
     }
@@ -980,6 +992,10 @@ impl Translation for RuntimeTranslation {
 
     fn options_help(&self) -> &str {
         self.get_string("options_help")
+    }
+
+    fn options_manage_actions(&self) -> &str {
+        self.get_string("options_manage_actions")
     }
 
     fn git_action_stage(&self) -> &str {

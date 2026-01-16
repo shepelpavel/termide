@@ -15,10 +15,10 @@ use termide_panel_git_status::GitStatusPanel;
 use termide_panel_terminal::Terminal;
 use termide_theme::Theme;
 use termide_ui_render::{
-    get_menu_item_x_position, get_options_items, get_sessions_items, get_tools_items,
-    render_collapsed_panel, render_dividers, render_expanded_panel, render_menu, Dropdown,
-    ExpandedPanelParams, MenuRenderParams, ThemeDropdown, OPTIONS_MENU_INDEX, SESSIONS_MENU_INDEX,
-    TOOLS_MENU_INDEX,
+    get_actions_group_items, get_actions_items, get_menu_item_x_position, get_options_items,
+    get_sessions_items, get_tools_items, render_collapsed_panel, render_dividers,
+    render_expanded_panel, render_menu, Dropdown, ExpandedPanelParams, MenuRenderParams,
+    ThemeDropdown, ACTIONS_MENU_INDEX, OPTIONS_MENU_INDEX, SESSIONS_MENU_INDEX, TOOLS_MENU_INDEX,
 };
 
 use termide_modal::Modal;
@@ -68,6 +68,51 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
             theme,
         );
         dropdown.render(frame.buffer_mut());
+    }
+
+    // Render Actions submenu if open
+    if state.ui.menu_open
+        && state.ui.selected_menu_item == Some(ACTIONS_MENU_INDEX)
+        && state.ui.actions_submenu_open
+    {
+        // Load actions registry
+        if let Some(registry) = termide_config::actions::ActionsRegistry::load() {
+            let menu_x = get_menu_item_x_position(ACTIONS_MENU_INDEX);
+            let dropdown_y = 1_u16; // Below menu bar
+
+            // Render Actions submenu
+            let actions_items = get_actions_items(&registry);
+            let dropdown = Dropdown::new(
+                &actions_items,
+                state.ui.selected_actions_item,
+                menu_x,
+                dropdown_y,
+                theme,
+            );
+            dropdown.render(frame.buffer_mut());
+
+            // If a group is selected and nested submenu is open
+            if state.ui.actions_nested_submenu_open {
+                if let Some(group_name) = &state.ui.current_actions_group {
+                    let nested_items = get_actions_group_items(&registry, group_name);
+                    if !nested_items.is_empty() {
+                        // Calculate position: to the right of actions dropdown
+                        let nested_x = menu_x + dropdown.width();
+                        // Align with selected group item (inside border)
+                        let nested_y = dropdown_y + 1 + state.ui.selected_actions_item as u16;
+
+                        let nested_dropdown = Dropdown::new(
+                            &nested_items,
+                            state.ui.selected_actions_nested_item,
+                            nested_x,
+                            nested_y,
+                            theme,
+                        );
+                        nested_dropdown.render(frame.buffer_mut());
+                    }
+                }
+            }
+        }
     }
 
     // Render Options submenu if open

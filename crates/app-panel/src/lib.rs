@@ -53,8 +53,8 @@ pub enum PanelCreationConfig {
     Terminal(TerminalCreationConfig),
     /// Create file manager panel
     FileManager(FileManagerCreationConfig),
-    /// Create log viewer panel (no config needed)
-    LogViewer,
+    /// Create journal panel (no config needed)
+    Journal,
     /// Create welcome panel (no config needed)
     Welcome,
 }
@@ -76,7 +76,7 @@ impl From<PanelType> for PanelCreationConfig {
                     ..Default::default()
                 })
             }
-            PanelType::LogViewer => PanelCreationConfig::LogViewer,
+            PanelType::Journal => PanelCreationConfig::Journal,
             PanelType::Welcome => PanelCreationConfig::Welcome,
         }
     }
@@ -312,9 +312,9 @@ mod tests {
         let config: PanelCreationConfig = fm_type.into();
         assert!(matches!(config, PanelCreationConfig::FileManager(_)));
 
-        let log_type = PanelType::LogViewer;
+        let log_type = PanelType::Journal;
         let config: PanelCreationConfig = log_type.into();
-        assert!(matches!(config, PanelCreationConfig::LogViewer));
+        assert!(matches!(config, PanelCreationConfig::Journal));
 
         let welcome_type = PanelType::Welcome;
         let config: PanelCreationConfig = welcome_type.into();

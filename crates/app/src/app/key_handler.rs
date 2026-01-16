@@ -46,6 +46,11 @@ impl App {
             return self.handle_tools_submenu_key(key);
         }
 
+        // If Actions submenu is open, handle its navigation
+        if self.state.ui.actions_submenu_open {
+            return self.handle_actions_submenu_key(key);
+        }
+
         // If Options submenu is open, handle submenu navigation
         if self.state.ui.submenu_open {
             return self.handle_submenu_key(key);

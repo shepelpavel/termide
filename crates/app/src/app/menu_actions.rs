@@ -17,7 +17,7 @@ use termide_i18n as i18n;
 use termide_logger as logger;
 use termide_panel_editor::Editor;
 use termide_panel_file_manager::FileManager;
-use termide_panel_misc::{HelpPanel as Help, LogViewerPanel as LogViewer};
+use termide_panel_misc::{HelpPanel as Help, JournalPanel as Journal};
 use termide_panel_terminal::Terminal;
 use termide_theme::Theme;
 use termide_ui_render::menu::MENU_ITEM_COUNT;
@@ -56,6 +56,10 @@ impl App {
                     self.state.open_tools_submenu();
                 }
                 2 => {
+                    // Actions - open submenu dropdown (keep menu open)
+                    self.state.open_actions_submenu();
+                }
+                3 => {
                     // Options - open submenu dropdown (keep menu open)
                     self.state.open_submenu();
                 }
@@ -169,32 +173,32 @@ impl App {
         Ok(())
     }
 
-    /// Create new debug panel (singleton - only one instance allowed)
-    pub(super) fn handle_new_debug(&mut self) -> Result<()> {
-        // Check if Debug panel already exists and focus it
-        if self.focus_existing_debug_panel() {
-            logger::debug("Switching focus to existing Log panel");
+    /// Create new journal panel (singleton - only one instance allowed)
+    pub(super) fn handle_new_journal(&mut self) -> Result<()> {
+        // Check if Journal panel already exists and focus it
+        if self.focus_existing_journal_panel() {
+            logger::debug("Switching focus to existing Journal panel");
             return Ok(());
         }
 
-        // No existing Debug panel found, create new one
-        logger::debug("Opening new Log panel");
+        // No existing Journal panel found, create new one
+        logger::debug("Opening new Journal panel");
         self.close_welcome_panels();
-        let log_panel = LogViewer::new(self.state.theme);
-        self.add_panel(Box::new(log_panel));
+        let journal_panel = Journal::new(self.state.theme);
+        self.add_panel(Box::new(journal_panel));
         self.auto_save_session();
         Ok(())
     }
 
-    /// Find and focus existing Debug panel if it exists
-    /// Returns true if Debug panel was found and focused
-    fn focus_existing_debug_panel(&mut self) -> bool {
+    /// Find and focus existing Journal panel if it exists
+    /// Returns true if Journal panel was found and focused
+    fn focus_existing_journal_panel(&mut self) -> bool {
         // Iterate through all panel groups
         for (group_idx, group) in self.layout_manager.panel_groups.iter_mut().enumerate() {
             // Check each panel in the group
             for (panel_idx, panel) in group.panels().iter().enumerate() {
-                if panel.is_log_viewer() {
-                    // Found Debug panel - set it as expanded and focus the group
+                if panel.is_journal() {
+                    // Found Journal panel - set it as expanded and focus the group
                     group.set_expanded(panel_idx);
                     self.layout_manager.focus = group_idx;
                     return true;
@@ -210,6 +214,39 @@ impl App {
         logger::debug("Opening new Help/Welcome panel");
         let welcome = Help::new(&self.state.config);
         self.add_panel(Box::new(welcome));
+        self.auto_save_session();
+        Ok(())
+    }
+
+    /// Open actions folder in file manager
+    pub(super) fn handle_manage_actions(&mut self) -> Result<()> {
+        use termide_config::get_config_dir;
+
+        logger::debug("Opening actions folder in File Manager");
+        self.close_welcome_panels();
+
+        // Get the actions directory path
+        let actions_dir = match get_config_dir() {
+            Ok(config_dir) => {
+                let actions_path = config_dir.join("actions");
+                // Create the directory if it doesn't exist
+                if !actions_path.exists() {
+                    if let Err(e) = std::fs::create_dir_all(&actions_path) {
+                        logger::warn(format!("Failed to create actions directory: {}", e));
+                    }
+                }
+                actions_path
+            }
+            Err(e) => {
+                logger::warn(format!("Failed to get config dir: {}", e));
+                self.state
+                    .set_error(format!("Failed to get actions directory: {}", e));
+                return Ok(());
+            }
+        };
+
+        let fm_panel = FileManager::new_with_path(actions_dir);
+        self.add_panel(Box::new(fm_panel));
         self.auto_save_session();
         Ok(())
     }
@@ -325,16 +362,21 @@ impl App {
                 self.state.open_nested_submenu(current_idx);
             }
             1 => {
+                // Manage actions - open actions folder in file manager
+                self.state.close_menu();
+                self.handle_manage_actions()?;
+            }
+            2 => {
                 // Edit preferences - close menu and open config
                 self.state.close_menu();
                 self.open_config_in_editor()?;
             }
-            2 => {
+            3 => {
                 // Help - show help
                 self.state.close_menu();
                 self.handle_new_help()?;
             }
-            3 => {
+            4 => {
                 // Quit - exit
                 self.state.close_menu();
                 if self.has_panels_requiring_confirmation() {
@@ -592,9 +634,9 @@ impl App {
                 self.handle_open_git_log()?;
             }
             5 => {
-                // Journal - open debug panel
+                // Journal - open journal panel
                 self.state.close_menu();
-                self.handle_new_debug()?;
+                self.handle_new_journal()?;
             }
             _ => {}
         }
@@ -625,5 +667,238 @@ impl App {
         self.add_panel(Box::new(git_log_panel));
         self.auto_save_session();
         Ok(())
+    }
+
+    // =========================================================================
+    // Actions submenu handling
+    // =========================================================================
+
+    /// Handle keyboard event in Actions submenu
+    pub(super) fn handle_actions_submenu_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> Result<()> {
+        // If nested submenu is open, delegate to nested handler
+        if self.state.ui.actions_nested_submenu_open {
+            return self.handle_actions_nested_submenu_key(key);
+        }
+
+        let registry = termide_config::actions::ActionsRegistry::load();
+        let item_count = registry
+            .as_ref()
+            .map(|r| r.root_items.len() + r.groups.len())
+            .unwrap_or(0);
+
+        if item_count == 0 {
+            // Empty menu - just close on any key
+            if matches!(key.code, KeyCode::Esc | KeyCode::Left) {
+                self.state.close_actions_submenu();
+            }
+            return Ok(());
+        }
+
+        match key.code {
+            KeyCode::Esc | KeyCode::Left => {
+                self.state.close_actions_submenu();
+            }
+            KeyCode::Up => {
+                if self.state.ui.selected_actions_item > 0 {
+                    self.state.ui.selected_actions_item -= 1;
+                } else {
+                    self.state.ui.selected_actions_item = item_count.saturating_sub(1);
+                }
+            }
+            KeyCode::Down => {
+                if item_count > 0 {
+                    self.state.ui.selected_actions_item =
+                        (self.state.ui.selected_actions_item + 1) % item_count;
+                }
+            }
+            KeyCode::Right | KeyCode::Enter => {
+                self.execute_actions_submenu_action()?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Execute action for selected Actions submenu item
+    pub(super) fn execute_actions_submenu_action(&mut self) -> Result<()> {
+        let registry = termide_config::actions::ActionsRegistry::load();
+
+        // Check if registry is empty - then the only item is "Add action..."
+        let is_empty = registry
+            .as_ref()
+            .map(|r| r.root_items.is_empty() && r.groups.is_empty())
+            .unwrap_or(true);
+
+        if is_empty {
+            // "Add action..." selected - open actions folder
+            self.state.close_menu();
+            self.handle_manage_actions()?;
+            return Ok(());
+        }
+
+        let registry = match registry {
+            Some(r) => r,
+            None => return Ok(()),
+        };
+
+        let selected = self.state.ui.selected_actions_item;
+        let root_count = registry.root_items.len();
+
+        if selected < root_count {
+            // Root item selected - execute the action
+            if let Some(action) = registry.root_items.get(selected) {
+                self.state.close_menu();
+                self.run_action_script(action)?;
+            }
+        } else {
+            // Group selected - open nested submenu
+            let group_idx = selected - root_count;
+            if let Some(group) = registry.groups.get(group_idx) {
+                self.state.open_actions_nested_submenu(group.name.clone());
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Handle keyboard event in Actions nested submenu (group items)
+    fn handle_actions_nested_submenu_key(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
+        let registry = termide_config::actions::ActionsRegistry::load();
+        let group_name = self.state.ui.current_actions_group.clone();
+
+        let item_count = registry
+            .as_ref()
+            .and_then(|r| {
+                group_name
+                    .as_ref()
+                    .and_then(|name| r.groups.iter().find(|g| &g.name == name))
+                    .map(|g| g.items.len())
+            })
+            .unwrap_or(0);
+
+        match key.code {
+            KeyCode::Esc | KeyCode::Left => {
+                self.state.close_actions_nested_submenu();
+            }
+            KeyCode::Up => {
+                if self.state.ui.selected_actions_nested_item > 0 {
+                    self.state.ui.selected_actions_nested_item -= 1;
+                } else {
+                    self.state.ui.selected_actions_nested_item = item_count.saturating_sub(1);
+                }
+            }
+            KeyCode::Down => {
+                if item_count > 0 {
+                    self.state.ui.selected_actions_nested_item =
+                        (self.state.ui.selected_actions_nested_item + 1) % item_count;
+                }
+            }
+            KeyCode::Enter => {
+                self.execute_actions_nested_action()?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Execute action for selected item in Actions nested submenu
+    pub(super) fn execute_actions_nested_action(&mut self) -> Result<()> {
+        let registry = match termide_config::actions::ActionsRegistry::load() {
+            Some(r) => r,
+            None => return Ok(()),
+        };
+
+        let group_name = match &self.state.ui.current_actions_group {
+            Some(name) => name.clone(),
+            None => return Ok(()),
+        };
+
+        let group = match registry.groups.iter().find(|g| g.name == group_name) {
+            Some(g) => g,
+            None => return Ok(()),
+        };
+
+        if let Some(action) = group.items.get(self.state.ui.selected_actions_nested_item) {
+            self.state.close_menu();
+            self.run_action_script(action)?;
+        }
+
+        Ok(())
+    }
+
+    /// Run an action script
+    fn run_action_script(&mut self, action: &termide_config::actions::ActionItem) -> Result<()> {
+        use termide_panel_terminal::Terminal;
+
+        let cwd = self.get_focused_panel_cwd();
+
+        if action.is_background {
+            // Fire-and-forget spawn (no terminal panel)
+            logger::info(format!(
+                "Running background action '{}' in {:?}",
+                action.name, cwd
+            ));
+            match std::process::Command::new(&action.path)
+                .current_dir(&cwd)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .stdin(std::process::Stdio::null())
+                .spawn()
+            {
+                Ok(_) => {}
+                Err(e) => {
+                    logger::error(format!(
+                        "Failed to run background action '{}': {}",
+                        action.name, e
+                    ));
+                    self.state.set_error(format!("Failed to run action: {}", e));
+                }
+            }
+        } else {
+            // Run in new terminal panel
+            logger::info(format!("Running action '{}' in {:?}", action.name, cwd));
+
+            self.close_welcome_panels();
+
+            let width = self.state.terminal.width;
+            let height = self.state.terminal.height;
+            let term_height = height.saturating_sub(3);
+            let term_width = width.saturating_sub(2);
+
+            let command = action.path.to_string_lossy().to_string();
+
+            match Terminal::new_with_cwd(term_height, term_width, Some(cwd)) {
+                Ok(mut terminal) => {
+                    let _ = terminal.send_command(&command);
+                    self.add_panel(Box::new(terminal));
+                    self.auto_save_session();
+                }
+                Err(e) => {
+                    logger::error(format!(
+                        "Failed to create terminal for action '{}': {}",
+                        action.name, e
+                    ));
+                    self.state.set_error(format!("Failed to run action: {}", e));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Get the working directory from the focused panel
+    fn get_focused_panel_cwd(&self) -> PathBuf {
+        // Use the Panel::get_working_directory() method
+        if let Some(panel) = self.layout_manager.active_panel() {
+            if let Some(cwd) = panel.get_working_directory() {
+                return cwd;
+            }
+        }
+
+        // Fallback to project root
+        self.project_root.clone()
     }
 }

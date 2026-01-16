@@ -35,12 +35,13 @@ pub fn get_menu_items() -> Vec<String> {
     vec![
         t.menu_sessions().to_string(),
         t.menu_tools().to_string(),
+        t.menu_actions().to_string(),
         t.menu_options().to_string(),
     ]
 }
 
 /// Number of menu items
-pub const MENU_ITEM_COUNT: usize = 3;
+pub const MENU_ITEM_COUNT: usize = 4;
 
 /// Index of Sessions menu item (no keyboard accelerator highlighting)
 pub const SESSIONS_MENU_INDEX: usize = 0;
@@ -48,8 +49,11 @@ pub const SESSIONS_MENU_INDEX: usize = 0;
 /// Index of Tools menu item (for submenu positioning)
 pub const TOOLS_MENU_INDEX: usize = 1;
 
+/// Index of Actions menu item (for submenu positioning)
+pub const ACTIONS_MENU_INDEX: usize = 2;
+
 /// Index of Options menu item (for submenu positioning)
-pub const OPTIONS_MENU_INDEX: usize = 2;
+pub const OPTIONS_MENU_INDEX: usize = 3;
 
 /// Calculate x position of a menu item by index.
 /// Used for positioning submenus next to their parent menu item.

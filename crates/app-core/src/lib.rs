@@ -251,8 +251,8 @@ pub enum PanelType {
         /// Optional starting directory
         cwd: Option<PathBuf>,
     },
-    /// Log viewer panel
-    LogViewer,
+    /// Journal panel
+    Journal,
     /// Welcome screen panel
     Welcome,
 }

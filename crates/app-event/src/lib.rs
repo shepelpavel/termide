@@ -87,8 +87,8 @@ pub enum HotkeyAction {
     NewTerminal,
     /// Open new editor panel
     NewEditor,
-    /// Open debug/log panel
-    NewDebug,
+    /// Open journal panel
+    NewJournal,
     /// Open help panel
     OpenHelp,
     /// Open preferences (config file)
@@ -159,8 +159,8 @@ impl HotkeyAction {
             HotkeyAction::NewEditor => Some(AppCommand::CreatePanel {
                 panel_type: PanelType::Editor { file_path: None },
             }),
-            HotkeyAction::NewDebug => Some(AppCommand::CreatePanel {
-                panel_type: PanelType::LogViewer,
+            HotkeyAction::NewJournal => Some(AppCommand::CreatePanel {
+                panel_type: PanelType::Journal,
             }),
             HotkeyAction::OpenHelp => Some(AppCommand::CreatePanel {
                 panel_type: PanelType::Welcome,
@@ -263,8 +263,14 @@ impl DefaultHotkeyProcessor {
         );
         bindings.insert(KeyBinding::alt(KeyCode::Char('e')), HotkeyAction::NewEditor);
         bindings.insert(KeyBinding::alt(KeyCode::Char('E')), HotkeyAction::NewEditor);
-        bindings.insert(KeyBinding::alt(KeyCode::Char('l')), HotkeyAction::NewDebug);
-        bindings.insert(KeyBinding::alt(KeyCode::Char('L')), HotkeyAction::NewDebug);
+        bindings.insert(
+            KeyBinding::alt(KeyCode::Char('l')),
+            HotkeyAction::NewJournal,
+        );
+        bindings.insert(
+            KeyBinding::alt(KeyCode::Char('L')),
+            HotkeyAction::NewJournal,
+        );
         bindings.insert(
             KeyBinding::alt(KeyCode::Char('p')),
             HotkeyAction::OpenPreferences,
@@ -471,8 +477,8 @@ impl DefaultHotkeyProcessor {
         add_binding(&mut processor, &config.new_editor, HotkeyAction::NewEditor);
         add_binding(
             &mut processor,
-            &config.new_log_panel,
-            HotkeyAction::NewDebug,
+            &config.new_journal,
+            HotkeyAction::NewJournal,
         );
         add_binding(&mut processor, &config.open_help, HotkeyAction::OpenHelp);
         add_binding(

@@ -91,8 +91,8 @@ impl HelpGenerator {
                 description: t.help_desc_new_editor().to_string(),
             },
             HelpEntry {
-                keys: Self::format_keys(&kb.new_log_panel),
-                description: t.help_desc_new_log_panel().to_string(),
+                keys: Self::format_keys(&kb.new_journal),
+                description: t.help_desc_new_journal().to_string(),
             },
             HelpEntry {
                 keys: Self::format_keys(&kb.open_preferences),

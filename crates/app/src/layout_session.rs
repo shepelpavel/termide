@@ -11,7 +11,7 @@ use termide_layout::{LayoutManager, PanelGroup};
 use termide_panel_editor::{Editor, EditorConfig};
 use termide_panel_file_manager::FileManager;
 use termide_panel_image::ImagePanel;
-use termide_panel_misc::LogViewerPanel;
+use termide_panel_misc::JournalPanel;
 use termide_panel_terminal::Terminal;
 use termide_session::{
     cleanup_unsaved_buffer, load_unsaved_buffer, Session, SessionPanel, SessionPanelGroup,
@@ -125,7 +125,7 @@ impl LayoutManagerSession for LayoutManager {
                             .ok()
                             .map(|t| Box::new(t) as Box<dyn Panel>)
                     }
-                    SessionPanel::Debug => Some(Box::new(LogViewerPanel::default())),
+                    SessionPanel::Journal => Some(Box::new(JournalPanel::default())),
                     SessionPanel::Image { path } => {
                         // Only restore image panel if graphics are available
                         if ImagePanel::graphics_available() {

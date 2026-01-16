@@ -224,6 +224,7 @@ pub fn get_options_items() -> Vec<DropdownItem> {
     let t = i18n::t();
     vec![
         DropdownItem::new(t.preferences_themes(), "themes").with_submenu(),
+        DropdownItem::new(t.options_manage_actions(), "manage_actions"),
         DropdownItem::new(t.preferences_edit(), "edit_preferences"),
         DropdownItem::new(t.options_help(), "help"),
         DropdownItem::new(t.menu_quit(), "quit"),
@@ -231,4 +232,49 @@ pub fn get_options_items() -> Vec<DropdownItem> {
 }
 
 /// Number of items in Options submenu
-pub const OPTIONS_SUBMENU_ITEM_COUNT: usize = 4;
+pub const OPTIONS_SUBMENU_ITEM_COUNT: usize = 5;
+
+/// Special action ID for "Add action..." menu item
+pub const ACTION_ADD_NEW: &str = "__add_action__";
+
+/// Get actions submenu items from ActionsRegistry
+pub fn get_actions_items(registry: &termide_config::actions::ActionsRegistry) -> Vec<DropdownItem> {
+    let mut items = Vec::new();
+
+    // Add root items (scripts in actions/ root)
+    for action in &registry.root_items {
+        items.push(DropdownItem::new(&action.name, &action.name));
+    }
+
+    // Add groups (subdirectories) with submenu indicator
+    for group in &registry.groups {
+        items.push(DropdownItem::new(&group.name, &group.name).with_submenu());
+    }
+
+    // If no actions exist, show "Add action..." item
+    if items.is_empty() {
+        let t = i18n::t();
+        items.push(DropdownItem::new(t.menu_actions_add(), ACTION_ADD_NEW));
+    }
+
+    items
+}
+
+/// Get actions nested submenu items for a specific group
+pub fn get_actions_group_items(
+    registry: &termide_config::actions::ActionsRegistry,
+    group_name: &str,
+) -> Vec<DropdownItem> {
+    registry
+        .groups
+        .iter()
+        .find(|g| g.name == group_name)
+        .map(|group| {
+            group
+                .items
+                .iter()
+                .map(|action| DropdownItem::new(&action.name, &action.name))
+                .collect()
+        })
+        .unwrap_or_default()
+}

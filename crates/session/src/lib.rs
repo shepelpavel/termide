@@ -54,9 +54,9 @@ pub enum SessionPanel {
         /// Working directory
         working_dir: PathBuf,
     },
-    /// Debug log panel
-    #[serde(rename = "debug")]
-    Debug,
+    /// Journal panel
+    #[serde(rename = "journal")]
+    Journal,
     /// Image viewer panel
     #[serde(rename = "image")]
     Image {

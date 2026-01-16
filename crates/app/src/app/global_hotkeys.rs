@@ -56,8 +56,8 @@ impl App {
             HotkeyAction::NewEditor => {
                 self.handle_new_editor()?;
             }
-            HotkeyAction::NewDebug => {
-                self.handle_new_debug()?;
+            HotkeyAction::NewJournal => {
+                self.handle_new_journal()?;
             }
             HotkeyAction::OpenHelp => {
                 self.handle_new_help()?;

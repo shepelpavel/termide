@@ -170,6 +170,7 @@ impl AppState {
         self.close_submenu();
         self.close_sessions_submenu();
         self.close_tools_submenu();
+        self.close_actions_submenu();
     }
 
     /// Open submenu (e.g., Preferences dropdown)
@@ -209,6 +210,36 @@ impl AppState {
     pub fn close_tools_submenu(&mut self) {
         self.ui.tools_submenu_open = false;
         self.ui.selected_tools_item = 0;
+    }
+
+    /// Open Actions submenu
+    pub fn open_actions_submenu(&mut self) {
+        self.ui.actions_submenu_open = true;
+        self.ui.selected_actions_item = 0;
+        self.ui.actions_nested_submenu_open = false;
+    }
+
+    /// Close Actions submenu
+    pub fn close_actions_submenu(&mut self) {
+        self.ui.actions_submenu_open = false;
+        self.ui.selected_actions_item = 0;
+        self.ui.actions_nested_submenu_open = false;
+        self.ui.selected_actions_nested_item = 0;
+        self.ui.current_actions_group = None;
+    }
+
+    /// Open Actions nested submenu (for a group)
+    pub fn open_actions_nested_submenu(&mut self, group_name: String) {
+        self.ui.actions_nested_submenu_open = true;
+        self.ui.selected_actions_nested_item = 0;
+        self.ui.current_actions_group = Some(group_name);
+    }
+
+    /// Close Actions nested submenu
+    pub fn close_actions_nested_submenu(&mut self) {
+        self.ui.actions_nested_submenu_open = false;
+        self.ui.selected_actions_nested_item = 0;
+        self.ui.current_actions_group = None;
     }
 
     /// Open nested submenu (e.g., Themes list)

@@ -158,6 +158,16 @@ pub struct UiState {
     pub tools_submenu_open: bool,
     /// Selected item in Tools submenu
     pub selected_tools_item: usize,
+    /// Is Actions submenu open
+    pub actions_submenu_open: bool,
+    /// Selected item in Actions submenu
+    pub selected_actions_item: usize,
+    /// Is Actions nested submenu open (for subdirectory groups)
+    pub actions_nested_submenu_open: bool,
+    /// Selected item in Actions nested submenu
+    pub selected_actions_nested_item: usize,
+    /// Current action group name (for nested submenu)
+    pub current_actions_group: Option<String>,
     /// Is git operation (push/pull) in progress
     pub git_operation_in_progress: bool,
     /// Spinner frame for animated loading indicators

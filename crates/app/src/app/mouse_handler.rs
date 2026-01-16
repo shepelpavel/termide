@@ -7,8 +7,9 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use super::App;
 use termide_theme::Theme;
 use termide_ui_render::{
-    get_menu_item_x_position, get_options_items, get_sessions_items, get_tools_items,
-    OPTIONS_MENU_INDEX, SESSIONS_MENU_INDEX, TOOLS_MENU_INDEX,
+    get_actions_group_items, get_actions_items, get_menu_item_x_position, get_options_items,
+    get_sessions_items, get_tools_items, ACTIONS_MENU_INDEX, OPTIONS_MENU_INDEX,
+    SESSIONS_MENU_INDEX, TOOLS_MENU_INDEX,
 };
 
 impl App {
@@ -77,6 +78,14 @@ impl App {
         if self.state.ui.tools_submenu_open
             && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
             && self.handle_tools_submenu_click(mouse.column, mouse.row)?
+        {
+            return Ok(());
+        }
+
+        // Handle Actions submenu clicks when it's open
+        if self.state.ui.actions_submenu_open
+            && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
+            && self.handle_actions_submenu_click(mouse.column, mouse.row)?
         {
             return Ok(());
         }
@@ -398,16 +407,21 @@ impl App {
                         }
                     }
                     1 => {
+                        // Manage actions
+                        self.state.close_menu();
+                        self.handle_manage_actions()?;
+                    }
+                    2 => {
                         // Edit preferences
                         self.state.close_menu();
                         self.open_config_in_editor()?;
                     }
-                    2 => {
+                    3 => {
                         // Help
                         self.state.close_menu();
                         self.handle_new_help()?;
                     }
-                    3 => {
+                    4 => {
                         // Quit
                         self.state.close_menu();
                         if self.has_panels_requiring_confirmation() {
@@ -504,6 +518,97 @@ impl App {
                 self.state.ui.selected_tools_item = item_index;
                 // Execute the action for the selected item
                 self.execute_tools_submenu_action()?;
+                return Ok(true);
+            }
+        }
+
+        // Click outside dropdown - close menu
+        self.state.close_menu();
+        Ok(true)
+    }
+
+    /// Handle click on Actions submenu dropdown
+    /// Returns true if click was handled
+    fn handle_actions_submenu_click(&mut self, x: u16, y: u16) -> Result<bool> {
+        let registry = match termide_config::actions::ActionsRegistry::load() {
+            Some(r) => r,
+            None => {
+                self.state.close_menu();
+                return Ok(true);
+            }
+        };
+
+        // If nested submenu is open, handle clicks on it first
+        if self.state.ui.actions_nested_submenu_open {
+            if let Some(group_name) = &self.state.ui.current_actions_group.clone() {
+                let nested_items = get_actions_group_items(&registry, group_name);
+                if !nested_items.is_empty() {
+                    // Calculate nested submenu position (to the right of main dropdown)
+                    let menu_x = get_menu_item_x_position(ACTIONS_MENU_INDEX);
+                    let actions_items = get_actions_items(&registry);
+                    let actions_width = actions_items
+                        .iter()
+                        .map(|i| i.label.len())
+                        .max()
+                        .unwrap_or(10) as u16
+                        + 4;
+
+                    let nested_x = menu_x + actions_width;
+                    let dropdown_y = 1_u16;
+                    // +1 for dropdown border, align with selected item
+                    let nested_y = dropdown_y + 1 + self.state.ui.selected_actions_item as u16;
+                    let nested_width = nested_items
+                        .iter()
+                        .map(|i| i.label.len())
+                        .max()
+                        .unwrap_or(10) as u16
+                        + 4;
+                    let nested_height = nested_items.len() as u16 + 2;
+
+                    // Check click on nested submenu
+                    if x >= nested_x
+                        && x < nested_x + nested_width
+                        && y >= nested_y
+                        && y < nested_y + nested_height
+                    {
+                        let item_y = y.saturating_sub(nested_y + 1);
+                        let item_index = item_y as usize;
+                        if item_index < nested_items.len() {
+                            self.state.ui.selected_actions_nested_item = item_index;
+                            self.execute_actions_nested_action()?;
+                            return Ok(true);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Get Actions dropdown position
+        let menu_x = get_menu_item_x_position(ACTIONS_MENU_INDEX);
+        let dropdown_y = 1_u16;
+
+        // Calculate Actions dropdown dimensions
+        let actions_items = get_actions_items(&registry);
+        let actions_width = actions_items
+            .iter()
+            .map(|i| i.label.len())
+            .max()
+            .unwrap_or(10) as u16
+            + 4;
+        let actions_height = actions_items.len() as u16 + 2;
+
+        // Check click on Actions dropdown
+        if x >= menu_x
+            && x < menu_x + actions_width
+            && y >= dropdown_y
+            && y < dropdown_y + actions_height
+        {
+            let item_y = y.saturating_sub(dropdown_y + 1);
+            let item_index = item_y as usize;
+            if item_index < actions_items.len() {
+                self.state.ui.selected_actions_item = item_index;
+                // Execute the action (may open nested submenu or run script)
+                self.execute_actions_submenu_action()?;
                 return Ok(true);
             }
         }

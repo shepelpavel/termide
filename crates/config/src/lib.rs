@@ -3,6 +3,7 @@
 //! This crate provides configuration loading, saving, and validation
 //! with support for TOML format and XDG directory conventions.
 
+pub mod actions;
 pub mod constants;
 pub mod keybindings;
 mod settings;
@@ -112,6 +113,11 @@ impl Config {
     /// Get path to themes directory.
     pub fn get_themes_dir() -> Result<PathBuf> {
         Ok(get_config_dir()?.join("themes"))
+    }
+
+    /// Get path to actions directory for user scripts.
+    pub fn get_actions_dir() -> Result<PathBuf> {
+        Ok(get_config_dir()?.join("actions"))
     }
 
     /// Check if path is the config file.

@@ -1,6 +1,6 @@
-//! Log viewer panel based on Editor with read-only mode.
+//! Journal panel based on Editor with read-only mode.
 //!
-//! Provides a full-featured log viewer with:
+//! Provides a full-featured journal/log viewer with:
 //! - Cursor navigation and text selection
 //! - Copy to clipboard
 //! - Auto-scroll to new entries
@@ -21,7 +21,7 @@ use termide_theme::Theme;
 use highlighting::LogHighlightCache;
 
 /// Log viewer panel with Editor-based text display.
-pub struct LogViewerPanel {
+pub struct JournalPanel {
     /// Internal editor in read-only mode
     editor: Editor,
     /// Custom highlighter for log levels
@@ -36,7 +36,7 @@ pub struct LogViewerPanel {
     cached_config: termide_config::Config,
 }
 
-impl LogViewerPanel {
+impl JournalPanel {
     /// Create a new log viewer panel.
     pub fn new(theme: &termide_theme::Theme) -> Self {
         // Create editor with view_only config
@@ -105,13 +105,13 @@ impl LogViewerPanel {
     }
 }
 
-impl Panel for LogViewerPanel {
+impl Panel for JournalPanel {
     fn name(&self) -> &'static str {
-        "log_viewer"
+        "journal"
     }
 
     fn title(&self) -> String {
-        "Log".to_string()
+        termide_i18n::t().panel_journal().to_string()
     }
 
     fn prepare_render(&mut self, theme: &Theme, config: &termide_config::Config) {
@@ -186,8 +186,7 @@ impl Panel for LogViewerPanel {
     }
 
     fn to_session(&self, _session_dir: &std::path::Path) -> Option<termide_core::SessionPanel> {
-        // Save as Debug panel type (same session type)
-        Some(termide_core::SessionPanel::Debug)
+        Some(termide_core::SessionPanel::Journal)
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -199,7 +198,7 @@ impl Panel for LogViewerPanel {
     }
 }
 
-impl Default for LogViewerPanel {
+impl Default for JournalPanel {
     fn default() -> Self {
         Self::new(&termide_theme::Theme::default())
     }

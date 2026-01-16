@@ -52,6 +52,7 @@ pub trait Translation: Send + Sync {
     fn panel_terminal(&self) -> &str;
     fn panel_welcome(&self) -> &str;
     fn panel_help(&self) -> &str;
+    fn panel_journal(&self) -> &str;
 
     // Editor
     fn editor_close_unsaved(&self) -> &str;
@@ -161,7 +162,7 @@ pub trait Translation: Send + Sync {
     // Additional help key descriptions
     fn help_desc_new_file_manager(&self) -> &str;
     fn help_desc_new_editor(&self) -> &str;
-    fn help_desc_new_log_panel(&self) -> &str;
+    fn help_desc_new_journal(&self) -> &str;
     fn help_desc_open_preferences(&self) -> &str;
     fn help_desc_open_sessions(&self) -> &str;
     fn help_desc_open_git_status(&self) -> &str;
@@ -269,6 +270,8 @@ pub trait Translation: Send + Sync {
     // Menu
     fn menu_sessions(&self) -> &str;
     fn menu_tools(&self) -> &str;
+    fn menu_actions(&self) -> &str;
+    fn menu_actions_add(&self) -> &str;
     fn menu_options(&self) -> &str;
     fn menu_quit(&self) -> &str;
     fn menu_navigate_hint(&self) -> &str;
@@ -284,6 +287,7 @@ pub trait Translation: Send + Sync {
 
     // Options submenu
     fn options_help(&self) -> &str;
+    fn options_manage_actions(&self) -> &str;
 
     // Git action buttons
     fn git_action_stage(&self) -> &str;

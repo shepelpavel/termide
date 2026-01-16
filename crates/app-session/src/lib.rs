@@ -58,8 +58,8 @@ pub enum SessionPanelData {
         /// Working directory
         cwd: PathBuf,
     },
-    /// Log viewer panel data
-    LogViewer,
+    /// Journal panel data
+    Journal,
     /// Welcome panel data
     Welcome,
 }
