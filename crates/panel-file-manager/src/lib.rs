@@ -169,6 +169,72 @@ impl SelectionState {
     }
 }
 
+/// Navigation state for directory traversal (cursor restoration, debouncing).
+///
+/// Groups related navigation fields together:
+/// - `previous_dir_name`: Saved directory name when going up (for cursor restoration)
+/// - `navigating_down`: Flag signaling entry into subdirectory (cursor resets to 0)
+/// - `last_reload_time`: Timestamp for debouncing rapid reload_directory() calls
+#[derive(Clone, Default)]
+pub struct NavigationState {
+    /// Name of directory we came from (for cursor restoration when going up)
+    pub previous_dir_name: Option<String>,
+    /// Flag indicating we're navigating down into a subdirectory (cursor should reset to 0)
+    pub navigating_down: bool,
+    /// Last reload time for debouncing rapid reload_directory() calls
+    pub last_reload_time: Option<std::time::Instant>,
+}
+
+impl NavigationState {
+    /// Create a new navigation state
+    pub const fn new() -> Self {
+        Self {
+            previous_dir_name: None,
+            navigating_down: false,
+            last_reload_time: None,
+        }
+    }
+
+    /// Save directory name before going up (for cursor restoration)
+    pub fn save_for_going_up(&mut self, dir_name: String) {
+        self.previous_dir_name = Some(dir_name);
+    }
+
+    /// Clear saved name and set flag for going down into subdirectory
+    pub fn prepare_for_going_down(&mut self) {
+        self.previous_dir_name = None;
+        self.navigating_down = true;
+    }
+
+    /// Take previous directory name (returns and clears it)
+    pub fn take_previous_dir_name(&mut self) -> Option<String> {
+        self.previous_dir_name.take()
+    }
+
+    /// Check and reset navigating_down flag, returns true if was navigating down
+    pub fn check_and_reset_navigating_down(&mut self) -> bool {
+        if self.navigating_down {
+            self.navigating_down = false;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Check if reload should be skipped due to debounce
+    /// Returns true if enough time has passed since last reload
+    pub fn should_reload(&mut self, debounce_ms: u128) -> bool {
+        let now = std::time::Instant::now();
+        if let Some(last) = self.last_reload_time {
+            if now.duration_since(last).as_millis() < debounce_ms {
+                return false; // Skip rapid reloads
+            }
+        }
+        self.last_reload_time = Some(now);
+        true
+    }
+}
+
 /// Smart file manager with advanced features
 pub struct FileManager {
     current_path: PathBuf,
@@ -191,15 +257,11 @@ pub struct FileManager {
     git_status_receiver: Option<mpsc::Receiver<GitStatusAsyncResult>>,
     /// Channel receiver for directory size calculation results (needs to be passed to AppState)
     pub dir_size_receiver: Option<mpsc::Receiver<DirSizeResult>>,
-    /// Name of directory we came from (for cursor restoration when going up)
-    previous_dir_name: Option<String>,
-    /// Flag indicating we're navigating down into a subdirectory (cursor should reset to 0)
-    navigating_down: bool,
+    /// Navigation state (cursor restoration, debouncing)
+    navigation: NavigationState,
     /// Git repository root (None = not in git repo)
     /// Used for reference counting when navigating between directories
     git_root: Option<PathBuf>,
-    /// Last reload time for debouncing rapid reload_directory() calls
-    last_reload_time: Option<std::time::Instant>,
     /// Cached theme for rendering
     cached_theme: Theme,
     /// Cached config for rendering
@@ -241,10 +303,8 @@ impl FileManager {
             git_status_cache: None,
             git_status_receiver: None,
             dir_size_receiver: None,
-            previous_dir_name: None,
-            navigating_down: false,
+            navigation: NavigationState::new(),
             git_root: None,
-            last_reload_time: None,
             cached_theme: Theme::default(),
             cached_config: FileManagerSettings::default(),
         };
@@ -358,13 +418,9 @@ impl FileManager {
         const RELOAD_DEBOUNCE_MS: u128 = 300;
 
         // Debounce: skip if last reload was too recent
-        let now = std::time::Instant::now();
-        if let Some(last) = self.last_reload_time {
-            if now.duration_since(last).as_millis() < RELOAD_DEBOUNCE_MS {
-                return Ok(()); // Skip rapid reloads
-            }
+        if !self.navigation.should_reload(RELOAD_DEBOUNCE_MS) {
+            return Ok(());
         }
-        self.last_reload_time = Some(now);
 
         self.load_directory_inner(true)
     }
@@ -374,8 +430,8 @@ impl FileManager {
         // Save current file name and index to restore position
         // Use previous_dir_name if navigating up, otherwise use current selection
         let current_name = self
-            .previous_dir_name
-            .take()
+            .navigation
+            .take_previous_dir_name()
             .or_else(|| self.entries.get(self.selected).map(|e| e.name.clone()));
         let previous_index = self.selected;
         let previous_scroll_offset = self.scroll_offset;
@@ -513,11 +569,10 @@ impl FileManager {
         }
 
         // Restore cursor position
-        if self.navigating_down {
+        if self.navigation.check_and_reset_navigating_down() {
             // When entering a subdirectory, always start at first item ("..")
             self.selected = 0;
             self.scroll_offset = 0;
-            self.navigating_down = false;
         } else if let Some(name) = current_name {
             if let Some(pos) = self.entries.iter().position(|e| e.name == name) {
                 // Found file by name - restore to its position
@@ -563,15 +618,15 @@ impl FileManager {
             if entry.name == ".." {
                 // Save current directory name before going up
                 if let Some(dir_name) = self.current_path.file_name() {
-                    self.previous_dir_name = Some(dir_name.to_string_lossy().to_string());
+                    self.navigation
+                        .save_for_going_up(dir_name.to_string_lossy().to_string());
                 }
                 if let Some(parent) = self.current_path.parent() {
                     self.current_path = parent.to_path_buf();
                     let _ = self.load_directory();
                 }
             } else if entry.is_dir {
-                self.previous_dir_name = None; // Clear when going down
-                self.navigating_down = true; // Signal to reset cursor to 0
+                self.navigation.prepare_for_going_down();
                 self.current_path.push(&entry.name);
                 let _ = self.load_directory();
             } else {
@@ -1111,7 +1166,8 @@ impl FileManager {
             }
             FmCommand::GoParent => {
                 if let Some(dir_name) = self.current_path.file_name() {
-                    self.previous_dir_name = Some(dir_name.to_string_lossy().to_string());
+                    self.navigation
+                        .save_for_going_up(dir_name.to_string_lossy().to_string());
                 }
                 if let Some(parent) = self.current_path.parent() {
                     self.current_path = parent.to_path_buf();
