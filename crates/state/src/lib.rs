@@ -97,6 +97,67 @@ impl LayoutInfo {
     }
 }
 
+/// State for a submenu (open/closed + selected item index).
+///
+/// This struct provides a consistent pattern for submenu state management.
+/// Instead of having separate `*_open: bool` and `selected_*_item: usize` fields,
+/// use this struct to group related state together.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct SubmenuState {
+    /// Whether the submenu is open
+    pub open: bool,
+    /// Selected item index within the submenu
+    pub selected: usize,
+}
+
+impl SubmenuState {
+    /// Create a new closed submenu state
+    pub const fn new() -> Self {
+        Self {
+            open: false,
+            selected: 0,
+        }
+    }
+
+    /// Open the submenu and reset selection to first item
+    pub fn open(&mut self) {
+        self.open = true;
+        self.selected = 0;
+    }
+
+    /// Open the submenu with a specific initial selection
+    pub fn open_at(&mut self, index: usize) {
+        self.open = true;
+        self.selected = index;
+    }
+
+    /// Close the submenu and reset selection
+    pub fn close(&mut self) {
+        self.open = false;
+        self.selected = 0;
+    }
+
+    /// Move selection up (wrapping to last item if at first)
+    pub fn select_prev(&mut self, item_count: usize) {
+        if item_count == 0 {
+            return;
+        }
+        if self.selected > 0 {
+            self.selected -= 1;
+        } else {
+            self.selected = item_count.saturating_sub(1);
+        }
+    }
+
+    /// Move selection down (wrapping to first item if at last)
+    pub fn select_next(&mut self, item_count: usize) {
+        if item_count == 0 {
+            return;
+        }
+        self.selected = (self.selected + 1) % item_count;
+    }
+}
+
 /// State for divider drag resize operation
 #[derive(Debug, Default, Clone)]
 pub struct DragState {
@@ -540,5 +601,85 @@ mod tests {
         );
         assert_eq!(op.total_count(), 2);
         assert!(!op.is_complete());
+    }
+
+    // =========================================================================
+    // SubmenuState tests
+    // =========================================================================
+
+    #[test]
+    fn test_submenu_state_new() {
+        let state = SubmenuState::new();
+        assert!(!state.open);
+        assert_eq!(state.selected, 0);
+    }
+
+    #[test]
+    fn test_submenu_state_open() {
+        let mut state = SubmenuState::new();
+        state.selected = 5; // Set some value
+        state.open();
+        assert!(state.open);
+        assert_eq!(state.selected, 0); // Reset to 0
+    }
+
+    #[test]
+    fn test_submenu_state_open_at() {
+        let mut state = SubmenuState::new();
+        state.open_at(3);
+        assert!(state.open);
+        assert_eq!(state.selected, 3);
+    }
+
+    #[test]
+    fn test_submenu_state_close() {
+        let mut state = SubmenuState::new();
+        state.open = true;
+        state.selected = 5;
+        state.close();
+        assert!(!state.open);
+        assert_eq!(state.selected, 0);
+    }
+
+    #[test]
+    fn test_submenu_state_select_prev() {
+        let mut state = SubmenuState::new();
+        state.selected = 2;
+
+        state.select_prev(5);
+        assert_eq!(state.selected, 1);
+
+        state.select_prev(5);
+        assert_eq!(state.selected, 0);
+
+        // Wrap to last
+        state.select_prev(5);
+        assert_eq!(state.selected, 4);
+    }
+
+    #[test]
+    fn test_submenu_state_select_next() {
+        let mut state = SubmenuState::new();
+        state.selected = 3;
+
+        state.select_next(5);
+        assert_eq!(state.selected, 4);
+
+        // Wrap to first
+        state.select_next(5);
+        assert_eq!(state.selected, 0);
+    }
+
+    #[test]
+    fn test_submenu_state_empty_list() {
+        let mut state = SubmenuState::new();
+        state.selected = 0;
+
+        // Should not panic with empty list
+        state.select_prev(0);
+        assert_eq!(state.selected, 0);
+
+        state.select_next(0);
+        assert_eq!(state.selected, 0);
     }
 }

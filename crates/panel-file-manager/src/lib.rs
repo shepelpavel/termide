@@ -3,6 +3,7 @@
 //! Provides a smart file manager with git integration, drag selection, and file operations.
 
 mod file_info;
+mod keyboard;
 mod navigation;
 mod operations;
 mod rendering;
@@ -12,7 +13,7 @@ mod utils;
 pub use file_info::FileInfo;
 
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::KeyEvent;
 use ratatui::{buffer::Buffer, layout::Rect, prelude::Widget, widgets::Paragraph};
 use std::any::Any;
 use std::collections::HashSet;
@@ -20,9 +21,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::mpsc;
 
-use termide_config::{
-    constants, matches_binding_or_default, matches_binding_or_defaults, Config, FileManagerSettings,
-};
+use termide_config::{constants, Config, FileManagerSettings};
 use termide_core::{
     util::is_binary_file, CommandResult, Panel, PanelCommand, PanelEvent, RenderContext,
     SessionPanel,
@@ -718,426 +717,16 @@ impl Panel for FileManager {
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
+        use keyboard::FmCommand;
+
         // Translate Cyrillic to Latin for hotkeys
         let key = termide_keyboard::translate_hotkey(key);
 
-        // Collect events to return
-        let mut events = Vec::new();
+        // Parse key event to command
+        let command = FmCommand::from_key_event(key, &self.cached_config.keybindings);
 
-        let kb = &self.cached_config.keybindings;
-
-        // Configurable keybindings (checked first)
-
-        // Select all
-        if matches_binding_or_default(
-            &kb.select_all,
-            &key,
-            KeyCode::Char('a'),
-            KeyModifiers::CONTROL,
-        ) {
-            self.select_all();
-            return events;
-        }
-
-        // Refresh
-        if matches_binding_or_default(&kb.refresh, &key, KeyCode::Char('r'), KeyModifiers::CONTROL)
-        {
-            let _ = self.reload_directory();
-            return events;
-        }
-
-        // Toggle selection
-        if matches_binding_or_default(
-            &kb.toggle_selection,
-            &key,
-            KeyCode::Insert,
-            KeyModifiers::NONE,
-        ) {
-            self.toggle_selection();
-            self.move_down();
-            return events;
-        }
-
-        // Go to home directory
-        if matches_binding_or_default(&kb.go_home, &key, KeyCode::Char('~'), KeyModifiers::NONE) {
-            if let Some(home) = dirs::home_dir() {
-                self.current_path = home;
-                let _ = self.load_directory();
-            }
-            return events;
-        }
-
-        // Go to parent directory
-        if matches_binding_or_default(&kb.go_parent, &key, KeyCode::Backspace, KeyModifiers::NONE) {
-            if let Some(dir_name) = self.current_path.file_name() {
-                self.previous_dir_name = Some(dir_name.to_string_lossy().to_string());
-            }
-            if let Some(parent) = self.current_path.parent() {
-                self.current_path = parent.to_path_buf();
-                let _ = self.load_directory();
-            }
-            return events;
-        }
-
-        // New file
-        if matches_binding_or_default(
-            &kb.new_file,
-            &key,
-            KeyCode::Char('n'),
-            KeyModifiers::CONTROL,
-        ) {
-            let t = termide_i18n::t();
-            let modal = InputModal::new(t.modal_create_file_title(), "");
-            let action = PendingAction::CreateFile {
-                panel_index: 0,
-                directory: self.current_path.clone(),
-            };
-            self.modal_request = Some((action, ActiveModal::Input(Box::new(modal))));
-            return events;
-        }
-
-        // Search files
-        if matches_binding_or_default(
-            &kb.search_files,
-            &key,
-            KeyCode::Char('f'),
-            KeyModifiers::CONTROL,
-        ) {
-            let t = termide_i18n::t();
-            let modal = FileSearchModal::new(t.file_search_title(), self.current_path.clone());
-            let action = PendingAction::FileSearch { panel_index: 0 };
-            self.modal_request = Some((action, ActiveModal::FileSearch(Box::new(modal))));
-            return events;
-        }
-
-        // Search content
-        if matches_binding_or_default(
-            &kb.search_content,
-            &key,
-            KeyCode::Char('F'),
-            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
-        ) {
-            let t = termide_i18n::t();
-            let max_file_size = self.cached_config.content_search_max_file_size_mb * 1024 * 1024;
-            let modal = ContentSearchModal::new(
-                t.content_search_title(),
-                self.current_path.clone(),
-                max_file_size,
-            );
-            let action = PendingAction::ContentSearch { panel_index: 0 };
-            self.modal_request = Some((action, ActiveModal::ContentSearch(Box::new(modal))));
-            return events;
-        }
-
-        // New directory (D, F7)
-        if matches_binding_or_defaults(
-            &kb.new_directory,
-            &key,
-            &[
-                (KeyCode::Char('d'), KeyModifiers::NONE),
-                (KeyCode::Char('D'), KeyModifiers::NONE),
-                (KeyCode::F(7), KeyModifiers::NONE),
-            ],
-        ) {
-            let t = termide_i18n::t();
-            let modal = InputModal::new(t.modal_create_dir_title(), "");
-            let action = PendingAction::CreateDirectory {
-                panel_index: 0,
-                directory: self.current_path.clone(),
-            };
-            self.modal_request = Some((action, ActiveModal::Input(Box::new(modal))));
-            return events;
-        }
-
-        // Delete files (Delete, F8)
-        if matches_binding_or_defaults(
-            &kb.delete_files,
-            &key,
-            &[
-                (KeyCode::Delete, KeyModifiers::NONE),
-                (KeyCode::F(8), KeyModifiers::NONE),
-            ],
-        ) {
-            let paths = self.get_selected_paths();
-            if paths.is_empty() {
-                return vec![];
-            }
-
-            let t = termide_i18n::t();
-            let title = if paths.len() == 1 {
-                let file_name = path_utils::get_file_name_str(&paths[0]);
-                t.modal_delete_single_title(file_name)
-            } else {
-                t.modal_delete_multiple_title(paths.len())
-            };
-
-            let modal = ConfirmModal::new(&title, "");
-            let action = PendingAction::DeletePath {
-                panel_index: 0,
-                paths,
-            };
-            self.modal_request = Some((action, ActiveModal::Confirm(Box::new(modal))));
-            return events;
-        }
-
-        // Edit file (F4)
-        if matches_binding_or_default(&kb.edit_file, &key, KeyCode::F(4), KeyModifiers::NONE) {
-            if let Some(event) = self.edit_file() {
-                events.push(event);
-            }
-            return events;
-        }
-
-        // View file (F3)
-        if matches_binding_or_default(&kb.view_file, &key, KeyCode::F(3), KeyModifiers::NONE) {
-            if let Some(event) = self.view_file() {
-                events.push(event);
-            }
-            return events;
-        }
-
-        // Open external (Shift+Enter)
-        if matches_binding_or_default(&kb.open_external, &key, KeyCode::Enter, KeyModifiers::SHIFT)
-        {
-            if let Some(event) = self.open_external() {
-                events.push(event);
-            }
-            return events;
-        }
-
-        // Copy files (C, F5)
-        if matches_binding_or_defaults(
-            &kb.copy_files,
-            &key,
-            &[
-                (KeyCode::Char('c'), KeyModifiers::NONE),
-                (KeyCode::Char('C'), KeyModifiers::NONE),
-                (KeyCode::F(5), KeyModifiers::NONE),
-            ],
-        ) {
-            let paths = self.get_selected_paths();
-            if paths.is_empty() {
-                return vec![];
-            }
-
-            let default_dest = format!("{}/", self.current_path.display());
-            let t = termide_i18n::t();
-            let message = if paths.len() == 1 {
-                let name = path_utils::get_file_name_str(&paths[0]);
-                t.fm_copy_prompt(name)
-            } else {
-                format!("Copy {} items to:", paths.len())
-            };
-
-            let modal = InputModal::with_default("Copy", &message, &default_dest);
-            let action = PendingAction::CopyPath {
-                panel_index: 0,
-                sources: paths,
-                target_directory: None,
-            };
-            self.modal_request = Some((action, ActiveModal::Input(Box::new(modal))));
-            return events;
-        }
-
-        // Move files (M, F6)
-        if matches_binding_or_defaults(
-            &kb.move_files,
-            &key,
-            &[
-                (KeyCode::Char('m'), KeyModifiers::NONE),
-                (KeyCode::Char('M'), KeyModifiers::NONE),
-                (KeyCode::F(6), KeyModifiers::NONE),
-            ],
-        ) {
-            let paths = self.get_selected_paths();
-            if paths.is_empty() {
-                return vec![];
-            }
-
-            let t = termide_i18n::t();
-            let (message, default_dest) = if paths.len() == 1 {
-                let name = path_utils::get_file_name_str(&paths[0]);
-                (t.fm_move_prompt(name), name.to_string())
-            } else {
-                (
-                    format!("Move {} items to:", paths.len()),
-                    format!("{}/", self.current_path.display()),
-                )
-            };
-
-            let modal = InputModal::with_default("Move", &message, &default_dest);
-            let action = PendingAction::MovePath {
-                panel_index: 0,
-                sources: paths,
-                target_directory: None,
-            };
-            self.modal_request = Some((action, ActiveModal::Input(Box::new(modal))));
-            return events;
-        }
-
-        // Non-configurable bindings (navigation, clipboard, basic keys)
-        match (key.code, key.modifiers) {
-            // Space - show file information
-            (KeyCode::Char(' '), KeyModifiers::NONE) => {
-                self.show_file_info();
-            }
-            // Shift+Down - select down
-            (KeyCode::Down, KeyModifiers::SHIFT) => {
-                self.move_down_with_selection();
-            }
-            // Shift+Up - select up
-            (KeyCode::Up, KeyModifiers::SHIFT) => {
-                self.move_up_with_selection();
-            }
-            // Shift+PageDown - select page down
-            (KeyCode::PageDown, KeyModifiers::SHIFT) => {
-                self.page_down_with_selection();
-            }
-            // Shift+PageUp - select page up
-            (KeyCode::PageUp, KeyModifiers::SHIFT) => {
-                self.page_up_with_selection();
-            }
-            // Shift+Home - select to beginning
-            (KeyCode::Home, KeyModifiers::SHIFT) => {
-                self.select_to_home();
-            }
-            // Shift+End - select to end
-            (KeyCode::End, KeyModifiers::SHIFT) => {
-                self.select_to_end();
-            }
-            // Ctrl+Down - toggle selection down
-            (KeyCode::Down, KeyModifiers::CONTROL) => {
-                self.move_down_with_toggle();
-            }
-            // Ctrl+Up - toggle selection up
-            (KeyCode::Up, KeyModifiers::CONTROL) => {
-                self.move_up_with_toggle();
-            }
-            // Ctrl+PageDown - toggle selection page down
-            (KeyCode::PageDown, KeyModifiers::CONTROL) => {
-                self.page_down_with_toggle();
-            }
-            // Ctrl+PageUp - toggle selection page up
-            (KeyCode::PageUp, KeyModifiers::CONTROL) => {
-                self.page_up_with_toggle();
-            }
-            // Regular keys - move without clearing selection
-            (KeyCode::Down, KeyModifiers::NONE) => {
-                self.move_down();
-            }
-            (KeyCode::Up, KeyModifiers::NONE) => {
-                self.move_up();
-            }
-            // Escape - clear selection
-            (KeyCode::Esc, KeyModifiers::NONE) => {
-                self.selected_items.clear();
-            }
-            (KeyCode::Enter, KeyModifiers::NONE) => {
-                if let Some(event) = self.enter() {
-                    events.push(event);
-                }
-            }
-            // Backspace without modifiers handled above via go_parent
-            (KeyCode::Backspace, mods) if mods != KeyModifiers::NONE => {
-                // Backspace with modifiers - also go to parent
-                if let Some(dir_name) = self.current_path.file_name() {
-                    self.previous_dir_name = Some(dir_name.to_string_lossy().to_string());
-                }
-                if let Some(parent) = self.current_path.parent() {
-                    self.current_path = parent.to_path_buf();
-                    let _ = self.load_directory();
-                }
-            }
-            (KeyCode::PageUp, KeyModifiers::NONE) => {
-                // Scroll up by visible area
-                self.selected = self.selected.saturating_sub(self.visible_height);
-            }
-            (KeyCode::PageDown, KeyModifiers::NONE) => {
-                // Scroll down by visible area
-                let max_index = self.entries.len().saturating_sub(1);
-                self.selected = (self.selected + self.visible_height).min(max_index);
-            }
-            (KeyCode::Home, KeyModifiers::NONE) => {
-                // Go to beginning of list
-                self.selected = 0;
-                self.scroll_offset = 0;
-            }
-            (KeyCode::End, KeyModifiers::NONE) => {
-                // Go to end of list
-                self.selected = self.entries.len().saturating_sub(1);
-            }
-            // Ctrl+C - copy selected files to clipboard
-            (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
-                let paths = self.get_selected_paths();
-                if !paths.is_empty() {
-                    let text = paths
-                        .iter()
-                        .map(|p| p.display().to_string())
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    let _ = clipboard::copy(&text);
-                }
-            }
-            // Ctrl+X - cut selected files to clipboard
-            (KeyCode::Char('x'), KeyModifiers::CONTROL) => {
-                let paths = self.get_selected_paths();
-                if !paths.is_empty() {
-                    let text = paths
-                        .iter()
-                        .map(|p| p.display().to_string())
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    let _ = clipboard::cut(&text);
-                }
-            }
-            // Ctrl+V - paste files from clipboard
-            (KeyCode::Char('v'), KeyModifiers::CONTROL) => {
-                if let Some(text) = clipboard::paste() {
-                    let files: Vec<std::path::PathBuf> = text
-                        .lines()
-                        .filter(|line| !line.is_empty())
-                        .map(std::path::PathBuf::from)
-                        .filter(|path| path.exists())
-                        .collect();
-
-                    if !files.is_empty() {
-                        let t = termide_i18n::t();
-                        let message = t.fm_paste_confirm(
-                            files.len(),
-                            "Copy",
-                            &self.current_path.display().to_string(),
-                        );
-
-                        let action = PendingAction::CopyPath {
-                            panel_index: 0,
-                            sources: files,
-                            target_directory: Some(self.current_path.clone()),
-                        };
-
-                        let modal = ConfirmModal::new("Confirm", &message);
-                        self.modal_request = Some((action, ActiveModal::Confirm(Box::new(modal))));
-                    }
-                }
-            }
-            // Tab - go to next panel
-            (KeyCode::Tab, KeyModifiers::NONE) => {
-                let modal = ConfirmModal::new("", "");
-                self.modal_request = Some((
-                    PendingAction::NextPanel,
-                    ActiveModal::Confirm(Box::new(modal)),
-                ));
-            }
-            // Shift+Tab - go to previous panel
-            (KeyCode::BackTab, _) => {
-                let modal = ConfirmModal::new("", "");
-                self.modal_request = Some((
-                    PendingAction::PrevPanel,
-                    ActiveModal::Confirm(Box::new(modal)),
-                ));
-            }
-            _ => {}
-        }
-        events
+        // Execute command
+        self.execute_command(command)
     }
 
     fn handle_mouse(
@@ -1398,6 +987,261 @@ impl FileManager {
     /// Take modal window request (if any).
     pub fn take_modal_request(&mut self) -> Option<(PendingAction, ActiveModal)> {
         self.modal_request.take()
+    }
+
+    /// Execute a file manager command and return resulting events.
+    fn execute_command(&mut self, command: keyboard::FmCommand) -> Vec<PanelEvent> {
+        use keyboard::FmCommand;
+
+        let mut events = Vec::new();
+
+        match command {
+            // Navigation
+            FmCommand::MoveUp => self.move_up(),
+            FmCommand::MoveDown => self.move_down(),
+            FmCommand::PageUp => {
+                self.selected = self.selected.saturating_sub(self.visible_height);
+            }
+            FmCommand::PageDown => {
+                let max_index = self.entries.len().saturating_sub(1);
+                self.selected = (self.selected + self.visible_height).min(max_index);
+            }
+            FmCommand::GoHome => {
+                self.selected = 0;
+                self.scroll_offset = 0;
+            }
+            FmCommand::GoEnd => {
+                self.selected = self.entries.len().saturating_sub(1);
+            }
+            FmCommand::Enter => {
+                if let Some(event) = self.enter() {
+                    events.push(event);
+                }
+            }
+            FmCommand::GoParent => {
+                if let Some(dir_name) = self.current_path.file_name() {
+                    self.previous_dir_name = Some(dir_name.to_string_lossy().to_string());
+                }
+                if let Some(parent) = self.current_path.parent() {
+                    self.current_path = parent.to_path_buf();
+                    let _ = self.load_directory();
+                }
+            }
+            FmCommand::GoHomeDir => {
+                if let Some(home) = dirs::home_dir() {
+                    self.current_path = home;
+                    let _ = self.load_directory();
+                }
+            }
+
+            // Selection
+            FmCommand::ToggleSelection => {
+                self.toggle_selection();
+                self.move_down();
+            }
+            FmCommand::SelectAll => self.select_all(),
+            FmCommand::ClearSelection => self.selected_items.clear(),
+            FmCommand::MoveUpWithSelection => self.move_up_with_selection(),
+            FmCommand::MoveDownWithSelection => self.move_down_with_selection(),
+            FmCommand::PageUpWithSelection => self.page_up_with_selection(),
+            FmCommand::PageDownWithSelection => self.page_down_with_selection(),
+            FmCommand::SelectToHome => self.select_to_home(),
+            FmCommand::SelectToEnd => self.select_to_end(),
+            FmCommand::MoveUpWithToggle => self.move_up_with_toggle(),
+            FmCommand::MoveDownWithToggle => self.move_down_with_toggle(),
+            FmCommand::PageUpWithToggle => self.page_up_with_toggle(),
+            FmCommand::PageDownWithToggle => self.page_down_with_toggle(),
+
+            // File operations
+            FmCommand::NewFile => {
+                let t = termide_i18n::t();
+                let modal = InputModal::new(t.modal_create_file_title(), "");
+                let action = PendingAction::CreateFile {
+                    panel_index: 0,
+                    directory: self.current_path.clone(),
+                };
+                self.modal_request = Some((action, ActiveModal::Input(Box::new(modal))));
+            }
+            FmCommand::NewDirectory => {
+                let t = termide_i18n::t();
+                let modal = InputModal::new(t.modal_create_dir_title(), "");
+                let action = PendingAction::CreateDirectory {
+                    panel_index: 0,
+                    directory: self.current_path.clone(),
+                };
+                self.modal_request = Some((action, ActiveModal::Input(Box::new(modal))));
+            }
+            FmCommand::DeleteFiles => {
+                let paths = self.get_selected_paths();
+                if !paths.is_empty() {
+                    let t = termide_i18n::t();
+                    let title = if paths.len() == 1 {
+                        let file_name = path_utils::get_file_name_str(&paths[0]);
+                        t.modal_delete_single_title(file_name)
+                    } else {
+                        t.modal_delete_multiple_title(paths.len())
+                    };
+                    let modal = ConfirmModal::new(&title, "");
+                    let action = PendingAction::DeletePath {
+                        panel_index: 0,
+                        paths,
+                    };
+                    self.modal_request = Some((action, ActiveModal::Confirm(Box::new(modal))));
+                }
+            }
+            FmCommand::CopyFiles => {
+                let paths = self.get_selected_paths();
+                if !paths.is_empty() {
+                    let default_dest = format!("{}/", self.current_path.display());
+                    let t = termide_i18n::t();
+                    let message = if paths.len() == 1 {
+                        let name = path_utils::get_file_name_str(&paths[0]);
+                        t.fm_copy_prompt(name)
+                    } else {
+                        format!("Copy {} items to:", paths.len())
+                    };
+                    let modal = InputModal::with_default("Copy", &message, &default_dest);
+                    let action = PendingAction::CopyPath {
+                        panel_index: 0,
+                        sources: paths,
+                        target_directory: None,
+                    };
+                    self.modal_request = Some((action, ActiveModal::Input(Box::new(modal))));
+                }
+            }
+            FmCommand::MoveFiles => {
+                let paths = self.get_selected_paths();
+                if !paths.is_empty() {
+                    let t = termide_i18n::t();
+                    let (message, default_dest) = if paths.len() == 1 {
+                        let name = path_utils::get_file_name_str(&paths[0]);
+                        (t.fm_move_prompt(name), name.to_string())
+                    } else {
+                        (
+                            format!("Move {} items to:", paths.len()),
+                            format!("{}/", self.current_path.display()),
+                        )
+                    };
+                    let modal = InputModal::with_default("Move", &message, &default_dest);
+                    let action = PendingAction::MovePath {
+                        panel_index: 0,
+                        sources: paths,
+                        target_directory: None,
+                    };
+                    self.modal_request = Some((action, ActiveModal::Input(Box::new(modal))));
+                }
+            }
+            FmCommand::EditFile => {
+                if let Some(event) = self.edit_file() {
+                    events.push(event);
+                }
+            }
+            FmCommand::ViewFile => {
+                if let Some(event) = self.view_file() {
+                    events.push(event);
+                }
+            }
+            FmCommand::OpenExternal => {
+                if let Some(event) = self.open_external() {
+                    events.push(event);
+                }
+            }
+
+            // Search
+            FmCommand::SearchFiles => {
+                let t = termide_i18n::t();
+                let modal = FileSearchModal::new(t.file_search_title(), self.current_path.clone());
+                let action = PendingAction::FileSearch { panel_index: 0 };
+                self.modal_request = Some((action, ActiveModal::FileSearch(Box::new(modal))));
+            }
+            FmCommand::SearchContent => {
+                let t = termide_i18n::t();
+                let max_file_size =
+                    self.cached_config.content_search_max_file_size_mb * 1024 * 1024;
+                let modal = ContentSearchModal::new(
+                    t.content_search_title(),
+                    self.current_path.clone(),
+                    max_file_size,
+                );
+                let action = PendingAction::ContentSearch { panel_index: 0 };
+                self.modal_request = Some((action, ActiveModal::ContentSearch(Box::new(modal))));
+            }
+
+            // Clipboard
+            FmCommand::ClipboardCopy => {
+                let paths = self.get_selected_paths();
+                if !paths.is_empty() {
+                    let text = paths
+                        .iter()
+                        .map(|p| p.display().to_string())
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    let _ = clipboard::copy(&text);
+                }
+            }
+            FmCommand::ClipboardCut => {
+                let paths = self.get_selected_paths();
+                if !paths.is_empty() {
+                    let text = paths
+                        .iter()
+                        .map(|p| p.display().to_string())
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    let _ = clipboard::cut(&text);
+                }
+            }
+            FmCommand::ClipboardPaste => {
+                if let Some(text) = clipboard::paste() {
+                    let files: Vec<std::path::PathBuf> = text
+                        .lines()
+                        .filter(|line| !line.is_empty())
+                        .map(std::path::PathBuf::from)
+                        .filter(|path| path.exists())
+                        .collect();
+
+                    if !files.is_empty() {
+                        let t = termide_i18n::t();
+                        let message = t.fm_paste_confirm(
+                            files.len(),
+                            "Copy",
+                            &self.current_path.display().to_string(),
+                        );
+                        let action = PendingAction::CopyPath {
+                            panel_index: 0,
+                            sources: files,
+                            target_directory: Some(self.current_path.clone()),
+                        };
+                        let modal = ConfirmModal::new("Confirm", &message);
+                        self.modal_request = Some((action, ActiveModal::Confirm(Box::new(modal))));
+                    }
+                }
+            }
+
+            // Misc
+            FmCommand::ShowFileInfo => self.show_file_info(),
+            FmCommand::Refresh => {
+                let _ = self.reload_directory();
+            }
+            FmCommand::NextPanel => {
+                let modal = ConfirmModal::new("", "");
+                self.modal_request = Some((
+                    PendingAction::NextPanel,
+                    ActiveModal::Confirm(Box::new(modal)),
+                ));
+            }
+            FmCommand::PrevPanel => {
+                let modal = ConfirmModal::new("", "");
+                self.modal_request = Some((
+                    PendingAction::PrevPanel,
+                    ActiveModal::Confirm(Box::new(modal)),
+                ));
+            }
+
+            // No operation
+            FmCommand::None => {}
+        }
+
+        events
     }
 }
 
