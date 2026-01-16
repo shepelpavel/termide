@@ -17,8 +17,9 @@ use termide_theme::Theme;
 use termide_ui_render::{
     get_actions_group_items, get_actions_items, get_menu_item_x_position, get_options_items,
     get_sessions_items, get_tools_items, render_collapsed_panel, render_dividers,
-    render_expanded_panel, render_menu, Dropdown, ExpandedPanelParams, MenuRenderParams,
-    ThemeDropdown, ACTIONS_MENU_INDEX, OPTIONS_MENU_INDEX, SESSIONS_MENU_INDEX, TOOLS_MENU_INDEX,
+    render_expanded_panel, render_menu, Dropdown, ExpandedPanelParams, LanguageDropdown,
+    MenuRenderParams, ThemeDropdown, ACTIONS_MENU_INDEX, OPTIONS_MENU_INDEX, SESSIONS_MENU_INDEX,
+    TOOLS_MENU_INDEX,
 };
 
 use termide_modal::Modal;
@@ -150,6 +151,17 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
                 theme,
             );
             theme_dropdown.render(frame.buffer_mut());
+        }
+
+        // If Language is selected and nested submenu is open
+        if state.ui.nested_submenu_open && state.ui.selected_submenu_item == 1 {
+            // Calculate position: to the right of options dropdown
+            let nested_x = menu_x + dropdown.width();
+            let nested_y = dropdown_y + 2; // Align with "Language" item (index 1, inside border)
+
+            let language_dropdown =
+                LanguageDropdown::new(state.ui.selected_nested_item, nested_x, nested_y, theme);
+            language_dropdown.render(frame.buffer_mut());
         }
     }
 

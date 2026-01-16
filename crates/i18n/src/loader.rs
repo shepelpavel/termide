@@ -64,6 +64,12 @@ pub fn load_language(lang: &str) -> Result<TranslationData> {
         "zh" => include_str!("../i18n/zh.toml"),
         "hi" => include_str!("../i18n/hi.toml"),
         "th" => include_str!("../i18n/th.toml"),
+        "bn" => include_str!("../i18n/bn.toml"),
+        "id" => include_str!("../i18n/id.toml"),
+        "ja" => include_str!("../i18n/ja.toml"),
+        "ko" => include_str!("../i18n/ko.toml"),
+        "tr" => include_str!("../i18n/tr.toml"),
+        "vi" => include_str!("../i18n/vi.toml"),
         _ => {
             // Fallback to English for unsupported languages
             include_str!("../i18n/en.toml")
@@ -138,7 +144,10 @@ mod tests {
     #[test]
     #[ignore]
     fn test_load_all_languages() {
-        let languages = vec!["en", "ru", "de", "es", "fr", "pt", "zh", "hi", "th"];
+        let languages = vec![
+            "en", "ru", "de", "es", "fr", "pt", "zh", "hi", "th", "bn", "id", "ja", "ko", "tr",
+            "vi",
+        ];
 
         for lang in languages {
             let result = load_language(lang);

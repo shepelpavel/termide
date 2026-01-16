@@ -5,7 +5,7 @@
 // I18n trait methods are prepared for future use
 #![allow(dead_code)]
 
-use std::sync::OnceLock;
+use std::sync::RwLock;
 
 mod detect;
 pub mod loader;
@@ -14,14 +14,31 @@ pub mod runtime;
 pub use detect::{detect_language, normalize_lang};
 pub use loader::{Metadata, PluralRules, TranslationData};
 
-/// Supported languages.
-pub const SUPPORTED_LANGUAGES: &[&str] = &["en", "de", "es", "fr", "hi", "pt", "ru", "th", "zh"];
+/// Supported languages with their native names (code, native_name).
+/// Sorted alphabetically by language code.
+pub const SUPPORTED_LANGUAGES: &[(&str, &str)] = &[
+    ("bn", "বাংলা"),
+    ("de", "Deutsch"),
+    ("en", "English"),
+    ("es", "Español"),
+    ("fr", "Français"),
+    ("hi", "हिन्दी"),
+    ("id", "Bahasa Indonesia"),
+    ("ja", "日本語"),
+    ("ko", "한국어"),
+    ("pt", "Português"),
+    ("ru", "Русский"),
+    ("th", "ไทย"),
+    ("tr", "Türkçe"),
+    ("vi", "Tiếng Việt"),
+    ("zh", "中文"),
+];
 
-/// Global translation instance.
-static TRANSLATION: OnceLock<Box<dyn Translation>> = OnceLock::new();
+/// Global translation instance (RwLock for runtime switching).
+static TRANSLATION: RwLock<Option<Box<dyn Translation>>> = RwLock::new(None);
 
-/// Current language code.
-static CURRENT_LANGUAGE: OnceLock<String> = OnceLock::new();
+/// Current language code (RwLock for runtime switching).
+static CURRENT_LANGUAGE: RwLock<String> = RwLock::new(String::new());
 
 /// Translation trait for all user-facing strings.
 pub trait Translation: Send + Sync {
@@ -333,9 +350,12 @@ pub trait Translation: Send + Sync {
 
     // Preferences submenu
     fn preferences_themes(&self) -> &str;
+    fn preferences_language(&self) -> &str;
     fn preferences_edit(&self) -> &str;
     fn theme_select_title(&self) -> &str;
     fn theme_changed(&self, name: &str) -> String;
+    fn language_select_title(&self) -> &str;
+    fn language_changed(&self, name: &str) -> String;
 
     // Sessions
     fn sessions_title(&self) -> &str;
@@ -446,24 +466,75 @@ pub fn init_with_language(lang: &str) {
         .map(|rt| Box::new(rt) as Box<dyn Translation>)
         .expect("Failed to load translations");
 
-    let _ = TRANSLATION.set(translation);
-    let _ = CURRENT_LANGUAGE.set(detected);
+    if let Ok(mut guard) = TRANSLATION.write() {
+        *guard = Some(translation);
+    }
+    if let Ok(mut guard) = CURRENT_LANGUAGE.write() {
+        *guard = detected;
+    }
+}
+
+/// Set language at runtime (for live preview and language switching).
+///
+/// Returns Ok(()) on success, Err if language loading fails.
+pub fn set_language(lang: &str) -> anyhow::Result<()> {
+    let translation = runtime::RuntimeTranslation::new(lang)?;
+
+    if let Ok(mut guard) = TRANSLATION.write() {
+        *guard = Some(Box::new(translation));
+    }
+    if let Ok(mut guard) = CURRENT_LANGUAGE.write() {
+        *guard = lang.to_string();
+    }
+    Ok(())
 }
 
 /// Get the current translation.
+///
+/// # Panics
+/// Panics if the translation system is not initialized.
 pub fn t() -> &'static dyn Translation {
-    TRANSLATION
-        .get()
-        .map(|b| b.as_ref())
-        .expect("Translation system not initialized. Call i18n::init() first.")
+    // SAFETY: We use a static reference trick here because the RwLock guard
+    // cannot be returned directly. The translation is never deallocated once set,
+    // so this is safe. We leak the guard to get a 'static reference.
+    let guard = TRANSLATION.read().expect("Translation lock poisoned");
+    let translation = guard
+        .as_ref()
+        .expect("Translation system not initialized. Call i18n::init() first.");
+
+    // Leak the reference to get 'static lifetime
+    // This is safe because:
+    // 1. The translation is Box<dyn Translation> which lives for the program's lifetime
+    // 2. We only ever replace it, never deallocate
+    unsafe {
+        let ptr = translation.as_ref() as *const dyn Translation;
+        &*ptr
+    }
 }
 
 /// Get the current language code.
-pub fn current_language() -> &'static str {
-    CURRENT_LANGUAGE.get().map(|s| s.as_str()).unwrap_or("en")
+pub fn current_language() -> String {
+    CURRENT_LANGUAGE
+        .read()
+        .map(|guard| guard.clone())
+        .unwrap_or_else(|_| "en".to_string())
+}
+
+/// Get list of all supported languages with their native names.
+/// Returns Vec of (code, native_name) tuples.
+pub fn get_language_list() -> Vec<(&'static str, &'static str)> {
+    SUPPORTED_LANGUAGES.to_vec()
+}
+
+/// Get the native name of a language by its code.
+pub fn get_language_name(code: &str) -> Option<&'static str> {
+    SUPPORTED_LANGUAGES
+        .iter()
+        .find(|(c, _)| *c == code)
+        .map(|(_, name)| *name)
 }
 
 /// Check if a language is supported.
 pub fn is_supported(lang: &str) -> bool {
-    SUPPORTED_LANGUAGES.contains(&lang)
+    SUPPORTED_LANGUAGES.iter().any(|(code, _)| *code == lang)
 }

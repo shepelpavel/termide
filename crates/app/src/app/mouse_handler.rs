@@ -3,14 +3,48 @@
 use anyhow::Result;
 use crossterm::event::{MouseButton, MouseEventKind};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use unicode_width::UnicodeWidthStr;
 
 use super::App;
+use termide_config::Config;
+use termide_i18n as i18n;
+use termide_logger as logger;
 use termide_theme::Theme;
 use termide_ui_render::{
     get_actions_group_items, get_actions_items, get_menu_item_x_position, get_options_items,
     get_sessions_items, get_tools_items, ACTIONS_MENU_INDEX, OPTIONS_MENU_INDEX,
     SESSIONS_MENU_INDEX, TOOLS_MENU_INDEX,
 };
+
+impl App {
+    /// Apply language by code and save preference (for mouse handler)
+    fn apply_language_mouse(&mut self, lang_code: &str, lang_name: &str) -> Result<()> {
+        if let Err(e) = i18n::set_language(lang_code) {
+            logger::warn(format!("Failed to set language: {}", e));
+            self.state
+                .set_error(format!("Failed to set language: {}", e));
+            return Ok(());
+        }
+
+        let t = i18n::t();
+        self.state.set_info(t.language_changed(lang_name));
+
+        // Save preference to config file
+        if let Err(e) = self.save_language_preference_mouse(lang_code) {
+            logger::warn(format!("Failed to save language preference: {}", e));
+        }
+
+        Ok(())
+    }
+
+    /// Save language preference to config file (for mouse handler)
+    fn save_language_preference_mouse(&self, lang_code: &str) -> Result<()> {
+        let mut config = Config::load()?;
+        config.general.language = lang_code.to_string();
+        config.save()?;
+        Ok(())
+    }
+}
 
 impl App {
     /// Handle mouse event
@@ -295,7 +329,7 @@ impl App {
         let menu_items = termide_ui_render::menu::get_menu_items();
 
         for (i, item) in menu_items.iter().enumerate() {
-            let item_width = item.len() as u16;
+            let item_width = item.width() as u16;
             if x >= current_x && x < current_x + item_width {
                 // Toggle: if this menu item is already open, close it
                 if self.state.ui.menu_open && self.state.ui.selected_menu_item == Some(i) {
@@ -328,7 +362,7 @@ impl App {
         let options_items = get_options_items();
         let options_width = options_items
             .iter()
-            .map(|i| i.label.len())
+            .map(|i| i.label.width())
             .max()
             .unwrap_or(10) as u16
             + 4;
@@ -341,7 +375,7 @@ impl App {
             let nested_y = dropdown_y + 1;
 
             let theme_names = Theme::all_theme_names();
-            let nested_width = theme_names.iter().map(|n| n.len()).max().unwrap_or(10) as u16 + 6;
+            let nested_width = theme_names.iter().map(|n| n.width()).max().unwrap_or(10) as u16 + 6;
             // Must match ThemeDropdown::max_visible
             let max_visible = 25;
             let nested_height = theme_names.len().min(max_visible) as u16 + 2;
@@ -373,6 +407,50 @@ impl App {
             }
         }
 
+        // Check if nested submenu (Language) is open
+        if self.state.ui.nested_submenu_open && self.state.ui.selected_submenu_item == 1 {
+            // Language dropdown is to the right of Options dropdown
+            let nested_x = menu_x + options_width;
+            let nested_y = dropdown_y + 2; // Language is at index 1
+
+            let languages = i18n::get_language_list();
+            let nested_width = languages
+                .iter()
+                .map(|(_, name)| name.width())
+                .max()
+                .unwrap_or(10) as u16
+                + 4;
+            // Must match LanguageDropdown::max_visible
+            let max_visible = 15;
+            let nested_height = languages.len().min(max_visible) as u16 + 2;
+
+            // Check click on language dropdown
+            if x >= nested_x
+                && x < nested_x + nested_width
+                && y >= nested_y
+                && y < nested_y + nested_height
+            {
+                // Calculate scroll offset same as LanguageDropdown
+                let scroll_offset = if self.state.ui.selected_nested_item >= max_visible {
+                    self.state.ui.selected_nested_item - max_visible + 1
+                } else {
+                    0
+                };
+                let item_y = y.saturating_sub(nested_y + 1); // -1 for top border
+                let item_index = scroll_offset + item_y as usize;
+                if item_index < languages.len() {
+                    // Clear preview state - language is confirmed
+                    self.state.ui.language_preview_original = None;
+                    // Apply selected language
+                    if let Some((code, name)) = languages.get(item_index) {
+                        self.apply_language_mouse(code, name)?;
+                    }
+                    self.state.close_menu();
+                    return Ok(true);
+                }
+            }
+        }
+
         // Check click on Options dropdown
         if x >= menu_x
             && x < menu_x + options_width
@@ -386,7 +464,9 @@ impl App {
                 match item_index {
                     0 => {
                         // Themes - toggle nested submenu
-                        if self.state.ui.nested_submenu_open {
+                        if self.state.ui.nested_submenu_open
+                            && self.state.ui.selected_submenu_item == 0
+                        {
                             // Already open - close it and restore theme
                             if let Some(original_name) = self.state.ui.theme_preview_original.take()
                             {
@@ -407,21 +487,44 @@ impl App {
                         }
                     }
                     1 => {
+                        // Language - toggle nested submenu
+                        use termide_i18n as i18n;
+                        use termide_ui_render::find_current_language_index;
+                        if self.state.ui.nested_submenu_open
+                            && self.state.ui.selected_submenu_item == 1
+                        {
+                            // Already open - close it and restore language
+                            if let Some(original_lang) =
+                                self.state.ui.language_preview_original.take()
+                            {
+                                let _ = i18n::set_language(&original_lang);
+                            }
+                            self.state.close_nested_submenu();
+                        } else {
+                            // Open nested submenu with live preview
+                            let current_idx = find_current_language_index();
+                            // Save current language for restoration on cancel
+                            self.state.ui.language_preview_original =
+                                Some(i18n::current_language());
+                            self.state.open_nested_submenu(current_idx);
+                        }
+                    }
+                    2 => {
                         // Manage actions
                         self.state.close_menu();
                         self.handle_manage_actions()?;
                     }
-                    2 => {
+                    3 => {
                         // Edit preferences
                         self.state.close_menu();
                         self.open_config_in_editor()?;
                     }
-                    3 => {
+                    4 => {
                         // Help
                         self.state.close_menu();
                         self.handle_new_help()?;
                     }
-                    4 => {
+                    5 => {
                         // Quit
                         self.state.close_menu();
                         if self.has_panels_requiring_confirmation() {
@@ -462,7 +565,7 @@ impl App {
         let sessions_items = get_sessions_items();
         let sessions_width = sessions_items
             .iter()
-            .map(|i| i.label.len())
+            .map(|i| i.label.width())
             .max()
             .unwrap_or(10) as u16
             + 4;
@@ -500,7 +603,7 @@ impl App {
         let tools_items = get_tools_items();
         let tools_width = tools_items
             .iter()
-            .map(|i| i.label.len())
+            .map(|i| i.label.width())
             .max()
             .unwrap_or(10) as u16
             + 4;
@@ -548,7 +651,7 @@ impl App {
                     let actions_items = get_actions_items(&registry);
                     let actions_width = actions_items
                         .iter()
-                        .map(|i| i.label.len())
+                        .map(|i| i.label.width())
                         .max()
                         .unwrap_or(10) as u16
                         + 4;
@@ -559,7 +662,7 @@ impl App {
                     let nested_y = dropdown_y + 1 + self.state.ui.selected_actions_item as u16;
                     let nested_width = nested_items
                         .iter()
-                        .map(|i| i.label.len())
+                        .map(|i| i.label.width())
                         .max()
                         .unwrap_or(10) as u16
                         + 4;
@@ -591,7 +694,7 @@ impl App {
         let actions_items = get_actions_items(&registry);
         let actions_width = actions_items
             .iter()
-            .map(|i| i.label.len())
+            .map(|i| i.label.width())
             .max()
             .unwrap_or(10) as u16
             + 4;

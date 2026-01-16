@@ -35,7 +35,7 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 - **External Apps** - Open files with system default applications (Shift+Enter)
 - **20 Built-in Themes** - Dark, light, and retro themes (Dracula, Nord, Monokai, Solarized, etc.)
 - **Custom Themes** - Create your own themes in TOML format
-- **9 UI Languages** - English, Chinese, French, German, Hindi, Portuguese, Russian, Spanish, Thai
+- **15 UI Languages** - Bengali, Chinese, English, French, German, Hindi, Indonesian, Japanese, Korean, Portuguese, Russian, Spanish, Thai, Turkish, Vietnamese
 - **Session Management** - Auto-save and restore panel layouts
 - **System Monitor** - Real-time CPU, RAM, disk usage in status bar
 - **Search & Replace** - Live preview, match counter, regex support

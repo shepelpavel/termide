@@ -224,6 +224,7 @@ pub fn get_options_items() -> Vec<DropdownItem> {
     let t = i18n::t();
     vec![
         DropdownItem::new(t.preferences_themes(), "themes").with_submenu(),
+        DropdownItem::new(t.preferences_language(), "language").with_submenu(),
         DropdownItem::new(t.options_manage_actions(), "manage_actions"),
         DropdownItem::new(t.preferences_edit(), "edit_preferences"),
         DropdownItem::new(t.options_help(), "help"),
@@ -232,7 +233,7 @@ pub fn get_options_items() -> Vec<DropdownItem> {
 }
 
 /// Number of items in Options submenu
-pub const OPTIONS_SUBMENU_ITEM_COUNT: usize = 5;
+pub const OPTIONS_SUBMENU_ITEM_COUNT: usize = 6;
 
 /// Special action ID for "Add action..." menu item
 pub const ACTION_ADD_NEW: &str = "__add_action__";

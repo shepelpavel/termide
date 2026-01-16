@@ -1133,6 +1133,10 @@ impl Translation for RuntimeTranslation {
         self.get_string("preferences_themes")
     }
 
+    fn preferences_language(&self) -> &str {
+        self.get_string("preferences_language")
+    }
+
     fn preferences_edit(&self) -> &str {
         self.get_string("preferences_edit")
     }
@@ -1143,6 +1147,14 @@ impl Translation for RuntimeTranslation {
 
     fn theme_changed(&self, name: &str) -> String {
         self.format("theme_changed", &[("name", name)])
+    }
+
+    fn language_select_title(&self) -> &str {
+        self.get_string("language_select_title")
+    }
+
+    fn language_changed(&self, name: &str) -> String {
+        self.format("language_changed", &[("name", name)])
     }
 
     fn sessions_title(&self) -> &str {

@@ -2451,6 +2451,7 @@ dependencies = [
  "termide-ui",
  "termide-ui-render",
  "termide-watcher",
+ "unicode-width",
 ]
 
 [[package]]

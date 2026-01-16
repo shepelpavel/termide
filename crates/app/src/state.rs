@@ -175,6 +175,11 @@ impl AppState {
 
     /// Open submenu (e.g., Preferences dropdown)
     pub fn open_submenu(&mut self) {
+        // Close other submenus first
+        self.ui.sessions_submenu_open = false;
+        self.ui.tools_submenu_open = false;
+        self.ui.actions_submenu_open = false;
+        // Open Options submenu
         self.ui.submenu_open = true;
         self.ui.selected_submenu_item = 0;
         self.ui.nested_submenu_open = false;
@@ -190,6 +195,11 @@ impl AppState {
 
     /// Open Sessions submenu
     pub fn open_sessions_submenu(&mut self) {
+        // Close other submenus first
+        self.ui.tools_submenu_open = false;
+        self.ui.submenu_open = false;
+        self.ui.actions_submenu_open = false;
+        // Open Sessions submenu
         self.ui.sessions_submenu_open = true;
         self.ui.selected_sessions_item = 0;
     }
@@ -202,6 +212,11 @@ impl AppState {
 
     /// Open Tools submenu
     pub fn open_tools_submenu(&mut self) {
+        // Close other submenus first
+        self.ui.sessions_submenu_open = false;
+        self.ui.submenu_open = false;
+        self.ui.actions_submenu_open = false;
+        // Open Tools submenu
         self.ui.tools_submenu_open = true;
         self.ui.selected_tools_item = 0;
     }
@@ -214,6 +229,11 @@ impl AppState {
 
     /// Open Actions submenu
     pub fn open_actions_submenu(&mut self) {
+        // Close other submenus first
+        self.ui.sessions_submenu_open = false;
+        self.ui.tools_submenu_open = false;
+        self.ui.submenu_open = false;
+        // Open Actions submenu
         self.ui.actions_submenu_open = true;
         self.ui.selected_actions_item = 0;
         self.ui.actions_nested_submenu_open = false;

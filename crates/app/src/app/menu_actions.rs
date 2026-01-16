@@ -362,21 +362,29 @@ impl App {
                 self.state.open_nested_submenu(current_idx);
             }
             1 => {
+                // Language - open nested submenu with live preview
+                use termide_ui_render::find_current_language_index;
+                let current_idx = find_current_language_index();
+                // Save current language for restoration on cancel
+                self.state.ui.language_preview_original = Some(i18n::current_language());
+                self.state.open_nested_submenu(current_idx);
+            }
+            2 => {
                 // Manage actions - open actions folder in file manager
                 self.state.close_menu();
                 self.handle_manage_actions()?;
             }
-            2 => {
+            3 => {
                 // Edit preferences - close menu and open config
                 self.state.close_menu();
                 self.open_config_in_editor()?;
             }
-            3 => {
+            4 => {
                 // Help - show help
                 self.state.close_menu();
                 self.handle_new_help()?;
             }
-            4 => {
+            5 => {
                 // Quit - exit
                 self.state.close_menu();
                 if self.has_panels_requiring_confirmation() {
@@ -396,8 +404,18 @@ impl App {
         Ok(())
     }
 
-    /// Handle keyboard event in nested submenu (Themes list)
+    /// Handle keyboard event in nested submenu (Themes or Language list)
     fn handle_nested_submenu_key(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
+        // Determine which nested submenu is open based on parent submenu item
+        match self.state.ui.selected_submenu_item {
+            0 => self.handle_themes_nested_submenu_key(key),
+            1 => self.handle_language_nested_submenu_key(key),
+            _ => Ok(()),
+        }
+    }
+
+    /// Handle keyboard event in Themes nested submenu
+    fn handle_themes_nested_submenu_key(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
         let theme_names = Theme::all_theme_names();
         let theme_count = theme_names.len();
 
@@ -443,6 +461,87 @@ impl App {
             }
             _ => {}
         }
+        Ok(())
+    }
+
+    /// Handle keyboard event in Language nested submenu
+    fn handle_language_nested_submenu_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> Result<()> {
+        let languages = i18n::get_language_list();
+        let lang_count = languages.len();
+
+        match key.code {
+            KeyCode::Esc | KeyCode::Left => {
+                // Restore original language on cancel
+                if let Some(original_lang) = self.state.ui.language_preview_original.take() {
+                    let _ = i18n::set_language(&original_lang);
+                }
+                // Close nested submenu, return to parent
+                self.state.close_nested_submenu();
+            }
+            KeyCode::Up => {
+                if self.state.ui.selected_nested_item > 0 {
+                    self.state.ui.selected_nested_item -= 1;
+                } else {
+                    self.state.ui.selected_nested_item = lang_count.saturating_sub(1);
+                }
+                // Live preview: apply language on cursor move
+                if let Some((code, _)) = languages.get(self.state.ui.selected_nested_item) {
+                    let _ = i18n::set_language(code);
+                }
+            }
+            KeyCode::Down => {
+                if lang_count > 0 {
+                    self.state.ui.selected_nested_item =
+                        (self.state.ui.selected_nested_item + 1) % lang_count;
+                }
+                // Live preview: apply language on cursor move
+                if let Some((code, _)) = languages.get(self.state.ui.selected_nested_item) {
+                    let _ = i18n::set_language(code);
+                }
+            }
+            KeyCode::Enter => {
+                // Clear preview state - language is confirmed
+                self.state.ui.language_preview_original = None;
+                // Apply selected language and save preference
+                if let Some((code, name)) = languages.get(self.state.ui.selected_nested_item) {
+                    self.apply_language(code, name)?;
+                }
+                // Close all menus
+                self.state.close_menu();
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Apply language by code and save preference
+    fn apply_language(&mut self, lang_code: &str, lang_name: &str) -> Result<()> {
+        if let Err(e) = i18n::set_language(lang_code) {
+            logger::warn(format!("Failed to set language: {}", e));
+            self.state
+                .set_error(format!("Failed to set language: {}", e));
+            return Ok(());
+        }
+
+        let t = i18n::t();
+        self.state.set_info(t.language_changed(lang_name));
+
+        // Save preference to config file
+        if let Err(e) = self.save_language_preference(lang_code) {
+            logger::warn(format!("Failed to save language preference: {}", e));
+        }
+
+        Ok(())
+    }
+
+    /// Save language preference to config file
+    fn save_language_preference(&self, lang_code: &str) -> Result<()> {
+        let mut config = Config::load()?;
+        config.general.language = lang_code.to_string();
+        config.save()?;
         Ok(())
     }
 

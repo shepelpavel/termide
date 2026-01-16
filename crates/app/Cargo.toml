@@ -14,6 +14,7 @@ ratatui.workspace = true
 dirs.workspace = true
 chrono.workspace = true
 open = "5"
+unicode-width.workspace = true
 
 # All app-* foundation crates
 termide-app-core = { path = "../app-core" }

@@ -148,6 +148,8 @@ pub struct UiState {
     pub selected_nested_item: usize,
     /// Original theme name before preview (for restoring on cancel)
     pub theme_preview_original: Option<String>,
+    /// Original language code before preview (for restoring on cancel)
+    pub language_preview_original: Option<String>,
     /// Divider drag state for panel resize
     pub drag: DragState,
     /// Is Sessions submenu open
