@@ -38,6 +38,137 @@ enum DragMode {
     Toggle, // Ctrl+drag - toggle selection
 }
 
+/// Selection state for file manager (multi-select and drag selection)
+#[derive(Clone, Default)]
+pub struct SelectionState {
+    /// Set of selected items (indices)
+    pub items: HashSet<usize>,
+    /// Starting index for drag selection
+    pub drag_start: Option<usize>,
+    /// Drag mode (Shift/Ctrl)
+    drag_mode: Option<DragMode>,
+    /// Set of items already processed during current drag (to avoid re-toggling)
+    pub dragged: HashSet<usize>,
+}
+
+impl SelectionState {
+    /// Clear all selection
+    pub fn clear(&mut self) {
+        self.items.clear();
+    }
+
+    /// Toggle item selection
+    pub fn toggle(&mut self, index: usize) {
+        if self.items.contains(&index) {
+            self.items.remove(&index);
+        } else {
+            self.items.insert(index);
+        }
+    }
+
+    /// Select an item
+    pub fn select(&mut self, index: usize) {
+        self.items.insert(index);
+    }
+
+    /// Deselect an item
+    pub fn deselect(&mut self, index: usize) {
+        self.items.remove(&index);
+    }
+
+    /// Check if item is selected
+    pub fn is_selected(&self, index: usize) -> bool {
+        self.items.contains(&index)
+    }
+
+    /// Get count of selected items
+    pub fn count(&self) -> usize {
+        self.items.len()
+    }
+
+    /// Check if selection is empty
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+
+    /// Start shift-drag selection
+    pub fn start_shift_drag(&mut self, index: usize) {
+        self.dragged.clear();
+        self.select(index);
+        self.dragged.insert(index);
+        self.drag_start = Some(index);
+        self.drag_mode = Some(DragMode::Select);
+    }
+
+    /// Start ctrl-drag toggle selection
+    pub fn start_ctrl_drag(&mut self, index: usize) {
+        self.toggle(index);
+        self.drag_start = Some(index);
+        self.drag_mode = Some(DragMode::Toggle);
+        self.dragged.clear();
+        self.dragged.insert(index);
+    }
+
+    /// End drag selection
+    pub fn end_drag(&mut self) {
+        self.drag_start = None;
+        self.drag_mode = None;
+        self.dragged.clear();
+    }
+
+    /// Check if drag is active
+    pub fn is_dragging(&self) -> bool {
+        self.drag_mode.is_some()
+    }
+
+    /// Check if shift-drag mode
+    pub fn is_shift_drag(&self) -> bool {
+        self.drag_mode == Some(DragMode::Select)
+    }
+
+    /// Check if ctrl-drag mode
+    pub fn is_ctrl_drag(&self) -> bool {
+        self.drag_mode == Some(DragMode::Toggle)
+    }
+
+    /// Process drag over item (returns true if item was processed)
+    pub fn process_drag(&mut self, index: usize) -> bool {
+        if !self.dragged.contains(&index) {
+            match self.drag_mode {
+                Some(DragMode::Select) => {
+                    self.select(index);
+                    self.dragged.insert(index);
+                    true
+                }
+                Some(DragMode::Toggle) => {
+                    self.toggle(index);
+                    self.dragged.insert(index);
+                    true
+                }
+                None => false,
+            }
+        } else {
+            false
+        }
+    }
+
+    /// Select range of items
+    pub fn select_range(&mut self, from: usize, to: usize) {
+        let (start, end) = if from <= to { (from, to) } else { (to, from) };
+        for i in start..=end {
+            self.items.insert(i);
+        }
+    }
+
+    /// Toggle range of items
+    pub fn toggle_range(&mut self, from: usize, to: usize) {
+        let (start, end) = if from <= to { (from, to) } else { (to, from) };
+        for i in start..=end {
+            self.toggle(i);
+        }
+    }
+}
+
 /// Smart file manager with advanced features
 pub struct FileManager {
     current_path: PathBuf,
@@ -52,20 +183,14 @@ pub struct FileManager {
     visible_height: usize,
     /// Click tracker for double-click detection
     click_tracker: IndexClickTracker,
-    /// Set of selected items (indices)
-    selected_items: HashSet<usize>,
+    /// Selection state (multi-select and drag)
+    selection: SelectionState,
     /// Git status cache for the current directory
     git_status_cache: Option<GitStatusCache>,
     /// Channel receiver for async git status loading
     git_status_receiver: Option<mpsc::Receiver<GitStatusAsyncResult>>,
     /// Channel receiver for directory size calculation results (needs to be passed to AppState)
     pub dir_size_receiver: Option<mpsc::Receiver<DirSizeResult>>,
-    /// Starting index for drag selection
-    drag_start_index: Option<usize>,
-    /// Drag mode (Shift/Ctrl)
-    drag_mode: Option<DragMode>,
-    /// Set of items already processed during current drag (to avoid re-toggling)
-    dragged_items: HashSet<usize>,
     /// Name of directory we came from (for cursor restoration when going up)
     previous_dir_name: Option<String>,
     /// Flag indicating we're navigating down into a subdirectory (cursor should reset to 0)
@@ -112,13 +237,10 @@ impl FileManager {
             modal_request: None,
             visible_height: 10, // Default value, will be updated during rendering
             click_tracker: IndexClickTracker::new(),
-            selected_items: HashSet::new(),
+            selection: SelectionState::default(),
             git_status_cache: None,
             git_status_receiver: None,
             dir_size_receiver: None,
-            drag_start_index: None,
-            drag_mode: None,
-            dragged_items: HashSet::new(),
             previous_dir_name: None,
             navigating_down: false,
             git_root: None,
@@ -260,7 +382,8 @@ impl FileManager {
 
         // Save names of selected files if we need to restore selection
         let selected_names: HashSet<String> = if preserve_selection {
-            self.selected_items
+            self.selection
+                .items
                 .iter()
                 .filter_map(|&idx| self.entries.get(idx).map(|e| e.name.clone()))
                 .collect()
@@ -271,12 +394,9 @@ impl FileManager {
         self.entries.clear();
         self.selected = 0;
         self.scroll_offset = 0;
-        // Clear selection indices (will restore by names if preserve_selection)
-        self.selected_items.clear();
-        // Clear drag state
-        self.drag_start_index = None;
-        self.drag_mode = None;
-        self.dragged_items.clear();
+        // Clear selection state (will restore by names if preserve_selection)
+        self.selection.clear();
+        self.selection.end_drag();
 
         // Update displayed title (will be truncated during rendering if needed)
         self.display_title = self.current_path.display().to_string();
@@ -387,7 +507,7 @@ impl FileManager {
         if !selected_names.is_empty() {
             for (idx, entry) in self.entries.iter().enumerate() {
                 if selected_names.contains(&entry.name) {
-                    self.selected_items.insert(idx);
+                    self.selection.select(idx);
                 }
             }
         }
@@ -758,9 +878,7 @@ impl Panel for FileManager {
             }
             MouseEventKind::Up(MouseButton::Left) => {
                 // End drag - handle this ALWAYS, even if outside panel
-                self.drag_start_index = None;
-                self.drag_mode = None;
-                self.dragged_items.clear();
+                self.selection.end_drag();
                 return vec![];
             }
             _ => {}
@@ -795,27 +913,19 @@ impl Panel for FileManager {
                         // Shift+click - select range from selected to clicked_index
                         let start = self.selected.min(clicked_index);
                         let end = self.selected.max(clicked_index);
-                        self.dragged_items.clear();
+                        self.selection.dragged.clear();
                         for i in start..=end {
-                            self.selected_items.insert(i);
-                            self.dragged_items.insert(i);
+                            self.selection.select(i);
+                            self.selection.dragged.insert(i);
                         }
                         self.selected = clicked_index;
-                        self.drag_start_index = Some(clicked_index);
-                        self.drag_mode = Some(DragMode::Select);
+                        self.selection.drag_start = Some(clicked_index);
+                        self.selection.start_shift_drag(clicked_index);
                     } else if mouse.modifiers.contains(KeyModifiers::CONTROL) {
                         // Ctrl+click - toggle selection on clicked element
-                        if self.selected_items.contains(&clicked_index) {
-                            self.selected_items.remove(&clicked_index);
-                        } else {
-                            self.selected_items.insert(clicked_index);
-                        }
+                        self.selection.toggle(clicked_index);
                         self.selected = clicked_index;
-                        self.drag_start_index = Some(clicked_index);
-                        self.drag_mode = Some(DragMode::Toggle);
-                        // Track this item as already processed during drag
-                        self.dragged_items.clear();
-                        self.dragged_items.insert(clicked_index);
+                        self.selection.start_ctrl_drag(clicked_index);
                     } else {
                         // Check for double click using ClickTracker
                         let is_double_click = self.click_tracker.is_double_click(&clicked_index);
@@ -836,38 +946,19 @@ impl Panel for FileManager {
                             // Record click for double-click detection
                             self.click_tracker.record(clicked_index);
                         }
-                        self.drag_start_index = None;
-                        self.drag_mode = None;
+                        self.selection.end_drag();
                     }
                 }
             }
             MouseEventKind::Drag(MouseButton::Left) => {
-                // Handle drag only if there's a drag_mode
-                if let Some(drag_mode) = self.drag_mode {
+                // Handle drag only if there's an active drag mode
+                if self.selection.is_dragging() {
                     let relative_row = (mouse.row - inner_area.y) as usize;
                     let current_index = self.scroll_offset + relative_row;
 
                     if current_index < self.entries.len() {
-                        match drag_mode {
-                            DragMode::Select => {
-                                // Shift+drag - select current item if not already processed
-                                if !self.dragged_items.contains(&current_index) {
-                                    self.selected_items.insert(current_index);
-                                    self.dragged_items.insert(current_index);
-                                }
-                            }
-                            DragMode::Toggle => {
-                                // Ctrl+drag - toggle current item if not already processed
-                                if !self.dragged_items.contains(&current_index) {
-                                    if self.selected_items.contains(&current_index) {
-                                        self.selected_items.remove(&current_index);
-                                    } else {
-                                        self.selected_items.insert(current_index);
-                                    }
-                                    self.dragged_items.insert(current_index);
-                                }
-                            }
-                        }
+                        // Process drag will select or toggle based on drag mode
+                        self.selection.process_drag(current_index);
                         self.selected = current_index;
                     }
                 }
@@ -1040,7 +1131,7 @@ impl FileManager {
                 self.move_down();
             }
             FmCommand::SelectAll => self.select_all(),
-            FmCommand::ClearSelection => self.selected_items.clear(),
+            FmCommand::ClearSelection => self.selection.clear(),
             FmCommand::MoveUpWithSelection => self.move_up_with_selection(),
             FmCommand::MoveDownWithSelection => self.move_down_with_selection(),
             FmCommand::PageUpWithSelection => self.page_up_with_selection(),

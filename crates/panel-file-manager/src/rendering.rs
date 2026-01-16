@@ -64,7 +64,7 @@ impl FileManager {
                 continue;
             }
 
-            let is_selected = self.selected_items.contains(&i);
+            let is_selected = self.selection.is_selected(i);
             let is_cursor = i == self.selected;
 
             let attr = utils::get_attribute(entry, is_selected);
