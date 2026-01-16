@@ -31,6 +31,30 @@ fn git_command_stdout(dir: &Path, args: &[&str]) -> Option<String> {
     git_command(dir, args).and_then(|output| String::from_utf8(output.stdout).ok())
 }
 
+/// Run a simple git operation, returning Ok(()) on success or error message on failure.
+fn run_git_simple(repo: &Path, args: &[&str], error_msg: &str) -> Result<(), String> {
+    match git_command(repo, args) {
+        Some(_) => Ok(()),
+        None => Err(error_msg.to_string()),
+    }
+}
+
+/// Run a git command capturing stderr for detailed error messages.
+fn run_git_with_stderr(repo: &Path, args: &[&str], op_name: &str) -> Result<(), String> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(repo)
+        .output()
+        .map_err(|e| format!("Failed to run git {}: {}", op_name, e))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("{} failed: {}", op_name, stderr.trim()))
+    }
+}
+
 pub use diff::{
     compute_inline_diff, load_original_async, GitDiffAsyncResult, GitDiffCache, InlineChange,
     InlineChangeType, LineStatus,
@@ -502,10 +526,11 @@ pub fn get_branches(repo: &Path) -> Vec<String> {
 
 /// Switch to a different branch
 pub fn checkout_branch(repo: &Path, branch: &str) -> Result<(), String> {
-    match git_command(repo, &["checkout", branch]) {
-        Some(_) => Ok(()),
-        None => Err(format!("Failed to checkout branch: {}", branch)),
-    }
+    run_git_simple(
+        repo,
+        &["checkout", branch],
+        &format!("Failed to checkout branch: {}", branch),
+    )
 }
 
 /// Get staged files (files in index ready for commit)
@@ -590,10 +615,11 @@ pub fn get_unstaged_files(repo: &Path) -> Vec<UnstagedFile> {
 /// Stage a file (add to index)
 pub fn stage_file(repo: &Path, file: &Path) -> Result<(), String> {
     let file_str = file.to_string_lossy();
-    match git_command(repo, &["add", &file_str]) {
-        Some(_) => Ok(()),
-        None => Err(format!("Failed to stage file: {}", file_str)),
-    }
+    run_git_simple(
+        repo,
+        &["add", &file_str],
+        &format!("Failed to stage file: {}", file_str),
+    )
 }
 
 /// Stage multiple files
@@ -609,19 +635,17 @@ pub fn stage_files(repo: &Path, files: &[PathBuf]) -> Result<(), String> {
         .collect();
     args.extend(file_strs.iter().map(|s| s.as_str()));
 
-    match git_command(repo, &args) {
-        Some(_) => Ok(()),
-        None => Err("Failed to stage files".to_string()),
-    }
+    run_git_simple(repo, &args, "Failed to stage files")
 }
 
 /// Unstage a file (remove from index)
 pub fn unstage_file(repo: &Path, file: &Path) -> Result<(), String> {
     let file_str = file.to_string_lossy();
-    match git_command(repo, &["reset", "HEAD", "--", &file_str]) {
-        Some(_) => Ok(()),
-        None => Err(format!("Failed to unstage file: {}", file_str)),
-    }
+    run_git_simple(
+        repo,
+        &["reset", "HEAD", "--", &file_str],
+        &format!("Failed to unstage file: {}", file_str),
+    )
 }
 
 /// Unstage multiple files
@@ -637,26 +661,17 @@ pub fn unstage_files(repo: &Path, files: &[PathBuf]) -> Result<(), String> {
         .collect();
     args.extend(file_strs.iter().map(|s| s.as_str()));
 
-    match git_command(repo, &args) {
-        Some(_) => Ok(()),
-        None => Err("Failed to unstage files".to_string()),
-    }
+    run_git_simple(repo, &args, "Failed to unstage files")
 }
 
 /// Stage all changes
 pub fn stage_all(repo: &Path) -> Result<(), String> {
-    match git_command(repo, &["add", "-A"]) {
-        Some(_) => Ok(()),
-        None => Err("Failed to stage all files".to_string()),
-    }
+    run_git_simple(repo, &["add", "-A"], "Failed to stage all files")
 }
 
 /// Unstage all changes
 pub fn unstage_all(repo: &Path) -> Result<(), String> {
-    match git_command(repo, &["reset", "HEAD"]) {
-        Some(_) => Ok(()),
-        None => Err("Failed to unstage all files".to_string()),
-    }
+    run_git_simple(repo, &["reset", "HEAD"], "Failed to unstage all files")
 }
 
 /// Create a commit
@@ -686,58 +701,26 @@ pub fn commit(repo: &Path, message: &str) -> Result<String, String> {
 /// Revert changes in a file (restore from HEAD)
 pub fn revert_file(repo: &Path, file: &Path) -> Result<(), String> {
     let file_str = file.to_string_lossy();
-    match git_command(repo, &["checkout", "--", &file_str]) {
-        Some(_) => Ok(()),
-        None => Err(format!("Failed to revert file: {}", file_str)),
-    }
+    run_git_simple(
+        repo,
+        &["checkout", "--", &file_str],
+        &format!("Failed to revert file: {}", file_str),
+    )
 }
 
 /// Push to remote
 pub fn push(repo: &Path) -> Result<(), String> {
-    let output = Command::new("git")
-        .args(["push"])
-        .current_dir(repo)
-        .output()
-        .map_err(|e| format!("Failed to run git push: {}", e))?;
-
-    if output.status.success() {
-        Ok(())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(format!("Push failed: {}", stderr.trim()))
-    }
+    run_git_with_stderr(repo, &["push"], "push")
 }
 
 /// Pull from remote
 pub fn pull(repo: &Path) -> Result<(), String> {
-    let output = Command::new("git")
-        .args(["pull"])
-        .current_dir(repo)
-        .output()
-        .map_err(|e| format!("Failed to run git pull: {}", e))?;
-
-    if output.status.success() {
-        Ok(())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(format!("Pull failed: {}", stderr.trim()))
-    }
+    run_git_with_stderr(repo, &["pull"], "pull")
 }
 
 /// Initialize a new git repository
 pub fn init_repo(path: &Path) -> Result<(), String> {
-    let output = Command::new("git")
-        .args(["init"])
-        .current_dir(path)
-        .output()
-        .map_err(|e| format!("Failed to run git init: {}", e))?;
-
-    if output.status.success() {
-        Ok(())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(format!("Init failed: {}", stderr.trim()))
-    }
+    run_git_with_stderr(path, &["init"], "init")
 }
 
 /// Get commit log
