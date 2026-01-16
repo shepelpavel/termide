@@ -220,6 +220,8 @@ ui_yes = "Ja"
 
 git_action_close = "Schließen"
 git_action_git_status = "Git-Status"
+git_action_init = "Init"
+git_init_success = "Repository in {path} initialisiert"
 git_action_commit = "Commit"
 git_action_diff = "Diff"
 git_action_pull = "Pull"

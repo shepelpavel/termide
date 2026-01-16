@@ -724,6 +724,22 @@ pub fn pull(repo: &Path) -> Result<(), String> {
     }
 }
 
+/// Initialize a new git repository
+pub fn init_repo(path: &Path) -> Result<(), String> {
+    let output = Command::new("git")
+        .args(["init"])
+        .current_dir(path)
+        .output()
+        .map_err(|e| format!("Failed to run git init: {}", e))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("Init failed: {}", stderr.trim()))
+    }
+}
+
 /// Get commit log
 pub fn get_log(repo: &Path, count: usize) -> Vec<CommitInfo> {
     let count_str = count.to_string();

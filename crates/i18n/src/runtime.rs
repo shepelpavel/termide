@@ -1022,6 +1022,14 @@ impl Translation for RuntimeTranslation {
         self.get_string("git_action_git_status")
     }
 
+    fn git_action_init(&self) -> &str {
+        self.get_string("git_action_init")
+    }
+
+    fn git_init_success(&self, path: &str) -> String {
+        self.get_string("git_init_success").replace("{path}", path)
+    }
+
     fn git_action_commit(&self) -> &str {
         self.get_string("git_action_commit")
     }

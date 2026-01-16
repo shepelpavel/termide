@@ -68,6 +68,8 @@ pub enum Button {
     Pushing,
     /// Pull operation in progress (shows spinner, click cancels)
     Pulling,
+    /// Initialize a new git repository
+    Init,
 }
 
 /// Spinner animation frames
@@ -75,11 +77,12 @@ const SPINNER_FRAMES: [char; 6] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴'];
 
 impl Button {
     fn label(&self, spinner_frame: usize) -> String {
+        let t = termide_i18n::t();
         match self {
-            Button::Diff => "Diff".to_string(),
-            Button::Commit => "Commit".to_string(),
-            Button::Pull => "Pull".to_string(),
-            Button::Push => "Push".to_string(),
+            Button::Diff => t.git_action_diff().to_string(),
+            Button::Commit => t.git_action_commit().to_string(),
+            Button::Pull => t.git_action_pull().to_string(),
+            Button::Push => t.git_action_push().to_string(),
             Button::Pushing => {
                 let s = SPINNER_FRAMES[spinner_frame % SPINNER_FRAMES.len()];
                 format!("{} Pushing...", s)
@@ -88,6 +91,7 @@ impl Button {
                 let s = SPINNER_FRAMES[spinner_frame % SPINNER_FRAMES.len()];
                 format!("{} Pulling...", s)
             }
+            Button::Init => t.git_action_init().to_string(),
         }
     }
 }
@@ -162,6 +166,8 @@ pub struct GitStatusPanel {
     current_operation: Option<String>,
     /// Spinner animation frame for Pushing/Pulling buttons
     spinner_frame: usize,
+    /// Initial paths passed to the panel (for git init when no repo found)
+    initial_paths: Vec<PathBuf>,
 }
 
 impl GitStatusPanel {
@@ -202,6 +208,7 @@ impl GitStatusPanel {
             git_operation_in_progress: false,
             current_operation: None,
             spinner_frame: 0,
+            initial_paths: paths.to_vec(),
         };
 
         panel.refresh();
@@ -210,6 +217,7 @@ impl GitStatusPanel {
 
     /// Create panel for a specific repository
     pub fn new_for_repo(repo_path: PathBuf) -> Self {
+        let initial_paths = vec![repo_path.clone()];
         let mut panel = Self {
             repo_manager: RepoManager::for_repo(repo_path),
             branch: None,
@@ -245,6 +253,7 @@ impl GitStatusPanel {
             git_operation_in_progress: false,
             current_operation: None,
             spinner_frame: 0,
+            initial_paths,
         };
 
         panel.refresh();
@@ -774,6 +783,14 @@ impl GitStatusPanel {
     fn get_visible_buttons(&self) -> Vec<Button> {
         let mut buttons = Vec::new();
 
+        // If no repos found, show Init button only
+        if self.repo_manager.is_empty() {
+            if !self.initial_paths.is_empty() {
+                buttons.push(Button::Init);
+            }
+            return buttons;
+        }
+
         // Diff - show if there are any changes (unstaged or staged)
         if !self.unstaged_files.is_empty() || !self.staged_files.is_empty() {
             buttons.push(Button::Diff);
@@ -866,6 +883,25 @@ impl GitStatusPanel {
             Button::Pushing | Button::Pulling => {
                 // Click on spinner button cancels the operation
                 vec![PanelEvent::CancelGitOperation]
+            }
+            Button::Init => {
+                // Initialize a new git repository in the first initial path
+                if let Some(path) = self.initial_paths.first().cloned() {
+                    match git::init_repo(&path) {
+                        Ok(()) => {
+                            // Refresh to detect the new repo
+                            self.repo_manager = RepoManager::new(&self.initial_paths);
+                            self.refresh();
+                            let t = termide_i18n::t();
+                            self.status_message =
+                                Some(t.git_init_success(&path.display().to_string()));
+                        }
+                        Err(e) => {
+                            self.status_message = Some(format!("Init failed: {}", e));
+                        }
+                    }
+                }
+                vec![]
             }
         }
     }
