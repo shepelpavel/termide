@@ -317,7 +317,7 @@ impl App {
     /// Handle keyboard event in submenu (Options dropdown)
     pub(super) fn handle_submenu_key(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
         // If nested submenu is open, delegate to nested handler
-        if self.state.ui.nested_submenu_open {
+        if self.state.ui.nested_submenu.open {
             return self.handle_nested_submenu_key(key);
         }
 
@@ -329,15 +329,15 @@ impl App {
                 self.state.close_submenu();
             }
             KeyCode::Up => {
-                if self.state.ui.selected_submenu_item > 0 {
-                    self.state.ui.selected_submenu_item -= 1;
+                if self.state.ui.options_submenu.selected > 0 {
+                    self.state.ui.options_submenu.selected -= 1;
                 } else {
-                    self.state.ui.selected_submenu_item = OPTIONS_SUBMENU_ITEM_COUNT - 1;
+                    self.state.ui.options_submenu.selected = OPTIONS_SUBMENU_ITEM_COUNT - 1;
                 }
             }
             KeyCode::Down => {
-                self.state.ui.selected_submenu_item =
-                    (self.state.ui.selected_submenu_item + 1) % OPTIONS_SUBMENU_ITEM_COUNT;
+                self.state.ui.options_submenu.selected =
+                    (self.state.ui.options_submenu.selected + 1) % OPTIONS_SUBMENU_ITEM_COUNT;
             }
             KeyCode::Right | KeyCode::Enter => {
                 self.execute_submenu_action()?;
@@ -349,7 +349,7 @@ impl App {
 
     /// Execute action for selected Options submenu item
     fn execute_submenu_action(&mut self) -> Result<()> {
-        match self.state.ui.selected_submenu_item {
+        match self.state.ui.options_submenu.selected {
             0 => {
                 // Themes - open nested submenu with live preview
                 let theme_names = Theme::all_theme_names();
@@ -407,7 +407,7 @@ impl App {
     /// Handle keyboard event in nested submenu (Themes or Language list)
     fn handle_nested_submenu_key(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
         // Determine which nested submenu is open based on parent submenu item
-        match self.state.ui.selected_submenu_item {
+        match self.state.ui.options_submenu.selected {
             0 => self.handle_themes_nested_submenu_key(key),
             1 => self.handle_language_nested_submenu_key(key),
             _ => Ok(()),
@@ -429,23 +429,23 @@ impl App {
                 self.state.close_nested_submenu();
             }
             KeyCode::Up => {
-                if self.state.ui.selected_nested_item > 0 {
-                    self.state.ui.selected_nested_item -= 1;
+                if self.state.ui.nested_submenu.selected > 0 {
+                    self.state.ui.nested_submenu.selected -= 1;
                 } else {
-                    self.state.ui.selected_nested_item = theme_count.saturating_sub(1);
+                    self.state.ui.nested_submenu.selected = theme_count.saturating_sub(1);
                 }
                 // Live preview: apply theme on cursor move
-                if let Some(name) = theme_names.get(self.state.ui.selected_nested_item) {
+                if let Some(name) = theme_names.get(self.state.ui.nested_submenu.selected) {
                     self.state.theme = Theme::get_by_name(name);
                 }
             }
             KeyCode::Down => {
                 if theme_count > 0 {
-                    self.state.ui.selected_nested_item =
-                        (self.state.ui.selected_nested_item + 1) % theme_count;
+                    self.state.ui.nested_submenu.selected =
+                        (self.state.ui.nested_submenu.selected + 1) % theme_count;
                 }
                 // Live preview: apply theme on cursor move
-                if let Some(name) = theme_names.get(self.state.ui.selected_nested_item) {
+                if let Some(name) = theme_names.get(self.state.ui.nested_submenu.selected) {
                     self.state.theme = Theme::get_by_name(name);
                 }
             }
@@ -453,7 +453,7 @@ impl App {
                 // Clear preview state - theme is confirmed
                 self.state.ui.theme_preview_original = None;
                 // Apply selected theme and save preference
-                if let Some(name) = theme_names.get(self.state.ui.selected_nested_item) {
+                if let Some(name) = theme_names.get(self.state.ui.nested_submenu.selected) {
                     self.apply_theme(name)?;
                 }
                 // Close all menus
@@ -482,23 +482,23 @@ impl App {
                 self.state.close_nested_submenu();
             }
             KeyCode::Up => {
-                if self.state.ui.selected_nested_item > 0 {
-                    self.state.ui.selected_nested_item -= 1;
+                if self.state.ui.nested_submenu.selected > 0 {
+                    self.state.ui.nested_submenu.selected -= 1;
                 } else {
-                    self.state.ui.selected_nested_item = lang_count.saturating_sub(1);
+                    self.state.ui.nested_submenu.selected = lang_count.saturating_sub(1);
                 }
                 // Live preview: apply language on cursor move
-                if let Some((code, _)) = languages.get(self.state.ui.selected_nested_item) {
+                if let Some((code, _)) = languages.get(self.state.ui.nested_submenu.selected) {
                     let _ = i18n::set_language(code);
                 }
             }
             KeyCode::Down => {
                 if lang_count > 0 {
-                    self.state.ui.selected_nested_item =
-                        (self.state.ui.selected_nested_item + 1) % lang_count;
+                    self.state.ui.nested_submenu.selected =
+                        (self.state.ui.nested_submenu.selected + 1) % lang_count;
                 }
                 // Live preview: apply language on cursor move
-                if let Some((code, _)) = languages.get(self.state.ui.selected_nested_item) {
+                if let Some((code, _)) = languages.get(self.state.ui.nested_submenu.selected) {
                     let _ = i18n::set_language(code);
                 }
             }
@@ -506,7 +506,7 @@ impl App {
                 // Clear preview state - language is confirmed
                 self.state.ui.language_preview_original = None;
                 // Apply selected language and save preference
-                if let Some((code, name)) = languages.get(self.state.ui.selected_nested_item) {
+                if let Some((code, name)) = languages.get(self.state.ui.nested_submenu.selected) {
                     self.apply_language(code, name)?;
                 }
                 // Close all menus
@@ -562,15 +562,15 @@ impl App {
                 self.state.close_sessions_submenu();
             }
             KeyCode::Up => {
-                if self.state.ui.selected_sessions_item > 0 {
-                    self.state.ui.selected_sessions_item -= 1;
+                if self.state.ui.sessions_submenu.selected > 0 {
+                    self.state.ui.sessions_submenu.selected -= 1;
                 } else {
-                    self.state.ui.selected_sessions_item = SESSIONS_SUBMENU_ITEM_COUNT - 1;
+                    self.state.ui.sessions_submenu.selected = SESSIONS_SUBMENU_ITEM_COUNT - 1;
                 }
             }
             KeyCode::Down => {
-                self.state.ui.selected_sessions_item =
-                    (self.state.ui.selected_sessions_item + 1) % SESSIONS_SUBMENU_ITEM_COUNT;
+                self.state.ui.sessions_submenu.selected =
+                    (self.state.ui.sessions_submenu.selected + 1) % SESSIONS_SUBMENU_ITEM_COUNT;
             }
             KeyCode::Right | KeyCode::Enter => {
                 self.execute_sessions_submenu_action()?;
@@ -582,7 +582,7 @@ impl App {
 
     /// Execute action for selected Sessions submenu item
     pub(super) fn execute_sessions_submenu_action(&mut self) -> Result<()> {
-        match self.state.ui.selected_sessions_item {
+        match self.state.ui.sessions_submenu.selected {
             0 => {
                 // New session - open directory picker
                 self.state.close_menu();
@@ -686,15 +686,15 @@ impl App {
                 self.state.close_tools_submenu();
             }
             KeyCode::Up => {
-                if self.state.ui.selected_tools_item > 0 {
-                    self.state.ui.selected_tools_item -= 1;
+                if self.state.ui.tools_submenu.selected > 0 {
+                    self.state.ui.tools_submenu.selected -= 1;
                 } else {
-                    self.state.ui.selected_tools_item = TOOLS_SUBMENU_ITEM_COUNT - 1;
+                    self.state.ui.tools_submenu.selected = TOOLS_SUBMENU_ITEM_COUNT - 1;
                 }
             }
             KeyCode::Down => {
-                self.state.ui.selected_tools_item =
-                    (self.state.ui.selected_tools_item + 1) % TOOLS_SUBMENU_ITEM_COUNT;
+                self.state.ui.tools_submenu.selected =
+                    (self.state.ui.tools_submenu.selected + 1) % TOOLS_SUBMENU_ITEM_COUNT;
             }
             KeyCode::Right | KeyCode::Enter => {
                 self.execute_tools_submenu_action()?;
@@ -706,7 +706,7 @@ impl App {
 
     /// Execute action for selected Tools submenu item
     pub(super) fn execute_tools_submenu_action(&mut self) -> Result<()> {
-        match self.state.ui.selected_tools_item {
+        match self.state.ui.tools_submenu.selected {
             0 => {
                 // Files - open new file manager panel
                 self.state.close_menu();
@@ -778,7 +778,7 @@ impl App {
         key: crossterm::event::KeyEvent,
     ) -> Result<()> {
         // If nested submenu is open, delegate to nested handler
-        if self.state.ui.actions_nested_submenu_open {
+        if self.state.ui.actions_nested.open {
             return self.handle_actions_nested_submenu_key(key);
         }
 
@@ -801,16 +801,16 @@ impl App {
                 self.state.close_actions_submenu();
             }
             KeyCode::Up => {
-                if self.state.ui.selected_actions_item > 0 {
-                    self.state.ui.selected_actions_item -= 1;
+                if self.state.ui.actions_submenu.selected > 0 {
+                    self.state.ui.actions_submenu.selected -= 1;
                 } else {
-                    self.state.ui.selected_actions_item = item_count.saturating_sub(1);
+                    self.state.ui.actions_submenu.selected = item_count.saturating_sub(1);
                 }
             }
             KeyCode::Down => {
                 if item_count > 0 {
-                    self.state.ui.selected_actions_item =
-                        (self.state.ui.selected_actions_item + 1) % item_count;
+                    self.state.ui.actions_submenu.selected =
+                        (self.state.ui.actions_submenu.selected + 1) % item_count;
                 }
             }
             KeyCode::Right | KeyCode::Enter => {
@@ -843,7 +843,7 @@ impl App {
             None => return Ok(()),
         };
 
-        let selected = self.state.ui.selected_actions_item;
+        let selected = self.state.ui.actions_submenu.selected;
         let root_count = registry.root_items.len();
 
         if selected < root_count {
@@ -883,16 +883,16 @@ impl App {
                 self.state.close_actions_nested_submenu();
             }
             KeyCode::Up => {
-                if self.state.ui.selected_actions_nested_item > 0 {
-                    self.state.ui.selected_actions_nested_item -= 1;
+                if self.state.ui.actions_nested.selected > 0 {
+                    self.state.ui.actions_nested.selected -= 1;
                 } else {
-                    self.state.ui.selected_actions_nested_item = item_count.saturating_sub(1);
+                    self.state.ui.actions_nested.selected = item_count.saturating_sub(1);
                 }
             }
             KeyCode::Down => {
                 if item_count > 0 {
-                    self.state.ui.selected_actions_nested_item =
-                        (self.state.ui.selected_actions_nested_item + 1) % item_count;
+                    self.state.ui.actions_nested.selected =
+                        (self.state.ui.actions_nested.selected + 1) % item_count;
                 }
             }
             KeyCode::Enter => {
@@ -920,7 +920,7 @@ impl App {
             None => return Ok(()),
         };
 
-        if let Some(action) = group.items.get(self.state.ui.selected_actions_nested_item) {
+        if let Some(action) = group.items.get(self.state.ui.actions_nested.selected) {
             self.state.close_menu();
             self.run_action_script(action)?;
         }

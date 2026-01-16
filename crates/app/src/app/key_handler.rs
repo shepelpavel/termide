@@ -37,22 +37,22 @@ impl App {
         }
 
         // If Sessions submenu is open, handle its navigation
-        if self.state.ui.sessions_submenu_open {
+        if self.state.ui.sessions_submenu.open {
             return self.handle_sessions_submenu_key(key);
         }
 
         // If Tools submenu is open, handle its navigation
-        if self.state.ui.tools_submenu_open {
+        if self.state.ui.tools_submenu.open {
             return self.handle_tools_submenu_key(key);
         }
 
         // If Actions submenu is open, handle its navigation
-        if self.state.ui.actions_submenu_open {
+        if self.state.ui.actions_submenu.open {
             return self.handle_actions_submenu_key(key);
         }
 
         // If Options submenu is open, handle submenu navigation
-        if self.state.ui.submenu_open {
+        if self.state.ui.options_submenu.open {
             return self.handle_submenu_key(key);
         }
 

@@ -176,102 +176,88 @@ impl AppState {
     /// Open submenu (e.g., Preferences dropdown)
     pub fn open_submenu(&mut self) {
         // Close other submenus first
-        self.ui.sessions_submenu_open = false;
-        self.ui.tools_submenu_open = false;
-        self.ui.actions_submenu_open = false;
+        self.ui.sessions_submenu.close();
+        self.ui.tools_submenu.close();
+        self.ui.actions_submenu.close();
         // Open Options submenu
-        self.ui.submenu_open = true;
-        self.ui.selected_submenu_item = 0;
-        self.ui.nested_submenu_open = false;
+        self.ui.options_submenu.open();
+        self.ui.nested_submenu.close();
     }
 
     /// Close submenu and all nested menus
     pub fn close_submenu(&mut self) {
-        self.ui.submenu_open = false;
-        self.ui.selected_submenu_item = 0;
-        self.ui.nested_submenu_open = false;
-        self.ui.selected_nested_item = 0;
+        self.ui.options_submenu.close();
+        self.ui.nested_submenu.close();
     }
 
     /// Open Sessions submenu
     pub fn open_sessions_submenu(&mut self) {
         // Close other submenus first
-        self.ui.tools_submenu_open = false;
-        self.ui.submenu_open = false;
-        self.ui.actions_submenu_open = false;
+        self.ui.tools_submenu.close();
+        self.ui.options_submenu.close();
+        self.ui.actions_submenu.close();
         // Open Sessions submenu
-        self.ui.sessions_submenu_open = true;
-        self.ui.selected_sessions_item = 0;
+        self.ui.sessions_submenu.open();
     }
 
     /// Close Sessions submenu
     pub fn close_sessions_submenu(&mut self) {
-        self.ui.sessions_submenu_open = false;
-        self.ui.selected_sessions_item = 0;
+        self.ui.sessions_submenu.close();
     }
 
     /// Open Tools submenu
     pub fn open_tools_submenu(&mut self) {
         // Close other submenus first
-        self.ui.sessions_submenu_open = false;
-        self.ui.submenu_open = false;
-        self.ui.actions_submenu_open = false;
+        self.ui.sessions_submenu.close();
+        self.ui.options_submenu.close();
+        self.ui.actions_submenu.close();
         // Open Tools submenu
-        self.ui.tools_submenu_open = true;
-        self.ui.selected_tools_item = 0;
+        self.ui.tools_submenu.open();
     }
 
     /// Close Tools submenu
     pub fn close_tools_submenu(&mut self) {
-        self.ui.tools_submenu_open = false;
-        self.ui.selected_tools_item = 0;
+        self.ui.tools_submenu.close();
     }
 
     /// Open Actions submenu
     pub fn open_actions_submenu(&mut self) {
         // Close other submenus first
-        self.ui.sessions_submenu_open = false;
-        self.ui.tools_submenu_open = false;
-        self.ui.submenu_open = false;
+        self.ui.sessions_submenu.close();
+        self.ui.tools_submenu.close();
+        self.ui.options_submenu.close();
         // Open Actions submenu
-        self.ui.actions_submenu_open = true;
-        self.ui.selected_actions_item = 0;
-        self.ui.actions_nested_submenu_open = false;
+        self.ui.actions_submenu.open();
+        self.ui.actions_nested.close();
     }
 
     /// Close Actions submenu
     pub fn close_actions_submenu(&mut self) {
-        self.ui.actions_submenu_open = false;
-        self.ui.selected_actions_item = 0;
-        self.ui.actions_nested_submenu_open = false;
-        self.ui.selected_actions_nested_item = 0;
+        self.ui.actions_submenu.close();
+        self.ui.actions_nested.close();
         self.ui.current_actions_group = None;
     }
 
     /// Open Actions nested submenu (for a group)
     pub fn open_actions_nested_submenu(&mut self, group_name: String) {
-        self.ui.actions_nested_submenu_open = true;
-        self.ui.selected_actions_nested_item = 0;
+        self.ui.actions_nested.open();
         self.ui.current_actions_group = Some(group_name);
     }
 
     /// Close Actions nested submenu
     pub fn close_actions_nested_submenu(&mut self) {
-        self.ui.actions_nested_submenu_open = false;
-        self.ui.selected_actions_nested_item = 0;
+        self.ui.actions_nested.close();
         self.ui.current_actions_group = None;
     }
 
     /// Open nested submenu (e.g., Themes list)
     pub fn open_nested_submenu(&mut self, initial_item: usize) {
-        self.ui.nested_submenu_open = true;
-        self.ui.selected_nested_item = initial_item;
+        self.ui.nested_submenu.open_at(initial_item);
     }
 
     /// Close nested submenu (return to parent submenu)
     pub fn close_nested_submenu(&mut self) {
-        self.ui.nested_submenu_open = false;
-        self.ui.selected_nested_item = 0;
+        self.ui.nested_submenu.close();
     }
 
     /// Toggle menu

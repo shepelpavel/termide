@@ -199,36 +199,24 @@ pub struct UiState {
     pub selected_dropdown_item: usize,
     /// Status line message (for displaying errors and notifications)
     pub status_message: Option<(String, bool)>, // (message, is_error)
-    /// Is submenu open (e.g., Preferences dropdown)
-    pub submenu_open: bool,
-    /// Selected item in submenu
-    pub selected_submenu_item: usize,
-    /// Is nested submenu open (e.g., Themes list)
-    pub nested_submenu_open: bool,
-    /// Selected item in nested submenu
-    pub selected_nested_item: usize,
+    /// Options submenu state (e.g., Preferences dropdown)
+    pub options_submenu: SubmenuState,
+    /// Nested submenu state (e.g., Themes list inside Options)
+    pub nested_submenu: SubmenuState,
     /// Original theme name before preview (for restoring on cancel)
     pub theme_preview_original: Option<String>,
     /// Original language code before preview (for restoring on cancel)
     pub language_preview_original: Option<String>,
     /// Divider drag state for panel resize
     pub drag: DragState,
-    /// Is Sessions submenu open
-    pub sessions_submenu_open: bool,
-    /// Selected item in Sessions submenu
-    pub selected_sessions_item: usize,
-    /// Is Tools submenu open
-    pub tools_submenu_open: bool,
-    /// Selected item in Tools submenu
-    pub selected_tools_item: usize,
-    /// Is Actions submenu open
-    pub actions_submenu_open: bool,
-    /// Selected item in Actions submenu
-    pub selected_actions_item: usize,
-    /// Is Actions nested submenu open (for subdirectory groups)
-    pub actions_nested_submenu_open: bool,
-    /// Selected item in Actions nested submenu
-    pub selected_actions_nested_item: usize,
+    /// Sessions submenu state
+    pub sessions_submenu: SubmenuState,
+    /// Tools submenu state
+    pub tools_submenu: SubmenuState,
+    /// Actions submenu state
+    pub actions_submenu: SubmenuState,
+    /// Actions nested submenu state (for subdirectory groups)
+    pub actions_nested: SubmenuState,
     /// Current action group name (for nested submenu)
     pub current_actions_group: Option<String>,
     /// Is git operation (push/pull) in progress

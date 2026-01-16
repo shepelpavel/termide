@@ -32,7 +32,7 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
     // Render Sessions submenu if open
     if state.ui.menu_open
         && state.ui.selected_menu_item == Some(SESSIONS_MENU_INDEX)
-        && state.ui.sessions_submenu_open
+        && state.ui.sessions_submenu.open
     {
         // Calculate position of Sessions menu item
         let menu_x = get_menu_item_x_position(SESSIONS_MENU_INDEX);
@@ -42,7 +42,7 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
         let sessions_items = get_sessions_items();
         let dropdown = Dropdown::new(
             &sessions_items,
-            state.ui.selected_sessions_item,
+            state.ui.sessions_submenu.selected,
             menu_x,
             dropdown_y,
             theme,
@@ -53,7 +53,7 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
     // Render Tools submenu if open
     if state.ui.menu_open
         && state.ui.selected_menu_item == Some(TOOLS_MENU_INDEX)
-        && state.ui.tools_submenu_open
+        && state.ui.tools_submenu.open
     {
         // Calculate position of Tools menu item
         let menu_x = get_menu_item_x_position(TOOLS_MENU_INDEX);
@@ -63,7 +63,7 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
         let tools_items = get_tools_items();
         let dropdown = Dropdown::new(
             &tools_items,
-            state.ui.selected_tools_item,
+            state.ui.tools_submenu.selected,
             menu_x,
             dropdown_y,
             theme,
@@ -74,7 +74,7 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
     // Render Actions submenu if open
     if state.ui.menu_open
         && state.ui.selected_menu_item == Some(ACTIONS_MENU_INDEX)
-        && state.ui.actions_submenu_open
+        && state.ui.actions_submenu.open
     {
         // Load actions registry
         if let Some(registry) = termide_config::actions::ActionsRegistry::load() {
@@ -85,7 +85,7 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
             let actions_items = get_actions_items(&registry);
             let dropdown = Dropdown::new(
                 &actions_items,
-                state.ui.selected_actions_item,
+                state.ui.actions_submenu.selected,
                 menu_x,
                 dropdown_y,
                 theme,
@@ -93,18 +93,18 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
             dropdown.render(frame.buffer_mut());
 
             // If a group is selected and nested submenu is open
-            if state.ui.actions_nested_submenu_open {
+            if state.ui.actions_nested.open {
                 if let Some(group_name) = &state.ui.current_actions_group {
                     let nested_items = get_actions_group_items(&registry, group_name);
                     if !nested_items.is_empty() {
                         // Calculate position: to the right of actions dropdown
                         let nested_x = menu_x + dropdown.width();
                         // Align with selected group item (inside border)
-                        let nested_y = dropdown_y + 1 + state.ui.selected_actions_item as u16;
+                        let nested_y = dropdown_y + 1 + state.ui.actions_submenu.selected as u16;
 
                         let nested_dropdown = Dropdown::new(
                             &nested_items,
-                            state.ui.selected_actions_nested_item,
+                            state.ui.actions_nested.selected,
                             nested_x,
                             nested_y,
                             theme,
@@ -119,7 +119,7 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
     // Render Options submenu if open
     if state.ui.menu_open
         && state.ui.selected_menu_item == Some(OPTIONS_MENU_INDEX)
-        && state.ui.submenu_open
+        && state.ui.options_submenu.open
     {
         // Calculate position of Options menu item
         let menu_x = get_menu_item_x_position(OPTIONS_MENU_INDEX);
@@ -129,7 +129,7 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
         let options_items = get_options_items();
         let dropdown = Dropdown::new(
             &options_items,
-            state.ui.selected_submenu_item,
+            state.ui.options_submenu.selected,
             menu_x,
             dropdown_y,
             theme,
@@ -137,7 +137,7 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
         dropdown.render(frame.buffer_mut());
 
         // If Themes is selected and nested submenu is open
-        if state.ui.nested_submenu_open && state.ui.selected_submenu_item == 0 {
+        if state.ui.nested_submenu.open && state.ui.options_submenu.selected == 0 {
             // Calculate position: to the right of options dropdown
             let nested_x = menu_x + dropdown.width();
             let nested_y = dropdown_y + 1; // Align with "Themes" item (inside border)
@@ -145,7 +145,7 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
             let theme_names = Theme::all_theme_names();
             let theme_dropdown = ThemeDropdown::new(
                 &theme_names,
-                state.ui.selected_nested_item,
+                state.ui.nested_submenu.selected,
                 nested_x,
                 nested_y,
                 theme,
@@ -154,13 +154,13 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
         }
 
         // If Language is selected and nested submenu is open
-        if state.ui.nested_submenu_open && state.ui.selected_submenu_item == 1 {
+        if state.ui.nested_submenu.open && state.ui.options_submenu.selected == 1 {
             // Calculate position: to the right of options dropdown
             let nested_x = menu_x + dropdown.width();
             let nested_y = dropdown_y + 2; // Align with "Language" item (index 1, inside border)
 
             let language_dropdown =
-                LanguageDropdown::new(state.ui.selected_nested_item, nested_x, nested_y, theme);
+                LanguageDropdown::new(state.ui.nested_submenu.selected, nested_x, nested_y, theme);
             language_dropdown.render(frame.buffer_mut());
         }
     }

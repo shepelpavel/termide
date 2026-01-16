@@ -93,7 +93,7 @@ impl App {
         }
 
         // Handle Sessions submenu clicks when it's open
-        if self.state.ui.sessions_submenu_open
+        if self.state.ui.sessions_submenu.open
             && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
             && self.handle_sessions_submenu_click(mouse.column, mouse.row)?
         {
@@ -101,7 +101,7 @@ impl App {
         }
 
         // Handle Preferences submenu clicks when submenu is open
-        if self.state.ui.submenu_open
+        if self.state.ui.options_submenu.open
             && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
             && self.handle_submenu_click(mouse.column, mouse.row)?
         {
@@ -109,7 +109,7 @@ impl App {
         }
 
         // Handle Tools submenu clicks when it's open
-        if self.state.ui.tools_submenu_open
+        if self.state.ui.tools_submenu.open
             && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
             && self.handle_tools_submenu_click(mouse.column, mouse.row)?
         {
@@ -117,7 +117,7 @@ impl App {
         }
 
         // Handle Actions submenu clicks when it's open
-        if self.state.ui.actions_submenu_open
+        if self.state.ui.actions_submenu.open
             && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
             && self.handle_actions_submenu_click(mouse.column, mouse.row)?
         {
@@ -369,7 +369,7 @@ impl App {
         let options_height = options_items.len() as u16 + 2; // +2 for borders
 
         // Check if nested submenu (Themes) is open
-        if self.state.ui.nested_submenu_open && self.state.ui.selected_submenu_item == 0 {
+        if self.state.ui.nested_submenu.open && self.state.ui.options_submenu.selected == 0 {
             // Theme dropdown is to the right of Options dropdown
             let nested_x = menu_x + options_width;
             let nested_y = dropdown_y + 1;
@@ -387,8 +387,8 @@ impl App {
                 && y < nested_y + nested_height
             {
                 // Calculate scroll offset same as ThemeDropdown
-                let scroll_offset = if self.state.ui.selected_nested_item >= max_visible {
-                    self.state.ui.selected_nested_item - max_visible + 1
+                let scroll_offset = if self.state.ui.nested_submenu.selected >= max_visible {
+                    self.state.ui.nested_submenu.selected - max_visible + 1
                 } else {
                     0
                 };
@@ -408,7 +408,7 @@ impl App {
         }
 
         // Check if nested submenu (Language) is open
-        if self.state.ui.nested_submenu_open && self.state.ui.selected_submenu_item == 1 {
+        if self.state.ui.nested_submenu.open && self.state.ui.options_submenu.selected == 1 {
             // Language dropdown is to the right of Options dropdown
             let nested_x = menu_x + options_width;
             let nested_y = dropdown_y + 2; // Language is at index 1
@@ -431,8 +431,8 @@ impl App {
                 && y < nested_y + nested_height
             {
                 // Calculate scroll offset same as LanguageDropdown
-                let scroll_offset = if self.state.ui.selected_nested_item >= max_visible {
-                    self.state.ui.selected_nested_item - max_visible + 1
+                let scroll_offset = if self.state.ui.nested_submenu.selected >= max_visible {
+                    self.state.ui.nested_submenu.selected - max_visible + 1
                 } else {
                     0
                 };
@@ -460,12 +460,12 @@ impl App {
             let item_y = y.saturating_sub(dropdown_y + 1); // -1 for top border
             let item_index = item_y as usize;
             if item_index < options_items.len() {
-                self.state.ui.selected_submenu_item = item_index;
+                self.state.ui.options_submenu.selected = item_index;
                 match item_index {
                     0 => {
                         // Themes - toggle nested submenu
-                        if self.state.ui.nested_submenu_open
-                            && self.state.ui.selected_submenu_item == 0
+                        if self.state.ui.nested_submenu.open
+                            && self.state.ui.options_submenu.selected == 0
                         {
                             // Already open - close it and restore theme
                             if let Some(original_name) = self.state.ui.theme_preview_original.take()
@@ -490,8 +490,8 @@ impl App {
                         // Language - toggle nested submenu
                         use termide_i18n as i18n;
                         use termide_ui_render::find_current_language_index;
-                        if self.state.ui.nested_submenu_open
-                            && self.state.ui.selected_submenu_item == 1
+                        if self.state.ui.nested_submenu.open
+                            && self.state.ui.options_submenu.selected == 1
                         {
                             // Already open - close it and restore language
                             if let Some(original_lang) =
@@ -580,7 +580,7 @@ impl App {
             let item_y = y.saturating_sub(dropdown_y + 1); // -1 for top border
             let item_index = item_y as usize;
             if item_index < sessions_items.len() {
-                self.state.ui.selected_sessions_item = item_index;
+                self.state.ui.sessions_submenu.selected = item_index;
                 // Execute the action for the selected item
                 self.execute_sessions_submenu_action()?;
                 return Ok(true);
@@ -618,7 +618,7 @@ impl App {
             let item_y = y.saturating_sub(dropdown_y + 1); // -1 for top border
             let item_index = item_y as usize;
             if item_index < tools_items.len() {
-                self.state.ui.selected_tools_item = item_index;
+                self.state.ui.tools_submenu.selected = item_index;
                 // Execute the action for the selected item
                 self.execute_tools_submenu_action()?;
                 return Ok(true);
@@ -642,7 +642,7 @@ impl App {
         };
 
         // If nested submenu is open, handle clicks on it first
-        if self.state.ui.actions_nested_submenu_open {
+        if self.state.ui.actions_nested.open {
             if let Some(group_name) = &self.state.ui.current_actions_group.clone() {
                 let nested_items = get_actions_group_items(&registry, group_name);
                 if !nested_items.is_empty() {
@@ -659,7 +659,7 @@ impl App {
                     let nested_x = menu_x + actions_width;
                     let dropdown_y = 1_u16;
                     // +1 for dropdown border, align with selected item
-                    let nested_y = dropdown_y + 1 + self.state.ui.selected_actions_item as u16;
+                    let nested_y = dropdown_y + 1 + self.state.ui.actions_submenu.selected as u16;
                     let nested_width = nested_items
                         .iter()
                         .map(|i| i.label.width())
@@ -677,7 +677,7 @@ impl App {
                         let item_y = y.saturating_sub(nested_y + 1);
                         let item_index = item_y as usize;
                         if item_index < nested_items.len() {
-                            self.state.ui.selected_actions_nested_item = item_index;
+                            self.state.ui.actions_nested.selected = item_index;
                             self.execute_actions_nested_action()?;
                             return Ok(true);
                         }
@@ -709,7 +709,7 @@ impl App {
             let item_y = y.saturating_sub(dropdown_y + 1);
             let item_index = item_y as usize;
             if item_index < actions_items.len() {
-                self.state.ui.selected_actions_item = item_index;
+                self.state.ui.actions_submenu.selected = item_index;
                 // Execute the action (may open nested submenu or run script)
                 self.execute_actions_submenu_action()?;
                 return Ok(true);
