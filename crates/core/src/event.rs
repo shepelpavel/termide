@@ -108,6 +108,12 @@ pub enum PanelEvent {
     /// Navigate file manager to path
     NavigateTo(PathBuf),
 
+    /// Open path in new file manager panel, optionally selecting a file
+    OpenPath {
+        path: PathBuf,
+        select_file: Option<std::ffi::OsString>,
+    },
+
     /// Go to specific line in editor
     GotoLine(usize),
 

@@ -33,6 +33,18 @@ use termide_core::{CommandResult, Panel, PanelCommand, PanelEvent, RenderContext
 use termide_theme::Theme;
 use termide_ui::{system_monitor::DiskSpaceInfo, ScrollBar};
 
+/// Highlight segment: (abs_row, start_col, end_col)
+type HighlightSegment = (usize, usize, usize);
+
+/// Type of detected link in terminal
+#[derive(Clone, Debug, PartialEq)]
+pub enum LinkType {
+    /// HTTP/HTTPS/FTP URL
+    Url(String),
+    /// Local file path (resolved to absolute)
+    FilePath(std::path::PathBuf),
+}
+
 /// Full-featured terminal with PTY
 pub struct Terminal {
     /// PTY master (wrapped in Arc<Mutex<>> for shared access)
@@ -68,9 +80,9 @@ pub struct Terminal {
     cached_cursor_shown: bool,
     /// Last focus state (for cache invalidation)
     cached_focus: bool,
-    /// Currently hovered URL (url, abs_row, start_col, end_col)
-    hovered_url: Option<(String, usize, usize, usize)>,
-    /// Whether Ctrl key is pressed (tracked for URL highlighting)
+    /// Currently hovered link (type, segments for multi-line highlighting)
+    hovered_link: Option<(LinkType, Vec<HighlightSegment>)>,
+    /// Whether Ctrl key is pressed (tracked for link highlighting)
     ctrl_pressed: bool,
 }
 
@@ -219,7 +231,7 @@ impl Terminal {
             cached_cursor: (0, 0),
             cached_cursor_shown: false,
             cached_focus: false,
-            hovered_url: None,
+            hovered_link: None,
             ctrl_pressed: false,
         })
     }
@@ -874,18 +886,16 @@ impl Terminal {
             }
         };
 
-        // Extract URL highlighting info before the render loop
-        let url_highlight = if self.ctrl_pressed {
-            self.hovered_url
-                .as_ref()
-                .map(|(_, url_row, start, end)| (*url_row, *start, *end))
+        // Extract URL highlighting segments before the render loop
+        let url_segments: Option<&Vec<HighlightSegment>> = if self.ctrl_pressed {
+            self.hovered_link.as_ref().map(|(_, segments)| segments)
         } else {
             None
         };
 
-        // Helper to check if cell is in hovered URL
+        // Helper to check if cell is in hovered URL (checks all segments)
         let is_in_url = |visual_row: usize, col: usize| -> bool {
-            if let Some((url_row, start, end)) = url_highlight {
+            if let Some(segments) = url_segments {
                 // Convert visual row to absolute
                 let abs_row = if scrollback_slice {
                     view_start + visual_row
@@ -893,7 +903,9 @@ impl Terminal {
                     scrollback_len + visual_row
                 };
 
-                abs_row == url_row && col >= start && col < end
+                segments
+                    .iter()
+                    .any(|(row, start, end)| abs_row == *row && col >= *start && col < *end)
             } else {
                 false
             }
@@ -961,9 +973,9 @@ impl Terminal {
                     style = Style::default().fg(Color::Black).bg(Color::LightYellow);
                 }
 
-                // Check if cell is in hovered URL (Ctrl+hover)
+                // Check if cell is in hovered URL (Ctrl+hover) - use selection style
                 if is_in_url(row_idx, col_idx) {
-                    style = style.fg(Color::Cyan).add_modifier(Modifier::UNDERLINED);
+                    style = Style::default().fg(Color::Black).bg(Color::LightYellow);
                 }
 
                 // If this is cursor position and needs showing, use inverse colors
@@ -1053,23 +1065,154 @@ impl Terminal {
         self.has_new_data.swap(false, Ordering::AcqRel)
     }
 
-    /// Detect URL at given position in a line.
-    /// Returns (url_string, start_col, end_col) if found.
-    fn detect_url_at_position(line: &[Cell], col: usize) -> Option<(String, usize, usize)> {
-        // Build the line text
-        let text: String = line.iter().map(|c| c.ch).collect();
+    /// Detect link (URL or file path) at given position.
+    /// Returns (LinkType, start_row, start_col) if found.
+    fn detect_link_at_position(
+        screen: &TerminalScreen,
+        abs_row: usize,
+        col: usize,
+        cwd: &std::path::Path,
+    ) -> Option<(LinkType, usize, usize)> {
+        let cols = screen.cols;
 
-        // URL regex pattern - matches http://, https://, ftp://
-        // Pattern stops at whitespace or common URL-terminating characters
-        let url_pattern = regex::Regex::new(r#"(?:https?|ftp)://[^\s)>\]\}"'`<]+"#).ok()?;
+        // Look back up to 5 lines to find where a wrapped link might have started
+        let start_row = abs_row.saturating_sub(5);
 
-        // Find all URLs in line and check if col is within any
-        for m in url_pattern.find_iter(&text) {
-            if col >= m.start() && col < m.end() {
-                return Some((m.as_str().to_string(), m.start(), m.end()));
+        // Find the actual start row (first line that doesn't look like a continuation)
+        let mut search_start = abs_row;
+        for row in (start_row..abs_row).rev() {
+            if let Some(line) = screen.get_line_by_absolute(row) {
+                let line_text: String = line.iter().map(|c| c.ch).collect();
+                let trimmed_len = line_text.trim_end().len();
+                if trimmed_len >= cols {
+                    search_start = row;
+                } else {
+                    break;
+                }
+            } else {
+                break;
             }
         }
+
+        // Concatenate text from search_start through current row and forward
+        let mut combined_text = String::new();
+        let mut line_starts: Vec<(usize, usize)> = Vec::new();
+
+        for row in search_start.. {
+            if let Some(line) = screen.get_line_by_absolute(row) {
+                line_starts.push((row, combined_text.len()));
+                let line_text: String = line.iter().map(|c| c.ch).collect();
+                let trimmed_len = line_text.trim_end().len();
+                combined_text.push_str(&line_text);
+
+                if row >= abs_row && trimmed_len < cols {
+                    break;
+                }
+                if row > abs_row + 5 {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        // Calculate cursor offset in combined text
+        let cursor_offset = line_starts
+            .iter()
+            .find(|(row, _)| *row == abs_row)
+            .map(|(_, offset)| offset + col)?;
+
+        // Helper to find start row/col from offset
+        let find_start_pos = |start_offset: usize| -> Option<(usize, usize)> {
+            for (row, offset) in line_starts.iter().rev() {
+                if start_offset >= *offset {
+                    return Some((*row, start_offset - offset));
+                }
+            }
+            None
+        };
+
+        // Try to detect URL first
+        let url_pattern = regex::Regex::new(r#"(?:https?|ftp)://[^\s)>\]\}"'`<]+"#).ok()?;
+        for m in url_pattern.find_iter(&combined_text) {
+            if cursor_offset >= m.start() && cursor_offset < m.end() {
+                if let Some((row, col)) = find_start_pos(m.start()) {
+                    return Some((LinkType::Url(m.as_str().to_string()), row, col));
+                }
+            }
+        }
+
+        // Try to detect file path
+        // Matches: /path/to/file, ./path, ../path, ~/path
+        let path_pattern = regex::Regex::new(r#"(?:~|\.\.?)?/[^\s)>\]\}"'`<:*?|]+"#).ok()?;
+        for m in path_pattern.find_iter(&combined_text) {
+            if cursor_offset >= m.start() && cursor_offset < m.end() {
+                let path_str = m.as_str();
+                // Expand ~ to home directory
+                let expanded = if let Some(suffix) = path_str.strip_prefix('~') {
+                    if let Ok(home) = std::env::var("HOME") {
+                        std::path::PathBuf::from(home).join(suffix.trim_start_matches('/'))
+                    } else {
+                        std::path::PathBuf::from(path_str)
+                    }
+                } else if path_str.starts_with('/') {
+                    std::path::PathBuf::from(path_str)
+                } else {
+                    // Relative path - resolve against cwd
+                    cwd.join(path_str)
+                };
+
+                // Check if path exists
+                if expanded.exists() {
+                    if let Some((row, col)) = find_start_pos(m.start()) {
+                        return Some((LinkType::FilePath(expanded), row, col));
+                    }
+                }
+            }
+        }
+
         None
+    }
+
+    /// Build highlight segments for multi-line link.
+    fn build_link_segments(
+        text_len: usize,
+        start_row: usize,
+        start_col: usize,
+        cols: usize,
+    ) -> Vec<HighlightSegment> {
+        let mut segments = Vec::new();
+        let mut remaining = text_len;
+        let mut current_row = start_row;
+        let mut current_col = start_col;
+
+        while remaining > 0 {
+            let available = cols.saturating_sub(current_col);
+            let segment_len = remaining.min(available);
+
+            if segment_len > 0 {
+                segments.push((current_row, current_col, current_col + segment_len));
+            }
+
+            remaining = remaining.saturating_sub(segment_len);
+            current_row += 1;
+            current_col = 0;
+        }
+
+        segments
+    }
+
+    /// Get the text representation of a link for display/copying
+    fn link_text(link: &LinkType) -> String {
+        match link {
+            LinkType::Url(url) => url.clone(),
+            LinkType::FilePath(path) => path.display().to_string(),
+        }
+    }
+
+    /// Get the length of link text in characters
+    fn link_text_len(link: &LinkType) -> usize {
+        Self::link_text(link).chars().count()
     }
 
     /// Get the name of the currently running foreground command
@@ -1430,41 +1573,46 @@ impl Panel for Terminal {
         let ctrl_pressed = mouse.modifiers.contains(KeyModifiers::CONTROL);
         self.ctrl_pressed = ctrl_pressed;
 
-        // Detect URL under cursor when Ctrl is pressed
+        // Detect link (URL or path) under cursor when Ctrl is pressed
         if ctrl_pressed && is_inside {
             let screen = self.screen.read().expect("Terminal screen lock poisoned");
             let abs_row = screen.visual_to_absolute(inner_row);
+            let cols = screen.cols;
+            let cwd = self.initial_cwd.clone();
 
-            if let Some(line) = screen.get_line_by_absolute(abs_row) {
-                if let Some((url, start, end)) = Self::detect_url_at_position(line, inner_col) {
-                    // URL found - store it and copy to clipboard if it's a new URL
-                    let is_new_url = self.hovered_url.as_ref().map(|(u, _, _, _)| u) != Some(&url);
-                    drop(screen);
+            if let Some((link_type, link_start_row, link_start_col)) =
+                Self::detect_link_at_position(&screen, abs_row, inner_col, &cwd)
+            {
+                // Link found - check if it's new
+                let is_new_link = self
+                    .hovered_link
+                    .as_ref()
+                    .map(|(l, _)| l != &link_type)
+                    .unwrap_or(true);
 
-                    if is_new_url {
-                        // Copy new URL to clipboard
-                        let _ = termide_ui::clipboard::copy(&url);
-                    }
-                    self.hovered_url = Some((url, abs_row, start, end));
-                    self.cached_lines = None; // Force redraw
-                } else {
-                    // No URL under cursor
-                    drop(screen);
-                    if self.hovered_url.is_some() {
-                        self.hovered_url = None;
-                        self.cached_lines = None; // Force redraw
-                    }
-                }
-            } else {
+                // Build segments for multi-line highlighting
+                let text_len = Self::link_text_len(&link_type);
+                let segments =
+                    Self::build_link_segments(text_len, link_start_row, link_start_col, cols);
                 drop(screen);
-                if self.hovered_url.is_some() {
-                    self.hovered_url = None;
-                    self.cached_lines = None;
+
+                if is_new_link {
+                    // Copy link text to clipboard
+                    let _ = termide_ui::clipboard::copy(&Self::link_text(&link_type));
+                }
+                self.hovered_link = Some((link_type, segments));
+                self.cached_lines = None; // Force redraw
+            } else {
+                // No link under cursor
+                drop(screen);
+                if self.hovered_link.is_some() {
+                    self.hovered_link = None;
+                    self.cached_lines = None; // Force redraw
                 }
             }
-        } else if !ctrl_pressed && self.hovered_url.is_some() {
-            // Ctrl not pressed - clear URL highlight
-            self.hovered_url = None;
+        } else if !ctrl_pressed && self.hovered_link.is_some() {
+            // Ctrl not pressed - clear link highlight
+            self.hovered_link = None;
             self.cached_lines = None; // Force redraw
         }
 
@@ -1506,10 +1654,31 @@ impl Panel for Terminal {
                     return vec![];
                 }
 
-                // Ctrl+Click on URL opens it in browser
+                // Ctrl+Click on link - open URL in browser or path in file manager
                 if ctrl_pressed {
-                    if let Some((ref url, _, _, _)) = self.hovered_url {
-                        let _ = open::that(url);
+                    if let Some((ref link_type, _)) = self.hovered_link {
+                        match link_type {
+                            LinkType::Url(url) => {
+                                let _ = open::that(url);
+                            }
+                            LinkType::FilePath(path) => {
+                                // Open directory in file manager, or file's parent with file selected
+                                let (dir, file) = if path.is_dir() {
+                                    (path.clone(), None)
+                                } else {
+                                    (
+                                        path.parent()
+                                            .map(|p| p.to_path_buf())
+                                            .unwrap_or_else(|| path.clone()),
+                                        path.file_name().map(|n| n.to_os_string()),
+                                    )
+                                };
+                                return vec![PanelEvent::OpenPath {
+                                    path: dir,
+                                    select_file: file,
+                                }];
+                            }
+                        }
                         return vec![];
                     }
                 }

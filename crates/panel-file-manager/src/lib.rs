@@ -223,6 +223,15 @@ impl FileManager {
         }
     }
 
+    /// Select an entry by name in the current directory
+    pub fn select_by_name(&mut self, name: &std::ffi::OsStr) {
+        let name_str = name.to_string_lossy();
+        if let Some(idx) = self.entries.iter().position(|e| e.name == name_str) {
+            self.selected = idx;
+            self.adjust_scroll_offset(self.visible_height);
+        }
+    }
+
     /// Reload directory preserving selection (with debounce to prevent rapid reloads)
     pub fn reload_directory(&mut self) -> Result<()> {
         const RELOAD_DEBOUNCE_MS: u128 = 300;

@@ -118,6 +118,10 @@ impl App {
                 self.event_navigate_to(path)?;
             }
 
+            PanelEvent::OpenPath { path, select_file } => {
+                self.event_open_path(path, select_file)?;
+            }
+
             PanelEvent::GotoLine(line) => {
                 self.event_goto_line(line);
             }
@@ -419,6 +423,29 @@ impl App {
                 }
             }
         }
+        Ok(())
+    }
+
+    /// Handle OpenPath event - open path in new file manager panel
+    fn event_open_path(
+        &mut self,
+        path: PathBuf,
+        select_file: Option<std::ffi::OsString>,
+    ) -> Result<()> {
+        use termide_panel_file_manager::FileManager;
+
+        // Create new file manager panel at the given path
+        let mut fm = FileManager::new_with_path(path.clone());
+
+        // If a file should be selected, find and select it
+        if let Some(file_name) = select_file {
+            fm.select_by_name(&file_name);
+        }
+
+        // Add panel to layout
+        self.add_panel(Box::new(fm));
+        self.auto_save_session();
+
         Ok(())
     }
 
