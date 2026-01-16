@@ -587,7 +587,8 @@ impl GitDiffPanel {
                 let is_selected = file_idx == self.selected_file;
                 let is_collapsed = self.collapsed.contains(&file_idx);
 
-                let line_style = Style::default().fg(theme.disabled);
+                // Use same style for entire line (text + lines) for uniformity
+                // Selected: inverted colors for whole line
                 let header_style = if is_selected {
                     file_header_selected_style
                 } else {
@@ -618,20 +619,20 @@ impl GitDiffPanel {
                 let mut x = header_x;
 
                 // Leading line ─
-                buf.set_string(x, y, "─", line_style);
+                buf.set_string(x, y, "─", header_style);
                 x += 1;
 
-                // Title text (highlighted when selected)
+                // Title text
                 buf.set_string(x, y, &title_text, header_style);
                 x += title_width as u16;
 
                 // Space
-                buf.set_string(x, y, " ", line_style);
+                buf.set_string(x, y, " ", header_style);
                 x += 1;
 
                 // Trailing line ─────────
                 while x < header_end {
-                    buf.set_string(x, y, "─", line_style);
+                    buf.set_string(x, y, "─", header_style);
                     x += 1;
                 }
 
