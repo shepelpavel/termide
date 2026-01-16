@@ -41,9 +41,12 @@ impl HelpGenerator {
         vec![
             Self::generate_global_section(&config.general.keybindings, t),
             Self::generate_panel_section(&config.general.keybindings, t),
+            Self::generate_navigation_section(t),
             Self::generate_file_manager_section(&config.file_manager.keybindings, t),
             Self::generate_editor_section(&config.editor.keybindings, t),
             Self::generate_git_status_section(&config.git_status.keybindings, t),
+            Self::generate_git_diff_section(t),
+            Self::generate_git_log_section(t),
             Self::generate_terminal_section(&config.terminal.keybindings, t),
         ]
     }
@@ -398,6 +401,99 @@ impl HelpGenerator {
 
         HelpSection {
             header: t.help_terminal_keys().to_string(),
+            entries,
+        }
+    }
+
+    /// Generate navigation section (static keys for all panels).
+    fn generate_navigation_section(t: &dyn termide_i18n::Translation) -> HelpSection {
+        let entries = vec![
+            HelpEntry {
+                keys: "↑ / k".to_string(),
+                description: t.help_desc_move_up().to_string(),
+            },
+            HelpEntry {
+                keys: "↓ / j".to_string(),
+                description: t.help_desc_move_down().to_string(),
+            },
+            HelpEntry {
+                keys: "PgUp".to_string(),
+                description: t.help_desc_page_scroll().to_string(),
+            },
+            HelpEntry {
+                keys: "PgDn".to_string(),
+                description: t.help_desc_page_scroll().to_string(),
+            },
+            HelpEntry {
+                keys: "Home / g".to_string(),
+                description: t.help_desc_home().to_string(),
+            },
+            HelpEntry {
+                keys: "End / G".to_string(),
+                description: t.help_desc_end().to_string(),
+            },
+            HelpEntry {
+                keys: "Ctrl+U".to_string(),
+                description: t.help_desc_scroll_half_up().to_string(),
+            },
+            HelpEntry {
+                keys: "Ctrl+D".to_string(),
+                description: t.help_desc_scroll_half_down().to_string(),
+            },
+            HelpEntry {
+                keys: "Tab".to_string(),
+                description: t.help_desc_next_section().to_string(),
+            },
+            HelpEntry {
+                keys: "Shift+Tab".to_string(),
+                description: t.help_desc_prev_section().to_string(),
+            },
+        ];
+
+        HelpSection {
+            header: t.help_section_navigation().to_string(),
+            entries,
+        }
+    }
+
+    /// Generate Git Diff section (static keys).
+    fn generate_git_diff_section(t: &dyn termide_i18n::Translation) -> HelpSection {
+        let entries = vec![
+            HelpEntry {
+                keys: "Enter / Space".to_string(),
+                description: t.help_desc_toggle_collapse().to_string(),
+            },
+            HelpEntry {
+                keys: "e".to_string(),
+                description: t.help_desc_open_file_editor().to_string(),
+            },
+            HelpEntry {
+                keys: "Ctrl+R".to_string(),
+                description: t.help_desc_refresh().to_string(),
+            },
+        ];
+
+        HelpSection {
+            header: t.help_section_git_diff().to_string(),
+            entries,
+        }
+    }
+
+    /// Generate Git Log section (static keys).
+    fn generate_git_log_section(t: &dyn termide_i18n::Translation) -> HelpSection {
+        let entries = vec![
+            HelpEntry {
+                keys: "Enter / d".to_string(),
+                description: t.help_desc_view_commit_diff().to_string(),
+            },
+            HelpEntry {
+                keys: "o".to_string(),
+                description: t.help_desc_open_external().to_string(),
+            },
+        ];
+
+        HelpSection {
+            header: t.help_section_git_log().to_string(),
             entries,
         }
     }

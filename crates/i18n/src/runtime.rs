@@ -508,6 +508,18 @@ impl Translation for RuntimeTranslation {
         self.get_string("help_section_git_status")
     }
 
+    fn help_section_navigation(&self) -> &str {
+        self.get_string("help_section_navigation")
+    }
+
+    fn help_section_git_diff(&self) -> &str {
+        self.get_string("help_section_git_diff")
+    }
+
+    fn help_section_git_log(&self) -> &str {
+        self.get_string("help_section_git_log")
+    }
+
     fn help_desc_new_file_manager(&self) -> &str {
         self.get_string("help_desc_new_file_manager")
     }
@@ -674,6 +686,37 @@ impl Translation for RuntimeTranslation {
 
     fn help_desc_scroll_bottom(&self) -> &str {
         self.get_string("help_desc_scroll_bottom")
+    }
+
+    // Navigation help descriptions (static keys)
+    fn help_desc_move_up(&self) -> &str {
+        self.get_string("help_desc_move_up")
+    }
+
+    fn help_desc_move_down(&self) -> &str {
+        self.get_string("help_desc_move_down")
+    }
+
+    fn help_desc_scroll_half_up(&self) -> &str {
+        self.get_string("help_desc_scroll_half_up")
+    }
+
+    fn help_desc_scroll_half_down(&self) -> &str {
+        self.get_string("help_desc_scroll_half_down")
+    }
+
+    // Git Diff help descriptions (static keys)
+    fn help_desc_toggle_collapse(&self) -> &str {
+        self.get_string("help_desc_toggle_collapse")
+    }
+
+    fn help_desc_open_file_editor(&self) -> &str {
+        self.get_string("help_desc_open_file_editor")
+    }
+
+    // Git Log help descriptions (static keys)
+    fn help_desc_view_commit_diff(&self) -> &str {
+        self.get_string("help_desc_view_commit_diff")
     }
 
     fn status_file_created(&self, name: &str) -> String {

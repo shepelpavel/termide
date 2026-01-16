@@ -154,6 +154,9 @@ pub trait Translation: Send + Sync {
     // Help section headers
     fn help_section_panels(&self) -> &str;
     fn help_section_git_status(&self) -> &str;
+    fn help_section_navigation(&self) -> &str;
+    fn help_section_git_diff(&self) -> &str;
+    fn help_section_git_log(&self) -> &str;
 
     // Additional help key descriptions
     fn help_desc_new_file_manager(&self) -> &str;
@@ -198,6 +201,19 @@ pub trait Translation: Send + Sync {
     fn help_desc_scroll_down(&self) -> &str;
     fn help_desc_scroll_top(&self) -> &str;
     fn help_desc_scroll_bottom(&self) -> &str;
+
+    // Navigation help descriptions (static keys)
+    fn help_desc_move_up(&self) -> &str;
+    fn help_desc_move_down(&self) -> &str;
+    fn help_desc_scroll_half_up(&self) -> &str;
+    fn help_desc_scroll_half_down(&self) -> &str;
+
+    // Git Diff help descriptions (static keys)
+    fn help_desc_toggle_collapse(&self) -> &str;
+    fn help_desc_open_file_editor(&self) -> &str;
+
+    // Git Log help descriptions (static keys)
+    fn help_desc_view_commit_diff(&self) -> &str;
 
     // File operation status
     fn status_file_created(&self, name: &str) -> String;
