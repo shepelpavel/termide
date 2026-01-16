@@ -5,8 +5,6 @@
 
 use ratatui::style::{Color, Style};
 
-use termide_buffer::Cursor;
-
 use super::context::RenderContext;
 
 /// Determine the final style for a cell at the given position.
@@ -35,13 +33,10 @@ pub fn determine_cell_style(
         .get(&(line, column))
         .copied();
 
-    // Check if this character is in selection
+    // Check if this character is in selection (inline comparison avoids Cursor allocation)
     let is_selected = if let Some((sel_start, sel_end)) = &render_context.selection_range {
-        let pos = Cursor::at(line, column);
-        (pos.line > sel_start.line
-            || (pos.line == sel_start.line && pos.column >= sel_start.column))
-            && (pos.line < sel_end.line
-                || (pos.line == sel_end.line && pos.column < sel_end.column))
+        (line > sel_start.line || (line == sel_start.line && column >= sel_start.column))
+            && (line < sel_end.line || (line == sel_end.line && column < sel_end.column))
     } else {
         false
     };
@@ -71,6 +66,7 @@ mod tests {
     use super::*;
     use ratatui::style::{Color, Style};
     use std::collections::HashMap;
+    use termide_buffer::Cursor;
 
     fn create_test_context(
         search_matches: Vec<(usize, usize)>,
