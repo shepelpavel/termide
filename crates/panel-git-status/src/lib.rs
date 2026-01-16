@@ -22,7 +22,7 @@ use termide_core::{
     CommandResult, GitOperationType, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel,
     ThemeColors,
 };
-use termide_git::{self as git, truncate_to_width, RepoManager, StagedFile, UnstagedFile};
+use termide_git::{self as git, truncate_path_left, RepoManager, StagedFile, UnstagedFile};
 use termide_modal::{ActionButton, ActiveModal, InfoActionModal};
 use termide_state::PendingAction;
 use termide_system_monitor::format_bytes;
@@ -1344,7 +1344,7 @@ impl GitStatusPanel {
 
         let path_str = path.to_string_lossy();
         let line = format!(" {}", path_str);
-        let truncated = truncate_to_width(&line, width as usize);
+        let truncated = truncate_path_left(&line, width as usize);
         buf.set_string(x, y, &truncated, style);
     }
 

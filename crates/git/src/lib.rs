@@ -13,7 +13,7 @@ mod repo_manager;
 mod utils;
 
 pub use repo_manager::RepoManager;
-pub use utils::truncate_to_width;
+pub use utils::{truncate_path_left, truncate_to_width};
 
 /// Execute a git command in the specified directory.
 /// Returns None if the command fails or git is not available.

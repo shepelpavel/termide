@@ -1,6 +1,6 @@
 //! Utility functions for git panels.
 
-use unicode_width::UnicodeWidthChar;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 /// Truncate a string to fit within a given display width.
 ///
@@ -19,6 +19,36 @@ pub fn truncate_to_width(s: &str, max_width: usize) -> String {
     }
 
     result
+}
+
+/// Truncate a string from the left with ellipsis prefix.
+///
+/// Keeps the rightmost (most relevant) part of the string.
+/// Respects Unicode character widths (e.g., CJK characters count as 2).
+pub fn truncate_path_left(s: &str, max_width: usize) -> String {
+    let current_width = s.width();
+    if current_width <= max_width {
+        return s.to_string();
+    }
+
+    let ellipsis = "...";
+    let ellipsis_width = 3;
+    let available = max_width.saturating_sub(ellipsis_width);
+
+    // Take characters from the right until we reach available width
+    let mut result = String::new();
+    let mut width = 0;
+
+    for c in s.chars().rev() {
+        let char_width = c.width().unwrap_or(0);
+        if width + char_width > available {
+            break;
+        }
+        result.insert(0, c);
+        width += char_width;
+    }
+
+    format!("{}{}", ellipsis, result)
 }
 
 #[cfg(test)]
