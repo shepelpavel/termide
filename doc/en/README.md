@@ -12,6 +12,7 @@ Welcome to the TermIDE documentation! This guide covers installation, usage, and
 - [Terminal](terminal.md) - Using the integrated terminal
 - [Text Editor](editor.md) - Editing files with syntax highlighting
 - [Themes](themes.md) - Customizing appearance with themes
+- [Custom Actions](actions.md) - Running user-defined scripts from the Actions menu
 
 ### Developer Documentation
 

@@ -39,6 +39,7 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 - **Session Management** - Auto-save and restore panel layouts
 - **System Monitor** - Real-time CPU, RAM, disk usage in status bar
 - **Search & Replace** - Live preview, match counter, regex support
+- **Custom Actions** - Run user-defined scripts from the Actions menu
 - **Cross-platform** - Linux (x86_64, ARM64), macOS (Intel, Apple Silicon), Windows (WSL)
 - **Full Mouse Support** - Click navigation, scroll, double-click actions
 - **Keyboard Layouts** - Cyrillic support with automatic hotkey translation
@@ -396,6 +397,37 @@ You can create custom themes by placing TOML files in the themes directory:
 - Windows: `%APPDATA%\termide\themes\`
 
 User themes take priority over built-in themes with the same name. See `themes/` directory in the repository for theme file format examples.
+
+### Custom Actions
+
+You can add custom scripts to the Actions menu by placing executable files in:
+- Linux: `~/.config/termide/actions/`
+- macOS: `~/Library/Application Support/termide/actions/`
+- Windows: `%APPDATA%\termide\actions\`
+
+**Features:**
+- Scripts appear in the Actions menu (menu bar)
+- Subdirectories create nested submenus
+- Add `.bg.` to filename for background execution (e.g., `deploy.bg.sh`)
+- Display name is the part before the first dot
+
+**Example:**
+```bash
+# Create actions directory
+mkdir -p ~/.config/termide/actions
+
+# Add a simple script
+cat > ~/.config/termide/actions/hello.sh << 'EOF'
+#!/bin/bash
+echo "Hello from TermIDE!"
+read -p "Press Enter to close..."
+EOF
+
+# Make it executable (required on Unix)
+chmod +x ~/.config/termide/actions/hello.sh
+```
+
+**Note:** On Unix systems, scripts must have the executable permission (`chmod +x`). Use `Options → Manage actions` to open the actions folder.
 
 ### Language Configuration
 
