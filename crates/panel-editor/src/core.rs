@@ -909,6 +909,33 @@ impl Editor {
         Ok(())
     }
 
+    /// Paste text directly (from bracketed paste event)
+    pub fn paste_text(&mut self, text: &str) -> Result<()> {
+        if text.is_empty() {
+            return Ok(());
+        }
+
+        // Close search mode when editing begins
+        self.close_search();
+
+        // Delete selected text before pasting
+        self.delete_selection()?;
+
+        // Insert text at cursor position
+        let start_line = self.cursor.line;
+        let new_cursor = self.buffer.insert(&self.cursor, text)?;
+        let is_multiline = text.contains('\n');
+
+        self.cursor = new_cursor;
+        self.input.preferred_column = None;
+        self.clamp_cursor();
+
+        // Invalidate highlighting cache and schedule git update
+        self.invalidate_cache_after_edit(start_line, is_multiline);
+
+        Ok(())
+    }
+
     /// Duplicate current line or selected lines
     pub(crate) fn duplicate_line(&mut self) -> Result<()> {
         let result =

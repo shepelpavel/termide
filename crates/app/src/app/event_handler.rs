@@ -226,6 +226,22 @@ impl App {
         Ok(())
     }
 
+    /// Handle bracketed paste event - paste text directly to active panel
+    pub fn handle_paste_event(&mut self, text: String) -> Result<()> {
+        if let Some(panel) = self.layout_manager.active_panel_mut() {
+            if let Some(editor) = panel.as_editor_mut() {
+                if let Err(e) = editor.paste_text(&text) {
+                    logger::error(format!("Paste to editor failed: {}", e));
+                }
+            } else if let Some(terminal) = panel.as_terminal_mut() {
+                if let Err(e) = terminal.paste_text(&text) {
+                    logger::error(format!("Paste to terminal failed: {}", e));
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Handle OpenFile event - open file in editor
     fn event_open_file(&mut self, file_path: PathBuf) -> Result<()> {
         self.close_welcome_panels();

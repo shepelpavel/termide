@@ -214,6 +214,11 @@ impl App {
                     // Redraw on focus gain to refresh display
                     self.state.needs_redraw = true;
                 }
+                Event::Paste(text) => {
+                    // Handle bracketed paste - send to active panel
+                    self.handle_paste_event(text)?;
+                    self.state.needs_redraw = true;
+                }
                 Event::Tick => {
                     // Check terminal panels for pending output (efficient redraw trigger)
                     for panel in self.layout_manager.iter_all_panels_mut() {

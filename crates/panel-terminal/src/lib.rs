@@ -571,10 +571,7 @@ impl Terminal {
         Ok(())
     }
 
-    /// Paste text from clipboard to PTY with bracketed paste mode support.
-    ///
-    /// - Small pastes (≤500 bytes): single atomic write (fast, standard)
-    /// - Large pastes (>500 bytes): chunked with delays (safer for TUI apps)
+    /// Paste text from clipboard to PTY.
     pub fn paste_from_clipboard(&mut self) -> Result<()> {
         let Some(text) = termide_ui::clipboard::paste() else {
             return Ok(());
@@ -584,19 +581,18 @@ impl Terminal {
             return Ok(());
         }
 
-        let bracketed_paste = self
-            .screen
-            .read()
-            .expect("Terminal screen lock poisoned")
-            .bracketed_paste_mode;
+        self.paste_text(&text)
+    }
 
-        // Small pastes: single atomic write (standard behavior)
-        if text.len() <= 500 {
-            return self.paste_atomic(&text, bracketed_paste);
-        }
-
-        // Large pastes: chunked with moderate delays
-        self.paste_chunked(&text, bracketed_paste)
+    /// Paste text directly to PTY (from bracketed paste event or clipboard).
+    ///
+    /// Uses bracketed paste mode to wrap the text, which tells the shell/application
+    /// that this is pasted content and newlines should not trigger command execution.
+    pub fn paste_text(&mut self, text: &str) -> Result<()> {
+        // Always use bracketed paste - the outer terminal (where termide runs)
+        // already stripped the brackets, so we need to re-add them for the
+        // inner shell/application running in our PTY
+        self.paste_atomic(text, true)
     }
 
     /// Send paste data as a single atomic write with optional bracketed paste.
@@ -613,60 +609,6 @@ impl Terminal {
 
         self.writer.write_all(&buffer)?;
         self.writer.flush()?;
-
-        Ok(())
-    }
-
-    /// Send paste data in byte chunks with delays for large pastes.
-    ///
-    /// Uses bracketed paste mode with chunked content to balance
-    /// compatibility and performance.
-    fn paste_chunked(&mut self, text: &str, bracketed: bool) -> Result<()> {
-        use std::time::Duration;
-
-        const CHUNK_SIZE: usize = 200;
-        const CHUNK_DELAY_MS: u64 = 20;
-
-        let bytes = text.as_bytes();
-        let mut pos = 0;
-
-        // Start marker
-        if bracketed {
-            self.writer.write_all(b"\x1b[200~")?;
-            self.writer.flush()?;
-        }
-
-        while pos < bytes.len() {
-            // Calculate chunk end, respecting UTF-8 boundaries
-            let mut end = (pos + CHUNK_SIZE).min(bytes.len());
-
-            // Don't split UTF-8 multi-byte sequences
-            while end < bytes.len() && end > pos {
-                if bytes[end] & 0xC0 != 0x80 {
-                    break;
-                }
-                end -= 1;
-            }
-
-            if end == pos && pos < bytes.len() {
-                end = (pos + CHUNK_SIZE).min(bytes.len());
-            }
-
-            self.writer.write_all(&bytes[pos..end])?;
-            self.writer.flush()?;
-
-            pos = end;
-
-            if pos < bytes.len() {
-                std::thread::sleep(Duration::from_millis(CHUNK_DELAY_MS));
-            }
-        }
-
-        // End marker
-        if bracketed {
-            self.writer.write_all(b"\x1b[201~")?;
-            self.writer.flush()?;
-        }
 
         Ok(())
     }

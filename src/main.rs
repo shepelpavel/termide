@@ -3,8 +3,9 @@ mod ui;
 use anyhow::Result;
 use crossterm::{
     event::{
-        DisableFocusChange, DisableMouseCapture, EnableFocusChange, EnableMouseCapture,
-        KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+        DisableBracketedPaste, DisableFocusChange, DisableMouseCapture, EnableBracketedPaste,
+        EnableFocusChange, EnableMouseCapture, KeyboardEnhancementFlags,
+        PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
     },
     execute,
     terminal::{
@@ -55,7 +56,8 @@ fn main() -> Result<()> {
         stdout,
         EnterAlternateScreen,
         EnableMouseCapture,
-        EnableFocusChange
+        EnableFocusChange,
+        EnableBracketedPaste
     )?;
 
     if keyboard_enhanced {
@@ -102,7 +104,8 @@ fn main() -> Result<()> {
         terminal.backend_mut(),
         LeaveAlternateScreen,
         DisableMouseCapture,
-        DisableFocusChange
+        DisableFocusChange,
+        DisableBracketedPaste
     )?;
     terminal.show_cursor()?;
 

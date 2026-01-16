@@ -26,6 +26,8 @@ pub enum Event {
     FocusLost,
     /// Terminal focus gained event
     FocusGained,
+    /// Paste event (bracketed paste from terminal)
+    Paste(String),
 }
 
 /// Event handler for polling terminal events
@@ -51,7 +53,7 @@ impl EventHandler {
                 CrosstermEvent::Resize(width, height) => Ok(Event::Resize(width, height)),
                 CrosstermEvent::FocusLost => Ok(Event::FocusLost),
                 CrosstermEvent::FocusGained => Ok(Event::FocusGained),
-                _ => Ok(Event::Tick),
+                CrosstermEvent::Paste(text) => Ok(Event::Paste(text)),
             }
         } else {
             Ok(Event::Tick)
