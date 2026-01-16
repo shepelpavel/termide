@@ -312,6 +312,7 @@ pub trait Translation: Send + Sync {
     fn git_action_diff(&self) -> &str;
     fn git_action_revert(&self) -> &str;
     fn git_action_close(&self) -> &str;
+    fn git_action_git_status(&self) -> &str;
     fn git_action_commit(&self) -> &str;
     fn git_action_push(&self) -> &str;
     fn git_action_pull(&self) -> &str;

@@ -251,30 +251,16 @@ impl FileManager {
         }
     }
 
-    /// Build smart action buttons based on git status
-    fn build_git_action_buttons(git_status: &termide_git::GitRepoStatus) -> Vec<ActionButton> {
+    /// Build action buttons for git info modal
+    fn build_git_action_buttons(_git_status: &termide_git::GitRepoStatus) -> Vec<ActionButton> {
         let t = termide_i18n::t();
-        let mut buttons = Vec::new();
 
-        // Commit button - only if there are uncommitted changes
-        if git_status.uncommitted_changes > 0 {
-            buttons.push(ActionButton::new(t.git_action_commit(), "commit"));
-        }
-
-        // Push button - only if ahead of remote
-        if git_status.ahead > 0 {
-            buttons.push(ActionButton::new(t.git_action_push(), "push"));
-        }
-
-        // Pull button - only if behind remote
-        if git_status.behind > 0 {
-            buttons.push(ActionButton::new(t.git_action_pull(), "pull"));
-        }
-
-        // Close is always present
-        buttons.push(ActionButton::new(t.git_action_close(), "close"));
-
-        buttons
+        // Show Git Status button to navigate to Git Status panel
+        // where user can perform all git operations (commit, push, pull, etc.)
+        vec![
+            ActionButton::new(t.git_action_git_status(), "git_status"),
+            ActionButton::new(t.git_action_close(), "close"),
+        ]
     }
 
     /// Get disk space information for the current directory.

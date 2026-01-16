@@ -544,8 +544,8 @@ impl App {
         if let Some(result) = value.downcast_ref::<InfoActionResult>() {
             match result {
                 InfoActionResult::Action(action) => match action.as_str() {
-                    "commit" => {
-                        // Try to find existing Git Status panel
+                    "git_status" => {
+                        // Open Git Status panel for the repository
                         if !self.find_and_focus_panel_by_name("git_status") {
                             // Not found, create new one
                             let git_status_panel =
@@ -555,14 +555,6 @@ impl App {
                             self.add_panel(Box::new(git_status_panel));
                         }
                         self.auto_save_session();
-                    }
-                    "push" => {
-                        // Open terminal with git push
-                        self.open_terminal_with_command(repo_path, "git push");
-                    }
-                    "pull" => {
-                        // Open terminal with git pull
-                        self.open_terminal_with_command(repo_path, "git pull");
                     }
                     "stage" => {
                         if let Err(e) = termide_git::stage_file(repo_path, file_path) {
@@ -708,23 +700,6 @@ impl App {
             let _ = panel.handle_command(PanelCommand::OnGitUpdate {
                 repo_paths: &repo_paths,
             });
-        }
-    }
-
-    /// Open a terminal panel with a command
-    fn open_terminal_with_command(&mut self, cwd: &std::path::Path, command: &str) {
-        use termide_panel_terminal::Terminal;
-
-        let width = self.state.terminal.width;
-        let height = self.state.terminal.height.saturating_sub(3);
-        let term_width = width.saturating_sub(2);
-
-        if let Ok(mut terminal) =
-            Terminal::new_with_cwd(height, term_width, Some(cwd.to_path_buf()))
-        {
-            let _ = terminal.send_command(command);
-            self.add_panel(Box::new(terminal));
-            self.auto_save_session();
         }
     }
 

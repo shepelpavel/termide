@@ -1018,6 +1018,10 @@ impl Translation for RuntimeTranslation {
         self.get_string("git_action_close")
     }
 
+    fn git_action_git_status(&self) -> &str {
+        self.get_string("git_action_git_status")
+    }
+
     fn git_action_commit(&self) -> &str {
         self.get_string("git_action_commit")
     }
