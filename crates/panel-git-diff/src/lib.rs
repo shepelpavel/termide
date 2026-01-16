@@ -613,9 +613,9 @@ impl GitDiffPanel {
                 );
                 let title_width = title_text.width();
 
-                // Render from edge to edge (content_area boundaries)
-                let header_x = content_area.x;
-                let header_end = content_area.x + content_area.width;
+                // Render from edge to edge (panel boundaries, no padding)
+                let header_x = area.x;
+                let header_end = area.x + area.width;
                 let mut x = header_x;
 
                 // Leading line ─
