@@ -2,6 +2,7 @@
 //!
 //! This module provides a full-featured terminal emulator with PTY support.
 
+mod csi_handlers;
 pub mod vt100_parser;
 
 use ratatui::style::Color;
