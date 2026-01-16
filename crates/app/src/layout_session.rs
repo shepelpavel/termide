@@ -142,6 +142,9 @@ impl LayoutManagerSession for LayoutManager {
                     SessionPanel::GitLog { repo_path } => Some(Box::new(
                         termide_panel_git_log::GitLogPanel::new_for_repo(repo_path),
                     )),
+                    SessionPanel::GitDiff { repo_path } => Some(Box::new(
+                        termide_panel_git_diff::GitDiffPanel::new(repo_path),
+                    )),
                 };
 
                 if let Some(p) = panel {

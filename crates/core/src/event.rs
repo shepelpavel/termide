@@ -187,6 +187,9 @@ pub enum PanelEvent {
     /// Cancel current git operation (kill process)
     CancelGitOperation,
 
+    /// Open git diff panel for repository
+    OpenGitDiff { repo_path: PathBuf },
+
     // === Clipboard ===
     /// Copy text to clipboard
     CopyToClipboard(String),

@@ -75,6 +75,12 @@ pub enum SessionPanel {
         /// Repository path
         repo_path: PathBuf,
     },
+    /// Git diff panel
+    #[serde(rename = "git_diff")]
+    GitDiff {
+        /// Repository path
+        repo_path: PathBuf,
+    },
     // Note: Welcome panels are NOT saved (they auto-close)
 }
 

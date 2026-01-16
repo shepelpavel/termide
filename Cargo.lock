@@ -2438,6 +2438,7 @@ dependencies = [
  "termide-modal",
  "termide-panel-editor",
  "termide-panel-file-manager",
+ "termide-panel-git-diff",
  "termide-panel-git-log",
  "termide-panel-git-status",
  "termide-panel-image",
@@ -2698,6 +2699,23 @@ dependencies = [
  "termide-theme",
  "termide-ui",
  "termide-watcher",
+ "unicode-width",
+]
+
+[[package]]
+name = "termide-panel-git-diff"
+version = "0.8.9"
+dependencies = [
+ "anyhow",
+ "crossterm 0.28.1",
+ "ratatui",
+ "regex",
+ "termide-config",
+ "termide-core",
+ "termide-git",
+ "termide-session",
+ "termide-theme",
+ "termide-ui",
  "unicode-width",
 ]
 

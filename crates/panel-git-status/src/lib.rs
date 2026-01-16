@@ -59,6 +59,8 @@ pub enum Selection {
 /// Button in the Git Status panel
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Button {
+    /// Show all diffs in Git Diff panel
+    Diff,
     Commit,
     Pull,
     Push,
@@ -74,6 +76,7 @@ const SPINNER_FRAMES: [char; 6] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴'];
 impl Button {
     fn label(&self, spinner_frame: usize) -> String {
         match self {
+            Button::Diff => "Diff".to_string(),
             Button::Commit => "Commit".to_string(),
             Button::Pull => "Pull".to_string(),
             Button::Push => "Push".to_string(),
@@ -565,7 +568,6 @@ impl GitStatusPanel {
         // Build action buttons (Revert shown for all files - staged files will be unstaged first)
         let buttons = vec![
             ActionButton::new(t.git_action_edit(), "edit"),
-            ActionButton::new(t.git_action_diff(), "diff"),
             ActionButton::new(t.git_action_revert(), "revert"),
             ActionButton::new(t.git_action_close(), "close"),
         ];
@@ -772,6 +774,11 @@ impl GitStatusPanel {
     fn get_visible_buttons(&self) -> Vec<Button> {
         let mut buttons = Vec::new();
 
+        // Diff - show if there are any changes (unstaged or staged)
+        if !self.unstaged_files.is_empty() || !self.staged_files.is_empty() {
+            buttons.push(Button::Diff);
+        }
+
         // Commit - only if there are staged files
         if !self.staged_files.is_empty() {
             buttons.push(Button::Commit);
@@ -807,6 +814,15 @@ impl GitStatusPanel {
         }
         let button = buttons[self.selected_button];
         match button {
+            Button::Diff => {
+                if let Some(repo) = self.repo_manager.current() {
+                    vec![PanelEvent::OpenGitDiff {
+                        repo_path: repo.to_path_buf(),
+                    }]
+                } else {
+                    vec![]
+                }
+            }
             Button::Commit => {
                 if let Some(repo) = self.repo_manager.current() {
                     let staged_count = self.staged_files.len();
