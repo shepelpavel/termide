@@ -17,6 +17,7 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 | Built-in Terminal | ✓ | plugin | ✗ | ✗ |
 | File Manager | ✓ | plugin | ✗ | ✗ |
 | Git Integration | ✓ | plugin | ✗ | ✗ |
+| LSP Support | ✓ | plugin | ✓ | plugin |
 | Syntax Highlighting | ✓ | ✓ | ✓ | ✓ |
 | Zero Config | ✓ | ✗ | ✓ | ✓ |
 | Resource Monitor | ✓ | ✗ | ✗ | ✗ |
@@ -27,6 +28,7 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 ## Features
 
 - **Terminal-based IDE** - Syntax highlighting for 15+ languages (Rust, Python, JavaScript, TypeScript, Go, C/C++, Java, Ruby, PHP, Haskell, Nix, HTML, CSS, JSON, TOML, YAML, Bash, Markdown)
+- **LSP Support** - Code completion with rust-analyzer, pylsp, typescript-language-server, and other LSP servers
 - **Smart File Manager** - Git status indicators, batch operations, file search (glob/regex)
 - **Integrated Terminal** - Full PTY support, VT100 escape sequences, mouse tracking
 - **Git Integration** - Status panel, commit log with ASCII graph, staging/unstaging, branch switching

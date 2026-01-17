@@ -628,6 +628,23 @@ impl Translation for RuntimeTranslation {
         self.get_string("help_desc_replace_all")
     }
 
+    // LSP help descriptions
+    fn help_desc_trigger_completion(&self) -> &str {
+        self.get_string("help_desc_trigger_completion")
+    }
+
+    fn help_desc_accept_completion(&self) -> &str {
+        self.get_string("help_desc_accept_completion")
+    }
+
+    fn help_desc_cancel_completion(&self) -> &str {
+        self.get_string("help_desc_cancel_completion")
+    }
+
+    fn help_desc_navigate_completion(&self) -> &str {
+        self.get_string("help_desc_navigate_completion")
+    }
+
     fn help_desc_view_file(&self) -> &str {
         self.get_string("help_desc_view_file")
     }

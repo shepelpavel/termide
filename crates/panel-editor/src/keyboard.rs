@@ -348,8 +348,13 @@ impl EditorCommand {
             return Self::DuplicateLine;
         }
 
-        // LSP Completion trigger (Ctrl+.)
-        if key.code == KeyCode::Char('.') && key.modifiers == KeyModifiers::CONTROL {
+        // LSP Completion trigger (configurable, default Ctrl+.)
+        if matches_binding_or_default(
+            &keybindings.trigger_completion,
+            &key,
+            KeyCode::Char('.'),
+            KeyModifiers::CONTROL,
+        ) {
             return Self::TriggerCompletion;
         }
 

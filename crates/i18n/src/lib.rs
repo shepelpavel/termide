@@ -203,6 +203,11 @@ pub trait Translation: Send + Sync {
     fn help_desc_replace(&self) -> &str;
     fn help_desc_replace_current(&self) -> &str;
     fn help_desc_replace_all(&self) -> &str;
+    // LSP help descriptions
+    fn help_desc_trigger_completion(&self) -> &str;
+    fn help_desc_accept_completion(&self) -> &str;
+    fn help_desc_cancel_completion(&self) -> &str;
+    fn help_desc_navigate_completion(&self) -> &str;
     fn help_desc_view_file(&self) -> &str;
     fn help_desc_edit_file(&self) -> &str;
     fn help_desc_search_content(&self) -> &str;

@@ -238,6 +238,9 @@ pub struct EditorKeybindings {
     pub replace: Option<KeyBinding>,
     pub replace_current: Option<KeyBinding>,
     pub replace_all: Option<KeyBinding>,
+
+    // LSP
+    pub trigger_completion: Option<KeyBinding>,
 }
 
 /// File manager keybindings (file_manager.keybindings section).
@@ -394,6 +397,9 @@ impl EditorKeybindings {
         set_default!(replace, "Ctrl+H");
         set_default!(replace_current, "Ctrl+R");
         set_default!(replace_all, "Ctrl+Alt+R");
+
+        // LSP
+        set_default!(trigger_completion, "Ctrl+.");
     }
 }
 

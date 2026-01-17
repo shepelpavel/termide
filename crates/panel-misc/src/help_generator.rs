@@ -325,6 +325,23 @@ impl HelpGenerator {
                 keys: Self::format_keys(&kb.replace_all),
                 description: t.help_desc_replace_all().to_string(),
             },
+            // LSP
+            HelpEntry {
+                keys: Self::format_keys(&kb.trigger_completion),
+                description: t.help_desc_trigger_completion().to_string(),
+            },
+            HelpEntry {
+                keys: "Enter".to_string(),
+                description: t.help_desc_accept_completion().to_string(),
+            },
+            HelpEntry {
+                keys: "Escape".to_string(),
+                description: t.help_desc_cancel_completion().to_string(),
+            },
+            HelpEntry {
+                keys: "↑ / ↓".to_string(),
+                description: t.help_desc_navigate_completion().to_string(),
+            },
         ];
 
         HelpSection {

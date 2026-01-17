@@ -194,3 +194,76 @@ show_git_diff = true
 - Only works when editing files within a git repository
 - Requires the file to exist in HEAD (new untracked files show all lines as added)
 - Virtual deletion marker lines are visual-only and don't affect the file content
+
+## LSP (Language Server Protocol)
+
+TermIDE includes built-in LSP support for intelligent code assistance. When a language server is configured and available, you get:
+
+- **Code Completion** - Context-aware suggestions as you type
+- **Diagnostics** - Real-time error and warning indicators
+- **Loading Status** - Spinner in panel title shows server status (starting/indexing)
+
+### Triggering Completion
+
+| Shortcut           | Action                                     |
+|-------------------|--------------------------------------------|
+| `Ctrl+.`          | Manually trigger completion popup          |
+| `Enter`           | Accept selected completion                 |
+| `Escape`          | Close completion popup                     |
+| `↑` / `↓`         | Navigate through suggestions               |
+| Type characters   | Filter suggestions by typing               |
+
+**Auto-completion:** When enabled (default), completion popup appears automatically:
+- After typing identifier characters (letters, numbers, `_`)
+- Immediately after trigger characters (`.`, `:`, `(`, `<`)
+
+### Completion Popup
+
+The completion popup displays:
+- **Icon** - Indicates item type (function ƒ, variable v, class C, etc.)
+- **Label** - The completion text
+- **Scroll indicators** - ▲/▼ when list is scrollable
+
+### Configuration
+
+Configure LSP in your configuration file (`~/.config/termide/config.toml`):
+
+```toml
+[lsp]
+enabled = true              # Enable/disable LSP (default: true)
+auto_completion = true      # Auto-trigger completion on typing (default: true)
+completion_delay_ms = 100   # Delay before auto-completion (default: 100)
+
+[lsp.servers.rust]
+command = "rust-analyzer"
+args = []
+root_markers = ["Cargo.toml"]
+
+[lsp.servers.python]
+command = "pylsp"
+args = []
+root_markers = ["pyproject.toml", "setup.py", "requirements.txt"]
+
+[lsp.servers.typescript]
+command = "typescript-language-server"
+args = ["--stdio"]
+root_markers = ["package.json", "tsconfig.json"]
+```
+
+### Server Status Indicator
+
+When opening a file with LSP support, the panel title shows a loading spinner:
+- `⠋ main.rs (starting)` — Server is starting
+- `⠋ main.rs (indexing)` — Server is indexing the project
+- `main.rs` — Server is ready
+
+### Supported Languages
+
+LSP works with any language server that implements the LSP protocol. Common examples:
+- **Rust** - rust-analyzer
+- **Python** - pylsp, pyright
+- **TypeScript/JavaScript** - typescript-language-server
+- **Go** - gopls
+- **C/C++** - clangd
+
+**Note:** You need to install the language server separately. TermIDE only provides the LSP client integration.
