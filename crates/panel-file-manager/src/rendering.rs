@@ -10,33 +10,6 @@ use termide_git::GitStatus;
 use termide_theme::Theme;
 
 impl FileManager {
-    /// Get display title with path
-    /// Truncates path from left if it doesn't fit in available width
-    pub(crate) fn get_display_title(&self, available_width: u16) -> String {
-        let path_str = self.current_path.display().to_string();
-        // Overhead for borders and padding (no [X] button for FileManager)
-        let overhead = 7;
-        let max_path_len = available_width.saturating_sub(overhead) as usize;
-        let char_count = path_str.chars().count();
-
-        if char_count <= max_path_len {
-            path_str
-        } else {
-            let ellipsis = "...";
-            let ellipsis_len = 3;
-            let take_chars = max_path_len.saturating_sub(ellipsis_len);
-            let trimmed: String = path_str
-                .chars()
-                .rev()
-                .take(take_chars)
-                .collect::<Vec<_>>()
-                .into_iter()
-                .rev()
-                .collect();
-            format!("{}{}", ellipsis, trimmed)
-        }
-    }
-
     /// Get list of lines for display
     pub(crate) fn get_items(
         &self,

@@ -224,8 +224,8 @@ impl ContentSearchModal {
     fn truncate_from_start(line: &str, max_chars: usize) -> String {
         let graphemes: Vec<&str> = line.graphemes(true).collect();
         if graphemes.len() > max_chars {
-            let truncated: String = graphemes[..max_chars.saturating_sub(3)].concat();
-            format!("{}...", truncated)
+            let truncated: String = graphemes[..max_chars.saturating_sub(1)].concat();
+            format!("{}…", truncated)
         } else {
             line.to_string()
         }
@@ -270,8 +270,8 @@ impl ContentSearchModal {
         }
 
         // Need to truncate - center the match
-        let ellipsis = "...";
-        let ellipsis_len = 3;
+        let ellipsis = "…";
+        let ellipsis_len = 1;
 
         // Calculate window around match
         let match_center = (match_start_g + match_end_g) / 2;
@@ -555,7 +555,7 @@ impl Modal for ContentSearchModal {
             hint.render(list_area, buf);
         } else if self.is_searching {
             // Show searching indicator
-            let message = "Searching...";
+            let message = "Searching…";
             let hint = Paragraph::new(message).style(
                 Style::default()
                     .fg(theme.accented_bg)

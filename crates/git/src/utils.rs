@@ -31,8 +31,8 @@ pub fn truncate_path_left(s: &str, max_width: usize) -> String {
         return s.to_string();
     }
 
-    let ellipsis = "...";
-    let ellipsis_width = 3;
+    let ellipsis = "…";
+    let ellipsis_width = 1;
     let available = max_width.saturating_sub(ellipsis_width);
 
     // Take characters from the right until we reach available width

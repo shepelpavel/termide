@@ -11,6 +11,117 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthStr;
 
+/// Braille spinner characters used for loading indicators.
+const SPINNER_CHARS: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+/// Smart title truncation that preserves spinner and status.
+///
+/// When truncating a title like "⠋ main.rs (indexing)", this function ensures:
+/// - Spinner at the start is always preserved
+/// - Status in parentheses at the end is always preserved
+/// - Main text in the middle is truncated with "…" from the left
+///
+/// Returns the truncated title that fits within `max_width`.
+fn smart_truncate_title(title: &str, max_width: usize) -> String {
+    let title_width = title.width();
+    if title_width <= max_width {
+        return title.to_string();
+    }
+
+    // Parse title parts: [spinner] [main_text] [(status)]
+    let chars: Vec<char> = title.chars().collect();
+    if chars.is_empty() {
+        return String::new();
+    }
+
+    // Detect spinner prefix (braille char + space)
+    let (spinner, rest_start) = if SPINNER_CHARS.contains(&chars[0]) {
+        let spinner_end = if chars.len() > 1 && chars[1] == ' ' {
+            2
+        } else {
+            1
+        };
+        (chars[..spinner_end].iter().collect::<String>(), spinner_end)
+    } else {
+        (String::new(), 0)
+    };
+
+    let rest: String = chars[rest_start..].iter().collect();
+
+    // Detect status suffix: " (something)" at the end
+    let (main_text, status) = if let Some(paren_start) = rest.rfind(" (") {
+        if rest.ends_with(')') {
+            (
+                rest[..paren_start].to_string(),
+                rest[paren_start..].to_string(),
+            )
+        } else {
+            (rest, String::new())
+        }
+    } else {
+        (rest, String::new())
+    };
+
+    let spinner_width = spinner.width();
+    let status_width = status.width();
+    let fixed_width = spinner_width + status_width;
+
+    // If even spinner + status don't fit, just truncate everything
+    if fixed_width >= max_width {
+        let mut result = String::new();
+        let mut width = 0;
+        for ch in title.chars() {
+            let ch_width = ch.to_string().width();
+            if width + ch_width > max_width {
+                break;
+            }
+            result.push(ch);
+            width += ch_width;
+        }
+        return result;
+    }
+
+    // Available width for main text (with "…" if needed)
+    let available_for_main = max_width - fixed_width;
+
+    let main_width = main_text.width();
+    let truncated_main = if main_width <= available_for_main {
+        main_text
+    } else if available_for_main > 1 {
+        // Need to truncate main text, keep right part with "…"
+        let target_width = available_for_main - 1; // Reserve 1 for "…"
+        let main_chars: Vec<char> = main_text.chars().collect();
+        let mut start_idx = 0;
+        let mut current_width = main_width;
+
+        // Remove chars from start until we fit
+        while current_width > target_width && start_idx < main_chars.len() {
+            current_width -= main_chars[start_idx].to_string().width();
+            start_idx += 1;
+        }
+
+        format!("…{}", main_chars[start_idx..].iter().collect::<String>())
+    } else if available_for_main > 0 {
+        // Very narrow, just take what we can from the end
+        let main_chars: Vec<char> = main_text.chars().collect();
+        let mut result = String::new();
+        let mut width = 0;
+        for ch in main_chars.iter().rev() {
+            let ch_width = ch.to_string().width();
+            if width + ch_width > available_for_main {
+                break;
+            }
+            result.insert(0, *ch);
+            width += ch_width;
+        }
+        result
+    } else {
+        String::new()
+    };
+
+    format!("{}{}{}", spinner, truncated_main, status)
+}
+
 use termide_config::Config;
 use termide_core::{Panel, PanelConfig, RenderContext, ThemeColors};
 use termide_theme::Theme;
@@ -103,30 +214,15 @@ pub fn render_collapsed_panel(
         buf.set_string(area.x + 1, y, buttons, style);
     }
 
-    // Title (truncated from start if too long)
+    // Title (smart truncation preserving spinner and status)
     let title_start = area.x + 1 + buttons_width;
-    let title_text = format!(" {} ", title);
     let available_width = area.right().saturating_sub(title_start + 1) as usize;
 
-    let title_text_width = title_text.width();
-    let (display_title, title_width) = if title_text_width <= available_width {
-        (title_text, title_text_width)
-    } else if available_width > 4 {
-        // Truncate from start, add "..."
-        let target_width = available_width.saturating_sub(3); // Reserve space for "..."
-        let mut chars: Vec<char> = title_text.chars().collect();
-        while chars.iter().collect::<String>().width() > target_width && !chars.is_empty() {
-            chars.remove(0);
-        }
-        let truncated = format!("...{}", chars.iter().collect::<String>());
-        let w = truncated.width();
-        (truncated, w)
-    } else {
-        // Too narrow, just show what we can
-        let truncated: String = title_text.chars().take(available_width).collect();
-        let w = truncated.width();
-        (truncated, w)
-    };
+    // Reserve 2 chars for padding spaces around title
+    let content_width = available_width.saturating_sub(2);
+    let truncated_title = smart_truncate_title(&title, content_width);
+    let display_title = format!(" {} ", truncated_title);
+    let title_width = display_title.width();
 
     if !display_title.is_empty() {
         buf.set_string(title_start, y, &display_title, style);
@@ -166,11 +262,13 @@ pub fn render_expanded_panel(
     };
 
     // Create title: [X][▼] Title (if group_size > 1) or [X] Title
-    let title_text = if group_size > 1 {
-        format!("[X][▼] {} ", title)
-    } else {
-        format!("[X] {} ", title)
-    };
+    // Smart truncate title to fit within panel width
+    let buttons_text = if group_size > 1 { "[X][▼] " } else { "[X] " };
+    let buttons_width = buttons_text.width();
+    // Available width: panel width - 2 (borders) - buttons - 1 (trailing space)
+    let available_for_title = (area.width as usize).saturating_sub(2 + buttons_width + 1);
+    let truncated_title = smart_truncate_title(&title, available_for_title);
+    let title_text = format!("{}{} ", buttons_text, truncated_title);
 
     let block = Block::default()
         .borders(Borders::ALL)

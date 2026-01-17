@@ -241,8 +241,6 @@ pub struct FileManager {
     entries: Vec<FileEntry>,
     selected: usize,
     scroll_offset: usize,
-    /// Last displayed title (cached for [X] clicks)
-    display_title: String,
     /// Modal window request (action, modal)
     modal_request: Option<(PendingAction, ActiveModal)>,
     /// Visible area height (updated during rendering)
@@ -289,13 +287,11 @@ impl FileManager {
 
     /// Create a new smart file manager with the specified path
     pub fn new_with_path(current_path: PathBuf) -> Self {
-        let display_title = current_path.display().to_string();
         let mut fm = Self {
             current_path,
             entries: Vec::new(),
             selected: 0,
             scroll_offset: 0,
-            display_title,
             modal_request: None,
             visible_height: 10, // Default value, will be updated during rendering
             click_tracker: IndexClickTracker::new(),
@@ -453,9 +449,6 @@ impl FileManager {
         // Clear selection state (will restore by names if preserve_selection)
         self.selection.clear();
         self.selection.end_drag();
-
-        // Update displayed title (will be truncated during rendering if needed)
-        self.display_title = self.current_path.display().to_string();
 
         // Start async git status loading (non-blocking)
         // Git status will be applied when check_git_status_async() is called
@@ -831,11 +824,13 @@ impl Panel for FileManager {
     }
 
     fn title(&self) -> String {
+        // Return full path, let smart_truncate_title() handle truncation
+        let path = self.current_path.display().to_string();
         if self.is_git_status_loading() {
             let spinner = constants::spinner_frame();
-            format!("{} {} (git status)", spinner, self.display_title)
+            format!("{} {} (git status)", spinner, path)
         } else {
-            self.display_title.clone()
+            path
         }
     }
 
@@ -856,9 +851,6 @@ impl Panel for FileManager {
         } else if self.selected < self.scroll_offset {
             self.scroll_offset = self.selected;
         }
-
-        // Get display path taking into account panel width
-        self.display_title = self.get_display_title(area.width);
 
         // Calculate available width for file names
         let content_width = area.width as usize;

@@ -374,13 +374,13 @@ fn kind_icon(kind: Option<CompletionItemKind>) -> char {
 fn truncate_string(s: &str, max_len: usize) -> String {
     if s.width() <= max_len {
         s.to_string()
-    } else if max_len > 3 {
+    } else if max_len > 1 {
         let mut result = String::new();
         let mut width = 0;
         for ch in s.chars() {
             let ch_width = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1);
-            if width + ch_width + 3 > max_len {
-                result.push_str("...");
+            if width + ch_width + 1 > max_len {
+                result.push('…');
                 break;
             }
             result.push(ch);
@@ -399,7 +399,7 @@ mod tests {
     #[test]
     fn test_truncate_string() {
         assert_eq!(truncate_string("hello", 10), "hello");
-        assert_eq!(truncate_string("hello world", 8), "hello...");
+        assert_eq!(truncate_string("hello world", 8), "hello w…");
         assert_eq!(truncate_string("hi", 2), "hi");
     }
 
