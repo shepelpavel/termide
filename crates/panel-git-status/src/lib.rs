@@ -568,7 +568,7 @@ impl Panel for GitStatusPanel {
     }
 
     fn title(&self) -> String {
-        use termide_config::constants::LOADING_INDICATOR;
+        use termide_config::constants::spinner_frame;
 
         let repo_name = self
             .repo_manager
@@ -581,9 +581,10 @@ impl Panel for GitStatusPanel {
         let status = format!("*{} ↑{} ↓{}", uncommitted, self.ahead, self.behind);
 
         if self.is_loading {
+            let spinner = spinner_frame();
             format!(
-                "{} {} ({}) {}",
-                LOADING_INDICATOR, repo_name, branch, status
+                "{} {} ({}) {} (loading)",
+                spinner, repo_name, branch, status
             )
         } else {
             format!("{} ({}) {}", repo_name, branch, status)

@@ -832,7 +832,8 @@ impl Panel for FileManager {
 
     fn title(&self) -> String {
         if self.is_git_status_loading() {
-            format!("{} {}", constants::LOADING_INDICATOR, self.display_title)
+            let spinner = constants::spinner_frame();
+            format!("{} {} (git status)", spinner, self.display_title)
         } else {
             self.display_title.clone()
         }

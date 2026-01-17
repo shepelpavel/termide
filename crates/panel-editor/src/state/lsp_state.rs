@@ -63,6 +63,9 @@ pub struct LspState {
 
     /// Last inserted character (for auto-completion scheduling)
     pub last_inserted_char: Option<char>,
+
+    /// Status text to display next to spinner (e.g., "starting", "indexing")
+    pub server_status_text: Option<String>,
 }
 
 impl LspState {
@@ -84,6 +87,7 @@ impl LspState {
             popup_rect: None,
             completion_timer: None,
             last_inserted_char: None,
+            server_status_text: None,
         }
     }
 

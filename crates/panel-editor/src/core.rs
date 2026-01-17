@@ -23,7 +23,7 @@ use crate::{
 };
 
 // Re-export LspManager for use in app integration
-pub use termide_lsp::{CompletionTriggerKind, LspManager};
+pub use termide_lsp::{CompletionTriggerKind, LspManager, ServerStatus};
 
 /// Convert screen column to grapheme index, accounting for display widths.
 ///
@@ -520,20 +520,40 @@ impl Editor {
     ///
     /// Returns true if status changed (needs redraw).
     pub fn update_lsp_loading_status(&mut self, lsp_manager: &LspManager) -> bool {
-        if let (Some(file_path), Some(ref lang)) = (self.file_path(), &self.lsp.language_id) {
-            // Check if server went back to indexing (e.g., after file changes)
-            if !self.lsp.server_loading && lsp_manager.server_is_indexing(lang, file_path) {
-                self.lsp.server_loading = true;
-                return true;
-            }
+        // Clone paths to avoid borrow issues
+        let file_path = match self.file_path() {
+            Some(p) => p.to_path_buf(),
+            None => return false,
+        };
+        let lang = match &self.lsp.language_id {
+            Some(l) => l.clone(),
+            None => return false,
+        };
 
-            // Check if server became ready
-            if self.lsp.server_loading && lsp_manager.server_is_ready(lang, file_path) {
-                self.lsp.server_loading = false;
-                return true;
-            }
+        // Get current server status and update status text
+        let status = lsp_manager.server_status(&lang, &file_path);
+        let new_status_text = match status {
+            Some(ServerStatus::Starting) => Some("starting".to_string()),
+            Some(ServerStatus::Indexing) => Some("indexing".to_string()),
+            _ => None,
+        };
+        let status_text_changed = self.lsp.server_status_text != new_status_text;
+        self.lsp.server_status_text = new_status_text;
+
+        // Check if server went back to indexing (e.g., after file changes)
+        if !self.lsp.server_loading && lsp_manager.server_is_indexing(&lang, &file_path) {
+            self.lsp.server_loading = true;
+            return true;
         }
-        false
+
+        // Check if server became ready
+        if self.lsp.server_loading && lsp_manager.server_is_ready(&lang, &file_path) {
+            self.lsp.server_loading = false;
+            return true;
+        }
+
+        // Return true if status text changed (for redraw)
+        status_text_changed
     }
 
     /// Schedule auto-completion for the inserted character.
@@ -2294,9 +2314,22 @@ impl Panel for Editor {
             String::new()
         };
 
+        // LSP status text (shown after filename)
+        let lsp_status = self
+            .lsp
+            .server_status_text
+            .as_ref()
+            .map(|s| format!(" ({})", s))
+            .unwrap_or_default();
+
         format!(
-            "{}{}{}{}{}",
-            lsp_indicator, self.file_state.title, modified, external_change, search_info
+            "{}{}{}{}{}{}",
+            lsp_indicator,
+            self.file_state.title,
+            modified,
+            lsp_status,
+            external_change,
+            search_info
         )
     }
 

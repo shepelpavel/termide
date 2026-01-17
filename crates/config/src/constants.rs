@@ -1,12 +1,25 @@
 //! Application constants.
 
 /// Number of spinner animation frames.
-pub const SPINNER_FRAMES_COUNT: usize = 8;
+pub const SPINNER_FRAMES_COUNT: usize = 10;
 
 /// Spinner animation characters.
-pub const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"];
+pub const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
-/// Static loading indicator (for blocking operations where animation is not possible).
+/// Get current spinner frame based on system time (updates every 100ms).
+///
+/// Use this for animated spinners in panel titles and other UI elements.
+pub fn spinner_frame() -> &'static str {
+    let frame_idx = (std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        / 100) as usize
+        % SPINNER_FRAMES.len();
+    SPINNER_FRAMES[frame_idx]
+}
+
+/// Static loading indicator (deprecated, use spinner_frame() for animated spinners).
 pub const LOADING_INDICATOR: &str = "●";
 
 /// File sizes.
