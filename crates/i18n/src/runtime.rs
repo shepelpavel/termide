@@ -23,7 +23,7 @@ impl RuntimeTranslation {
             .get(key)
             .map(|s| s.as_str())
             .unwrap_or_else(|| {
-                eprintln!("Warning: Missing translation key: {}", key);
+                termide_logger::warn(format!("Missing translation key: {}", key));
                 ""
             })
     }
@@ -34,7 +34,7 @@ impl RuntimeTranslation {
             .get(key)
             .map(|s| s.as_str())
             .unwrap_or_else(|| {
-                eprintln!("Warning: Missing format key: {}", key);
+                termide_logger::warn(format!("Missing format key: {}", key));
                 ""
             });
         let mut result = template.to_string();

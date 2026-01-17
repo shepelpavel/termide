@@ -118,6 +118,17 @@ impl LspServer {
 
         let stdin = process.stdin.take().context("Failed to get stdin")?;
         let stdout = process.stdout.take().context("Failed to get stdout")?;
+        let stderr = process.stderr.take().context("Failed to get stderr")?;
+
+        // Stderr reader thread - captures server error output to journal
+        let stderr_handle = {
+            let lang = language_id.clone();
+            thread::spawn(move || {
+                Self::stderr_loop(stderr, &lang);
+            })
+        };
+        // Detach stderr thread - we don't need to join it
+        drop(stderr_handle);
 
         let pending: PendingRequests = Arc::new(Mutex::new(HashMap::new()));
         let status = Arc::new(Mutex::new(ServerStatus::Starting));
@@ -270,6 +281,22 @@ impl LspServer {
                 Err(e) => {
                     log::error!("Failed to parse LSP message: {}", e);
                 }
+            }
+        }
+    }
+
+    /// Stderr reader loop - captures server error output to journal
+    fn stderr_loop(stderr: std::process::ChildStderr, lang: &str) {
+        let reader = BufReader::new(stderr);
+        for line in reader.lines() {
+            match line {
+                Ok(line) if !line.is_empty() => {
+                    // Log to journal as warning (not error, since LSP servers often
+                    // write informational messages to stderr)
+                    termide_logger::warn(format!("LSP [{}]: {}", lang, line));
+                }
+                Err(_) => break,
+                _ => {}
             }
         }
     }

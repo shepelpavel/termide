@@ -11,3 +11,5 @@ description = "Internationalization support for termide"
 serde.workspace = true
 anyhow.workspace = true
 toml.workspace = true
+log.workspace = true
+termide-logger = { path = "../logger" }

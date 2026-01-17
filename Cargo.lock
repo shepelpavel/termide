@@ -2799,7 +2799,9 @@ name = "termide-i18n"
 version = "0.8.9"
 dependencies = [
  "anyhow",
+ "log",
  "serde",
+ "termide-logger",
  "toml",
 ]
 

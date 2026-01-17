@@ -250,7 +250,7 @@ impl App {
             .and_then(|n| n.to_str())
             .unwrap_or("?");
         let t = i18n::t();
-        logger::info(format!("Opening file via event: {}", filename));
+        logger::debug(format!("Opening file via event: {}", filename));
 
         match Editor::open_file_with_config(file_path.clone(), self.state.editor_config()) {
             Ok(mut editor_panel) => {
