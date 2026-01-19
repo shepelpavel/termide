@@ -418,6 +418,9 @@ pub trait Translation: Send + Sync {
     fn ui_esc_cancel(&self) -> &str;
     fn ui_hint_separator(&self) -> &str;
 
+    // Checkboxes
+    fn checkbox_executable(&self) -> &str;
+
     // File size units
     fn size_bytes(&self) -> &str;
     fn size_kilobytes(&self) -> &str;

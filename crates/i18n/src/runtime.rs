@@ -1378,6 +1378,10 @@ impl Translation for RuntimeTranslation {
         self.get_string("ui_hint_separator")
     }
 
+    fn checkbox_executable(&self) -> &str {
+        self.get_string("checkbox_executable")
+    }
+
     fn size_bytes(&self) -> &str {
         self.get_string("size_bytes")
     }

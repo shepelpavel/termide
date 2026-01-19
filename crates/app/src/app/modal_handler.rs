@@ -54,6 +54,7 @@ impl App {
                 ActiveModal::FileSearch(m) => m.handle_key(key)?.map(box_modal_result),
                 ActiveModal::ContentSearch(m) => m.handle_key(key)?.map(box_modal_result),
                 ActiveModal::DirectoryPicker(m) => m.handle_key(key)?.map(box_modal_result),
+                ActiveModal::SaveAs(m) => m.handle_key(key)?.map(box_modal_result),
             };
 
             // If modal window returned result, handle it
@@ -160,6 +161,7 @@ impl App {
                 ActiveModal::DirectoryPicker(m) => {
                     m.handle_mouse(mouse, modal_area)?.map(box_modal_result)
                 }
+                ActiveModal::SaveAs(m) => m.handle_mouse(mouse, modal_area)?.map(box_modal_result),
             };
 
             // If modal window returned result, handle it

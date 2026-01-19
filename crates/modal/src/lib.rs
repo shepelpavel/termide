@@ -32,6 +32,7 @@ pub mod input;
 pub mod overwrite;
 pub mod rename_pattern;
 pub mod replace;
+pub mod save_as;
 pub mod search;
 pub mod select;
 pub mod sessions;
@@ -49,6 +50,7 @@ pub use input::InputModal;
 pub use overwrite::{OverwriteChoice, OverwriteModal};
 pub use rename_pattern::RenamePatternModal;
 pub use replace::{ReplaceAction, ReplaceModal, ReplaceModalResult};
+pub use save_as::{SaveAsModal, SaveAsResult};
 pub use search::{SearchAction, SearchModal, SearchModalResult};
 pub use select::SelectModal;
 pub use sessions::{SessionItem, SessionsModal};
@@ -91,6 +93,8 @@ pub enum ActiveModal {
     ContentSearch(Box<ContentSearchModal>),
     /// Directory picker modal
     DirectoryPicker(Box<DirectoryPickerModal>),
+    /// Save As modal with executable checkbox
+    SaveAs(Box<SaveAsModal>),
 }
 
 /// Trait for all modal windows.

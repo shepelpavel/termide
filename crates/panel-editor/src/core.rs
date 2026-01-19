@@ -9,7 +9,7 @@ use termide_config::Config;
 use termide_core::{CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel};
 use termide_git::GitDiffCache;
 use termide_i18n::t;
-use termide_modal::{ActiveModal, InputModal, ReplaceModal, SearchModal};
+use termide_modal::{ActiveModal, ReplaceModal, SaveAsModal, SearchModal};
 use termide_state::PendingAction;
 use termide_theme::Theme;
 use termide_ui::ScrollBar;
@@ -2404,12 +2404,12 @@ impl Editor {
         let default_path = directory.join("untitled.txt");
         let default_value = default_path.display().to_string();
 
-        let modal = InputModal::with_default(t().modal_save_as_title(), "", default_value);
+        let modal = SaveAsModal::new(t().modal_save_as_title(), default_value);
         let action = PendingAction::SaveFileAs {
             panel_index: 0, // will be updated in app.rs
             directory,
         };
-        self.modal_request = Some((action, ActiveModal::Input(Box::new(modal))));
+        self.modal_request = Some((action, ActiveModal::SaveAs(Box::new(modal))));
         Ok(())
     }
 
