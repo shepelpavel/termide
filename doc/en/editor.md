@@ -28,6 +28,7 @@ The text editor panel provides a functional editor for working with text files w
 | Shortcut           | Action                                     |
 |-------------------|--------------------------------------------|
 | `Ctrl+S`          | Save file                                  |
+| `Ctrl+Shift+S`    | Save As (with executable checkbox)         |
 | `Ctrl+Z`          | Undo last action                           |
 | `Ctrl+Y`          | Redo undone action                         |
 | `Ctrl+D`          | Duplicate current line or selection        |

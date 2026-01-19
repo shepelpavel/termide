@@ -1,12 +1,12 @@
-# Custom Actions
+# Custom Scripts
 
-The Actions system allows you to add custom scripts to TermIDE's menu bar. Scripts are executed in a new terminal panel, making it easy to run build commands, deployment scripts, or any automation tasks directly from TermIDE.
+The Scripts system allows you to add custom scripts to TermIDE's menu bar. Scripts are executed in a new terminal panel, making it easy to run build commands, deployment scripts, or any automation tasks directly from TermIDE.
 
 ## Getting Started
 
-### Actions Directory Location
+### Scripts Directory Location
 
-Place your scripts in the actions directory:
+Place your scripts in the scripts directory:
 
 | Platform | Path |
 |----------|------|
@@ -14,12 +14,12 @@ Place your scripts in the actions directory:
 | macOS | `~/Library/Application Support/termide/actions/` |
 | Windows | `%APPDATA%\termide\actions\` |
 
-You can also access this folder via `Options → Manage actions` in the menu bar.
+You can also access this folder via `Options → Manage scripts` in the menu bar.
 
-### Creating Your First Action
+### Creating Your First Script
 
 ```bash
-# Create the actions directory
+# Create the scripts directory
 mkdir -p ~/.config/termide/actions
 
 # Create a simple script
@@ -34,7 +34,7 @@ EOF
 chmod +x ~/.config/termide/actions/hello.sh
 ```
 
-After creating the script, restart TermIDE or use `Options → Manage actions` to refresh. Your script will appear in the **Actions** menu.
+After creating the script, restart TermIDE or use `Options → Manage scripts` to refresh. Your script will appear in the **Scripts** menu.
 
 ## Script Naming
 
@@ -55,8 +55,8 @@ You can organize scripts into groups using subdirectories. Each subdirectory bec
 
 ```
 ~/.config/termide/actions/
-├── build.sh              # Appears in Actions menu root
-├── deploy.sh             # Appears in Actions menu root
+├── build.sh              # Appears in Scripts menu root
+├── deploy.sh             # Appears in Scripts menu root
 ├── docker/               # Creates "docker" submenu
 │   ├── up.sh
 │   ├── down.sh
@@ -69,20 +69,59 @@ You can organize scripts into groups using subdirectories. Each subdirectory bec
 
 **Note:** Only one level of subdirectories is supported. Nested subdirectories are ignored.
 
-## Background Execution
+## Execution Modes
 
-By default, scripts run in a foreground terminal panel. For long-running processes that you want to run in the background, add `.bg.` to the filename:
+Scripts support different execution modes based on filename suffixes:
+
+### Background Execution (`.bg.`)
+
+For long-running processes that you want to run in the background, add `.bg.` to the filename:
 
 | Filename | Execution Mode |
 |----------|----------------|
 | `server.sh` | Foreground (new terminal panel) |
-| `server.bg.sh` | Background |
+| `server.bg.sh` | Background (no terminal panel) |
 | `deploy.bg.sh` | Background |
 
 Background scripts run without opening a terminal panel, useful for:
 - Starting development servers
 - Running watch processes
 - Launching background services
+
+### Report Scripts (`.report.`)
+
+For scripts that should run in the background and show their output in a modal dialog, add `.report.` to the filename:
+
+| Filename | Execution Mode |
+|----------|----------------|
+| `check.sh` | Foreground (new terminal panel) |
+| `check.report.sh` | Background with modal output |
+| `status.report.sh` | Background with modal output |
+
+Report scripts:
+- Run in the background without blocking the UI
+- Capture stdout and stderr
+- Display output in an informational modal when completed
+- Show success (✓) or failure (✗) indicator in modal title
+
+**Example use cases:**
+- Quick status checks (`git status`, `docker ps`)
+- Linting or validation scripts
+- System health checks
+- Any short-running script where you want to see the result
+
+**Example:**
+```bash
+# Create a report script
+cat > ~/.config/termide/actions/check.report.sh << 'EOF'
+#!/bin/bash
+echo "Checking system status..."
+echo "Date: $(date)"
+echo "User: $(whoami)"
+echo "PWD: $(pwd)"
+EOF
+chmod +x ~/.config/termide/actions/check.report.sh
+```
 
 ## Platform-Specific Notes
 
@@ -123,13 +162,15 @@ Scripts are executed with the current session's root directory as the working di
 
 5. **Background for servers**: Use `.bg.` in the filename for scripts that start long-running processes.
 
+6. **Report for quick checks**: Use `.report.` in the filename for scripts where you want to see the result in a modal.
+
 ## Troubleshooting
 
 ### Script doesn't appear in menu
 
 1. Check that the file has executable permission (`chmod +x`)
 2. Make sure the file is in the correct directory
-3. Restart TermIDE to refresh the actions list
+3. Restart TermIDE to refresh the scripts list
 
 ### Script fails to run
 
@@ -143,3 +184,10 @@ Background scripts run silently. Check:
 1. The script actually starts the intended process
 2. The process isn't immediately exiting
 3. Look for process output in system logs if needed
+
+### Report script modal doesn't appear
+
+Report scripts show a modal when they complete:
+1. Wait for the script to finish executing
+2. Check if the script exits too quickly (add a small delay if needed)
+3. Ensure the script produces output to stdout or stderr

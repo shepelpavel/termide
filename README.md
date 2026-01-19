@@ -41,7 +41,7 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 - **Session Management** - Auto-save and restore panel layouts
 - **System Monitor** - Real-time CPU, RAM, disk usage in status bar
 - **Search & Replace** - Live preview, match counter, regex support
-- **Custom Actions** - Run user-defined scripts from the Actions menu
+- **Custom Scripts** - Run user-defined scripts from the Scripts menu (supports `.bg.` for background, `.report.` for modal output)
 - **Cross-platform** - Linux (x86_64, ARM64), macOS (Intel, Apple Silicon), Windows (WSL)
 - **Full Mouse Support** - Click navigation, scroll, double-click actions
 - **Keyboard Layouts** - Cyrillic support with automatic hotkey translation
@@ -273,6 +273,7 @@ For detailed documentation, see:
 
 **Editor:**
 - `Ctrl+S` - Save
+- `Ctrl+Shift+S` - Save As (with executable checkbox)
 - `Ctrl+Z/Y` - Undo/Redo
 - `Ctrl+F` - Find
 - `Ctrl+H` - Replace
@@ -400,17 +401,18 @@ You can create custom themes by placing TOML files in the themes directory:
 
 User themes take priority over built-in themes with the same name. See `themes/` directory in the repository for theme file format examples.
 
-### Custom Actions
+### Custom Scripts
 
-You can add custom scripts to the Actions menu by placing executable files in:
+You can add custom scripts to the Scripts menu by placing executable files in:
 - Linux: `~/.config/termide/actions/`
 - macOS: `~/Library/Application Support/termide/actions/`
 - Windows: `%APPDATA%\termide\actions\`
 
 **Features:**
-- Scripts appear in the Actions menu (menu bar)
+- Scripts appear in the Scripts menu (menu bar)
 - Subdirectories create nested submenus
 - Add `.bg.` to filename for background execution (e.g., `deploy.bg.sh`)
+- Add `.report.` to filename for background with modal output (e.g., `check.report.sh`)
 - Display name is the part before the first dot
 
 **Example:**
@@ -429,7 +431,7 @@ EOF
 chmod +x ~/.config/termide/actions/hello.sh
 ```
 
-**Note:** On Unix systems, scripts must have the executable permission (`chmod +x`). Use `Options → Manage actions` to open the actions folder.
+**Note:** On Unix systems, scripts must have the executable permission (`chmod +x`). Use `Options → Manage scripts` to open the scripts folder.
 
 ### Language Configuration
 
