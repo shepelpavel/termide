@@ -505,4 +505,77 @@ impl App {
         }
         Ok(())
     }
+
+    /// Open a file in a new editor panel with LSP initialization.
+    ///
+    /// This is the core helper for opening files. It handles:
+    /// - Creating the editor with configuration
+    /// - Initializing LSP for the editor
+    /// - Adding the panel to layout
+    /// - Auto-saving session
+    ///
+    /// Returns Ok(()) on success, or sets an error message and returns Err on failure.
+    /// Use this instead of duplicating Editor::open_file_with_config patterns.
+    pub(crate) fn open_editor_for_file(&mut self, file_path: std::path::PathBuf) -> Result<()> {
+        use termide_panel_editor::Editor;
+
+        let filename = file_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("?")
+            .to_string();
+
+        match Editor::open_file_with_config(file_path, self.state.editor_config()) {
+            Ok(mut editor_panel) => {
+                // Initialize LSP for the editor
+                if let Some(ref mut lsp_manager) = self.state.lsp_manager {
+                    editor_panel.init_lsp(lsp_manager);
+                }
+
+                self.add_panel(Box::new(editor_panel));
+                self.auto_save_session();
+
+                let t = i18n::t();
+                self.state.set_info(t.editor_file_opened(&filename));
+                Ok(())
+            }
+            Err(e) => {
+                let t = i18n::t();
+                let error_msg = t.status_error_open_file(&filename, &e.to_string());
+                self.state.set_error(error_msg.clone());
+                anyhow::bail!(error_msg)
+            }
+        }
+    }
+
+    /// Create a new terminal panel with the calculated dimensions.
+    ///
+    /// This is the core helper for creating terminal panels. It handles:
+    /// - Calculating terminal dimensions from app state
+    /// - Creating the terminal with PTY
+    ///
+    /// Returns Ok(terminal) on success, or sets an error message and returns Err on failure.
+    /// The returned terminal can be used to send commands if needed.
+    /// Caller is responsible for adding the panel to layout.
+    pub(crate) fn create_terminal_panel(
+        &mut self,
+        cwd: Option<std::path::PathBuf>,
+    ) -> Result<termide_panel_terminal::Terminal> {
+        use termide_panel_terminal::Terminal;
+
+        let width = self.state.terminal.width;
+        let height = self.state.terminal.height;
+        let term_height = height.saturating_sub(3);
+        let term_width = width.saturating_sub(2);
+
+        match Terminal::new_with_cwd(term_height, term_width, cwd) {
+            Ok(terminal) => Ok(terminal),
+            Err(e) => {
+                let error_msg = format!("Failed to create terminal: {}", e);
+                logger::error(&error_msg);
+                self.state.set_error(error_msg.clone());
+                anyhow::bail!(error_msg)
+            }
+        }
+    }
 }

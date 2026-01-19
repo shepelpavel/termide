@@ -572,47 +572,10 @@ impl App {
                             self.state.set_info("File unstaged".to_string());
                         }
                     }
-                    "edit" => {
-                        // Open file in editor normally (without diff mode emphasis)
+                    "edit" | "diff" => {
+                        // Open file in editor (editor shows git diff markers automatically)
                         let full_path = repo_path.join(file_path);
-                        use termide_panel_editor::Editor;
-                        match Editor::open_file_with_config(
-                            full_path.clone(),
-                            self.state.editor_config(),
-                        ) {
-                            Ok(mut editor_panel) => {
-                                // Initialize LSP for the editor
-                                if let Some(ref mut lsp_manager) = self.state.lsp_manager {
-                                    editor_panel.init_lsp(lsp_manager);
-                                }
-                                self.add_panel(Box::new(editor_panel));
-                                self.auto_save_session();
-                            }
-                            Err(e) => {
-                                self.state.set_error(format!("Open error: {}", e));
-                            }
-                        }
-                    }
-                    "diff" => {
-                        // Open file in editor (editor shows git diff markers)
-                        let full_path = repo_path.join(file_path);
-                        use termide_panel_editor::Editor;
-                        match Editor::open_file_with_config(
-                            full_path.clone(),
-                            self.state.editor_config(),
-                        ) {
-                            Ok(mut editor_panel) => {
-                                // Initialize LSP for the editor
-                                if let Some(ref mut lsp_manager) = self.state.lsp_manager {
-                                    editor_panel.init_lsp(lsp_manager);
-                                }
-                                self.add_panel(Box::new(editor_panel));
-                                self.auto_save_session();
-                            }
-                            Err(e) => {
-                                self.state.set_error(format!("Open error: {}", e));
-                            }
-                        }
+                        let _ = self.open_editor_for_file(full_path);
                     }
                     "revert" => {
                         // Open confirmation modal before reverting

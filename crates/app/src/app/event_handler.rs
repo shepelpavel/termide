@@ -350,8 +350,6 @@ impl App {
 
     /// Handle ExecuteFile event - run executable in a new terminal
     fn event_execute_file(&mut self, file_path: PathBuf) -> Result<()> {
-        use termide_panel_terminal::Terminal;
-
         self.close_welcome_panels();
 
         let filename = file_path
@@ -365,12 +363,7 @@ impl App {
         // Command to execute
         let command = file_path.to_string_lossy().to_string();
 
-        let width = self.state.terminal.width;
-        let height = self.state.terminal.height;
-        let term_height = height.saturating_sub(3);
-        let term_width = width.saturating_sub(2);
-
-        match Terminal::new_with_cwd(term_height, term_width, working_dir) {
+        match self.create_terminal_panel(working_dir) {
             Ok(mut terminal) => {
                 // Send command to execute the file
                 let _ = terminal.send_command(&command);
@@ -383,8 +376,6 @@ impl App {
                     "Failed to create terminal for '{}': {}",
                     filename, e
                 ));
-                self.state
-                    .set_error(format!("Failed to run {}: {}", filename, e));
             }
         }
         Ok(())
@@ -392,16 +383,9 @@ impl App {
 
     /// Handle RunCommand event - run command in a new terminal
     fn event_run_command(&mut self, command: String, cwd: Option<PathBuf>) -> Result<()> {
-        use termide_panel_terminal::Terminal;
-
         self.close_welcome_panels();
 
-        let width = self.state.terminal.width;
-        let height = self.state.terminal.height;
-        let term_height = height.saturating_sub(3);
-        let term_width = width.saturating_sub(2);
-
-        match Terminal::new_with_cwd(term_height, term_width, cwd) {
+        match self.create_terminal_panel(cwd) {
             Ok(mut terminal) => {
                 let _ = terminal.send_command(&command);
                 self.add_panel(Box::new(terminal));
@@ -413,8 +397,6 @@ impl App {
                     "Failed to create terminal for command '{}': {}",
                     command, e
                 ));
-                self.state
-                    .set_error(format!("Failed to run command: {}", e));
             }
         }
         Ok(())

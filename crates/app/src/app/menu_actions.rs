@@ -267,21 +267,7 @@ impl App {
 
         self.close_welcome_panels();
 
-        match Editor::open_file_with_config(config_path, self.state.editor_config()) {
-            Ok(mut editor_panel) => {
-                // Initialize LSP for the editor
-                if let Some(ref mut lsp_manager) = self.state.lsp_manager {
-                    editor_panel.init_lsp(lsp_manager);
-                }
-                self.add_panel(Box::new(editor_panel));
-                self.auto_save_session();
-            }
-            Err(e) => {
-                self.state
-                    .set_error(format!("Failed to open config: {}", e));
-            }
-        }
-
+        let _ = self.open_editor_for_file(config_path);
         Ok(())
     }
 
