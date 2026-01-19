@@ -19,7 +19,7 @@ use std::io;
 use termide_app::App;
 use termide_config::Config;
 use termide_git::check_git_available;
-use termide_i18n::{init_with_language, t};
+use termide_i18n::init_with_language;
 use termide_panel_file_manager::FileManager;
 use termide_theme::set_themes_dir;
 
@@ -37,12 +37,6 @@ fn main() -> Result<()> {
 
     // Check for git on the system
     let git_available = check_git_available();
-    let tr = t();
-    if git_available {
-        eprintln!("{}", tr.git_detected());
-    } else {
-        eprintln!("{}", tr.git_not_found());
-    }
 
     // Initialize terminal
     enable_raw_mode()?;
@@ -81,6 +75,9 @@ fn main() -> Result<()> {
 
     // Create application with terminal size to ensure proper panel layout
     let mut app = App::new_with_size(size.width, size.height);
+
+    // Log git availability to journal (not to stderr)
+    app.log_git_status(git_available);
 
     // Try to load session, fallback to default layout on error
     if let Err(_e) = app.load_session() {

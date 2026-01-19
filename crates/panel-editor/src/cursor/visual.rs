@@ -267,6 +267,7 @@ pub fn move_to_visual_line_end(
 /// Move cursor up by page_size visual lines.
 ///
 /// Returns final cursor position after moving up by page_size steps or until top of document.
+/// If less than a page remains to start, moves cursor to (0, 0).
 pub fn page_up(
     cursor: &Cursor,
     buffer: &TextBuffer,
@@ -276,6 +277,7 @@ pub fn page_up(
     page_size: usize,
 ) -> Cursor {
     let mut current_cursor = *cursor;
+    let mut moves_made = 0;
 
     for _ in 0..page_size {
         let prev_cursor = current_cursor;
@@ -288,6 +290,7 @@ pub fn page_up(
             use_smart_wrap,
         ) {
             current_cursor = new_cursor;
+            moves_made += 1;
         }
 
         // Stop if we haven't moved (at top of document)
@@ -296,12 +299,18 @@ pub fn page_up(
         }
     }
 
+    // If we moved less than a full page, we're near top - go to beginning
+    if moves_made < page_size {
+        return Cursor::at(0, 0);
+    }
+
     current_cursor
 }
 
 /// Move cursor down by page_size visual lines.
 ///
 /// Returns final cursor position after moving down by page_size steps or until bottom of document.
+/// If less than a page remains to end, moves cursor to end of file.
 pub fn page_down(
     cursor: &Cursor,
     buffer: &TextBuffer,
@@ -312,6 +321,7 @@ pub fn page_down(
 ) -> Cursor {
     let mut current_cursor = *cursor;
     let max_line = buffer.line_count().saturating_sub(1);
+    let mut moves_made = 0;
 
     for _ in 0..page_size {
         let prev_cursor = current_cursor;
@@ -324,6 +334,7 @@ pub fn page_down(
             use_smart_wrap,
         ) {
             current_cursor = new_cursor;
+            moves_made += 1;
         }
 
         // Stop if we haven't moved (at bottom of document)
@@ -335,6 +346,12 @@ pub fn page_down(
         if current_cursor.line >= max_line {
             break;
         }
+    }
+
+    // If we moved less than a full page, we're near bottom - go to end of file
+    if moves_made < page_size {
+        let last_line_len = buffer.line_len_graphemes(max_line);
+        return Cursor::at(max_line, last_line_len);
     }
 
     current_cursor

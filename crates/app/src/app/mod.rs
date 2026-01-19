@@ -14,7 +14,9 @@ use std::time::Duration;
 use termide_app_core::{LayoutController, PanelProvider};
 use termide_app_event::DefaultHotkeyProcessor;
 use termide_core::event::{Event, EventHandler};
+use termide_i18n::t;
 use termide_layout::LayoutManager;
+use termide_logger as logger;
 
 use crate::LayoutManagerSession;
 
@@ -120,6 +122,16 @@ impl App {
         let mut app = Self::new();
         app.state.update_terminal_size(width, height);
         app
+    }
+
+    /// Log git availability status to journal
+    pub fn log_git_status(&self, git_available: bool) {
+        let tr = t();
+        if git_available {
+            logger::info(tr.git_detected());
+        } else {
+            logger::warn(tr.git_not_found());
+        }
     }
 
     /// Add a panel (automatically stacks if width threshold is reached)
