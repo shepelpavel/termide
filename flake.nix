@@ -65,7 +65,7 @@
         packages = {
           default = pkgs.rustPlatform.buildRustPackage {
             pname = "termide";
-            version = "0.8.9";
+            version = "0.9.0";
 
             src = ./.;
 
