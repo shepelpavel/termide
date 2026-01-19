@@ -19,7 +19,8 @@ pub use inline_selector::InlineSelector;
 pub use language_dropdown::{find_current_language_index, LanguageDropdown};
 pub use menu::{
     get_menu_item_x_position, get_menu_items, render_menu, resource_color, MenuRenderParams,
-    ACTIONS_MENU_INDEX, MENU_ITEM_COUNT, OPTIONS_MENU_INDEX, SESSIONS_MENU_INDEX, TOOLS_MENU_INDEX,
+    MENU_ITEM_COUNT, OPTIONS_MENU_INDEX, SCRIPTS_MENU_INDEX, SESSIONS_MENU_INDEX,
+    WINDOWS_MENU_INDEX,
 };
 pub use panel_rendering::{
     render_collapsed_panel, render_dividers, render_expanded_panel, ExpandedPanelParams,

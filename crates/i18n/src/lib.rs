@@ -293,9 +293,9 @@ pub trait Translation: Send + Sync {
 
     // Menu
     fn menu_sessions(&self) -> &str;
-    fn menu_tools(&self) -> &str;
-    fn menu_actions(&self) -> &str;
-    fn menu_actions_add(&self) -> &str;
+    fn menu_windows(&self) -> &str;
+    fn menu_scripts(&self) -> &str;
+    fn menu_scripts_add(&self) -> &str;
     fn menu_options(&self) -> &str;
     fn menu_quit(&self) -> &str;
     fn menu_navigate_hint(&self) -> &str;

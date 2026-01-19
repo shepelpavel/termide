@@ -18,8 +18,8 @@ use termide_ui_render::{
     get_actions_group_items, get_actions_items, get_menu_item_x_position, get_options_items,
     get_sessions_items, get_tools_items, render_collapsed_panel, render_dividers,
     render_expanded_panel, render_menu, Dropdown, ExpandedPanelParams, LanguageDropdown,
-    MenuRenderParams, ThemeDropdown, ACTIONS_MENU_INDEX, OPTIONS_MENU_INDEX, SESSIONS_MENU_INDEX,
-    TOOLS_MENU_INDEX,
+    MenuRenderParams, ThemeDropdown, OPTIONS_MENU_INDEX, SCRIPTS_MENU_INDEX, SESSIONS_MENU_INDEX,
+    WINDOWS_MENU_INDEX,
 };
 
 use termide_modal::Modal;
@@ -52,11 +52,11 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
 
     // Render Tools submenu if open
     if state.ui.menu_open
-        && state.ui.selected_menu_item == Some(TOOLS_MENU_INDEX)
+        && state.ui.selected_menu_item == Some(WINDOWS_MENU_INDEX)
         && state.ui.tools_submenu.open
     {
         // Calculate position of Tools menu item
-        let menu_x = get_menu_item_x_position(TOOLS_MENU_INDEX);
+        let menu_x = get_menu_item_x_position(WINDOWS_MENU_INDEX);
         let dropdown_y = 1_u16; // Below menu bar
 
         // Render Tools submenu
@@ -73,12 +73,12 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
 
     // Render Actions submenu if open
     if state.ui.menu_open
-        && state.ui.selected_menu_item == Some(ACTIONS_MENU_INDEX)
+        && state.ui.selected_menu_item == Some(SCRIPTS_MENU_INDEX)
         && state.ui.actions_submenu.open
     {
         // Load actions registry
         if let Some(registry) = termide_config::actions::ActionsRegistry::load() {
-            let menu_x = get_menu_item_x_position(ACTIONS_MENU_INDEX);
+            let menu_x = get_menu_item_x_position(SCRIPTS_MENU_INDEX);
             let dropdown_y = 1_u16; // Below menu bar
 
             // Render Actions submenu

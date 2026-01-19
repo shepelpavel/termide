@@ -963,16 +963,16 @@ impl Translation for RuntimeTranslation {
         self.get_string("menu_sessions")
     }
 
-    fn menu_tools(&self) -> &str {
-        self.get_string("menu_tools")
+    fn menu_windows(&self) -> &str {
+        self.get_string("menu_windows")
     }
 
-    fn menu_actions(&self) -> &str {
-        self.get_string("menu_actions")
+    fn menu_scripts(&self) -> &str {
+        self.get_string("menu_scripts")
     }
 
-    fn menu_actions_add(&self) -> &str {
-        self.get_string("menu_actions_add")
+    fn menu_scripts_add(&self) -> &str {
+        self.get_string("menu_scripts_add")
     }
 
     fn menu_options(&self) -> &str {

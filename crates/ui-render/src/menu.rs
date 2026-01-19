@@ -34,8 +34,8 @@ pub fn get_menu_items() -> Vec<String> {
     let t = i18n::t();
     vec![
         t.menu_sessions().to_string(),
-        t.menu_tools().to_string(),
-        t.menu_actions().to_string(),
+        t.menu_windows().to_string(),
+        t.menu_scripts().to_string(),
         t.menu_options().to_string(),
     ]
 }
@@ -46,11 +46,11 @@ pub const MENU_ITEM_COUNT: usize = 4;
 /// Index of Sessions menu item (no keyboard accelerator highlighting)
 pub const SESSIONS_MENU_INDEX: usize = 0;
 
-/// Index of Tools menu item (for submenu positioning)
-pub const TOOLS_MENU_INDEX: usize = 1;
+/// Index of Windows menu item (for submenu positioning)
+pub const WINDOWS_MENU_INDEX: usize = 1;
 
-/// Index of Actions menu item (for submenu positioning)
-pub const ACTIONS_MENU_INDEX: usize = 2;
+/// Index of Scripts menu item (for submenu positioning)
+pub const SCRIPTS_MENU_INDEX: usize = 2;
 
 /// Index of Options menu item (for submenu positioning)
 pub const OPTIONS_MENU_INDEX: usize = 3;

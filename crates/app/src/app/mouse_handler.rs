@@ -13,8 +13,8 @@ use termide_logger as logger;
 use termide_theme::Theme;
 use termide_ui_render::{
     get_actions_group_items, get_actions_items, get_menu_item_x_position, get_options_items,
-    get_sessions_items, get_tools_items, ACTIONS_MENU_INDEX, OPTIONS_MENU_INDEX,
-    SESSIONS_MENU_INDEX, TOOLS_MENU_INDEX,
+    get_sessions_items, get_tools_items, OPTIONS_MENU_INDEX, SCRIPTS_MENU_INDEX,
+    SESSIONS_MENU_INDEX, WINDOWS_MENU_INDEX,
 };
 
 impl App {
@@ -625,7 +625,7 @@ impl App {
     /// Returns true if click was handled
     fn handle_tools_submenu_click(&mut self, x: u16, y: u16) -> Result<bool> {
         // Get Tools dropdown position
-        let menu_x = get_menu_item_x_position(TOOLS_MENU_INDEX);
+        let menu_x = get_menu_item_x_position(WINDOWS_MENU_INDEX);
         let dropdown_y = 1_u16;
 
         // Calculate Tools dropdown dimensions
@@ -676,7 +676,7 @@ impl App {
                 let nested_items = get_actions_group_items(&registry, group_name);
                 if !nested_items.is_empty() {
                     // Calculate nested submenu position (to the right of main dropdown)
-                    let menu_x = get_menu_item_x_position(ACTIONS_MENU_INDEX);
+                    let menu_x = get_menu_item_x_position(SCRIPTS_MENU_INDEX);
                     let actions_items = get_actions_items(&registry);
                     let actions_width = actions_items
                         .iter()
@@ -716,7 +716,7 @@ impl App {
         }
 
         // Get Actions dropdown position
-        let menu_x = get_menu_item_x_position(ACTIONS_MENU_INDEX);
+        let menu_x = get_menu_item_x_position(SCRIPTS_MENU_INDEX);
         let dropdown_y = 1_u16;
 
         // Calculate Actions dropdown dimensions

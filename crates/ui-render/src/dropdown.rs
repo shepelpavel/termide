@@ -253,10 +253,10 @@ pub fn get_actions_items(registry: &termide_config::actions::ActionsRegistry) ->
         items.push(DropdownItem::new(&group.name, &group.name).with_submenu());
     }
 
-    // If no actions exist, show "Add action..." item
+    // If no scripts exist, show "Add script..." item
     if items.is_empty() {
         let t = i18n::t();
-        items.push(DropdownItem::new(t.menu_actions_add(), ACTION_ADD_NEW));
+        items.push(DropdownItem::new(t.menu_scripts_add(), ACTION_ADD_NEW));
     }
 
     items
