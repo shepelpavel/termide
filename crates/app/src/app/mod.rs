@@ -257,6 +257,9 @@ impl App {
                     // Check background git operation result (push/pull)
                     self.check_git_operation_result();
 
+                    // Check background script operation result (.report. scripts)
+                    self.check_script_operation_result();
+
                     // Update system resource monitoring (CPU, RAM)
                     self.update_system_resources();
 
@@ -744,6 +747,65 @@ impl App {
                 self.state.clear_status();
                 // Notify all panels about git operation completed (shows Push/Pull buttons)
                 self.notify_git_operation_state(false, None, 0);
+            }
+        }
+    }
+
+    /// Check for background script operation result (.report. scripts)
+    fn check_script_operation_result(&mut self) {
+        use crate::state::ActiveModal;
+        use std::sync::mpsc::TryRecvError;
+        use termide_modal::InfoModal;
+
+        let handle = match self.state.script_operation_handle.take() {
+            Some(h) => h,
+            None => return,
+        };
+
+        match handle.receiver.try_recv() {
+            Ok(result) => {
+                // Show result modal
+                let title = if result.success {
+                    format!("{} ✓", result.script_name)
+                } else {
+                    format!("{} ✗", result.script_name)
+                };
+
+                // Collect output lines (no labels, just plain text)
+                let mut lines = vec![];
+
+                // Add stdout lines
+                for line in result.stdout.lines() {
+                    let trimmed = line.trim();
+                    if !trimmed.is_empty() {
+                        lines.push((String::new(), trimmed.to_string()));
+                    }
+                }
+
+                // Add stderr lines
+                for line in result.stderr.lines() {
+                    let trimmed = line.trim();
+                    if !trimmed.is_empty() {
+                        lines.push((String::new(), trimmed.to_string()));
+                    }
+                }
+
+                // Fallback if no output
+                if lines.is_empty() {
+                    lines.push((String::new(), "(no output)".to_string()));
+                }
+
+                let modal = InfoModal::new(&title, lines);
+                self.state.active_modal = Some(ActiveModal::Info(Box::new(modal)));
+                self.state.needs_redraw = true;
+            }
+            Err(TryRecvError::Empty) => {
+                // Operation still in progress - put handle back
+                self.state.script_operation_handle = Some(handle);
+            }
+            Err(TryRecvError::Disconnected) => {
+                // Thread finished without sending (shouldn't happen)
+                // Just ignore
             }
         }
     }

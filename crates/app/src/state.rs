@@ -62,6 +62,35 @@ impl std::fmt::Debug for GitOperationHandle {
     }
 }
 
+/// Result of background script operation (.report. scripts)
+#[derive(Debug)]
+pub struct ScriptOperationResult {
+    /// Script display name
+    pub script_name: String,
+    /// Whether the script succeeded (exit code 0)
+    pub success: bool,
+    /// Standard output
+    pub stdout: String,
+    /// Standard error
+    pub stderr: String,
+}
+
+/// Handle for background script operation
+pub struct ScriptOperationHandle {
+    /// Receiver for operation result
+    pub receiver: mpsc::Receiver<ScriptOperationResult>,
+    /// Script display name
+    pub script_name: String,
+}
+
+impl std::fmt::Debug for ScriptOperationHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ScriptOperationHandle")
+            .field("script_name", &self.script_name)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Global application state
 #[derive(Debug)]
 pub struct AppState {
@@ -83,6 +112,8 @@ pub struct AppState {
     pub dir_size_receiver: Option<mpsc::Receiver<DirSizeResult>>,
     /// Handle for background git operation (allows cancellation)
     pub git_operation_handle: Option<GitOperationHandle>,
+    /// Handle for background script operation (.report. scripts)
+    pub script_operation_handle: Option<ScriptOperationHandle>,
     /// Unified watcher for filesystem and git changes
     pub watcher: Option<UnifiedWatcher>,
     /// Current theme
@@ -148,6 +179,7 @@ impl AppState {
             pending_action: None,
             dir_size_receiver: None,
             git_operation_handle: None,
+            script_operation_handle: None,
             watcher: None,
             theme,
             config,

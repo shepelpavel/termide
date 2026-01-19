@@ -963,7 +963,10 @@ impl App {
 
         let cwd = self.get_focused_panel_cwd();
 
-        if action.is_background {
+        if action.is_report {
+            // Run in background with output capture, show result in modal
+            self.run_report_script(action, &cwd)?;
+        } else if action.is_background {
             // Fire-and-forget spawn (no terminal panel)
             logger::info(format!(
                 "Running background action '{}' in {:?}",
@@ -1011,6 +1014,66 @@ impl App {
                     ));
                     self.state.set_error(format!("Failed to run action: {}", e));
                 }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Run a report script in background, capturing output for modal display
+    fn run_report_script(
+        &mut self,
+        action: &termide_config::actions::ActionItem,
+        cwd: &std::path::Path,
+    ) -> Result<()> {
+        use crate::state::{ScriptOperationHandle, ScriptOperationResult};
+
+        logger::info(format!(
+            "Running report script '{}' in {:?}",
+            action.name, cwd
+        ));
+
+        let child = std::process::Command::new(&action.path)
+            .current_dir(cwd)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn();
+
+        match child {
+            Ok(child) => {
+                let script_name = action.name.clone();
+                let (tx, rx) = std::sync::mpsc::channel();
+
+                std::thread::spawn(move || {
+                    let output = child.wait_with_output();
+                    let result = match output {
+                        Ok(out) => ScriptOperationResult {
+                            script_name: script_name.clone(),
+                            success: out.status.success(),
+                            stdout: String::from_utf8_lossy(&out.stdout).to_string(),
+                            stderr: String::from_utf8_lossy(&out.stderr).to_string(),
+                        },
+                        Err(e) => ScriptOperationResult {
+                            script_name: script_name.clone(),
+                            success: false,
+                            stdout: String::new(),
+                            stderr: e.to_string(),
+                        },
+                    };
+                    let _ = tx.send(result);
+                });
+
+                self.state.script_operation_handle = Some(ScriptOperationHandle {
+                    receiver: rx,
+                    script_name: action.name.clone(),
+                });
+            }
+            Err(e) => {
+                logger::error(format!(
+                    "Failed to run report script '{}': {}",
+                    action.name, e
+                ));
+                self.state.set_error(format!("Failed to run script: {}", e));
             }
         }
 

@@ -16,6 +16,8 @@ pub struct ActionItem {
     pub path: PathBuf,
     /// Whether this is a background action (contains `.bg.` in filename).
     pub is_background: bool,
+    /// Whether this action shows result in modal (contains `.report.` in filename).
+    pub is_report: bool,
 }
 
 /// A group of actions (subdirectory).
@@ -44,6 +46,9 @@ impl ActionItem {
         // Check if this is a background action (contains .bg. in name)
         let is_background = file_name.contains(".bg.");
 
+        // Check if this is a report action (contains .report. in name)
+        let is_report = file_name.contains(".report.");
+
         // Extract display name (part before first dot)
         let name = file_name
             .split('.')
@@ -55,6 +60,7 @@ impl ActionItem {
             name,
             path,
             is_background,
+            is_report,
         })
     }
 }
@@ -162,14 +168,22 @@ mod tests {
         let item = ActionItem::from_path(PathBuf::from("/path/to/script.sh")).unwrap();
         assert_eq!(item.name, "script");
         assert!(!item.is_background);
+        assert!(!item.is_report);
 
         let item = ActionItem::from_path(PathBuf::from("/path/to/deploy.bg.sh")).unwrap();
         assert_eq!(item.name, "deploy");
         assert!(item.is_background);
+        assert!(!item.is_report);
 
         let item = ActionItem::from_path(PathBuf::from("/path/to/my.cool.script.bg.sh")).unwrap();
         assert_eq!(item.name, "my");
         assert!(item.is_background);
+        assert!(!item.is_report);
+
+        let item = ActionItem::from_path(PathBuf::from("/path/to/check.report.sh")).unwrap();
+        assert_eq!(item.name, "check");
+        assert!(!item.is_background);
+        assert!(item.is_report);
     }
 
     #[test]
@@ -177,6 +191,7 @@ mod tests {
         let item = ActionItem::from_path(PathBuf::from("/path/to/myscript")).unwrap();
         assert_eq!(item.name, "myscript");
         assert!(!item.is_background);
+        assert!(!item.is_report);
     }
 
     #[test]
