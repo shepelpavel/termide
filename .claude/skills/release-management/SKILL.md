@@ -326,8 +326,6 @@ Optional reviews (feature changes):
 ⚠️  README.md - Features list (check if new features added)
 ⚠️  doc/en/*.md - Feature documentation (check if needs updates)
 ⚠️  doc/ru/*.md - Russian translations (check if needs updates)
-⚠️  help/en.txt - Keyboard shortcuts (check if any changed)
-⚠️  help/ru.txt - Keyboard shortcuts (check if any changed)
 
 Based on the changes analysis:
 - FileManager refactoring: May need architecture.md updates (DONE)
