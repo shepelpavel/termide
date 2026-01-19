@@ -1023,8 +1023,8 @@ impl Translation for RuntimeTranslation {
         self.get_string("options_help")
     }
 
-    fn options_manage_actions(&self) -> &str {
-        self.get_string("options_manage_actions")
+    fn options_manage_scripts(&self) -> &str {
+        self.get_string("options_manage_scripts")
     }
 
     fn git_action_stage(&self) -> &str {

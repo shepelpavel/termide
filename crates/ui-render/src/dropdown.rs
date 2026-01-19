@@ -226,7 +226,7 @@ pub fn get_options_items() -> Vec<DropdownItem> {
     vec![
         DropdownItem::new(t.preferences_themes(), "themes").with_submenu(),
         DropdownItem::new(t.preferences_language(), "language").with_submenu(),
-        DropdownItem::new(t.options_manage_actions(), "manage_actions"),
+        DropdownItem::new(t.options_manage_scripts(), "manage_scripts"),
         DropdownItem::new(t.preferences_edit(), "edit_preferences"),
         DropdownItem::new(t.options_help(), "help"),
         DropdownItem::new(t.menu_quit(), "quit"),

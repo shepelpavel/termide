@@ -312,7 +312,7 @@ pub trait Translation: Send + Sync {
 
     // Options submenu
     fn options_help(&self) -> &str;
-    fn options_manage_actions(&self) -> &str;
+    fn options_manage_scripts(&self) -> &str;
 
     // Git action buttons
     fn git_action_stage(&self) -> &str;
