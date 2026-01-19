@@ -24,8 +24,18 @@ use ratatui::{
 use std::any::Any;
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, LazyLock, Mutex, RwLock};
 use std::thread;
+
+/// Cached regex for URL detection in terminal (compiled once, used many times)
+static URL_REGEX: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r#"(?:https?|ftp)://[^\s)>\]\}"'`<]+"#).expect("URL regex pattern is valid")
+});
+
+/// Cached regex for file path detection in terminal (compiled once, used many times)
+static PATH_REGEX: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r#"(?:~|\.\.?)?/[^\s)>\]\}"'`<:*?|]+"#).expect("Path regex pattern is valid")
+});
 use vte::Parser;
 
 use termide_config::{matches_binding_or_default, Config, TerminalKeybindings};
@@ -1074,9 +1084,8 @@ impl Terminal {
             None
         };
 
-        // Try to detect URL first
-        let url_pattern = regex::Regex::new(r#"(?:https?|ftp)://[^\s)>\]\}"'`<]+"#).ok()?;
-        for m in url_pattern.find_iter(&combined_text) {
+        // Try to detect URL first (using cached regex)
+        for m in URL_REGEX.find_iter(&combined_text) {
             if cursor_offset >= m.start() && cursor_offset < m.end() {
                 if let Some((row, col)) = find_start_pos(m.start()) {
                     return Some((LinkType::Url(m.as_str().to_string()), row, col));
@@ -1084,10 +1093,9 @@ impl Terminal {
             }
         }
 
-        // Try to detect file path
+        // Try to detect file path (using cached regex)
         // Matches: /path/to/file, ./path, ../path, ~/path
-        let path_pattern = regex::Regex::new(r#"(?:~|\.\.?)?/[^\s)>\]\}"'`<:*?|]+"#).ok()?;
-        for m in path_pattern.find_iter(&combined_text) {
+        for m in PATH_REGEX.find_iter(&combined_text) {
             if cursor_offset >= m.start() && cursor_offset < m.end() {
                 let path_str = m.as_str();
                 // Expand ~ to home directory
@@ -1520,10 +1528,9 @@ impl Panel for Terminal {
             let screen = self.screen.read().expect("Terminal screen lock poisoned");
             let abs_row = screen.visual_to_absolute(inner_row);
             let cols = screen.cols;
-            let cwd = self.initial_cwd.clone();
 
             if let Some((link_type, link_start_row, link_start_col)) =
-                Self::detect_link_at_position(&screen, abs_row, inner_col, &cwd)
+                Self::detect_link_at_position(&screen, abs_row, inner_col, &self.initial_cwd)
             {
                 // Link found - check if it's new
                 let is_new_link = self
