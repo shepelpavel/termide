@@ -190,6 +190,19 @@ jobs:
     # Only create release when triggered by tag (not workflow_dispatch)
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract changelog for version
+        id: changelog
+        run: |
+          VERSION="${{ github.ref_name }}"
+          # Extract section for this version from CHANGELOG.md
+          # Start from "## [VERSION]" line, end before next "## [" line
+          BODY=$(awk "/^## \\[${VERSION}\\]/{found=1; next} /^## \\[/{if(found) exit} found{print}" CHANGELOG.md)
+          # Write to file to preserve newlines
+          echo "$BODY" > release_notes.md
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -199,6 +212,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/**/*
+          body_path: release_notes.md
           draft: false
           prerelease: false
 
