@@ -1,6 +1,7 @@
 // Allow some clippy lints for VT100 implementation
 #![allow(clippy::needless_range_loop)]
 
+mod link_detection;
 mod terminal;
 mod terminal_info;
 
@@ -10,6 +11,7 @@ pub use terminal_info::TerminalInfo;
 
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use link_detection::{HighlightSegment, LinkType};
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
@@ -24,36 +26,14 @@ use ratatui::{
 use std::any::Any;
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, LazyLock, Mutex, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
-
-/// Cached regex for URL detection in terminal (compiled once, used many times)
-static URL_REGEX: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r#"(?:https?|ftp)://[^\s)>\]\}"'`<]+"#).expect("URL regex pattern is valid")
-});
-
-/// Cached regex for file path detection in terminal (compiled once, used many times)
-static PATH_REGEX: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r#"(?:~|\.\.?)?/[^\s)>\]\}"'`<:*?|]+"#).expect("Path regex pattern is valid")
-});
 use vte::Parser;
 
 use termide_config::{matches_binding_or_default, Config, TerminalKeybindings};
 use termide_core::{CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel};
 use termide_theme::Theme;
 use termide_ui::{system_monitor::DiskSpaceInfo, ScrollBar};
-
-/// Highlight segment: (abs_row, start_col, end_col)
-type HighlightSegment = (usize, usize, usize);
-
-/// Type of detected link in terminal
-#[derive(Clone, Debug, PartialEq)]
-pub enum LinkType {
-    /// HTTP/HTTPS/FTP URL
-    Url(String),
-    /// Local file path (resolved to absolute)
-    FilePath(std::path::PathBuf),
-}
 
 /// Full-featured terminal with PTY
 pub struct Terminal {
@@ -985,154 +965,6 @@ impl Terminal {
         self.has_new_data.swap(false, Ordering::AcqRel)
     }
 
-    /// Detect link (URL or file path) at given position.
-    /// Returns (LinkType, start_row, start_col) if found.
-    fn detect_link_at_position(
-        screen: &TerminalScreen,
-        abs_row: usize,
-        col: usize,
-        cwd: &std::path::Path,
-    ) -> Option<(LinkType, usize, usize)> {
-        let cols = screen.cols;
-
-        // Look back up to 5 lines to find where a wrapped link might have started
-        let start_row = abs_row.saturating_sub(5);
-
-        // Find the actual start row (first line that doesn't look like a continuation)
-        let mut search_start = abs_row;
-        for row in (start_row..abs_row).rev() {
-            if let Some(line) = screen.get_line_by_absolute(row) {
-                let line_text: String = line.iter().map(|c| c.ch).collect();
-                let trimmed_len = line_text.trim_end().len();
-                if trimmed_len >= cols {
-                    search_start = row;
-                } else {
-                    break;
-                }
-            } else {
-                break;
-            }
-        }
-
-        // Concatenate text from search_start through current row and forward
-        let mut combined_text = String::new();
-        let mut line_starts: Vec<(usize, usize)> = Vec::new();
-
-        for row in search_start.. {
-            if let Some(line) = screen.get_line_by_absolute(row) {
-                line_starts.push((row, combined_text.len()));
-                let line_text: String = line.iter().map(|c| c.ch).collect();
-                let trimmed_len = line_text.trim_end().len();
-                combined_text.push_str(&line_text);
-
-                if row >= abs_row && trimmed_len < cols {
-                    break;
-                }
-                if row > abs_row + 5 {
-                    break;
-                }
-            } else {
-                break;
-            }
-        }
-
-        // Calculate cursor offset in combined text
-        let cursor_offset = line_starts
-            .iter()
-            .find(|(row, _)| *row == abs_row)
-            .map(|(_, offset)| offset + col)?;
-
-        // Helper to find start row/col from offset
-        let find_start_pos = |start_offset: usize| -> Option<(usize, usize)> {
-            for (row, offset) in line_starts.iter().rev() {
-                if start_offset >= *offset {
-                    return Some((*row, start_offset - offset));
-                }
-            }
-            None
-        };
-
-        // Try to detect URL first (using cached regex)
-        for m in URL_REGEX.find_iter(&combined_text) {
-            if cursor_offset >= m.start() && cursor_offset < m.end() {
-                if let Some((row, col)) = find_start_pos(m.start()) {
-                    return Some((LinkType::Url(m.as_str().to_string()), row, col));
-                }
-            }
-        }
-
-        // Try to detect file path (using cached regex)
-        // Matches: /path/to/file, ./path, ../path, ~/path
-        for m in PATH_REGEX.find_iter(&combined_text) {
-            if cursor_offset >= m.start() && cursor_offset < m.end() {
-                let path_str = m.as_str();
-                // Expand ~ to home directory
-                let expanded = if let Some(suffix) = path_str.strip_prefix('~') {
-                    if let Ok(home) = std::env::var("HOME") {
-                        std::path::PathBuf::from(home).join(suffix.trim_start_matches('/'))
-                    } else {
-                        std::path::PathBuf::from(path_str)
-                    }
-                } else if path_str.starts_with('/') {
-                    std::path::PathBuf::from(path_str)
-                } else {
-                    // Relative path - resolve against cwd
-                    cwd.join(path_str)
-                };
-
-                // Check if path exists
-                if expanded.exists() {
-                    if let Some((row, col)) = find_start_pos(m.start()) {
-                        return Some((LinkType::FilePath(expanded), row, col));
-                    }
-                }
-            }
-        }
-
-        None
-    }
-
-    /// Build highlight segments for multi-line link.
-    fn build_link_segments(
-        text_len: usize,
-        start_row: usize,
-        start_col: usize,
-        cols: usize,
-    ) -> Vec<HighlightSegment> {
-        let mut segments = Vec::new();
-        let mut remaining = text_len;
-        let mut current_row = start_row;
-        let mut current_col = start_col;
-
-        while remaining > 0 {
-            let available = cols.saturating_sub(current_col);
-            let segment_len = remaining.min(available);
-
-            if segment_len > 0 {
-                segments.push((current_row, current_col, current_col + segment_len));
-            }
-
-            remaining = remaining.saturating_sub(segment_len);
-            current_row += 1;
-            current_col = 0;
-        }
-
-        segments
-    }
-
-    /// Get the text representation of a link for display/copying
-    fn link_text(link: &LinkType) -> String {
-        match link {
-            LinkType::Url(url) => url.clone(),
-            LinkType::FilePath(path) => path.display().to_string(),
-        }
-    }
-
-    /// Get the length of link text in characters
-    fn link_text_len(link: &LinkType) -> usize {
-        Self::link_text(link).chars().count()
-    }
-
     /// Get the name of the currently running foreground command
     fn get_foreground_command(&self) -> String {
         if let Some(pid) = self.shell_pid {
@@ -1498,7 +1330,12 @@ impl Panel for Terminal {
             let cols = screen.cols;
 
             if let Some((link_type, link_start_row, link_start_col)) =
-                Self::detect_link_at_position(&screen, abs_row, inner_col, &self.initial_cwd)
+                link_detection::detect_link_at_position(
+                    &screen,
+                    abs_row,
+                    inner_col,
+                    &self.initial_cwd,
+                )
             {
                 // Link found - check if it's new
                 let is_new_link = self
@@ -1508,14 +1345,18 @@ impl Panel for Terminal {
                     .unwrap_or(true);
 
                 // Build segments for multi-line highlighting
-                let text_len = Self::link_text_len(&link_type);
-                let segments =
-                    Self::build_link_segments(text_len, link_start_row, link_start_col, cols);
+                let text_len = link_detection::link_text_len(&link_type);
+                let segments = link_detection::build_link_segments(
+                    text_len,
+                    link_start_row,
+                    link_start_col,
+                    cols,
+                );
                 drop(screen);
 
                 if is_new_link {
                     // Copy link text to clipboard
-                    let _ = termide_ui::clipboard::copy(&Self::link_text(&link_type));
+                    let _ = termide_ui::clipboard::copy(&link_detection::link_text(&link_type));
                 }
                 self.hovered_link = Some((link_type, segments));
                 self.cached_lines = None; // Force redraw
