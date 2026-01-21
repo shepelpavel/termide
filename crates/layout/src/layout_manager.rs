@@ -598,8 +598,8 @@ impl LayoutManager {
 
             // Check if this is not the last group (divider exists after it)
             if idx < self.panel_groups.len() - 1 {
-                // Grab zone: [current_x - 1, current_x + 1]
-                if x >= current_x.saturating_sub(1) && x <= current_x.saturating_add(1) {
+                // Grab zone: [current_x - 1, current_x]
+                if x >= current_x.saturating_sub(1) && x <= current_x {
                     return Some(idx);
                 }
             }
