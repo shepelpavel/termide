@@ -1,0 +1,275 @@
+//! Cursor movement methods for the Editor.
+//!
+//! This module contains all cursor movement functionality including:
+//! - Physical line movement (up, down, left, right)
+//! - Visual line movement (accounting for word wrap)
+//! - Page up/down navigation
+//! - Document start/end navigation
+//! - Selection operations
+
+use crate::{cursor, selection};
+
+use super::Editor;
+
+impl Editor {
+    // =========================================================================
+    // Physical Cursor Movement
+    // =========================================================================
+
+    /// Move cursor up
+    pub(crate) fn move_cursor_up(&mut self) {
+        let maintain_preferred = cursor::physical::move_up(&mut self.cursor);
+        if !maintain_preferred {
+            self.input.preferred_column = None;
+        }
+        self.clamp_cursor();
+    }
+
+    /// Move cursor down
+    pub(crate) fn move_cursor_down(&mut self) {
+        let maintain_preferred = cursor::physical::move_down(&mut self.cursor, &self.buffer);
+        if !maintain_preferred {
+            self.input.preferred_column = None;
+        }
+        self.clamp_cursor();
+    }
+
+    /// Move cursor left
+    pub(crate) fn move_cursor_left(&mut self) {
+        let maintain_preferred = cursor::physical::move_left(&mut self.cursor, &self.buffer);
+        if !maintain_preferred {
+            self.input.preferred_column = None;
+        }
+    }
+
+    /// Move cursor right
+    pub(crate) fn move_cursor_right(&mut self) {
+        let maintain_preferred = cursor::physical::move_right(&mut self.cursor, &self.buffer);
+        if !maintain_preferred {
+            self.input.preferred_column = None;
+        }
+        self.clamp_cursor();
+    }
+
+    /// Move cursor to start of line
+    pub(crate) fn move_to_line_start(&mut self) {
+        let maintain_preferred = cursor::physical::move_to_line_start(&mut self.cursor);
+        if !maintain_preferred {
+            self.input.preferred_column = None;
+        }
+    }
+
+    /// Move cursor to end of line
+    pub(crate) fn move_to_line_end(&mut self) {
+        let maintain_preferred = cursor::physical::move_to_line_end(&mut self.cursor, &self.buffer);
+        if !maintain_preferred {
+            self.input.preferred_column = None;
+        }
+    }
+
+    /// Move cursor to start of document
+    pub(crate) fn move_to_document_start(&mut self) {
+        let (new_cursor, should_scroll) = cursor::physical::move_to_document_start();
+        self.cursor = new_cursor;
+        if should_scroll {
+            self.viewport.scroll_to_top();
+        }
+    }
+
+    /// Move cursor to end of document
+    pub(crate) fn move_to_document_end(&mut self) {
+        let (new_cursor, should_scroll) = cursor::physical::move_to_document_end(&self.buffer);
+        self.cursor = new_cursor;
+        if should_scroll {
+            // Use cached virtual line count for viewport scroll
+            self.viewport
+                .scroll_to_bottom(self.render_cache.virtual_line_count);
+        }
+    }
+
+    // =========================================================================
+    // Visual Cursor Movement (Word Wrap Aware)
+    // =========================================================================
+
+    /// Move cursor up by one visual line (accounting for word wrap)
+    pub(crate) fn move_cursor_up_visual(&mut self) {
+        if self.render_cache.content_width == 0 {
+            self.move_cursor_up();
+            return;
+        }
+
+        self.ensure_preferred_column();
+
+        if let Some(new_cursor) = cursor::visual::move_up(
+            &self.cursor,
+            &self.buffer,
+            self.input.preferred_column,
+            self.render_cache.content_width,
+            self.render_cache.use_smart_wrap,
+        ) {
+            self.cursor = new_cursor;
+        }
+
+        self.clamp_cursor();
+    }
+
+    /// Move cursor down by one visual line (accounting for word wrap)
+    pub(crate) fn move_cursor_down_visual(&mut self) {
+        if self.render_cache.content_width == 0 {
+            self.move_cursor_down();
+            return;
+        }
+
+        self.ensure_preferred_column();
+
+        if let Some(new_cursor) = cursor::visual::move_down(
+            &self.cursor,
+            &self.buffer,
+            self.input.preferred_column,
+            self.render_cache.content_width,
+            self.render_cache.use_smart_wrap,
+        ) {
+            self.cursor = new_cursor;
+        }
+
+        self.clamp_cursor();
+    }
+
+    /// Move cursor to start of visual line (for wrapped lines)
+    pub(crate) fn move_to_visual_line_start(&mut self) {
+        // Reset preferred column on horizontal movement
+        self.input.preferred_column = None;
+
+        if self.render_cache.content_width == 0 {
+            // No word wrap - fall back to physical line start
+            self.move_to_line_start();
+            return;
+        }
+
+        self.cursor.column = cursor::visual::move_to_visual_line_start(
+            &self.cursor,
+            &self.buffer,
+            self.render_cache.content_width,
+            self.render_cache.use_smart_wrap,
+        );
+    }
+
+    /// Move cursor to end of visual line (for wrapped lines)
+    pub(crate) fn move_to_visual_line_end(&mut self) {
+        // Reset preferred column on horizontal movement
+        self.input.preferred_column = None;
+
+        if self.render_cache.content_width == 0 {
+            // No word wrap - fall back to physical line end
+            self.move_to_line_end();
+            return;
+        }
+
+        self.cursor.column = cursor::visual::move_to_visual_line_end(
+            &self.cursor,
+            &self.buffer,
+            self.render_cache.content_width,
+            self.render_cache.use_smart_wrap,
+        );
+    }
+
+    // =========================================================================
+    // Page Navigation
+    // =========================================================================
+
+    /// Move cursor page up
+    pub(crate) fn page_up(&mut self) {
+        let page_size = self.viewport.height;
+        let (should_scroll, scroll_amount) = cursor::jump::page_up(&mut self.cursor, page_size);
+        self.clamp_cursor();
+        if should_scroll {
+            self.viewport.scroll_up(scroll_amount);
+        }
+    }
+
+    /// Move cursor page down
+    pub(crate) fn page_down(&mut self) {
+        let page_size = self.viewport.height;
+        let (should_scroll, scroll_amount) =
+            cursor::jump::page_down(&mut self.cursor, &self.buffer, page_size);
+        self.clamp_cursor();
+        if should_scroll {
+            // Use cached virtual line count for viewport scroll (accounts for deletion markers)
+            self.viewport
+                .scroll_down(scroll_amount, self.render_cache.virtual_line_count);
+        }
+    }
+
+    /// Move cursor page up by visual lines (accounting for word wrap)
+    pub(crate) fn page_up_visual(&mut self) {
+        if self.render_cache.content_width == 0 {
+            // No word wrap - fall back to physical line movement
+            self.page_up();
+            return;
+        }
+
+        self.ensure_preferred_column();
+
+        let page_size = self.viewport.height;
+        self.cursor = cursor::visual::page_up(
+            &self.cursor,
+            &self.buffer,
+            self.input.preferred_column,
+            self.render_cache.content_width,
+            self.render_cache.use_smart_wrap,
+            page_size,
+        );
+
+        // Don't manually scroll viewport - let ensure_cursor_visible() handle it during rendering
+        // This is correct because the viewport needs to track visual rows, not buffer lines
+    }
+
+    /// Move cursor page down by visual lines (accounting for word wrap)
+    pub(crate) fn page_down_visual(&mut self) {
+        if self.render_cache.content_width == 0 {
+            // No word wrap - fall back to physical line movement
+            self.page_down();
+            return;
+        }
+
+        self.ensure_preferred_column();
+
+        let page_size = self.viewport.height;
+        self.cursor = cursor::visual::page_down(
+            &self.cursor,
+            &self.buffer,
+            self.input.preferred_column,
+            self.render_cache.content_width,
+            self.render_cache.use_smart_wrap,
+            page_size,
+        );
+
+        // Don't manually scroll viewport - let ensure_cursor_visible() handle it during rendering
+        // This is correct because the viewport needs to track visual rows, not buffer lines
+    }
+
+    // =========================================================================
+    // Selection Operations
+    // =========================================================================
+
+    /// Select all
+    pub(crate) fn select_all(&mut self) {
+        let (new_selection, new_cursor) = selection::select_all(&self.buffer);
+        self.selection = Some(new_selection);
+        self.cursor = new_cursor;
+    }
+
+    /// Start new selection or continue existing
+    pub(crate) fn start_or_extend_selection(&mut self) {
+        if let Some(new_selection) =
+            selection::start_or_extend_selection(self.selection.as_ref(), self.cursor)
+        {
+            self.selection = Some(new_selection);
+        }
+    }
+
+    /// Update active point of selection (after cursor movement)
+    pub(crate) fn update_selection_active(&mut self) {
+        selection::update_selection_active(&mut self.selection, self.cursor);
+    }
+}
