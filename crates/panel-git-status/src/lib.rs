@@ -213,7 +213,7 @@ impl GitStatusPanel {
         };
 
         self.branch = git::get_current_branch(&repo);
-        self.branches = git::get_branches(&repo);
+        self.branches = git::get_all_branches(&repo);
         let (ahead, behind) = git::get_ahead_behind(&repo);
         self.ahead = ahead;
         self.behind = behind;

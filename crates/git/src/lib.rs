@@ -477,11 +477,51 @@ pub fn get_branches(repo: &Path) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Switch to a different branch
+/// Get all branches (local and remote-tracking).
+/// Remote branches are included only if there's no local branch with the same name.
+/// For example, if "main" exists locally, "origin/main" is not included.
+pub fn get_all_branches(repo: &Path) -> Vec<String> {
+    // Get local branches first
+    let local_branches: Vec<String> = get_branches(repo);
+
+    // Get remote branches
+    let remote_branches: Vec<String> =
+        git_command_stdout(repo, &["branch", "-r", "--format=%(refname:short)"])
+            .map(|s| {
+                s.lines()
+                    .map(|l| l.to_string())
+                    // Filter out HEAD pointer (e.g., "origin/HEAD")
+                    .filter(|b| !b.ends_with("/HEAD"))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+    // Combine: local branches + remote branches that don't have a local equivalent
+    let mut result = local_branches.clone();
+    for remote in remote_branches {
+        // Extract branch name after "origin/" (or other remote name)
+        if let Some(branch_name) = remote.split('/').nth(1) {
+            // Only add if no local branch with this name exists
+            if !local_branches.iter().any(|local| local == branch_name) {
+                result.push(remote);
+            }
+        }
+    }
+    result
+}
+
+/// Switch to a different branch.
+/// If branch looks like a remote branch (contains '/'), use --track to create a local tracking branch.
 pub fn checkout_branch(repo: &Path, branch: &str) -> Result<(), String> {
+    // If branch looks like a remote branch (contains '/'), use --track
+    let args: Vec<&str> = if branch.contains('/') {
+        vec!["checkout", "--track", branch]
+    } else {
+        vec!["checkout", branch]
+    };
     run_git_simple(
         repo,
-        &["checkout", branch],
+        &args,
         &format!("Failed to checkout branch: {}", branch),
     )
 }
