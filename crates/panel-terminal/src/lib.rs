@@ -458,10 +458,37 @@ impl Terminal {
         theme: &Theme,
     ) -> (Arc<Vec<Line<'static>>>, (usize, usize), bool) {
         // === PHASE 0: Check if we can return cached result ===
-        let (is_dirty, has_selection) = {
+        let (is_dirty, has_selection, sync_output, sync_output_ended) = {
             let screen = self.screen.read().expect("Terminal screen lock poisoned");
-            (screen.dirty, screen.selection_start.is_some())
+            (
+                screen.dirty,
+                screen.selection_start.is_some(),
+                screen.sync_output,
+                screen.sync_output_ended,
+            )
         };
+
+        // Invalidate cache if sync_output just ended (transition from true to false)
+        // This flag is set atomically in the CSI handler when processing 2026 'l'
+        if sync_output_ended {
+            self.cached_lines = None;
+            // Clear the flag under write lock
+            if let Ok(mut screen) = self.screen.write() {
+                screen.sync_output_ended = false;
+            }
+        }
+
+        // Skip rendering while synchronized output is active - return cached
+        // This prevents flickering when applications batch screen updates (e.g., Claude Code/Ink)
+        if sync_output {
+            if let Some(ref cached) = self.cached_lines {
+                return (
+                    Arc::clone(cached),
+                    self.cached_cursor,
+                    self.cached_cursor_shown,
+                );
+            }
+        }
 
         // Return cached if:
         // - Screen is not dirty (no new PTY output)

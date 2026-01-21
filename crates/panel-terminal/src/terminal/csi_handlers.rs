@@ -92,6 +92,17 @@ pub fn handle_private_sequence(screen: &mut TerminalScreen, params: &Params, c: 
         (2004, 'l') => {
             screen.bracketed_paste_mode = false;
         }
+        (2026, 'h') => {
+            // Synchronized output protocol - begin update batch
+            screen.sync_output = true;
+        }
+        (2026, 'l') => {
+            // Synchronized output protocol - end update batch
+            if screen.sync_output {
+                screen.sync_output_ended = true; // Signal cache invalidation needed
+            }
+            screen.sync_output = false;
+        }
         _ => {
             // Unknown private sequence - ignore
         }

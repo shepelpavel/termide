@@ -192,6 +192,12 @@ pub struct TerminalScreen {
     pub scroll_top: usize,
     /// Scroll region bottom (0-based, inclusive)
     pub scroll_bottom: usize,
+    /// Synchronized output mode (CSI ? 2026 h/l)
+    /// When enabled, rendering is deferred until mode is disabled
+    pub sync_output: bool,
+    /// Flag set when sync_output transitions from true to false
+    /// Signals that cached content must be invalidated
+    pub sync_output_ended: bool,
 }
 
 impl TerminalScreen {
@@ -224,6 +230,8 @@ impl TerminalScreen {
             dirty: true,
             scroll_top: 0,
             scroll_bottom: rows.saturating_sub(1),
+            sync_output: false,
+            sync_output_ended: false,
         }
     }
 
