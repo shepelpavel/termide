@@ -1,7 +1,10 @@
 // Allow some clippy lints for VT100 implementation
 #![allow(clippy::needless_range_loop)]
 
+mod clipboard;
+mod disk_space;
 mod link_detection;
+mod shell_utils;
 mod terminal;
 mod terminal_info;
 
@@ -33,7 +36,7 @@ use vte::Parser;
 use termide_config::{matches_binding_or_default, Config, TerminalKeybindings};
 use termide_core::{CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel};
 use termide_theme::Theme;
-use termide_ui::{system_monitor::DiskSpaceInfo, ScrollBar};
+use termide_ui::ScrollBar;
 
 /// Full-featured terminal with PTY
 pub struct Terminal {
@@ -91,8 +94,8 @@ impl Terminal {
         let pair = pty_system.openpty(size)?;
 
         // Detect shell
-        let shell = Self::detect_shell();
-        let shell_args = Self::get_shell_args(&shell);
+        let shell = shell_utils::detect_shell();
+        let shell_args = shell_utils::get_shell_args(&shell);
 
         let mut cmd = CommandBuilder::new(&shell);
 
@@ -226,54 +229,6 @@ impl Terminal {
         })
     }
 
-    /// Detect available shell
-    fn detect_shell() -> String {
-        // On NixOS first check bash-interactive in system profile
-        // (regular bash in nix store might be without readline)
-        let nixos_shells = [
-            "/run/current-system/sw/bin/fish",
-            "/run/current-system/sw/bin/zsh",
-            "/run/current-system/sw/bin/bash",
-        ];
-        for shell in nixos_shells {
-            if std::path::Path::new(shell).exists() {
-                return shell.to_string();
-            }
-        }
-
-        // Then check $SHELL
-        if let Ok(shell) = std::env::var("SHELL") {
-            if std::path::Path::new(&shell).exists() {
-                return shell;
-            }
-        }
-
-        // Check popular shells on regular systems
-        let shells = ["/usr/bin/fish", "/usr/bin/zsh", "/bin/bash", "/bin/sh"];
-        for shell in shells {
-            if std::path::Path::new(shell).exists() {
-                return shell.to_string();
-            }
-        }
-
-        "/bin/sh".to_string()
-    }
-
-    /// Get arguments for launching the shell
-    fn get_shell_args(shell_path: &str) -> Vec<&'static str> {
-        let shell_name = std::path::Path::new(shell_path)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("");
-
-        match shell_name {
-            "fish" => vec!["-l"],      // login shell
-            "zsh" => vec!["-l", "-i"], // login + interactive
-            "bash" => vec![],          // PTY will make it interactive automatically
-            _ => vec![],               // no arguments
-        }
-    }
-
     /// Resize terminal
     pub fn resize(&mut self, rows: u16, cols: u16) -> Result<()> {
         self.size = PtySize {
@@ -367,120 +322,12 @@ impl Terminal {
             .unwrap_or_else(|_| "~".to_string());
 
         // Get disk info for current directory
-        let disk_space = self.get_disk_space_for_path(&cwd);
+        let disk_space = disk_space::get_disk_space_for_path(&cwd);
 
         TerminalInfo {
             user_host,
             cwd,
             disk_space,
-        }
-    }
-
-    /// Resolve dm-X device to physical partition
-    /// e.g., /dev/dm-0 -> /dev/nvme0n1p2
-    fn resolve_dm_device(device: &str) -> Option<String> {
-        // Extract dm number (e.g., "dm-0" from "/dev/dm-0")
-        let dm_name = device.strip_prefix("/dev/")?;
-        if !dm_name.starts_with("dm-") {
-            return None;
-        }
-
-        // Read /sys/block/dm-X/slaves/ to find physical partition
-        let slaves_path = format!("/sys/block/{}/slaves", dm_name);
-        let slaves_dir = std::fs::read_dir(&slaves_path).ok()?;
-
-        // Get first slave (physical partition)
-        for entry in slaves_dir.flatten() {
-            if let Ok(name) = entry.file_name().into_string() {
-                return Some(format!("/dev/{}", name));
-            }
-        }
-
-        None
-    }
-
-    /// Get device name from /proc/mounts for a given path
-    fn get_device_for_path(path: &str) -> Option<String> {
-        let mounts_content = std::fs::read_to_string("/proc/mounts").ok()?;
-        let mut best_match: Option<(String, usize)> = None;
-
-        for line in mounts_content.lines() {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() < 2 {
-                continue;
-            }
-
-            let device = parts[0];
-            let mount_point = parts[1];
-
-            // Check if this mount point is a prefix of our path
-            if let Ok(canonical_path) = std::path::Path::new(path).canonicalize() {
-                if let Ok(canonical_mount) = std::path::Path::new(mount_point).canonicalize() {
-                    if canonical_path.starts_with(&canonical_mount) {
-                        let mount_len = canonical_mount.as_os_str().len();
-                        // Keep track of the longest matching mount point
-                        if best_match.is_none() || mount_len > best_match.as_ref().unwrap().1 {
-                            best_match = Some((device.to_string(), mount_len));
-                        }
-                    }
-                }
-            }
-        }
-
-        best_match.and_then(|(device, _)| {
-            // First try to resolve symlink (e.g., /dev/disk/by-uuid/... -> /dev/nvme0n1p2)
-            let resolved = std::path::Path::new(&device)
-                .canonicalize()
-                .ok()
-                .and_then(|p| p.to_str().map(|s| s.to_string()))
-                .unwrap_or_else(|| device.clone());
-
-            // If it's a dm device, resolve to physical partition
-            if resolved.contains("/dm-") {
-                Self::resolve_dm_device(&resolved).or(Some(resolved))
-            } else {
-                Some(resolved)
-            }
-        })
-    }
-
-    /// Get disk space information for specified path
-    fn get_disk_space_for_path(&self, path: &str) -> Option<DiskSpaceInfo> {
-        use std::ffi::CString;
-
-        let path_cstr = CString::new(path).ok()?;
-
-        // Get device name for this path
-        let device = Self::get_device_for_path(path);
-
-        // SAFETY: statvfs is a POSIX function that fills a statvfs struct with
-        // filesystem statistics. We zero-initialize the struct to ensure all fields
-        // have defined values. path_cstr is a valid null-terminated CString created
-        // above. statvfs returns 0 on success and writes valid data to the struct.
-        // We only read the struct fields after confirming success (return == 0).
-        unsafe {
-            let mut stat: libc::statvfs = std::mem::zeroed();
-            if libc::statvfs(path_cstr.as_ptr(), &mut stat) == 0 {
-                // On macOS, f_bavail and f_blocks are u32, f_bsize is u64
-                // On Linux, all are u64
-                #[cfg(target_os = "macos")]
-                let available = (stat.f_bavail as u64) * stat.f_bsize;
-                #[cfg(not(target_os = "macos"))]
-                let available = stat.f_bavail * stat.f_bsize;
-
-                #[cfg(target_os = "macos")]
-                let total = (stat.f_blocks as u64) * stat.f_bsize;
-                #[cfg(not(target_os = "macos"))]
-                let total = stat.f_blocks * stat.f_bsize;
-
-                Some(DiskSpaceInfo {
-                    device,
-                    available,
-                    total,
-                })
-            } else {
-                None
-            }
         }
     }
 
@@ -498,72 +345,14 @@ impl Terminal {
         Ok(())
     }
 
-    /// Get selected text using absolute buffer coordinates
-    fn get_selected_text(&self) -> String {
-        let screen = self.screen.read().expect("Terminal screen lock poisoned");
-        let (start, end) = match (screen.selection_start, screen.selection_end) {
-            (Some(s), Some(e)) => (s, e),
-            _ => return String::new(),
-        };
-
-        // Normalize: start should be before end
-        let (start, end) = if start <= end {
-            (start, end)
-        } else {
-            (end, start)
-        };
-
-        let mut result = String::new();
-
-        // Selection coordinates are absolute buffer positions
-        for abs_row in start.0..=end.0 {
-            // Get row from scrollback or active buffer
-            let Some(row) = screen.get_line_by_absolute(abs_row) else {
-                continue;
-            };
-
-            let col_start = if abs_row == start.0 { start.1 } else { 0 };
-            let col_end = if abs_row == end.0 {
-                end.1.min(row.len().saturating_sub(1))
-            } else {
-                row.len().saturating_sub(1)
-            };
-
-            for col_idx in col_start..=col_end {
-                if col_idx < row.len() {
-                    let ch = row[col_idx].ch;
-                    if ch != '\0' {
-                        result.push(ch);
-                    }
-                }
-            }
-
-            // Add line break between lines (but not at the end)
-            if abs_row < end.0 {
-                result.push('\n');
-            }
-        }
-
-        // Return without trimming - preserve trailing whitespace as selected
-        result
-    }
-
     /// Copy selected text to clipboard
     fn copy_selection_to_clipboard(&self) -> Result<()> {
-        let text = self.get_selected_text();
-        if text.is_empty() {
-            return Ok(());
-        }
-
-        // Use universal buffer (includes OSC 52)
-        let _ = termide_ui::clipboard::copy(&text);
-
-        Ok(())
+        clipboard::copy_selection_to_clipboard(&self.screen)
     }
 
     /// Paste text from clipboard to PTY.
     pub fn paste_from_clipboard(&mut self) -> Result<()> {
-        let Some(text) = termide_ui::clipboard::paste() else {
+        let Some(text) = clipboard::get_clipboard_text() else {
             return Ok(());
         };
 
@@ -582,25 +371,7 @@ impl Terminal {
         // Always use bracketed paste - the outer terminal (where termide runs)
         // already stripped the brackets, so we need to re-add them for the
         // inner shell/application running in our PTY
-        self.paste_atomic(text, true)
-    }
-
-    /// Send paste data as a single atomic write with optional bracketed paste.
-    fn paste_atomic(&mut self, text: &str, bracketed: bool) -> Result<()> {
-        let mut buffer = Vec::with_capacity(text.len() + 14);
-
-        if bracketed {
-            buffer.extend_from_slice(b"\x1b[200~");
-        }
-        buffer.extend_from_slice(text.as_bytes());
-        if bracketed {
-            buffer.extend_from_slice(b"\x1b[201~");
-        }
-
-        self.writer.write_all(&buffer)?;
-        self.writer.flush()?;
-
-        Ok(())
+        clipboard::paste_atomic(&mut self.writer, text, true)
     }
 
     /// Send mouse event to PTY (if mouse tracking is enabled)
