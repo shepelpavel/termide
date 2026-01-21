@@ -42,6 +42,8 @@ pub fn get_selected_text(screen: &RwLock<TerminalScreen>) -> String {
             row.len().saturating_sub(1)
         };
 
+        let line_start = result.len();
+
         for col_idx in col_start..=col_end {
             if col_idx < row.len() {
                 let ch = row[col_idx].ch;
@@ -51,13 +53,16 @@ pub fn get_selected_text(screen: &RwLock<TerminalScreen>) -> String {
             }
         }
 
+        // Trim trailing spaces from this line
+        let trimmed_len = result[line_start..].trim_end_matches(' ').len();
+        result.truncate(line_start + trimmed_len);
+
         // Add line break between lines (but not at the end)
         if abs_row < end.0 {
             result.push('\n');
         }
     }
 
-    // Return without trimming - preserve trailing whitespace as selected
     result
 }
 
