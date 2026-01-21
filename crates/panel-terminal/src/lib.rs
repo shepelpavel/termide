@@ -34,7 +34,9 @@ use std::thread;
 use vte::Parser;
 
 use termide_config::{matches_binding_or_default, Config, TerminalKeybindings};
-use termide_core::{CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel};
+use termide_core::{
+    get_terminal_caps, CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel,
+};
 use termide_theme::Theme;
 use termide_ui::ScrollBar;
 
@@ -109,8 +111,12 @@ impl Terminal {
             cwd.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| "/".into()));
         cmd.cwd(&working_dir);
 
-        // Set environment variables for correct readline and escape sequence behavior
-        cmd.env("TERM", "xterm-256color");
+        // Set TERM based on detected terminal capabilities
+        // Linux console (TTY) needs "linux" or "linux-16color", otherwise use xterm-256color
+        let term_value = get_terminal_caps()
+            .map(|caps| caps.term_for_child())
+            .unwrap_or("xterm-256color");
+        cmd.env("TERM", term_value);
         cmd.env("SHELL", &shell);
         cmd.env(
             "HOME",

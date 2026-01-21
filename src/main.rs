@@ -18,12 +18,21 @@ use std::io;
 
 use termide_app::App;
 use termide_config::Config;
+use termide_core::init_terminal_caps;
 use termide_git::check_git_available;
 use termide_i18n::init_with_language;
 use termide_panel_file_manager::FileManager;
-use termide_theme::set_themes_dir;
+use termide_theme::{set_ansi16_mode, set_themes_dir};
 
 fn main() -> Result<()> {
+    // Detect terminal capabilities first (before loading themes)
+    let caps = init_terminal_caps();
+
+    // Enable ANSI-16 color adaptation for limited color terminals (Linux TTY)
+    if caps.needs_color_adaptation() {
+        set_ansi16_mode(true);
+    }
+
     // Load config first to get language setting
     let config = Config::load().unwrap_or_default();
 

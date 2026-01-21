@@ -5,13 +5,61 @@
 mod colors;
 mod loader;
 
-pub use colors::Theme;
+pub use colors::{rgb_to_ansi16, Theme};
 pub use loader::load_theme;
 
 use ratatui::style::Color;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
+
+/// Global flag indicating if themes should be adapted for ANSI-16 palette.
+/// Set this early in application startup before loading any themes.
+static ANSI16_MODE: AtomicBool = AtomicBool::new(false);
+
+/// Cache for adapted themes (separate from user themes cache).
+static ADAPTED_THEMES: OnceLock<Mutex<HashMap<String, &'static Theme>>> = OnceLock::new();
+
+/// Enable ANSI-16 color adaptation mode.
+///
+/// When enabled, all themes loaded via `Theme::get_by_name()` will be
+/// automatically adapted to use only ANSI-16 colors (for Linux TTY/framebuffer).
+///
+/// Call this once at application startup, before loading any themes.
+pub fn set_ansi16_mode(enabled: bool) {
+    ANSI16_MODE.store(enabled, Ordering::Release);
+}
+
+/// Check if ANSI-16 mode is enabled.
+pub fn is_ansi16_mode() -> bool {
+    ANSI16_MODE.load(Ordering::Acquire)
+}
+
+/// Get or create an adapted theme for ANSI-16 mode.
+fn get_or_create_adapted_theme(name: &str, base_theme: &'static Theme) -> &'static Theme {
+    let cache = ADAPTED_THEMES.get_or_init(|| Mutex::new(HashMap::new()));
+
+    // Check if adapted theme is already cached
+    if let Ok(cache_lock) = cache.lock() {
+        if let Some(theme) = cache_lock.get(name) {
+            return theme;
+        }
+    }
+
+    // Create adapted theme
+    let adapted = base_theme.adapt_for_ansi16();
+
+    // Leak to get 'static reference
+    let static_theme: &'static Theme = Box::leak(Box::new(adapted));
+
+    // Cache it (ignore if mutex is poisoned)
+    if let Ok(mut cache_lock) = cache.lock() {
+        cache_lock.insert(name.to_string(), static_theme);
+    }
+
+    static_theme
+}
 
 // Embed theme files at compile time
 const THEME_ATOM_ONE_LIGHT_TOML: &str = include_str!("../themes/atom-one-light.toml");
@@ -275,14 +323,24 @@ impl Theme {
     ///
     /// First tries to load from user's config directory.
     /// If not found, falls back to built-in themes.
+    ///
+    /// If ANSI-16 mode is enabled (via `set_ansi16_mode(true)`),
+    /// the theme will be automatically adapted for limited color terminals.
     pub fn get_by_name(name: &str) -> &'static Theme {
         // Try to load user theme first
-        if let Some(theme) = try_load_user_theme(name) {
-            return theme;
+        let base_theme = if let Some(theme) = try_load_user_theme(name) {
+            theme
+        } else {
+            // Fall back to built-in themes
+            get_builtin_theme(name).unwrap_or_else(get_default_theme)
+        };
+
+        // If ANSI-16 mode is enabled, return adapted version
+        if is_ansi16_mode() {
+            return get_or_create_adapted_theme(name, base_theme);
         }
 
-        // Fall back to built-in themes
-        get_builtin_theme(name).unwrap_or_else(get_default_theme)
+        base_theme
     }
 
     /// Get list of all available built-in themes.
@@ -355,5 +413,49 @@ mod tests {
                 assert_eq!(darkgray.name, "darkgray");
             }
         }
+    }
+
+    #[test]
+    fn test_rgb_to_ansi16_black() {
+        // Pure black should map to ANSI black (index 0)
+        let color = rgb_to_ansi16(0, 0, 0);
+        assert_eq!(color, Color::Indexed(0));
+    }
+
+    #[test]
+    fn test_rgb_to_ansi16_white() {
+        // Pure white should map to bright white (index 15)
+        let color = rgb_to_ansi16(255, 255, 255);
+        assert_eq!(color, Color::Indexed(15));
+    }
+
+    #[test]
+    fn test_rgb_to_ansi16_red() {
+        // Bright red (255, 0, 0) should map to bright red (index 9)
+        let color = rgb_to_ansi16(255, 0, 0);
+        assert_eq!(color, Color::Indexed(9));
+
+        // Dark red (128, 0, 0) should map to normal red (index 1)
+        let color = rgb_to_ansi16(128, 0, 0);
+        assert_eq!(color, Color::Indexed(1));
+    }
+
+    #[test]
+    fn test_rgb_to_ansi16_gray() {
+        // Mid-gray should map to either white (7) or bright black (8)
+        let color = rgb_to_ansi16(128, 128, 128);
+        assert_eq!(color, Color::Indexed(8)); // Bright black (gray)
+    }
+
+    #[test]
+    fn test_ansi16_mode() {
+        // Test that set_ansi16_mode works
+        assert!(!is_ansi16_mode()); // Default is false
+
+        set_ansi16_mode(true);
+        assert!(is_ansi16_mode());
+
+        set_ansi16_mode(false);
+        assert!(!is_ansi16_mode());
     }
 }

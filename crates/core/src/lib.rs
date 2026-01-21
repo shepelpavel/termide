@@ -6,6 +6,7 @@
 pub mod command;
 pub mod event;
 pub mod panel;
+pub mod terminal_caps;
 pub mod util;
 
 pub use command::{CommandResult, PanelCommand};
@@ -14,6 +15,7 @@ pub use event::{
     PanelEvent, SelectAction, SplitDirection,
 };
 pub use panel::{Panel, PanelConfig, RenderContext, SessionPanel, ThemeColors};
+pub use terminal_caps::{get_terminal_caps, init_terminal_caps, ColorDepth, TerminalCaps};
 
 // Re-export theme and config for convenience
 pub use termide_config::Config;
