@@ -75,6 +75,8 @@ pub struct Terminal {
     cached_cursor_shown: bool,
     /// Last focus state (for cache invalidation)
     cached_focus: bool,
+    /// Cached active buffer state (main vs alt screen) for cache invalidation
+    cached_use_alt_screen: bool,
     /// Currently hovered link (type, segments for multi-line highlighting)
     hovered_link: Option<(LinkType, Vec<HighlightSegment>)>,
     /// Whether Ctrl key is pressed (tracked for link highlighting)
@@ -230,6 +232,7 @@ impl Terminal {
             cached_cursor: (0, 0),
             cached_cursor_shown: false,
             cached_focus: false,
+            cached_use_alt_screen: false,
             hovered_link: None,
             ctrl_pressed: false,
         })
@@ -275,6 +278,9 @@ impl Terminal {
 
                 screen.rows = new_rows;
                 screen.cols = new_cols;
+
+                // Reset scroll region to match new dimensions
+                screen.reset_scroll_region();
 
                 // Limit cursor position to new dimensions
                 screen.cursor.0 = screen.cursor.0.min(new_rows.saturating_sub(1));
@@ -458,13 +464,14 @@ impl Terminal {
         theme: &Theme,
     ) -> (Arc<Vec<Line<'static>>>, (usize, usize), bool) {
         // === PHASE 0: Check if we can return cached result ===
-        let (is_dirty, has_selection, sync_output, sync_output_ended) = {
+        let (is_dirty, has_selection, sync_output, sync_output_ended, use_alt_screen) = {
             let screen = self.screen.read().expect("Terminal screen lock poisoned");
             (
                 screen.dirty,
                 screen.selection_start.is_some(),
                 screen.sync_output,
                 screen.sync_output_ended,
+                screen.use_alt_screen,
             )
         };
 
@@ -478,9 +485,17 @@ impl Terminal {
             }
         }
 
+        // Invalidate cache if active buffer changed (main <-> alt screen switch)
+        // This prevents showing stale main buffer content over alt screen apps (e.g., Claude Code, htop)
+        if self.cached_use_alt_screen != use_alt_screen {
+            self.cached_lines = None;
+            self.cached_use_alt_screen = use_alt_screen;
+        }
+
         // Skip rendering while synchronized output is active - return cached
         // This prevents flickering when applications batch screen updates (e.g., Claude Code/Ink)
-        if sync_output {
+        // IMPORTANT: Only use cache if it's from the same buffer (main vs alt)
+        if sync_output && self.cached_use_alt_screen == use_alt_screen {
             if let Some(ref cached) = self.cached_lines {
                 return (
                     Arc::clone(cached),
@@ -760,6 +775,8 @@ impl Terminal {
         self.cached_cursor = cursor_pos;
         self.cached_cursor_shown = show_cursor_now;
         self.cached_focus = show_cursor;
+        // Sync cached_use_alt_screen with actual rendered buffer (from write lock)
+        self.cached_use_alt_screen = use_alt_screen;
 
         (arc_lines, cursor_pos, show_cursor_now)
     }
