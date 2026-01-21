@@ -112,23 +112,33 @@ impl Perform for VtPerformer {
     }
 
     fn csi_dispatch(&mut self, params: &Params, intermediates: &[u8], _ignore: bool, c: char) {
-        // Flush pending operations before CSI dispatch to maintain order
-        self.flush();
-
-        // Handle private sequences (start with '?')
-        if !intermediates.is_empty() && intermediates[0] == b'?' {
-            if let Ok(mut screen) = self.screen.write() {
-                handle_private_sequence(&mut screen, params, c);
-            }
-            return;
-        }
-
-        // Ignore other intermediate bytes
-        if !intermediates.is_empty() {
-            return;
-        }
-
+        // Single lock acquisition for both flush and CSI dispatch (critical optimization)
+        // This eliminates double lock acquisition that occurred on every CSI sequence
         if let Ok(mut screen) = self.screen.write() {
+            // Inline flush: apply pending operations with the same lock
+            if !self.pending_ops.is_empty() {
+                for op in self.pending_ops.drain(..) {
+                    match op {
+                        ScreenOp::PutChar(ch) => screen.put_char(ch),
+                        ScreenOp::Newline => screen.newline(),
+                        ScreenOp::CarriageReturn => screen.carriage_return(),
+                        ScreenOp::Backspace => screen.backspace(),
+                        ScreenOp::Tab => screen.tab(),
+                    }
+                }
+                screen.dirty = true;
+            }
+
+            // Handle private sequences (start with '?')
+            if !intermediates.is_empty() && intermediates[0] == b'?' {
+                handle_private_sequence(&mut screen, params, c);
+                return;
+            }
+
+            // Ignore other intermediate bytes
+            if !intermediates.is_empty() {
+                return;
+            }
             // Try cursor movement commands first
             if handle_cursor_movement(&mut screen, params, c) {
                 screen.dirty = true;

@@ -7,8 +7,63 @@ pub mod vt100_parser;
 
 use ratatui::style::Color;
 use std::collections::VecDeque;
+use std::sync::LazyLock;
 
 pub use vt100_parser::VtPerformer;
+
+/// Static lookup table for 256-color palette.
+///
+/// Computing 256-color values on every call was causing overhead during
+/// high-frequency SGR sequences (htop generates ~500 color changes per frame).
+/// This table is computed once at startup.
+static COLOR_256_TABLE: LazyLock<[Color; 256]> = LazyLock::new(|| {
+    let mut table = [Color::Reset; 256];
+    for i in 0..256u16 {
+        table[i as usize] = compute_ansi_256_color(i);
+    }
+    table
+});
+
+/// Compute a single 256-color value (used for table initialization).
+fn compute_ansi_256_color(code: u16) -> Color {
+    match code {
+        // Basic 16 colors (0-15)
+        0 => Color::Black,
+        1 => Color::Red,
+        2 => Color::Green,
+        3 => Color::Yellow,
+        4 => Color::Blue,
+        5 => Color::Magenta,
+        6 => Color::Cyan,
+        7 => Color::White,
+        8 => Color::DarkGray,
+        9 => Color::LightRed,
+        10 => Color::LightGreen,
+        11 => Color::LightYellow,
+        12 => Color::LightBlue,
+        13 => Color::LightMagenta,
+        14 => Color::LightCyan,
+        15 => Color::White,
+        // 216 colors (6x6x6 cube) - indices 16-231
+        16..=231 => {
+            let idx = code - 16;
+            let r = (idx / 36) as u8;
+            let g = ((idx % 36) / 6) as u8;
+            let b = (idx % 6) as u8;
+            // Convert 0-5 to 0-255
+            let r = if r == 0 { 0 } else { 55 + r * 40 };
+            let g = if g == 0 { 0 } else { 55 + g * 40 };
+            let b = if b == 0 { 0 } else { 55 + b * 40 };
+            Color::Rgb(r, g, b)
+        }
+        // Grayscale ramp - indices 232-255 (24 shades of gray)
+        232..=255 => {
+            let gray = 8 + (code - 232) as u8 * 10;
+            Color::Rgb(gray, gray, gray)
+        }
+        _ => Color::White,
+    }
+}
 
 /// Mouse tracking mode for terminal
 #[derive(Clone, Copy, PartialEq)]
@@ -80,46 +135,15 @@ pub fn ansi_to_bright_color(code: u16) -> Color {
     }
 }
 
-/// Convert 256-color index to ratatui Color
-#[allow(clippy::too_many_lines)] // Color table is inherently large
+/// Convert 256-color index to ratatui Color using cached lookup table.
+///
+/// O(1) table lookup instead of computing on every call.
+#[inline]
 pub fn ansi_256_to_color(code: u16) -> Color {
-    match code {
-        // Basic 16 colors (0-15)
-        0 => Color::Black,
-        1 => Color::Red,
-        2 => Color::Green,
-        3 => Color::Yellow,
-        4 => Color::Blue,
-        5 => Color::Magenta,
-        6 => Color::Cyan,
-        7 => Color::White,
-        8 => Color::DarkGray,
-        9 => Color::LightRed,
-        10 => Color::LightGreen,
-        11 => Color::LightYellow,
-        12 => Color::LightBlue,
-        13 => Color::LightMagenta,
-        14 => Color::LightCyan,
-        15 => Color::White,
-        // 216 colors (6x6x6 cube) - indices 16-231
-        16..=231 => {
-            let idx = code - 16;
-            let r = (idx / 36) as u8;
-            let g = ((idx % 36) / 6) as u8;
-            let b = (idx % 6) as u8;
-            // Convert 0-5 to 0-255
-            let r = if r == 0 { 0 } else { 55 + r * 40 };
-            let g = if g == 0 { 0 } else { 55 + g * 40 };
-            let b = if b == 0 { 0 } else { 55 + b * 40 };
-            Color::Rgb(r, g, b)
-        }
-        // Grayscale ramp - indices 232-255 (24 shades of gray)
-        232..=255 => {
-            let gray = 8 + (code - 232) as u8 * 10;
-            Color::Rgb(gray, gray, gray)
-        }
-        _ => Color::White,
-    }
+    COLOR_256_TABLE
+        .get(code as usize)
+        .copied()
+        .unwrap_or(Color::Reset)
 }
 
 /// Terminal screen state

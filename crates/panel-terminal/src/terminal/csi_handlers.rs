@@ -100,13 +100,14 @@ pub fn handle_private_sequence(screen: &mut TerminalScreen, params: &Params, c: 
 }
 
 /// Handle SGR (Select Graphic Rendition) sequences for text styling.
+///
+/// Uses iterator-based parsing to avoid heap allocation (previously allocated
+/// a Vec on every SGR call - hundreds of times per htop frame update).
 pub fn handle_sgr(screen: &mut TerminalScreen, params: &Params) {
-    // Collect all parameters into one vector to handle 38;5;N and 48;5;N
-    let all_params: Vec<u16> = params.iter().flat_map(|p| p.iter().copied()).collect();
-    let mut i = 0;
+    // Iterate directly without collecting to Vec - eliminates heap allocation
+    let mut iter = params.iter().flat_map(|p| p.iter().copied());
 
-    while i < all_params.len() {
-        let p = all_params[i];
+    while let Some(p) = iter.next() {
         match p {
             0 => screen.current_style = CellStyle::default(),
             1 => screen.current_style.bold = true,
@@ -123,18 +124,21 @@ pub fn handle_sgr(screen: &mut TerminalScreen, params: &Params) {
             }
             38 => {
                 // 256-color or RGB foreground
-                if i + 2 < all_params.len() && all_params[i + 1] == 5 {
-                    // 38;5;N - 256-color
-                    let color_idx = all_params[i + 2];
-                    screen.current_style.fg = ansi_256_to_color(color_idx);
-                    i += 2;
-                } else if i + 4 < all_params.len() && all_params[i + 1] == 2 {
-                    // 38;2;R;G;B - True Color (24-bit)
-                    let r = all_params[i + 2] as u8;
-                    let g = all_params[i + 3] as u8;
-                    let b = all_params[i + 4] as u8;
-                    screen.current_style.fg = Color::Rgb(r, g, b);
-                    i += 4;
+                match iter.next() {
+                    Some(5) => {
+                        // 38;5;N - 256-color
+                        if let Some(color_idx) = iter.next() {
+                            screen.current_style.fg = ansi_256_to_color(color_idx);
+                        }
+                    }
+                    Some(2) => {
+                        // 38;2;R;G;B - True Color (24-bit)
+                        if let (Some(r), Some(g), Some(b)) = (iter.next(), iter.next(), iter.next())
+                        {
+                            screen.current_style.fg = Color::Rgb(r as u8, g as u8, b as u8);
+                        }
+                    }
+                    _ => {}
                 }
             }
             39 => {
@@ -147,18 +151,21 @@ pub fn handle_sgr(screen: &mut TerminalScreen, params: &Params) {
             }
             48 => {
                 // 256-color or RGB background
-                if i + 2 < all_params.len() && all_params[i + 1] == 5 {
-                    // 48;5;N - 256-color
-                    let color_idx = all_params[i + 2];
-                    screen.current_style.bg = ansi_256_to_color(color_idx);
-                    i += 2;
-                } else if i + 4 < all_params.len() && all_params[i + 1] == 2 {
-                    // 48;2;R;G;B - True Color (24-bit)
-                    let r = all_params[i + 2] as u8;
-                    let g = all_params[i + 3] as u8;
-                    let b = all_params[i + 4] as u8;
-                    screen.current_style.bg = Color::Rgb(r, g, b);
-                    i += 4;
+                match iter.next() {
+                    Some(5) => {
+                        // 48;5;N - 256-color
+                        if let Some(color_idx) = iter.next() {
+                            screen.current_style.bg = ansi_256_to_color(color_idx);
+                        }
+                    }
+                    Some(2) => {
+                        // 48;2;R;G;B - True Color (24-bit)
+                        if let (Some(r), Some(g), Some(b)) = (iter.next(), iter.next(), iter.next())
+                        {
+                            screen.current_style.bg = Color::Rgb(r as u8, g as u8, b as u8);
+                        }
+                    }
+                    _ => {}
                 }
             }
             49 => {
@@ -175,7 +182,6 @@ pub fn handle_sgr(screen: &mut TerminalScreen, params: &Params) {
             }
             _ => {}
         }
-        i += 1;
     }
 }
 
