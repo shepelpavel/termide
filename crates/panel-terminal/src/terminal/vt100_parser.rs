@@ -339,7 +339,7 @@ impl Perform for VtPerformer {
                     }
                 }
                 'L' => {
-                    // IL - Insert Lines (insert blank lines)
+                    // IL - Insert Lines (insert blank lines within scroll region)
                     let n = params
                         .iter()
                         .next()
@@ -348,23 +348,25 @@ impl Perform for VtPerformer {
                         .unwrap_or(1) as usize;
                     let row = screen.cursor.0;
                     let cols = screen.cols;
-                    let rows = screen.rows;
+                    let bottom = screen.scroll_bottom;
                     let empty_cell = Cell {
                         ch: ' ',
                         style: screen.current_style,
                     };
 
-                    let buffer = screen.active_buffer_mut();
-                    if row < buffer.len() {
-                        // Delete n lines from bottom
-                        for _ in 0..n.min(rows - row) {
-                            if buffer.len() > row {
-                                buffer.pop_back();
+                    // Only operate if cursor is within scroll region
+                    if row <= bottom {
+                        let effective_n = n.min(bottom - row + 1);
+                        let buffer = screen.active_buffer_mut();
+
+                        // Delete n lines from scroll_bottom
+                        for _ in 0..effective_n {
+                            if bottom < buffer.len() {
+                                buffer.remove(bottom);
                             }
                         }
                         // Insert n blank lines at cursor position
-                        // Use O(1) push_front when at row 0, otherwise O(n) insert
-                        for _ in 0..n.min(rows - row) {
+                        for _ in 0..effective_n {
                             if row == 0 {
                                 buffer.push_front(vec![empty_cell; cols]);
                             } else {
@@ -374,7 +376,7 @@ impl Perform for VtPerformer {
                     }
                 }
                 'M' => {
-                    // DL - Delete Lines (delete lines)
+                    // DL - Delete Lines (delete lines within scroll region)
                     let n = params
                         .iter()
                         .next()
@@ -383,17 +385,19 @@ impl Perform for VtPerformer {
                         .unwrap_or(1) as usize;
                     let row = screen.cursor.0;
                     let cols = screen.cols;
-                    let rows = screen.rows;
+                    let bottom = screen.scroll_bottom;
                     let empty_cell = Cell {
                         ch: ' ',
                         style: screen.current_style,
                     };
 
-                    let buffer = screen.active_buffer_mut();
-                    if row < buffer.len() {
+                    // Only operate if cursor is within scroll region
+                    if row <= bottom {
+                        let effective_n = n.min(bottom - row + 1);
+                        let buffer = screen.active_buffer_mut();
+
                         // Delete n lines at cursor position
-                        // Use O(1) pop_front when at row 0, otherwise O(n) remove
-                        for _ in 0..n.min(buffer.len() - row) {
+                        for _ in 0..effective_n {
                             if row < buffer.len() {
                                 if row == 0 {
                                     buffer.pop_front();
@@ -402,14 +406,15 @@ impl Perform for VtPerformer {
                                 }
                             }
                         }
-                        // Add n blank lines at bottom
-                        while buffer.len() < rows {
-                            buffer.push_back(vec![empty_cell; cols]);
+                        // Insert n blank lines at scroll_bottom
+                        for _ in 0..effective_n {
+                            let insert_pos = bottom.min(buffer.len());
+                            buffer.insert(insert_pos, vec![empty_cell; cols]);
                         }
                     }
                 }
                 'S' => {
-                    // SU - Scroll Up (scroll screen up)
+                    // SU - Scroll Up (scroll within region)
                     let n = params
                         .iter()
                         .next()
@@ -417,22 +422,39 @@ impl Perform for VtPerformer {
                         .copied()
                         .unwrap_or(1) as usize;
                     let cols = screen.cols;
-                    let rows = screen.rows;
+                    let top = screen.scroll_top;
+                    let bottom = screen.scroll_bottom;
                     let empty_cell = Cell {
                         ch: ' ',
                         style: screen.current_style,
                     };
 
-                    let buffer = screen.active_buffer_mut();
-                    for _ in 0..n.min(rows) {
-                        if !buffer.is_empty() {
-                            buffer.pop_front(); // O(1) with VecDeque
+                    let region_size = bottom.saturating_sub(top) + 1;
+                    let effective_n = n.min(region_size);
+
+                    // Full-screen scroll (use efficient VecDeque ops)
+                    if top == 0 && bottom == screen.rows.saturating_sub(1) {
+                        let buffer = screen.active_buffer_mut();
+                        for _ in 0..effective_n {
+                            if !buffer.is_empty() {
+                                buffer.pop_front();
+                            }
+                            buffer.push_back(vec![empty_cell; cols]);
                         }
-                        buffer.push_back(vec![empty_cell; cols]);
+                    } else {
+                        // Region scroll
+                        let buffer = screen.active_buffer_mut();
+                        for _ in 0..effective_n {
+                            if top < buffer.len() {
+                                buffer.remove(top);
+                            }
+                            let insert_pos = bottom.min(buffer.len());
+                            buffer.insert(insert_pos, vec![empty_cell; cols]);
+                        }
                     }
                 }
                 'T' => {
-                    // SD - Scroll Down (scroll screen down)
+                    // SD - Scroll Down (scroll within region)
                     let n = params
                         .iter()
                         .next()
@@ -441,17 +463,34 @@ impl Perform for VtPerformer {
                         .unwrap_or(1) as usize;
                     let cols = screen.cols;
                     let rows = screen.rows;
+                    let top = screen.scroll_top;
+                    let bottom = screen.scroll_bottom;
                     let empty_cell = Cell {
                         ch: ' ',
                         style: screen.current_style,
                     };
 
-                    let buffer = screen.active_buffer_mut();
-                    for _ in 0..n.min(rows) {
-                        if buffer.len() >= rows {
-                            buffer.pop_back();
+                    let region_size = bottom.saturating_sub(top) + 1;
+                    let effective_n = n.min(region_size);
+
+                    // Full-screen scroll (use efficient VecDeque ops)
+                    if top == 0 && bottom == rows.saturating_sub(1) {
+                        let buffer = screen.active_buffer_mut();
+                        for _ in 0..effective_n {
+                            if buffer.len() >= rows {
+                                buffer.pop_back();
+                            }
+                            buffer.push_front(vec![empty_cell; cols]);
                         }
-                        buffer.push_front(vec![empty_cell; cols]); // O(1) with VecDeque
+                    } else {
+                        // Region scroll
+                        let buffer = screen.active_buffer_mut();
+                        for _ in 0..effective_n {
+                            if bottom < buffer.len() {
+                                buffer.remove(bottom);
+                            }
+                            buffer.insert(top, vec![empty_cell; cols]);
+                        }
                     }
                 }
                 'm' => {
@@ -467,7 +506,16 @@ impl Perform for VtPerformer {
                     screen.restore_cursor();
                 }
                 'r' => {
-                    // DECSTBM - Set scrolling region (ignore but don't break)
+                    // DECSTBM - Set Top and Bottom Margins
+                    let mut iter = params.iter();
+                    let top = iter.next().and_then(|p| p.first()).copied().unwrap_or(1) as usize;
+                    let bottom = iter
+                        .next()
+                        .and_then(|p| p.first())
+                        .copied()
+                        .map(|b| b as usize)
+                        .unwrap_or(screen.rows);
+                    screen.set_scroll_region(top, bottom);
                 }
                 'l' | 'h' => {
                     // Set/Reset Mode (ignore but don't break)
@@ -478,5 +526,29 @@ impl Perform for VtPerformer {
         }
     }
 
-    fn esc_dispatch(&mut self, _intermediates: &[u8], _ignore: bool, _byte: u8) {}
+    fn esc_dispatch(&mut self, _intermediates: &[u8], _ignore: bool, byte: u8) {
+        self.flush();
+        if let Ok(mut screen) = self.screen.write() {
+            match byte {
+                b'D' => {
+                    // IND - Index: move down, scroll at bottom margin
+                    if screen.cursor.0 >= screen.scroll_bottom {
+                        screen.scroll_up();
+                    } else {
+                        screen.cursor.0 += 1;
+                    }
+                }
+                b'M' => {
+                    // RI - Reverse Index: move up, scroll at top margin
+                    if screen.cursor.0 <= screen.scroll_top {
+                        screen.scroll_down_region();
+                    } else {
+                        screen.cursor.0 -= 1;
+                    }
+                }
+                _ => {}
+            }
+            screen.dirty = true;
+        }
+    }
 }

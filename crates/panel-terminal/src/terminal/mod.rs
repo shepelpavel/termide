@@ -188,6 +188,10 @@ pub struct TerminalScreen {
     pub wrap_pending: bool,
     /// Dirty flag - screen content has changed and needs re-render
     pub dirty: bool,
+    /// Scroll region top (0-based, inclusive)
+    pub scroll_top: usize,
+    /// Scroll region bottom (0-based, inclusive)
+    pub scroll_bottom: usize,
 }
 
 impl TerminalScreen {
@@ -218,6 +222,8 @@ impl TerminalScreen {
             max_scrollback: 10000,
             wrap_pending: false,
             dirty: true,
+            scroll_top: 0,
+            scroll_bottom: rows.saturating_sub(1),
         }
     }
 
@@ -244,6 +250,7 @@ impl TerminalScreen {
         if !self.use_alt_screen {
             self.use_alt_screen = true;
             self.wrap_pending = false;
+            self.reset_scroll_region();
             // Clear alt buffer
             let empty_cell = Cell {
                 ch: ' ',
@@ -260,16 +267,17 @@ impl TerminalScreen {
         if self.use_alt_screen {
             self.use_alt_screen = false;
             self.wrap_pending = false;
+            self.reset_scroll_region();
         }
     }
 
-    /// Write character at current cursor position
+    /// Write character at current cursor position (respects scroll region)
     pub fn put_char(&mut self, ch: char) {
         // If there was a deferred wrap - execute it now
         if self.wrap_pending {
             self.wrap_pending = false;
             self.cursor.1 = 0;
-            if self.cursor.0 + 1 >= self.rows {
+            if self.cursor.0 >= self.scroll_bottom {
                 self.scroll_up();
             } else {
                 self.cursor.0 += 1;
@@ -294,15 +302,15 @@ impl TerminalScreen {
         }
     }
 
-    /// Newline
+    /// Newline (respects scroll region)
     pub fn newline(&mut self) {
         self.wrap_pending = false;
         self.cursor.1 = 0;
-        if self.cursor.0 < self.rows - 1 {
-            self.cursor.0 += 1;
-        } else {
-            // Scroll up
+        if self.cursor.0 >= self.scroll_bottom {
+            // At or below scroll region bottom - scroll
             self.scroll_up();
+        } else {
+            self.cursor.0 += 1;
         }
     }
 
@@ -312,28 +320,85 @@ impl TerminalScreen {
         self.cursor.1 = 0;
     }
 
-    /// Scroll screen up one line
+    /// Scroll screen up one line (respects scroll region)
     pub fn scroll_up(&mut self) {
         let cols = self.cols;
-
-        // For main buffer, save line to scrollback
-        if !self.use_alt_screen {
-            let top_line = self.lines[0].clone();
-            self.scrollback.push_back(top_line);
-
-            // Limit scrollback size - O(1) with VecDeque instead of O(n) with Vec::remove(0)
-            if self.scrollback.len() > self.max_scrollback {
-                self.scrollback.pop_front();
-            }
-        }
-
-        let buffer = self.active_buffer_mut();
-        buffer.pop_front(); // O(1) with VecDeque instead of O(n) with Vec::remove(0)
+        let top = self.scroll_top;
+        let bottom = self.scroll_bottom;
         let empty_cell = Cell {
             ch: ' ',
             style: CellStyle::default(),
         };
-        buffer.push_back(vec![empty_cell; cols]);
+
+        // Full-screen scroll (no region set or region covers entire screen)
+        if top == 0 && bottom == self.rows.saturating_sub(1) {
+            // For main buffer, save line to scrollback
+            if !self.use_alt_screen {
+                let top_line = self.lines[0].clone();
+                self.scrollback.push_back(top_line);
+
+                // Limit scrollback size - O(1) with VecDeque
+                if self.scrollback.len() > self.max_scrollback {
+                    self.scrollback.pop_front();
+                }
+            }
+
+            let buffer = self.active_buffer_mut();
+            buffer.pop_front(); // O(1) with VecDeque
+            buffer.push_back(vec![empty_cell; cols]);
+        } else {
+            // Region scroll - remove line at top of region, insert at bottom
+            let buffer = self.active_buffer_mut();
+            if top < buffer.len() && bottom < buffer.len() {
+                buffer.remove(top);
+                buffer.insert(bottom, vec![empty_cell; cols]);
+            }
+        }
+    }
+
+    /// Set scroll region (DECSTBM). top/bottom are 1-based per VT100 spec.
+    pub fn set_scroll_region(&mut self, top: usize, bottom: usize) {
+        let top_0 = top.saturating_sub(1);
+        let bottom_0 = bottom.saturating_sub(1);
+
+        if top_0 < bottom_0 && bottom_0 < self.rows {
+            self.scroll_top = top_0;
+            self.scroll_bottom = bottom_0;
+        } else {
+            self.reset_scroll_region();
+        }
+        self.cursor = (0, 0);
+        self.wrap_pending = false;
+    }
+
+    /// Reset scroll region to full screen
+    pub fn reset_scroll_region(&mut self) {
+        self.scroll_top = 0;
+        self.scroll_bottom = self.rows.saturating_sub(1);
+    }
+
+    /// Scroll down within region (for Reverse Index)
+    pub fn scroll_down_region(&mut self) {
+        let cols = self.cols;
+        let top = self.scroll_top;
+        let bottom = self.scroll_bottom;
+        let empty_cell = Cell {
+            ch: ' ',
+            style: CellStyle::default(),
+        };
+
+        let buffer = self.active_buffer_mut();
+        // Full-screen scroll
+        if top == 0 && bottom == buffer.len().saturating_sub(1) {
+            buffer.pop_back();
+            buffer.push_front(vec![empty_cell; cols]);
+        } else {
+            // Region scroll - remove line at bottom, insert at top
+            if bottom < buffer.len() {
+                buffer.remove(bottom);
+            }
+            buffer.insert(top, vec![empty_cell; cols]);
+        }
     }
 
     /// Scroll view up (into history)
