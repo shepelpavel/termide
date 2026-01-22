@@ -268,3 +268,107 @@ LSP works with any language server that implements the LSP protocol. Common exam
 - **C/C++** - clangd
 
 **Note:** You need to install the language server separately. TermIDE only provides the LSP client integration.
+
+## Vim Mode
+
+TermIDE includes an optional Vim-style editing mode with full Cyrillic keyboard support.
+
+### Enabling Vim Mode
+
+Enable Vim mode in your configuration file (`~/.config/termide/config.toml`):
+
+```toml
+vim_mode = true
+```
+
+### Available Modes
+
+| Mode | Description | Indicator |
+|------|-------------|-----------|
+| Normal | Navigation and commands | (none) |
+| Insert | Text input | `-- INSERT --` |
+| Visual | Character selection | `-- VISUAL --` |
+| Visual Line | Line selection | `-- VISUAL LINE --` |
+
+### Mode Switching
+
+| Key | Action |
+|-----|--------|
+| `Escape` | Return to Normal mode |
+| `i` | Insert before cursor |
+| `I` | Insert at line beginning |
+| `a` | Append after cursor |
+| `A` | Append at line end |
+| `o` | Open line below |
+| `O` | Open line above |
+| `v` | Enter Visual mode |
+| `V` | Enter Visual Line mode |
+
+### Motion Keys (Normal/Visual)
+
+| Key | Action |
+|-----|--------|
+| `h` / `←` | Move left |
+| `j` / `↓` | Move down |
+| `k` / `↑` | Move up |
+| `l` / `→` | Move right |
+| `w` | Next word start |
+| `b` | Previous word start |
+| `e` | Next word end |
+| `0` | Line start |
+| `$` | Line end |
+| `^` | First non-blank character |
+| `gg` | Go to first line |
+| `G` | Go to last line |
+| `{number}G` | Go to line number |
+
+### Operators (Normal Mode)
+
+| Key | Action |
+|-----|--------|
+| `d` | Delete (+ motion) |
+| `dd` | Delete line |
+| `D` | Delete to end of line |
+| `c` | Change (+ motion) |
+| `cc` | Change line |
+| `C` | Change to end of line |
+| `y` | Yank/copy (+ motion) |
+| `yy` | Yank line |
+| `p` | Paste after cursor |
+| `P` | Paste before cursor |
+| `x` | Delete character |
+| `r` | Replace character |
+| `u` | Undo |
+| `Ctrl+R` | Redo |
+
+### Cyrillic Keyboard Support
+
+Vim mode works seamlessly with Cyrillic keyboard layouts. When typing in Russian or other Cyrillic layouts, all Vim commands are automatically translated:
+
+- `о` (Russian) → `j` (move down)
+- `л` (Russian) → `k` (move up)
+- `н` (Russian) → `y` (yank)
+- `в` (Russian) → `d` (delete)
+
+This allows you to use Vim commands without switching keyboard layouts.
+
+### Visual Mode Operations
+
+In Visual or Visual Line mode:
+- Use motion keys to extend selection
+- `d` or `x` - Delete selection
+- `y` - Yank selection
+- `c` - Change selection (delete and enter Insert mode)
+- `>` - Indent selection
+- `<` - Unindent selection
+
+### Search in Vim Mode
+
+| Key | Action |
+|-----|--------|
+| `/` | Search forward |
+| `?` | Search backward |
+| `n` | Next match |
+| `N` | Previous match |
+
+**Note:** Standard editor shortcuts (`Ctrl+S`, `Ctrl+Z`, etc.) continue to work in all Vim modes.

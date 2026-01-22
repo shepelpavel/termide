@@ -45,6 +45,9 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 - **Cross-platform** - Linux (x86_64, ARM64), macOS (Intel, Apple Silicon), Windows (WSL)
 - **Full Mouse Support** - Click navigation, scroll, double-click actions
 - **Keyboard Layouts** - Cyrillic support with automatic hotkey translation
+- **Vim Mode** - Optional Vim-style editing with Cyrillic keyboard support
+- **Directory Switcher** - Quick directory switching with Ctrl+P
+- **Bookmarks** - Save and organize frequently used locations
 
 ## Installation
 
@@ -256,6 +259,8 @@ For detailed documentation, see:
 - `Alt+P` - Open config
 
 **File Manager:**
+- `Ctrl+P` - Open directory switcher
+- `Ctrl+B` - Add bookmark
 - `Enter` - Open file/directory
 - `Backspace` - Parent directory
 - `Space` - File info
@@ -339,6 +344,9 @@ show_git_diff = true
 
 # Enable word wrap in editor (default: true)
 word_wrap = true
+
+# Enable Vim-style editing in editor (default: false)
+vim_mode = false
 
 # Minimum log level: debug, info, warn, error (default: info)
 min_log_level = "info"
