@@ -5,6 +5,22 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-01-23
+
+### Added
+- **Vim Mode**: Full vim keybinding support for Editor panel with Cyrillic keyboard layout support
+- **Directory Switcher**: Quick directory navigation modal with Ctrl+P, recent directories, and fuzzy search
+- **Bookmark Add Modal**: Smart group input with dropdown suggestions for organizing bookmarks
+- **Modal Paste Support**: Paste text directly into modal input fields with control character filtering
+
+### Fixed
+- **Terminal Visual Artifacts**: Fixed race condition in sync_output cache invalidation
+- **Terminal Batch Rendering**: Force cache invalidation on ED (clear screen) commands
+- **Buffer Invariant**: Added ensure_buffer_size() to prevent IL/DL edge cases
+
+### Documentation
+- Added documentation for vim mode, directory switcher, and bookmarks features
+
 ## [0.9.1] - 2026-01-22
 
 ### Added
