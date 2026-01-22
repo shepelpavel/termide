@@ -19,6 +19,7 @@ pub mod search;
 pub mod selection;
 mod state;
 pub mod text_editing;
+pub mod vim;
 pub mod word_wrap;
 
 // Re-export main types

@@ -63,6 +63,12 @@ pub struct GeneralSettings {
     #[serde(default = "default_session_retention_days")]
     pub session_retention_days: u32,
 
+    /// Enable Vim mode globally (disabled by default)
+    /// - In editor: NORMAL/INSERT/VISUAL modes, operators, motions
+    /// - In list panels: j/k/g/G navigation
+    #[serde(default = "default_vim_mode")]
+    pub vim_mode: bool,
+
     /// Global keyboard shortcuts
     #[serde(default)]
     pub keybindings: GlobalKeybindings,
@@ -82,6 +88,11 @@ pub struct EditorSettings {
     /// Enable word wrap in editor
     #[serde(default = "default_word_wrap")]
     pub word_wrap: bool,
+
+    /// DEPRECATED: Use general.vim_mode instead.
+    /// Kept for backward compatibility - will be migrated to general.vim_mode on load.
+    #[serde(default, skip_serializing)]
+    pub vim_mode: bool,
 
     /// File size threshold in MB for disabling smart features
     #[serde(default = "default_large_file_threshold_mb")]
@@ -210,6 +221,10 @@ fn default_show_git_diff() -> bool {
 
 fn default_word_wrap() -> bool {
     defaults::WORD_WRAP
+}
+
+fn default_vim_mode() -> bool {
+    defaults::VIM_MODE
 }
 
 fn default_large_file_threshold_mb() -> u64 {
@@ -345,12 +360,14 @@ impl From<LegacyConfig> for Config {
                 auto_stack_threshold: legacy.min_panel_width, // migrate old field
                 min_panel_width: default_min_panel_width(),
                 session_retention_days: legacy.session_retention_days,
+                vim_mode: default_vim_mode(),
                 keybindings: GlobalKeybindings::default(),
             },
             editor: EditorSettings {
                 tab_size: legacy.tab_size,
                 show_git_diff: legacy.show_git_diff,
                 word_wrap: legacy.word_wrap,
+                vim_mode: false, // deprecated, will be migrated
                 large_file_threshold_mb: legacy.large_file_threshold_mb,
                 keybindings: EditorKeybindings::default(),
             },
@@ -380,6 +397,7 @@ impl Default for GeneralSettings {
             auto_stack_threshold: default_auto_stack_threshold(),
             min_panel_width: default_min_panel_width(),
             session_retention_days: default_session_retention_days(),
+            vim_mode: default_vim_mode(),
             keybindings: GlobalKeybindings::default(),
         }
     }
@@ -391,6 +409,7 @@ impl Default for EditorSettings {
             tab_size: default_tab_size(),
             show_git_diff: default_show_git_diff(),
             word_wrap: default_word_wrap(),
+            vim_mode: false, // deprecated, use general.vim_mode
             large_file_threshold_mb: default_large_file_threshold_mb(),
             keybindings: EditorKeybindings::default(),
         }
@@ -434,7 +453,17 @@ impl Config {
     ///
     /// This ensures that when serializing to TOML, all keybindings
     /// are written with their values (either user-configured or defaults).
+    /// Also migrates deprecated settings (e.g., editor.vim_mode -> general.vim_mode).
     pub fn normalize(&mut self) {
+        // Migrate deprecated editor.vim_mode to general.vim_mode
+        // If editor.vim_mode is true and general.vim_mode is false (default),
+        // it means user has old config with [editor] vim_mode = true
+        if self.editor.vim_mode && !self.general.vim_mode {
+            self.general.vim_mode = true;
+        }
+        // Clear deprecated field after migration
+        self.editor.vim_mode = false;
+
         self.general.keybindings.with_defaults();
         self.editor.keybindings.with_defaults();
         self.file_manager.keybindings.with_defaults();

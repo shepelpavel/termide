@@ -18,6 +18,7 @@ use crate::{
     config::*,
     constants, file_io, git, keyboard, rendering, selection,
     state::{FileState, GitIntegration, InputState, LspState, RenderingCache, SearchController},
+    vim::VimState,
     word_wrap,
 };
 
@@ -94,6 +95,10 @@ pub struct Editor {
     pub(crate) status_message: Option<String>,
     /// When true, viewport follows cursor. When false (after mouse scroll), viewport stays put.
     scroll_follows_cursor: bool,
+
+    // === Vim mode state ===
+    /// Vim mode state (None if Vim mode is disabled)
+    pub(crate) vim: Option<VimState>,
 }
 
 impl Editor {
@@ -106,6 +111,13 @@ impl Editor {
     pub fn with_config(config: EditorConfig) -> Self {
         let mut file_state = FileState::new();
         file_state.initial_directory = config.initial_directory.clone();
+
+        // Initialize Vim state if vim mode is enabled
+        let vim = if config.vim_mode {
+            Some(VimState::new())
+        } else {
+            None
+        };
 
         Self {
             config,
@@ -123,6 +135,7 @@ impl Editor {
             config_update: None,
             status_message: None,
             scroll_follows_cursor: true,
+            vim,
         }
     }
 
@@ -145,6 +158,335 @@ impl Editor {
     /// Get file path
     pub fn file_path(&self) -> Option<&std::path::Path> {
         self.buffer.file_path()
+    }
+
+    /// Check if Vim mode is enabled
+    pub fn vim_mode_enabled(&self) -> bool {
+        self.vim.is_some()
+    }
+
+    /// Get Vim mode display string for status bar (e.g., "NORMAL", "INSERT")
+    /// Returns None if Vim mode is disabled
+    pub fn vim_mode_display(&self) -> Option<&'static str> {
+        self.vim.as_ref().map(|v| v.mode.display())
+    }
+
+    /// Get mutable reference to Vim state
+    pub fn vim_state_mut(&mut self) -> Option<&mut VimState> {
+        self.vim.as_mut()
+    }
+
+    /// Get reference to Vim state
+    pub fn vim_state(&self) -> Option<&VimState> {
+        self.vim.as_ref()
+    }
+
+    /// Execute a Vim key result and return any panel events
+    fn execute_vim_result(&mut self, result: crate::vim::VimKeyResult) -> Option<Vec<PanelEvent>> {
+        use crate::vim::{
+            motions::execute_motion, operators, InsertPosition, PanelDirection, VimKeyResult,
+            VimMode,
+        };
+        use termide_core::VimPanelDirection;
+
+        let mut events = Vec::new();
+
+        match result {
+            VimKeyResult::Motion { motion, count } => {
+                let viewport_height = self.viewport.height;
+                let content_width = self.render_cache.content_width;
+                let new_cursor = execute_motion(
+                    motion,
+                    &self.cursor,
+                    &self.buffer,
+                    count,
+                    viewport_height,
+                    content_width,
+                    true, // use_smart_wrap
+                );
+                self.cursor = new_cursor;
+                // Clear selection on normal mode motion
+                self.selection = None;
+            }
+            VimKeyResult::MotionWithSelection { motion, count } => {
+                let viewport_height = self.viewport.height;
+                let content_width = self.render_cache.content_width;
+                let new_cursor = execute_motion(
+                    motion,
+                    &self.cursor,
+                    &self.buffer,
+                    count,
+                    viewport_height,
+                    content_width,
+                    true, // use_smart_wrap
+                );
+
+                // Update selection
+                if let Some(vim) = &self.vim {
+                    if let Some(anchor) = vim.visual_anchor {
+                        let selection = termide_buffer::Selection::new(anchor, new_cursor);
+                        self.selection = Some(selection);
+                    }
+                }
+                self.cursor = new_cursor;
+            }
+            VimKeyResult::OperatorMotion {
+                operator,
+                motion,
+                count,
+            } => {
+                let viewport_height = self.viewport.height;
+                let content_width = self.render_cache.content_width;
+                let start = self.cursor;
+                let end = execute_motion(
+                    motion,
+                    &self.cursor,
+                    &self.buffer,
+                    count,
+                    viewport_height,
+                    content_width,
+                    true, // use_smart_wrap
+                );
+
+                if let Some(vim) = self.vim.as_mut() {
+                    if let Ok(op_result) = operators::execute_operator(
+                        operator,
+                        start,
+                        end,
+                        &mut self.buffer,
+                        vim,
+                        false,
+                    ) {
+                        self.cursor = op_result.cursor;
+                        if op_result.enter_insert {
+                            vim.enter_insert();
+                        }
+                    }
+                }
+                self.selection = None;
+            }
+            VimKeyResult::LinewiseOperator { operator, count } => {
+                let start_line = self.cursor.line;
+                let end_line =
+                    (start_line + count - 1).min(self.buffer.line_count().saturating_sub(1));
+
+                if let Some(vim) = self.vim.as_mut() {
+                    if let Ok(op_result) = operators::execute_linewise_operator(
+                        operator,
+                        start_line,
+                        end_line,
+                        &mut self.buffer,
+                        vim,
+                    ) {
+                        self.cursor = op_result.cursor;
+                        if op_result.enter_insert {
+                            vim.enter_insert();
+                        }
+                    }
+                }
+                self.selection = None;
+            }
+            VimKeyResult::VisualOperator { operator } => {
+                if let (Some(selection), Some(vim)) = (self.selection.as_ref(), self.vim.as_mut()) {
+                    let start = selection.start();
+                    let end = selection.end();
+                    let linewise = vim.mode == VimMode::VisualLine;
+
+                    if let Ok(op_result) = operators::execute_operator(
+                        operator,
+                        start,
+                        end,
+                        &mut self.buffer,
+                        vim,
+                        linewise,
+                    ) {
+                        self.cursor = op_result.cursor;
+                        if op_result.enter_insert {
+                            vim.enter_insert();
+                        } else {
+                            vim.exit_to_normal();
+                        }
+                    }
+                }
+                self.selection = None;
+            }
+            VimKeyResult::EnterInsert(position) => {
+                // Position cursor based on insert position
+                match position {
+                    InsertPosition::BeforeCursor => {
+                        // Cursor stays where it is
+                    }
+                    InsertPosition::AfterCursor => {
+                        let line_len = self.buffer.line_len_graphemes(self.cursor.line);
+                        if self.cursor.column < line_len {
+                            self.cursor.column += 1;
+                        }
+                    }
+                    InsertPosition::LineStart => {
+                        // Move to first non-blank
+                        if let Some(line) = self.buffer.line(self.cursor.line) {
+                            use unicode_segmentation::UnicodeSegmentation;
+                            let line = line.trim_end_matches('\n');
+                            let first_non_blank = line
+                                .graphemes(true)
+                                .position(|g| !g.chars().all(|c| c.is_whitespace()))
+                                .unwrap_or(0);
+                            self.cursor.column = first_non_blank;
+                        }
+                    }
+                    InsertPosition::LineEnd => {
+                        let line_len = self.buffer.line_len_graphemes(self.cursor.line);
+                        self.cursor.column = line_len;
+                    }
+                    InsertPosition::NewLineBelow => {
+                        // Insert new line below and position cursor
+                        let line_len = self.buffer.line_len_graphemes(self.cursor.line);
+                        self.cursor.column = line_len;
+                        let _ = self.buffer.insert(&self.cursor, "\n");
+                        self.cursor.line += 1;
+                        self.cursor.column = 0;
+                    }
+                    InsertPosition::NewLineAbove => {
+                        // Insert new line above and position cursor
+                        self.cursor.column = 0;
+                        let _ = self.buffer.insert(&self.cursor, "\n");
+                        // Cursor stays on the new (now previous) line
+                    }
+                }
+                if let Some(vim) = self.vim.as_mut() {
+                    vim.enter_insert();
+                }
+            }
+            VimKeyResult::ExitToNormal => {
+                // Move cursor back one position when exiting insert mode
+                if self.cursor.column > 0 {
+                    self.cursor.column -= 1;
+                }
+                self.selection = None;
+            }
+            VimKeyResult::StartVisual => {
+                if let Some(vim) = self.vim.as_mut() {
+                    vim.enter_visual(self.cursor);
+                    // Start selection at current cursor
+                    self.selection = Some(termide_buffer::Selection::new(self.cursor, self.cursor));
+                }
+            }
+            VimKeyResult::StartVisualLine => {
+                if let Some(vim) = self.vim.as_mut() {
+                    vim.enter_visual_line(self.cursor);
+                    // Select the entire line
+                    let line_start = termide_buffer::Cursor::at(self.cursor.line, 0);
+                    let line_end_col = self.buffer.line_len_graphemes(self.cursor.line);
+                    let line_end = termide_buffer::Cursor::at(self.cursor.line, line_end_col);
+                    self.selection = Some(termide_buffer::Selection::new(line_start, line_end));
+                }
+            }
+            VimKeyResult::DeleteChar { count } => {
+                for _ in 0..count {
+                    if let Some(vim) = self.vim.as_mut() {
+                        if let Ok(Some(deleted)) =
+                            operators::delete_char(&mut self.buffer, &self.cursor)
+                        {
+                            vim.yank(deleted, false);
+                        }
+                    }
+                }
+            }
+            VimKeyResult::Paste { after, count } => {
+                if let Some(vim) = &self.vim {
+                    if let Some(text) = vim.get_register() {
+                        let linewise = vim.is_register_linewise();
+                        for _ in 0..count {
+                            if linewise {
+                                // Linewise paste - insert on new line
+                                let paste_line = if after {
+                                    self.cursor.line + 1
+                                } else {
+                                    self.cursor.line
+                                };
+                                let insert_cursor = termide_buffer::Cursor::at(paste_line, 0);
+                                // Need to handle insertion at end of document
+                                if paste_line >= self.buffer.line_count() {
+                                    let last_line_len = self
+                                        .buffer
+                                        .line_len_graphemes(self.buffer.line_count() - 1);
+                                    let end_cursor = termide_buffer::Cursor::at(
+                                        self.buffer.line_count() - 1,
+                                        last_line_len,
+                                    );
+                                    let mut text_with_newline = String::from("\n");
+                                    text_with_newline.push_str(text.trim_end_matches('\n'));
+                                    let _ = self.buffer.insert(&end_cursor, &text_with_newline);
+                                } else {
+                                    let _ = self.buffer.insert(&insert_cursor, text);
+                                }
+                                self.cursor.line = paste_line;
+                                // Move to first non-blank
+                                if let Some(line) = self.buffer.line(self.cursor.line) {
+                                    use unicode_segmentation::UnicodeSegmentation;
+                                    let line = line.trim_end_matches('\n');
+                                    let first_non_blank = line
+                                        .graphemes(true)
+                                        .position(|g| !g.chars().all(|c| c.is_whitespace()))
+                                        .unwrap_or(0);
+                                    self.cursor.column = first_non_blank;
+                                }
+                            } else {
+                                // Charwise paste
+                                let insert_cursor = if after {
+                                    termide_buffer::Cursor::at(
+                                        self.cursor.line,
+                                        self.cursor.column + 1,
+                                    )
+                                } else {
+                                    self.cursor
+                                };
+                                if let Ok(new_cursor) = self.buffer.insert(&insert_cursor, text) {
+                                    self.cursor = new_cursor;
+                                    // Position cursor on last char of pasted text
+                                    if self.cursor.column > 0 {
+                                        self.cursor.column -= 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            VimKeyResult::Undo => {
+                if let Ok(Some(new_cursor)) = self.buffer.undo() {
+                    self.cursor = new_cursor;
+                }
+            }
+            VimKeyResult::Redo => {
+                if let Ok(Some(new_cursor)) = self.buffer.redo() {
+                    self.cursor = new_cursor;
+                }
+            }
+            VimKeyResult::PanelNavigation(direction) => {
+                let vim_direction = match direction {
+                    PanelDirection::Left => VimPanelDirection::Left,
+                    PanelDirection::Down => VimPanelDirection::Down,
+                    PanelDirection::Up => VimPanelDirection::Up,
+                    PanelDirection::Right => VimPanelDirection::Right,
+                };
+                events.push(PanelEvent::VimPanelNavigation {
+                    direction: vim_direction,
+                });
+            }
+            VimKeyResult::Consumed | VimKeyResult::PassThrough | VimKeyResult::Unhandled => {
+                // These are handled in handle_key
+            }
+        }
+
+        // Ensure cursor is valid after operations
+        self.clamp_cursor();
+
+        if events.is_empty() {
+            None
+        } else {
+            Some(events)
+        }
     }
 
     /// Get cached git repository root (returns None if not yet cached)
@@ -212,6 +554,13 @@ impl Editor {
             }
         }
 
+        // Initialize Vim state if vim mode is enabled
+        let vim = if config.vim_mode {
+            Some(VimState::new())
+        } else {
+            None
+        };
+
         Ok(Self {
             config,
             buffer,
@@ -228,6 +577,7 @@ impl Editor {
             config_update: None,
             status_message: None,
             scroll_follows_cursor: true,
+            vim,
         })
     }
 
@@ -241,6 +591,7 @@ impl Editor {
         let mut file_state = FileState::new();
         file_state.title = title;
 
+        // view_only mode doesn't have vim enabled
         Self {
             config: EditorConfig::view_only(),
             buffer: TextBuffer::from_rope(rope),
@@ -257,6 +608,7 @@ impl Editor {
             config_update: None,
             status_message: None,
             scroll_follows_cursor: true,
+            vim: None, // view_only mode doesn't have vim
         }
     }
     /// Save file
@@ -447,6 +799,7 @@ impl Editor {
             file_type,
             read_only: self.config.read_only,
             syntax_highlighting: self.config.syntax_highlighting,
+            vim_mode: self.vim_mode_display(),
         }
     }
 
@@ -1242,6 +1595,41 @@ impl Panel for Editor {
         // Note: Key translation should be done at app level before calling handle_key
         // If you need translation, call translate_hotkey from termide-core or keyboard module
 
+        // Collect events from internal state
+        let mut events = Vec::new();
+
+        // Handle Vim mode if enabled
+        if let Some(ref mut vim_state) = self.vim {
+            use crate::vim::{handle_vim_key, VimKeyResult};
+
+            let result = handle_vim_key(vim_state, key);
+
+            match result {
+                VimKeyResult::Consumed => return events,
+                VimKeyResult::PassThrough => {
+                    // In insert mode, fall through to normal editor handling
+                }
+                VimKeyResult::Unhandled => {
+                    // Key not recognized by vim in NORMAL/VISUAL mode - ignore it
+                    return events;
+                }
+                _ => {
+                    // Execute vim action
+                    if let Some(panel_events) = self.execute_vim_result(result) {
+                        events.extend(panel_events);
+                    }
+                    // Convert status_message to event
+                    if let Some(message) = self.status_message.take() {
+                        events.push(PanelEvent::SetStatusMessage {
+                            message,
+                            is_error: false,
+                        });
+                    }
+                    return events;
+                }
+            }
+        }
+
         let command = keyboard::EditorCommand::from_key_event(
             key,
             self.config.read_only,
@@ -1250,9 +1638,6 @@ impl Panel for Editor {
             self.lsp.completion_popup.is_some(),
             &self.config.keybindings,
         );
-
-        // Collect events from internal state
-        let mut events = Vec::new();
 
         // Execute command and handle errors
         if let Err(e) = command.execute(self) {
@@ -1701,10 +2086,15 @@ impl Panel for Editor {
     }
 
     fn captures_escape(&self) -> bool {
-        // Capture Escape when search is active or any popup is open
+        // Capture Escape when search is active, popups are open, or vim is in INSERT mode
         self.search.state.is_some()
             || self.lsp.completion_popup.is_some()
             || self.lsp.hover_popup.is_some()
+            || self
+                .vim
+                .as_ref()
+                .map(|v| v.mode.is_insert())
+                .unwrap_or(false)
     }
 
     fn to_session(&self, session_dir: &std::path::Path) -> Option<SessionPanel> {

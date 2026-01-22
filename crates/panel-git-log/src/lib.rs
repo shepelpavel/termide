@@ -9,7 +9,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent,
 use ratatui::{buffer::Buffer, layout::Rect, style::Style};
 use unicode_width::UnicodeWidthStr;
 
-use termide_config::Config;
+use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up, Config};
 use termide_core::{Panel, PanelEvent, RenderContext, SessionPanel, ThemeColors};
 use termide_git::{self as git, truncate_to_width, CommitInfo, RepoManager};
 use termide_theme::Theme;
@@ -46,6 +46,8 @@ pub struct GitLogPanel {
     last_area: Rect,
     /// Status message
     status_message: Option<String>,
+    /// Cached vim_mode setting for keyboard handling
+    vim_mode: bool,
 }
 
 impl GitLogPanel {
@@ -62,6 +64,7 @@ impl GitLogPanel {
             cached_theme: ThemeColors::default(),
             last_area: Rect::default(),
             status_message: None,
+            vim_mode: false,
         };
 
         panel.refresh();
@@ -81,6 +84,7 @@ impl GitLogPanel {
             cached_theme: ThemeColors::default(),
             last_area: Rect::default(),
             status_message: None,
+            vim_mode: false,
         };
 
         panel.refresh();
@@ -577,8 +581,9 @@ impl Panel for GitLogPanel {
         format!("Git Log: {} - {}", repo_name, branch)
     }
 
-    fn prepare_render(&mut self, theme: &Theme, _config: &Config) {
+    fn prepare_render(&mut self, theme: &Theme, config: &Config) {
         self.cached_theme = ThemeColors::from(theme);
+        self.vim_mode = config.general.vim_mode;
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
@@ -592,15 +597,9 @@ impl Panel for GitLogPanel {
 
         let page_size = self.last_area.height.saturating_sub(4) as usize;
 
-        match key.code {
-            // Tab switches sections
-            KeyCode::Tab => {
-                self.next_section();
-            }
-            KeyCode::BackTab => {
-                self.prev_section();
-            }
-            KeyCode::Up | KeyCode::Char('k') => match self.current_section {
+        // Vim-aware navigation (j/k/g/G when vim_mode is enabled)
+        if is_move_up(&key, self.vim_mode) {
+            match self.current_section {
                 Section::RepoSelector => {
                     if self.repo_manager.selected_index() > 0 {
                         self.repo_manager.select_prev();
@@ -609,8 +608,11 @@ impl Panel for GitLogPanel {
                     }
                 }
                 Section::Commits => self.move_up(),
-            },
-            KeyCode::Down | KeyCode::Char('j') => match self.current_section {
+            }
+            return vec![];
+        }
+        if is_move_down(&key, self.vim_mode) {
+            match self.current_section {
                 Section::RepoSelector => {
                     if self.repo_manager.selected_index() + 1 < self.repo_manager.len() {
                         self.repo_manager.select_next();
@@ -619,18 +621,31 @@ impl Panel for GitLogPanel {
                     }
                 }
                 Section::Commits => self.move_down(),
-            },
+            }
+            return vec![];
+        }
+        if is_go_home(&key, self.vim_mode) {
+            self.go_to_start();
+            return vec![];
+        }
+        if is_go_end(&key, self.vim_mode) {
+            self.go_to_end();
+            return vec![];
+        }
+
+        match key.code {
+            // Tab switches sections
+            KeyCode::Tab => {
+                self.next_section();
+            }
+            KeyCode::BackTab => {
+                self.prev_section();
+            }
             KeyCode::PageUp => {
                 self.page_up(page_size);
             }
             KeyCode::PageDown => {
                 self.page_down(page_size);
-            }
-            KeyCode::Home | KeyCode::Char('g') => {
-                self.go_to_start();
-            }
-            KeyCode::End | KeyCode::Char('G') => {
-                self.go_to_end();
             }
             KeyCode::Enter | KeyCode::Char('d') => {
                 // View diff for selected commit

@@ -10,7 +10,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent,
 use ratatui::{buffer::Buffer, layout::Rect, style::Style};
 use unicode_width::UnicodeWidthStr;
 
-use termide_config::Config;
+use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up, Config};
 use termide_core::{Panel, PanelEvent, RenderContext, SessionPanel, ThemeColors};
 use termide_git::{self as git};
 use termide_theme::Theme;
@@ -101,6 +101,8 @@ pub struct GitDiffPanel {
     visible_height: usize,
     /// Status message
     status_message: Option<String>,
+    /// Cached vim_mode setting for keyboard handling
+    vim_mode: bool,
 }
 
 impl GitDiffPanel {
@@ -118,6 +120,7 @@ impl GitDiffPanel {
             total_lines: 0,
             visible_height: 0,
             status_message: None,
+            vim_mode: false,
         };
         panel.refresh();
         panel
@@ -137,6 +140,7 @@ impl GitDiffPanel {
             total_lines: 0,
             visible_height: 0,
             status_message: None,
+            vim_mode: false,
         };
         panel.refresh();
         panel
@@ -778,8 +782,9 @@ impl Panel for GitDiffPanel {
         }
     }
 
-    fn prepare_render(&mut self, theme: &Theme, _config: &Config) {
+    fn prepare_render(&mut self, theme: &Theme, config: &Config) {
         self.cached_theme = ThemeColors::from(theme);
+        self.vim_mode = config.general.vim_mode;
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
@@ -790,14 +795,28 @@ impl Panel for GitDiffPanel {
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
         self.status_message = None;
 
+        // Vim-aware navigation (j/k/g/G when vim_mode is enabled)
+        if is_move_up(&key, self.vim_mode) {
+            self.move_up();
+            return vec![];
+        }
+        if is_move_down(&key, self.vim_mode) {
+            self.move_down();
+            return vec![];
+        }
+        if is_go_home(&key, self.vim_mode) {
+            self.go_to_start();
+            return vec![];
+        }
+        if is_go_end(&key, self.vim_mode) {
+            self.go_to_end();
+            return vec![];
+        }
+
         match key.code {
             // Navigation
-            KeyCode::Up | KeyCode::Char('k') => self.move_up(),
-            KeyCode::Down | KeyCode::Char('j') => self.move_down(),
             KeyCode::PageUp => self.page_up(),
             KeyCode::PageDown => self.page_down(),
-            KeyCode::Home | KeyCode::Char('g') => self.go_to_start(),
-            KeyCode::End | KeyCode::Char('G') => self.go_to_end(),
 
             // Scroll without changing selection
             KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {

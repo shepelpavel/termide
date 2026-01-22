@@ -330,6 +330,8 @@ pub struct FileManager {
     cached_theme: Theme,
     /// Cached config for rendering
     cached_config: FileManagerSettings,
+    /// Cached vim_mode setting for keyboard handling
+    vim_mode: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -369,6 +371,7 @@ impl FileManager {
             git_root: None,
             cached_theme: Theme::default(),
             cached_config: FileManagerSettings::default(),
+            vim_mode: false,
         };
         let _ = fm.load_directory();
         fm
@@ -843,6 +846,7 @@ impl Panel for FileManager {
     fn prepare_render(&mut self, theme: &termide_theme::Theme, config: &Config) {
         self.cached_theme = *theme;
         self.cached_config = config.file_manager.clone();
+        self.vim_mode = config.general.vim_mode;
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
@@ -897,7 +901,8 @@ impl Panel for FileManager {
         let key = termide_keyboard::translate_hotkey(key);
 
         // Parse key event to command
-        let command = FmCommand::from_key_event(key, &self.cached_config.keybindings);
+        let command =
+            FmCommand::from_key_event(key, &self.cached_config.keybindings, self.vim_mode);
 
         // Execute command
         self.execute_command(command)

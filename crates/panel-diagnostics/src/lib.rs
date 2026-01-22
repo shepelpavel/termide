@@ -14,6 +14,7 @@ use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
 };
+use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up};
 use unicode_width::UnicodeWidthStr;
 
 use termide_core::{Panel, PanelEvent, RenderContext, ThemeColors};
@@ -128,6 +129,8 @@ pub struct DiagnosticsPanel {
     cached_theme: Theme,
     /// Last area height (for scroll calculations)
     last_height: usize,
+    /// Cached vim_mode setting for keyboard handling
+    vim_mode: bool,
 }
 
 impl DiagnosticsPanel {
@@ -141,6 +144,7 @@ impl DiagnosticsPanel {
             filter: SeverityFilter::All,
             cached_theme: *theme,
             last_height: 10,
+            vim_mode: false,
         }
     }
 
@@ -277,8 +281,9 @@ impl Panel for DiagnosticsPanel {
         }
     }
 
-    fn prepare_render(&mut self, theme: &Theme, _config: &termide_config::Config) {
+    fn prepare_render(&mut self, theme: &Theme, config: &termide_config::Config) {
         self.cached_theme = *theme;
+        self.vim_mode = config.general.vim_mode;
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, _ctx: &RenderContext) {
@@ -453,13 +458,28 @@ impl Panel for DiagnosticsPanel {
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
+        // Vim-aware navigation (j/k/g/G when vim_mode is enabled)
+        if is_move_up(&key, self.vim_mode) {
+            self.select_prev();
+            return vec![];
+        }
+        if is_move_down(&key, self.vim_mode) {
+            self.select_next();
+            return vec![];
+        }
+        if is_go_home(&key, self.vim_mode) {
+            self.selected_index = 0;
+            self.scroll_offset = 0;
+            return vec![];
+        }
+        if is_go_end(&key, self.vim_mode) {
+            let filtered = self.filtered_diagnostics();
+            self.selected_index = filtered.len().saturating_sub(1);
+            self.ensure_visible();
+            return vec![];
+        }
+
         match key.code {
-            KeyCode::Up | KeyCode::Char('k') => {
-                self.select_prev();
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                self.select_next();
-            }
             KeyCode::PageUp => {
                 let page_size = self.last_height.saturating_sub(3);
                 for _ in 0..page_size {
@@ -471,15 +491,6 @@ impl Panel for DiagnosticsPanel {
                 for _ in 0..page_size {
                     self.select_next();
                 }
-            }
-            KeyCode::Home | KeyCode::Char('g') => {
-                self.selected_index = 0;
-                self.scroll_offset = 0;
-            }
-            KeyCode::End | KeyCode::Char('G') => {
-                let filtered = self.filtered_diagnostics();
-                self.selected_index = filtered.len().saturating_sub(1);
-                self.ensure_visible();
             }
             KeyCode::Enter => {
                 // Navigate to selected diagnostic - open file (line navigation TODO)

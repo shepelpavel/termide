@@ -18,7 +18,8 @@ use ratatui::{buffer::Buffer, layout::Rect};
 use unicode_width::UnicodeWidthStr;
 
 use termide_config::{
-    matches_binding_or_default, matches_binding_or_defaults, Config, GitStatusKeybindings,
+    is_go_end, is_go_home, is_move_down, is_move_up, matches_binding_or_default,
+    matches_binding_or_defaults, Config, GitStatusKeybindings,
 };
 use termide_core::{
     CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel, ThemeColors,
@@ -101,6 +102,8 @@ pub struct GitStatusPanel {
     spinner_frame: usize,
     /// Initial paths passed to the panel (for git init when no repo found)
     initial_paths: Vec<PathBuf>,
+    /// Cached vim_mode setting for keyboard handling
+    vim_mode: bool,
 }
 
 impl GitStatusPanel {
@@ -142,6 +145,7 @@ impl GitStatusPanel {
             current_operation: None,
             spinner_frame: 0,
             initial_paths: paths.to_vec(),
+            vim_mode: false,
         };
 
         panel.refresh();
@@ -187,6 +191,7 @@ impl GitStatusPanel {
             current_operation: None,
             spinner_frame: 0,
             initial_paths,
+            vim_mode: false,
         };
 
         panel.refresh();
@@ -616,6 +621,7 @@ impl Panel for GitStatusPanel {
     fn prepare_render(&mut self, theme: &Theme, config: &Config) {
         self.cached_theme = ThemeColors::from(theme);
         self.keybindings = config.git_status.keybindings.clone();
+        self.vim_mode = config.general.vim_mode;
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
@@ -744,6 +750,29 @@ impl Panel for GitStatusPanel {
         }
 
         // Non-configurable bindings (navigation)
+
+        // Vim-aware navigation (j/k/g/G when vim_mode is enabled)
+        if is_move_up(&key, self.vim_mode) {
+            self.handle_up_key();
+            return vec![];
+        }
+        if is_move_down(&key, self.vim_mode) {
+            self.handle_down_key();
+            return vec![];
+        }
+        if is_go_home(&key, self.vim_mode) && self.current_section == Section::Files {
+            // Go to first selectable line
+            self.cursor = self.first_selectable_line();
+            self.ensure_cursor_visible();
+            return vec![];
+        }
+        if is_go_end(&key, self.vim_mode) && self.current_section == Section::Files {
+            // Go to last selectable line
+            self.cursor = self.last_selectable_line();
+            self.ensure_cursor_visible();
+            return vec![];
+        }
+
         match key.code {
             KeyCode::Tab => {
                 if key.modifiers.contains(KeyModifiers::SHIFT) {
@@ -755,8 +784,6 @@ impl Panel for GitStatusPanel {
             KeyCode::BackTab => {
                 self.prev_section();
             }
-            KeyCode::Up => self.handle_up_key(),
-            KeyCode::Down => self.handle_down_key(),
             KeyCode::PageUp => {
                 if self.current_section == Section::Files {
                     let page_size = self.viewport_height.max(1);

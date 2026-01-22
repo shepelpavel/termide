@@ -394,6 +394,7 @@ impl AppState {
         let mut config = EditorConfig::default();
         config.tab_size = self.config.editor.tab_size;
         config.word_wrap = self.config.editor.word_wrap;
+        config.vim_mode = self.config.general.vim_mode;
         config.keybindings = self.config.editor.keybindings.clone();
         config
     }

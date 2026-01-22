@@ -14,7 +14,7 @@ use ratatui::{
 };
 use std::any::Any;
 
-use termide_config::Config;
+use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up, Config};
 use termide_core::{Panel, PanelEvent, RenderContext};
 use termide_i18n;
 use termide_theme::Theme;
@@ -34,6 +34,8 @@ pub struct HelpPanel {
     cached_lines: Vec<Line<'static>>,
     /// Cached theme
     cached_theme: Theme,
+    /// Cached vim_mode setting for keyboard handling
+    vim_mode: bool,
 }
 
 impl HelpPanel {
@@ -47,6 +49,7 @@ impl HelpPanel {
             last_width: 0,
             cached_lines: Vec::new(),
             cached_theme: Theme::default(),
+            vim_mode: config.general.vim_mode,
         }
     }
 
@@ -91,11 +94,12 @@ impl Panel for HelpPanel {
         termide_i18n::t().panel_help().to_string()
     }
 
-    fn prepare_render(&mut self, theme: &Theme, _config: &Config) {
+    fn prepare_render(&mut self, theme: &Theme, config: &Config) {
         if self.cached_theme != *theme {
             self.cached_theme = *theme;
             self.last_width = 0; // Force regeneration
         }
+        self.vim_mode = config.general.vim_mode;
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
@@ -145,24 +149,30 @@ impl Panel for HelpPanel {
         // Use a reasonable default for visible height
         let visible_height = 20;
 
+        // Vim-aware navigation (j/k/g/G when vim_mode is enabled)
+        if is_move_up(&key, self.vim_mode) {
+            self.scroll_up(1);
+            return vec![];
+        }
+        if is_move_down(&key, self.vim_mode) {
+            self.scroll_down(1, visible_height);
+            return vec![];
+        }
+        if is_go_home(&key, self.vim_mode) {
+            self.scroll_offset = 0;
+            return vec![];
+        }
+        if is_go_end(&key, self.vim_mode) {
+            self.scroll_offset = self.cached_lines.len().saturating_sub(visible_height);
+            return vec![];
+        }
+
         match key.code {
-            KeyCode::Up | KeyCode::Char('k') => {
-                self.scroll_up(1);
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                self.scroll_down(1, visible_height);
-            }
             KeyCode::PageUp => {
                 self.scroll_up(visible_height.saturating_sub(2));
             }
             KeyCode::PageDown => {
                 self.scroll_down(visible_height.saturating_sub(2), visible_height);
-            }
-            KeyCode::Home | KeyCode::Char('g') => {
-                self.scroll_offset = 0;
-            }
-            KeyCode::End | KeyCode::Char('G') => {
-                self.scroll_offset = self.cached_lines.len().saturating_sub(visible_height);
             }
             _ => {}
         }

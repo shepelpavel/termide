@@ -228,6 +228,25 @@ pub enum PanelEvent {
 
     /// Open diagnostics panel (e.g., when clicking on diagnostic virtual line)
     OpenDiagnosticsPanel,
+
+    /// Vim mode panel navigation (Ctrl+w h/j/k/l)
+    VimPanelNavigation {
+        /// Direction to navigate
+        direction: VimPanelDirection,
+    },
+}
+
+/// Direction for Vim panel navigation (Ctrl+w h/j/k/l).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VimPanelDirection {
+    /// Navigate left (Ctrl+w h)
+    Left,
+    /// Navigate down (Ctrl+w j)
+    Down,
+    /// Navigate up (Ctrl+w k)
+    Up,
+    /// Navigate right (Ctrl+w l)
+    Right,
 }
 
 /// Confirmation dialog actions.

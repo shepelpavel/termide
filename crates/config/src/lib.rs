@@ -10,9 +10,10 @@ mod settings;
 mod xdg;
 
 pub use keybindings::{
-    latin_to_cyrillic, matches_binding_or_default, matches_binding_or_defaults, parse_keybinding,
-    EditorKeybindings, FileManagerKeybindings, GitStatusKeybindings, GlobalKeybindings, KeyBinding,
-    ParsedKeyBinding, TerminalKeybindings,
+    cyrillic_to_latin, is_go_end, is_go_home, is_move_down, is_move_up, latin_to_cyrillic,
+    matches_binding_or_default, matches_binding_or_defaults, parse_keybinding, EditorKeybindings,
+    FileManagerKeybindings, GitStatusKeybindings, GlobalKeybindings, KeyBinding, ParsedKeyBinding,
+    TerminalKeybindings,
 };
 pub use settings::{
     Config, EditorSettings, FileManagerSettings, GeneralSettings, GitStatusSettings, LegacyConfig,
@@ -33,6 +34,7 @@ pub mod defaults {
     pub const TAB_SIZE: usize = 4;
     pub const SHOW_GIT_DIFF: bool = true;
     pub const WORD_WRAP: bool = true;
+    pub const VIM_MODE: bool = false;
     pub const LARGE_FILE_THRESHOLD_MB: u64 = 5;
     pub const CONTENT_SEARCH_MAX_FILE_SIZE_MB: u64 = 1;
     pub const EXTENDED_VIEW_WIDTH: usize = 50;

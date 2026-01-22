@@ -92,6 +92,22 @@ impl App {
                 self.layout_manager.prev_group();
             }
 
+            PanelEvent::VimPanelNavigation { direction } => {
+                use termide_core::VimPanelDirection;
+                match direction {
+                    VimPanelDirection::Left => self.layout_manager.prev_group(),
+                    VimPanelDirection::Right => self.layout_manager.next_group(),
+                    VimPanelDirection::Up => {
+                        // In a stacked layout, move to panel above in same group
+                        self.layout_manager.prev_panel_in_group();
+                    }
+                    VimPanelDirection::Down => {
+                        // In a stacked layout, move to panel below in same group
+                        self.layout_manager.next_panel_in_group();
+                    }
+                }
+            }
+
             // === Open panels ===
             PanelEvent::OpenDiagnosticsPanel => {
                 self.handle_open_diagnostics()?;

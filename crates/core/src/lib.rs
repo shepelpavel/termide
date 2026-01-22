@@ -12,7 +12,7 @@ pub mod util;
 pub use command::{CommandResult, PanelCommand};
 pub use event::{
     ConfirmAction, ConflictResolution, Event, EventHandler, GitOperationType, InputAction,
-    PanelEvent, SelectAction, SplitDirection,
+    PanelEvent, SelectAction, SplitDirection, VimPanelDirection,
 };
 pub use panel::{Panel, PanelConfig, RenderContext, SessionPanel, ThemeColors};
 pub use terminal_caps::{get_terminal_caps, init_terminal_caps, ColorDepth, TerminalCaps};

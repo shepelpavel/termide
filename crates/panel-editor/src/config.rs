@@ -12,6 +12,8 @@ pub struct EditorConfig {
     pub read_only: bool,
     /// Automatic line wrapping by window width
     pub word_wrap: bool,
+    /// Enable Vim mode
+    pub vim_mode: bool,
     /// Tab size (number of spaces)
     pub tab_size: usize,
     /// Initial directory for new buffers (used in SaveAs dialog)
@@ -26,6 +28,7 @@ impl Default for EditorConfig {
             syntax_highlighting: true,
             read_only: false,
             word_wrap: true,
+            vim_mode: false,
             tab_size: 4,
             initial_directory: None,
             keybindings: EditorKeybindings::default(),
@@ -40,6 +43,7 @@ impl EditorConfig {
             syntax_highlighting: true,
             read_only: true,
             word_wrap: true,
+            vim_mode: false,
             tab_size: 4,
             initial_directory: None,
             keybindings: EditorKeybindings::default(),
@@ -50,11 +54,12 @@ impl EditorConfig {
 /// Editor information for status bar
 #[derive(Debug, Clone)]
 pub struct EditorInfo {
-    pub line: usize,               // Current line (1-based)
-    pub column: usize,             // Current column (1-based)
-    pub tab_size: usize,           // Tab size
-    pub encoding: String,          // Encoding (UTF-8)
-    pub file_type: String,         // File type / syntax language
-    pub read_only: bool,           // Read-only mode
-    pub syntax_highlighting: bool, // Syntax highlighting enabled
+    pub line: usize,                    // Current line (1-based)
+    pub column: usize,                  // Current column (1-based)
+    pub tab_size: usize,                // Tab size
+    pub encoding: String,               // Encoding (UTF-8)
+    pub file_type: String,              // File type / syntax language
+    pub read_only: bool,                // Read-only mode
+    pub syntax_highlighting: bool,      // Syntax highlighting enabled
+    pub vim_mode: Option<&'static str>, // Vim mode indicator (NORMAL, INSERT, etc.)
 }

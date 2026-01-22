@@ -267,6 +267,18 @@ impl StatusBar {
                 spans.push(Span::styled(t.status_readonly(), highlight_style));
             }
 
+            // Vim mode indicator
+            if let Some(mode) = info.vim_mode {
+                spans.push(Span::styled(t.ui_hint_separator(), base_style));
+                spans.push(Span::styled(
+                    mode,
+                    Style::default()
+                        .fg(theme.warning)
+                        .bg(theme.accented_bg)
+                        .add_modifier(Modifier::BOLD),
+                ));
+            }
+
             // If there's disk information, add it on the right
             if let Some(disk) = disk_space {
                 append_disk_space(&mut spans, disk, theme, total_width);

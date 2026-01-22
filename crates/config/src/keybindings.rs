@@ -547,6 +547,77 @@ pub fn matches_binding_or_defaults(
 // Latin to Cyrillic mapping for keyboard layout support
 // =============================================================================
 
+/// Map Cyrillic character to Latin equivalent (ЙЦУКЕН → QWERTY layout).
+///
+/// This allows Vim commands to work regardless of the current keyboard layout.
+/// For example, 'о' (Cyrillic) maps to 'j' for Vim down motion.
+pub fn cyrillic_to_latin(c: char) -> Option<char> {
+    match c {
+        // Lowercase
+        'ф' => Some('a'),
+        'и' => Some('b'),
+        'с' => Some('c'),
+        'в' => Some('d'),
+        'у' => Some('e'),
+        'а' => Some('f'),
+        'п' => Some('g'),
+        'р' => Some('h'),
+        'ш' => Some('i'),
+        'о' => Some('j'),
+        'л' => Some('k'),
+        'д' => Some('l'),
+        'ь' => Some('m'),
+        'т' => Some('n'),
+        'щ' => Some('o'),
+        'з' => Some('p'),
+        'й' => Some('q'),
+        'к' => Some('r'),
+        'ы' => Some('s'),
+        'е' => Some('t'),
+        'г' => Some('u'),
+        'м' => Some('v'),
+        'ц' => Some('w'),
+        'ч' => Some('x'),
+        'н' => Some('y'),
+        'я' => Some('z'),
+        // Uppercase
+        'Ф' => Some('A'),
+        'И' => Some('B'),
+        'С' => Some('C'),
+        'В' => Some('D'),
+        'У' => Some('E'),
+        'А' => Some('F'),
+        'П' => Some('G'),
+        'Р' => Some('H'),
+        'Ш' => Some('I'),
+        'О' => Some('J'),
+        'Л' => Some('K'),
+        'Д' => Some('L'),
+        'Ь' => Some('M'),
+        'Т' => Some('N'),
+        'Щ' => Some('O'),
+        'З' => Some('P'),
+        'Й' => Some('Q'),
+        'К' => Some('R'),
+        'Ы' => Some('S'),
+        'Е' => Some('T'),
+        'Г' => Some('U'),
+        'М' => Some('V'),
+        'Ц' => Some('W'),
+        'Ч' => Some('X'),
+        'Н' => Some('Y'),
+        'Я' => Some('Z'),
+        // Punctuation (for Vim commands like $ ; ^)
+        'х' => Some('['),
+        'ъ' => Some(']'),
+        'ж' => Some(';'),
+        'э' => Some('\''),
+        'б' => Some(','),
+        'ю' => Some('.'),
+        _ => None,
+    }
+}
+
 /// Map Latin character to Cyrillic equivalent (QWERTY → ЙЦУКЕН layout).
 ///
 /// This allows hotkeys to work regardless of the current keyboard layout.
@@ -588,6 +659,46 @@ pub fn latin_to_cyrillic(c: char) -> Option<char> {
         '/' => Some('.'),
         _ => None,
     }
+}
+
+// =============================================================================
+// Vim-aware navigation helpers for list panels
+// =============================================================================
+
+/// Check if key event is a "move up" action.
+/// Returns true for Up arrow (without modifiers), or 'k'/'л' when vim_mode is enabled.
+pub fn is_move_up(key: &KeyEvent, vim_mode: bool) -> bool {
+    (key.code == KeyCode::Up && key.modifiers.is_empty())
+        || (vim_mode
+            && key.modifiers.is_empty()
+            && matches!(key.code, KeyCode::Char('k') | KeyCode::Char('л')))
+}
+
+/// Check if key event is a "move down" action.
+/// Returns true for Down arrow (without modifiers), or 'j'/'о' when vim_mode is enabled.
+pub fn is_move_down(key: &KeyEvent, vim_mode: bool) -> bool {
+    (key.code == KeyCode::Down && key.modifiers.is_empty())
+        || (vim_mode
+            && key.modifiers.is_empty()
+            && matches!(key.code, KeyCode::Char('j') | KeyCode::Char('о')))
+}
+
+/// Check if key event is a "go to start/home" action.
+/// Returns true for Home key (without modifiers), or 'g'/'п' when vim_mode is enabled.
+pub fn is_go_home(key: &KeyEvent, vim_mode: bool) -> bool {
+    (key.code == KeyCode::Home && key.modifiers.is_empty())
+        || (vim_mode
+            && key.modifiers.is_empty()
+            && matches!(key.code, KeyCode::Char('g') | KeyCode::Char('п')))
+}
+
+/// Check if key event is a "go to end" action.
+/// Returns true for End key (without modifiers), or 'G'/'П' (Shift+g) when vim_mode is enabled.
+pub fn is_go_end(key: &KeyEvent, vim_mode: bool) -> bool {
+    (key.code == KeyCode::End && key.modifiers.is_empty())
+        || (vim_mode
+            && key.modifiers == KeyModifiers::SHIFT
+            && matches!(key.code, KeyCode::Char('G') | KeyCode::Char('П')))
 }
 
 #[cfg(test)]

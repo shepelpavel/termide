@@ -5,7 +5,8 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use termide_config::{
-    matches_binding_or_default, matches_binding_or_defaults, FileManagerKeybindings,
+    is_go_end, is_go_home, is_move_down, is_move_up, matches_binding_or_default,
+    matches_binding_or_defaults, FileManagerKeybindings,
 };
 
 /// File manager command representing a user action.
@@ -79,7 +80,12 @@ impl FmCommand {
     ///
     /// * `key` - The key event to parse (should already be translated via translate_hotkey)
     /// * `keybindings` - Configurable keybindings from config
-    pub fn from_key_event(key: KeyEvent, keybindings: &FileManagerKeybindings) -> Self {
+    /// * `vim_mode` - Whether vim mode is enabled (adds j/k/g/G navigation)
+    pub fn from_key_event(
+        key: KeyEvent,
+        keybindings: &FileManagerKeybindings,
+        vim_mode: bool,
+    ) -> Self {
         // =================================================================
         // Configurable keybindings (checked first)
         // =================================================================
@@ -248,6 +254,21 @@ impl FmCommand {
         // =================================================================
         // Non-configurable bindings (navigation, clipboard, basic keys)
         // =================================================================
+
+        // Vim-aware navigation (j/k/g/G when vim_mode is enabled)
+        if is_move_down(&key, vim_mode) {
+            return Self::MoveDown;
+        }
+        if is_move_up(&key, vim_mode) {
+            return Self::MoveUp;
+        }
+        if is_go_home(&key, vim_mode) {
+            return Self::GoHome;
+        }
+        if is_go_end(&key, vim_mode) {
+            return Self::GoEnd;
+        }
+
         match (key.code, key.modifiers) {
             // Space - show file information
             (KeyCode::Char(' '), KeyModifiers::NONE) => Self::ShowFileInfo,
@@ -266,13 +287,9 @@ impl FmCommand {
             (KeyCode::PageDown, KeyModifiers::CONTROL) => Self::PageDownWithToggle,
             (KeyCode::PageUp, KeyModifiers::CONTROL) => Self::PageUpWithToggle,
 
-            // Regular navigation
-            (KeyCode::Down, KeyModifiers::NONE) => Self::MoveDown,
-            (KeyCode::Up, KeyModifiers::NONE) => Self::MoveUp,
+            // Regular navigation (arrows-only, vim handled above)
             (KeyCode::PageUp, KeyModifiers::NONE) => Self::PageUp,
             (KeyCode::PageDown, KeyModifiers::NONE) => Self::PageDown,
-            (KeyCode::Home, KeyModifiers::NONE) => Self::GoHome,
-            (KeyCode::End, KeyModifiers::NONE) => Self::GoEnd,
             (KeyCode::Enter, KeyModifiers::NONE) => Self::Enter,
             (KeyCode::Esc, KeyModifiers::NONE) => Self::ClearSelection,
 
@@ -310,32 +327,65 @@ mod tests {
         let kb = default_keybindings();
 
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Up, KeyModifiers::NONE), &kb),
+            FmCommand::from_key_event(key(KeyCode::Up, KeyModifiers::NONE), &kb, false),
             FmCommand::MoveUp
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Down, KeyModifiers::NONE), &kb),
+            FmCommand::from_key_event(key(KeyCode::Down, KeyModifiers::NONE), &kb, false),
             FmCommand::MoveDown
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::PageUp, KeyModifiers::NONE), &kb),
+            FmCommand::from_key_event(key(KeyCode::PageUp, KeyModifiers::NONE), &kb, false),
             FmCommand::PageUp
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::PageDown, KeyModifiers::NONE), &kb),
+            FmCommand::from_key_event(key(KeyCode::PageDown, KeyModifiers::NONE), &kb, false),
             FmCommand::PageDown
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Home, KeyModifiers::NONE), &kb),
+            FmCommand::from_key_event(key(KeyCode::Home, KeyModifiers::NONE), &kb, false),
             FmCommand::GoHome
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::End, KeyModifiers::NONE), &kb),
+            FmCommand::from_key_event(key(KeyCode::End, KeyModifiers::NONE), &kb, false),
             FmCommand::GoEnd
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Enter, KeyModifiers::NONE), &kb),
+            FmCommand::from_key_event(key(KeyCode::Enter, KeyModifiers::NONE), &kb, false),
             FmCommand::Enter
+        );
+    }
+
+    #[test]
+    fn test_vim_navigation_keys() {
+        let kb = default_keybindings();
+
+        // Vim keys should not work when vim_mode is false
+        assert_eq!(
+            FmCommand::from_key_event(key(KeyCode::Char('j'), KeyModifiers::NONE), &kb, false),
+            FmCommand::None
+        );
+        assert_eq!(
+            FmCommand::from_key_event(key(KeyCode::Char('k'), KeyModifiers::NONE), &kb, false),
+            FmCommand::None
+        );
+
+        // Vim keys should work when vim_mode is true
+        assert_eq!(
+            FmCommand::from_key_event(key(KeyCode::Char('j'), KeyModifiers::NONE), &kb, true),
+            FmCommand::MoveDown
+        );
+        assert_eq!(
+            FmCommand::from_key_event(key(KeyCode::Char('k'), KeyModifiers::NONE), &kb, true),
+            FmCommand::MoveUp
+        );
+        assert_eq!(
+            FmCommand::from_key_event(key(KeyCode::Char('g'), KeyModifiers::NONE), &kb, true),
+            FmCommand::GoHome
+        );
+        assert_eq!(
+            FmCommand::from_key_event(key(KeyCode::Char('G'), KeyModifiers::SHIFT), &kb, true),
+            FmCommand::GoEnd
         );
     }
 
@@ -344,15 +394,15 @@ mod tests {
         let kb = default_keybindings();
 
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Down, KeyModifiers::SHIFT), &kb),
+            FmCommand::from_key_event(key(KeyCode::Down, KeyModifiers::SHIFT), &kb, false),
             FmCommand::MoveDownWithSelection
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Up, KeyModifiers::SHIFT), &kb),
+            FmCommand::from_key_event(key(KeyCode::Up, KeyModifiers::SHIFT), &kb, false),
             FmCommand::MoveUpWithSelection
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Esc, KeyModifiers::NONE), &kb),
+            FmCommand::from_key_event(key(KeyCode::Esc, KeyModifiers::NONE), &kb, false),
             FmCommand::ClearSelection
         );
     }
@@ -362,15 +412,15 @@ mod tests {
         let kb = default_keybindings();
 
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Char('c'), KeyModifiers::CONTROL), &kb),
+            FmCommand::from_key_event(key(KeyCode::Char('c'), KeyModifiers::CONTROL), &kb, false),
             FmCommand::ClipboardCopy
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Char('x'), KeyModifiers::CONTROL), &kb),
+            FmCommand::from_key_event(key(KeyCode::Char('x'), KeyModifiers::CONTROL), &kb, false),
             FmCommand::ClipboardCut
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Char('v'), KeyModifiers::CONTROL), &kb),
+            FmCommand::from_key_event(key(KeyCode::Char('v'), KeyModifiers::CONTROL), &kb, false),
             FmCommand::ClipboardPaste
         );
     }
@@ -380,27 +430,27 @@ mod tests {
         let kb = default_keybindings();
 
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::F(3), KeyModifiers::NONE), &kb),
+            FmCommand::from_key_event(key(KeyCode::F(3), KeyModifiers::NONE), &kb, false),
             FmCommand::ViewFile
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::F(4), KeyModifiers::NONE), &kb),
+            FmCommand::from_key_event(key(KeyCode::F(4), KeyModifiers::NONE), &kb, false),
             FmCommand::EditFile
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::F(5), KeyModifiers::NONE), &kb),
+            FmCommand::from_key_event(key(KeyCode::F(5), KeyModifiers::NONE), &kb, false),
             FmCommand::CopyFiles
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::F(6), KeyModifiers::NONE), &kb),
+            FmCommand::from_key_event(key(KeyCode::F(6), KeyModifiers::NONE), &kb, false),
             FmCommand::MoveFiles
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::F(7), KeyModifiers::NONE), &kb),
+            FmCommand::from_key_event(key(KeyCode::F(7), KeyModifiers::NONE), &kb, false),
             FmCommand::NewDirectory
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::F(8), KeyModifiers::NONE), &kb),
+            FmCommand::from_key_event(key(KeyCode::F(8), KeyModifiers::NONE), &kb, false),
             FmCommand::DeleteFiles
         );
     }
@@ -410,11 +460,11 @@ mod tests {
         let kb = default_keybindings();
 
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Tab, KeyModifiers::NONE), &kb),
+            FmCommand::from_key_event(key(KeyCode::Tab, KeyModifiers::NONE), &kb, false),
             FmCommand::NextPanel
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::BackTab, KeyModifiers::SHIFT), &kb),
+            FmCommand::from_key_event(key(KeyCode::BackTab, KeyModifiers::SHIFT), &kb, false),
             FmCommand::PrevPanel
         );
     }
@@ -424,7 +474,7 @@ mod tests {
         let kb = default_keybindings();
 
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::F(12), KeyModifiers::NONE), &kb),
+            FmCommand::from_key_event(key(KeyCode::F(12), KeyModifiers::NONE), &kb, false),
             FmCommand::None
         );
     }
