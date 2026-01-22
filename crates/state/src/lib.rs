@@ -543,6 +543,8 @@ pub enum PendingAction {
         /// Whether the file is staged
         is_staged: bool,
     },
+    /// Switch active panel's working directory
+    SwitchDirectory,
 }
 
 #[cfg(test)]

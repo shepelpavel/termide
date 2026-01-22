@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use super::App;
 use crate::state::{ActiveModal, PendingAction};
 use crate::PanelExt;
+use termide_app_core::Panel;
 use termide_config::Config;
 use termide_i18n as i18n;
 use termide_logger as logger;
@@ -109,6 +110,81 @@ impl App {
                 ActiveModal::Sessions(Box::new(modal)),
             );
         }
+
+        Ok(())
+    }
+
+    /// Open directory switcher modal
+    pub(super) fn handle_open_directory_switcher(&mut self) -> Result<()> {
+        use termide_modal::{DirectoryItem, DirectorySwitcherModal};
+
+        let t = i18n::t();
+
+        // Check if active panel supports directory switching (Terminal or FileManager)
+        let panel_supported = self
+            .layout_manager
+            .active_panel_mut()
+            .map(|p| p.as_terminal_mut().is_some() || p.as_file_manager_mut().is_some())
+            .unwrap_or(false);
+
+        if !panel_supported {
+            self.state
+                .set_info(t.directory_switcher_unsupported().to_string());
+            return Ok(());
+        }
+
+        // For terminal panels, check if there's a running process (cd won't work)
+        let has_running_process = self
+            .layout_manager
+            .active_panel_mut()
+            .and_then(|p| p.as_terminal_mut())
+            .map(|t| t.has_running_processes())
+            .unwrap_or(false);
+
+        if has_running_process {
+            self.state
+                .set_info(t.directory_switcher_process_running().to_string());
+            return Ok(());
+        }
+
+        // Get current panel's working directory
+        let current_dir = self
+            .layout_manager
+            .active_panel_mut()
+            .and_then(|p| p.get_working_directory());
+
+        // Get all unique paths from all panels
+        let paths = self.collect_panel_paths();
+
+        // If no paths available, show info message
+        if paths.is_empty() {
+            self.state
+                .set_info(t.directory_switcher_no_paths().to_string());
+            return Ok(());
+        }
+
+        // Convert to DirectoryItems with is_current flag
+        let items: Vec<DirectoryItem> = paths
+            .into_iter()
+            .map(|path| {
+                let is_current = current_dir.as_ref() == Some(&path);
+                let display = path.display().to_string();
+                DirectoryItem {
+                    path,
+                    display,
+                    is_current,
+                }
+            })
+            .collect();
+
+        // Find index of current directory to position cursor there
+        let current_idx = items.iter().position(|item| item.is_current).unwrap_or(0);
+        let modal = DirectorySwitcherModal::new(t.directory_switcher_title(), items)
+            .with_cursor(current_idx);
+        self.state.set_pending_action(
+            PendingAction::SwitchDirectory,
+            ActiveModal::DirectorySwitcher(Box::new(modal)),
+        );
 
         Ok(())
     }

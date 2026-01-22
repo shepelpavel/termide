@@ -55,6 +55,7 @@ impl App {
                 ActiveModal::ContentSearch(m) => m.handle_key(key)?.map(box_modal_result),
                 ActiveModal::DirectoryPicker(m) => m.handle_key(key)?.map(box_modal_result),
                 ActiveModal::SaveAs(m) => m.handle_key(key)?.map(box_modal_result),
+                ActiveModal::DirectorySwitcher(m) => m.handle_key(key)?.map(box_modal_result),
             };
 
             // If modal window returned result, handle it
@@ -162,6 +163,9 @@ impl App {
                     m.handle_mouse(mouse, modal_area)?.map(box_modal_result)
                 }
                 ActiveModal::SaveAs(m) => m.handle_mouse(mouse, modal_area)?.map(box_modal_result),
+                ActiveModal::DirectorySwitcher(m) => {
+                    m.handle_mouse(mouse, modal_area)?.map(box_modal_result)
+                }
             };
 
             // If modal window returned result, handle it
@@ -321,6 +325,10 @@ impl App {
                     is_staged,
                 } => {
                     self.handle_git_revert_file(value, &file_path, &repo_path, is_staged)?;
+                }
+                // Switch active panel's working directory
+                PendingAction::SwitchDirectory => {
+                    self.handle_switch_directory(value)?;
                 }
             }
         }

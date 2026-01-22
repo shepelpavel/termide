@@ -1242,6 +1242,22 @@ impl Translation for RuntimeTranslation {
         self.get_string("directory_picker_cancel")
     }
 
+    fn directory_switcher_title(&self) -> &str {
+        self.get_string("directory_switcher_title")
+    }
+
+    fn directory_switcher_no_paths(&self) -> &str {
+        self.get_string("directory_switcher_no_paths")
+    }
+
+    fn directory_switcher_unsupported(&self) -> &str {
+        self.get_string("directory_switcher_unsupported")
+    }
+
+    fn directory_switcher_process_running(&self) -> &str {
+        self.get_string("directory_switcher_process_running")
+    }
+
     fn time_just_now(&self) -> &str {
         self.get_string("time_just_now")
     }

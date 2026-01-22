@@ -194,7 +194,8 @@ impl App {
             | PendingAction::OpenGitLog
             | PendingAction::GitFileAction { .. }
             | PendingAction::GitCommit { .. }
-            | PendingAction::GitRevertFile { .. } => {
+            | PendingAction::GitRevertFile { .. }
+            | PendingAction::SwitchDirectory => {
                 // These actions don't require panel_index update
             }
         }

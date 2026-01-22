@@ -548,6 +548,43 @@ impl App {
         }
     }
 
+    /// Handle switch directory modal result - change active panel's working directory
+    pub(super) fn handle_switch_directory(&mut self, value: Box<dyn std::any::Any>) -> Result<()> {
+        use crate::panel_ext::PanelExt;
+
+        if let Some(path) = value.downcast_ref::<std::path::PathBuf>() {
+            let t = i18n::t();
+
+            // Get active panel and switch based on panel type
+            if let Some(panel) = self.layout_manager.active_panel_mut() {
+                // Try as FileManager
+                if let Some(file_manager) = panel.as_file_manager_mut() {
+                    let _ = file_manager.navigate_to(path.clone());
+                    self.state
+                        .set_info(format!("Switched to: {}", path.display()));
+                    return Ok(());
+                }
+
+                // Try as Terminal
+                if let Some(terminal) = panel.as_terminal_mut() {
+                    // Shell-escape the path for cd command
+                    // Simple escaping: wrap in single quotes, escape existing single quotes
+                    let path_str = path.to_string_lossy();
+                    let escaped_path = format!("'{}'", path_str.replace('\'', "'\\''"));
+                    let cd_command = format!("cd {}\n", escaped_path);
+                    let _ = terminal.send_command(&cd_command);
+                    self.state.set_info(format!("cd {}", path.display()));
+                    return Ok(());
+                }
+
+                // Unsupported panel type (Editor, etc.)
+                self.state
+                    .set_info(t.directory_switcher_unsupported().to_string());
+            }
+        }
+        Ok(())
+    }
+
     /// Create a new terminal panel with the calculated dimensions.
     ///
     /// This is the core helper for creating terminal panels. It handles:

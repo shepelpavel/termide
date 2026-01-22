@@ -383,6 +383,12 @@ pub trait Translation: Send + Sync {
     fn directory_picker_move(&self) -> &str;
     fn directory_picker_cancel(&self) -> &str;
 
+    // Directory switcher
+    fn directory_switcher_title(&self) -> &str;
+    fn directory_switcher_no_paths(&self) -> &str;
+    fn directory_switcher_unsupported(&self) -> &str;
+    fn directory_switcher_process_running(&self) -> &str;
+
     // Relative time
     fn time_just_now(&self) -> &str;
     fn time_minutes_ago(&self, count: usize) -> String;

@@ -24,6 +24,7 @@ pub mod confirm;
 pub mod conflict;
 pub mod content_search;
 pub mod directory_picker;
+pub mod directory_switcher;
 pub mod editable_select;
 pub mod file_search;
 pub mod info;
@@ -42,6 +43,7 @@ pub use confirm::ConfirmModal;
 pub use conflict::{ConflictModal, ConflictResolution};
 pub use content_search::{ContentSearchModal, ContentSearchResultItem};
 pub use directory_picker::DirectoryPickerModal;
+pub use directory_switcher::{DirectoryItem, DirectorySwitcherModal};
 pub use editable_select::{EditableSelectModal, SelectOption};
 pub use file_search::{FileSearchModal, SearchResultItem};
 pub use info::InfoModal;
@@ -95,6 +97,8 @@ pub enum ActiveModal {
     DirectoryPicker(Box<DirectoryPickerModal>),
     /// Save As modal with executable checkbox
     SaveAs(Box<SaveAsModal>),
+    /// Directory switcher modal
+    DirectorySwitcher(Box<DirectorySwitcherModal>),
 }
 
 /// Trait for all modal windows.

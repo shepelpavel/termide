@@ -129,6 +129,8 @@ pub enum HotkeyAction {
     OpenSessions,
     /// Open or focus Git Status panel
     OpenGitStatus,
+    /// Open directory switcher modal
+    OpenDirectorySwitcher,
 }
 
 impl HotkeyAction {
@@ -175,6 +177,7 @@ impl HotkeyAction {
             | HotkeyAction::OpenPreferences
             | HotkeyAction::OpenSessions
             | HotkeyAction::OpenGitStatus
+            | HotkeyAction::OpenDirectorySwitcher
             | HotkeyAction::PrevInGroup
             | HotkeyAction::NextInGroup
             | HotkeyAction::ToggleStacking
@@ -359,6 +362,16 @@ impl DefaultHotkeyProcessor {
             HotkeyAction::OpenGitStatus,
         );
 
+        // Directory Switcher (Ctrl+P)
+        bindings.insert(
+            KeyBinding::new(KeyCode::Char('p'), KeyModifiers::CONTROL),
+            HotkeyAction::OpenDirectorySwitcher,
+        );
+        bindings.insert(
+            KeyBinding::new(KeyCode::Char('P'), KeyModifiers::CONTROL),
+            HotkeyAction::OpenDirectorySwitcher,
+        );
+
         // Panel management
         bindings.insert(
             KeyBinding::alt(KeyCode::Backspace),
@@ -496,6 +509,11 @@ impl DefaultHotkeyProcessor {
             &config.open_git_status,
             HotkeyAction::OpenGitStatus,
         );
+        add_binding(
+            &mut processor,
+            &config.open_directory_switcher,
+            HotkeyAction::OpenDirectorySwitcher,
+        );
 
         // Panel management
         add_binding(
@@ -620,8 +638,10 @@ impl DefaultHotkeyProcessor {
 
 impl HotkeyProcessor for DefaultHotkeyProcessor {
     fn process_hotkey(&self, key: &KeyEvent) -> Option<HotkeyAction> {
-        // Only process Alt+key combinations
-        if !key.modifiers.contains(KeyModifiers::ALT) {
+        // Only process Alt+key or Ctrl+key combinations
+        if !key.modifiers.contains(KeyModifiers::ALT)
+            && !key.modifiers.contains(KeyModifiers::CONTROL)
+        {
             return None;
         }
 
@@ -644,6 +664,10 @@ mod tests {
 
     fn alt_key(c: char) -> KeyEvent {
         key_event(KeyCode::Char(c), KeyModifiers::ALT)
+    }
+
+    fn ctrl_key(c: char) -> KeyEvent {
+        key_event(KeyCode::Char(c), KeyModifiers::CONTROL)
     }
 
     #[test]
@@ -752,17 +776,34 @@ mod tests {
     }
 
     #[test]
-    fn test_default_processor_non_alt_keys() {
+    fn test_default_processor_non_modifier_keys() {
         let processor = DefaultHotkeyProcessor::new();
 
-        // Non-Alt keys should return None
+        // Keys without Alt or Ctrl modifiers should return None
         assert_eq!(
             processor.process_hotkey(&key_event(KeyCode::Char('m'), KeyModifiers::NONE)),
             None
         );
         assert_eq!(
-            processor.process_hotkey(&key_event(KeyCode::Char('m'), KeyModifiers::CONTROL)),
+            processor.process_hotkey(&key_event(KeyCode::Char('m'), KeyModifiers::SHIFT)),
             None
+        );
+    }
+
+    #[test]
+    fn test_default_processor_ctrl_p_directory_switcher() {
+        let processor = DefaultHotkeyProcessor::new();
+
+        // Ctrl+P should open directory switcher (lowercase)
+        assert_eq!(
+            processor.process_hotkey(&ctrl_key('p')),
+            Some(HotkeyAction::OpenDirectorySwitcher)
+        );
+
+        // Ctrl+P should also work with uppercase
+        assert_eq!(
+            processor.process_hotkey(&ctrl_key('P')),
+            Some(HotkeyAction::OpenDirectorySwitcher)
         );
     }
 

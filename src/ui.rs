@@ -186,6 +186,7 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
             ActiveModal::ContentSearch(m) => m.render(area, frame.buffer_mut(), theme),
             ActiveModal::DirectoryPicker(m) => m.render(area, frame.buffer_mut(), theme),
             ActiveModal::SaveAs(m) => m.render(area, frame.buffer_mut(), theme),
+            ActiveModal::DirectorySwitcher(m) => m.render(area, frame.buffer_mut(), theme),
         }
     }
 }
