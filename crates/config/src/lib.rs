@@ -3,12 +3,14 @@
 //! This crate provides configuration loading, saving, and validation
 //! with support for TOML format and XDG directory conventions.
 
-pub mod actions;
+pub mod bookmarks;
 pub mod constants;
 pub mod keybindings;
+pub mod scripts;
 mod settings;
 mod xdg;
 
+pub use bookmarks::{Bookmark, BookmarkType, BookmarksConfig};
 pub use keybindings::{
     cyrillic_to_latin, is_go_end, is_go_home, is_move_down, is_move_up, latin_to_cyrillic,
     matches_binding_or_default, matches_binding_or_defaults, parse_keybinding, EditorKeybindings,
@@ -122,9 +124,9 @@ impl Config {
         Ok(get_config_dir()?.join("themes"))
     }
 
-    /// Get path to actions directory for user scripts.
-    pub fn get_actions_dir() -> Result<PathBuf> {
-        Ok(get_config_dir()?.join("actions"))
+    /// Get path to scripts directory for user scripts.
+    pub fn get_scripts_dir() -> Result<PathBuf> {
+        Ok(get_data_dir()?.join("scripts"))
     }
 
     /// Check if path is the config file.

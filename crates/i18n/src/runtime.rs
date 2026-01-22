@@ -991,6 +991,46 @@ impl Translation for RuntimeTranslation {
         self.get_string("menu_open_hint_label")
     }
 
+    fn menu_bookmarks(&self) -> &str {
+        self.get_string("menu_bookmarks")
+    }
+
+    fn bookmarks_add_bookmark(&self) -> &str {
+        self.get_string("bookmarks_add_bookmark")
+    }
+
+    fn bookmarks_manage(&self) -> &str {
+        self.get_string("bookmarks_manage")
+    }
+
+    fn bookmarks_no_bookmarks(&self) -> &str {
+        self.get_string("bookmarks_no_bookmarks")
+    }
+
+    fn bookmarks_add_title(&self) -> &str {
+        self.get_string("bookmarks_add_title")
+    }
+
+    fn bookmarks_add_path(&self) -> &str {
+        self.get_string("bookmarks_add_path")
+    }
+
+    fn bookmarks_add_description(&self) -> &str {
+        self.get_string("bookmarks_add_description")
+    }
+
+    fn bookmarks_add_group(&self) -> &str {
+        self.get_string("bookmarks_add_group")
+    }
+
+    fn bookmarks_add_new_group(&self) -> &str {
+        self.get_string("bookmarks_add_new_group")
+    }
+
+    fn bookmarks_ungrouped(&self) -> &str {
+        self.get_string("bookmarks_ungrouped")
+    }
+
     fn tools_files(&self) -> &str {
         self.get_string("tools_files")
     }

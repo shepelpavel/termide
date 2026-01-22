@@ -12,9 +12,10 @@ use termide_i18n as i18n;
 use termide_logger as logger;
 use termide_theme::Theme;
 use termide_ui_render::{
-    get_actions_group_items, get_actions_items, get_menu_item_x_position, get_options_items,
-    get_sessions_items, get_tools_items, OPTIONS_MENU_INDEX, SCRIPTS_MENU_INDEX,
-    SESSIONS_MENU_INDEX, WINDOWS_MENU_INDEX,
+    get_bookmarks_group_items, get_bookmarks_items, get_menu_item_x_position, get_options_items,
+    get_scripts_group_items, get_scripts_items, get_sessions_items, get_tools_items,
+    BOOKMARKS_MENU_INDEX, OPTIONS_MENU_INDEX, SCRIPTS_MENU_INDEX, SESSIONS_MENU_INDEX,
+    WINDOWS_MENU_INDEX,
 };
 
 impl App {
@@ -117,10 +118,18 @@ impl App {
             return Ok(());
         }
 
-        // Handle Actions submenu clicks when it's open
-        if self.state.ui.actions_submenu.open
+        // Handle Scripts submenu clicks when it's open
+        if self.state.ui.scripts_submenu.open
             && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
-            && self.handle_actions_submenu_click(mouse.column, mouse.row)?
+            && self.handle_scripts_submenu_click(mouse.column, mouse.row)?
+        {
+            return Ok(());
+        }
+
+        // Handle Bookmarks submenu clicks when it's open
+        if self.state.ui.bookmarks_submenu.open
+            && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
+            && self.handle_bookmarks_submenu_click(mouse.column, mouse.row)?
         {
             return Ok(());
         }
@@ -539,21 +548,26 @@ impl App {
                         }
                     }
                     2 => {
-                        // Manage actions
+                        // Manage scripts
                         self.state.close_menu();
-                        self.handle_manage_actions()?;
+                        self.handle_manage_scripts()?;
                     }
                     3 => {
+                        // Manage bookmarks
+                        self.state.close_menu();
+                        self.handle_manage_bookmarks()?;
+                    }
+                    4 => {
                         // Edit preferences
                         self.state.close_menu();
                         self.open_config_in_editor()?;
                     }
-                    4 => {
+                    5 => {
                         // Help
                         self.state.close_menu();
                         self.handle_new_help()?;
                     }
-                    5 => {
+                    6 => {
                         // Quit
                         self.state.close_menu();
                         if self.has_panels_requiring_confirmation() {
@@ -659,10 +673,10 @@ impl App {
         Ok(true)
     }
 
-    /// Handle click on Actions submenu dropdown
+    /// Handle click on Scripts submenu dropdown
     /// Returns true if click was handled
-    fn handle_actions_submenu_click(&mut self, x: u16, y: u16) -> Result<bool> {
-        let registry = match termide_config::actions::ActionsRegistry::load() {
+    fn handle_scripts_submenu_click(&mut self, x: u16, y: u16) -> Result<bool> {
+        let registry = match termide_config::scripts::ScriptsRegistry::load() {
             Some(r) => r,
             None => {
                 self.state.close_menu();
@@ -671,24 +685,24 @@ impl App {
         };
 
         // If nested submenu is open, handle clicks on it first
-        if self.state.ui.actions_nested.open {
-            if let Some(group_name) = &self.state.ui.current_actions_group.clone() {
-                let nested_items = get_actions_group_items(&registry, group_name);
+        if self.state.ui.scripts_nested.open {
+            if let Some(group_name) = &self.state.ui.current_scripts_group.clone() {
+                let nested_items = get_scripts_group_items(&registry, group_name);
                 if !nested_items.is_empty() {
                     // Calculate nested submenu position (to the right of main dropdown)
                     let menu_x = get_menu_item_x_position(SCRIPTS_MENU_INDEX);
-                    let actions_items = get_actions_items(&registry);
-                    let actions_width = actions_items
+                    let scripts_items = get_scripts_items(&registry);
+                    let scripts_width = scripts_items
                         .iter()
                         .map(|i| i.label.width())
                         .max()
                         .unwrap_or(10) as u16
                         + 4;
 
-                    let nested_x = menu_x + actions_width;
+                    let nested_x = menu_x + scripts_width;
                     let dropdown_y = 1_u16;
                     // +1 for dropdown border, align with selected item
-                    let nested_y = dropdown_y + 1 + self.state.ui.actions_submenu.selected as u16;
+                    let nested_y = dropdown_y + 1 + self.state.ui.scripts_submenu.selected as u16;
                     let nested_width = nested_items
                         .iter()
                         .map(|i| i.label.width())
@@ -706,8 +720,8 @@ impl App {
                         let item_y = y.saturating_sub(nested_y + 1);
                         let item_index = item_y as usize;
                         if item_index < nested_items.len() {
-                            self.state.ui.actions_nested.selected = item_index;
-                            self.execute_actions_nested_action()?;
+                            self.state.ui.scripts_nested.selected = item_index;
+                            self.execute_scripts_nested_action()?;
                             return Ok(true);
                         }
                     }
@@ -715,32 +729,115 @@ impl App {
             }
         }
 
-        // Get Actions dropdown position
+        // Get Scripts dropdown position
         let menu_x = get_menu_item_x_position(SCRIPTS_MENU_INDEX);
         let dropdown_y = 1_u16;
 
-        // Calculate Actions dropdown dimensions
-        let actions_items = get_actions_items(&registry);
-        let actions_width = actions_items
+        // Calculate Scripts dropdown dimensions
+        let scripts_items = get_scripts_items(&registry);
+        let scripts_width = scripts_items
             .iter()
             .map(|i| i.label.width())
             .max()
             .unwrap_or(10) as u16
             + 4;
-        let actions_height = actions_items.len() as u16 + 2;
+        let scripts_height = scripts_items.len() as u16 + 2;
 
-        // Check click on Actions dropdown
+        // Check click on Scripts dropdown
         if x >= menu_x
-            && x < menu_x + actions_width
+            && x < menu_x + scripts_width
             && y >= dropdown_y
-            && y < dropdown_y + actions_height
+            && y < dropdown_y + scripts_height
         {
             let item_y = y.saturating_sub(dropdown_y + 1);
             let item_index = item_y as usize;
-            if item_index < actions_items.len() {
-                self.state.ui.actions_submenu.selected = item_index;
-                // Execute the action (may open nested submenu or run script)
-                self.execute_actions_submenu_action()?;
+            if item_index < scripts_items.len() {
+                self.state.ui.scripts_submenu.selected = item_index;
+                // Execute the script (may open nested submenu or run script)
+                self.execute_scripts_submenu_action()?;
+                return Ok(true);
+            }
+        }
+
+        // Click outside dropdown - close menu
+        self.state.close_menu();
+        Ok(true)
+    }
+
+    /// Handle click on Bookmarks submenu dropdown
+    /// Returns true if click was handled
+    fn handle_bookmarks_submenu_click(&mut self, x: u16, y: u16) -> Result<bool> {
+        let bookmarks_items = get_bookmarks_items(&self.state.bookmarks);
+
+        // If nested submenu is open, handle clicks on it first
+        if self.state.ui.bookmarks_nested.open {
+            if let Some(group_name) = &self.state.ui.current_bookmarks_group.clone() {
+                let nested_items = get_bookmarks_group_items(&self.state.bookmarks, group_name);
+                if !nested_items.is_empty() {
+                    // Calculate nested submenu position (to the right of main dropdown)
+                    let menu_x = get_menu_item_x_position(BOOKMARKS_MENU_INDEX);
+                    let bookmarks_width = bookmarks_items
+                        .iter()
+                        .map(|i| i.label.width())
+                        .max()
+                        .unwrap_or(10) as u16
+                        + 4;
+
+                    let nested_x = menu_x + bookmarks_width;
+                    let dropdown_y = 1_u16;
+                    // +1 for dropdown border, align with selected item
+                    let nested_y = dropdown_y + 1 + self.state.ui.bookmarks_submenu.selected as u16;
+                    let nested_width = nested_items
+                        .iter()
+                        .map(|i| i.label.width())
+                        .max()
+                        .unwrap_or(10) as u16
+                        + 4;
+                    let nested_height = nested_items.len() as u16 + 2;
+
+                    // Check click on nested submenu
+                    if x >= nested_x
+                        && x < nested_x + nested_width
+                        && y >= nested_y
+                        && y < nested_y + nested_height
+                    {
+                        let item_y = y.saturating_sub(nested_y + 1);
+                        let item_index = item_y as usize;
+                        if item_index < nested_items.len() {
+                            self.state.ui.bookmarks_nested.selected = item_index;
+                            self.execute_bookmarks_nested_action()?;
+                            return Ok(true);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Get Bookmarks dropdown position
+        let menu_x = get_menu_item_x_position(BOOKMARKS_MENU_INDEX);
+        let dropdown_y = 1_u16;
+
+        // Calculate Bookmarks dropdown dimensions
+        let bookmarks_width = bookmarks_items
+            .iter()
+            .map(|i| i.label.width())
+            .max()
+            .unwrap_or(10) as u16
+            + 4;
+        let bookmarks_height = bookmarks_items.len() as u16 + 2;
+
+        // Check click on Bookmarks dropdown
+        if x >= menu_x
+            && x < menu_x + bookmarks_width
+            && y >= dropdown_y
+            && y < dropdown_y + bookmarks_height
+        {
+            let item_y = y.saturating_sub(dropdown_y + 1);
+            let item_index = item_y as usize;
+            if item_index < bookmarks_items.len() {
+                self.state.ui.bookmarks_submenu.selected = item_index;
+                // Execute the action (may open nested submenu or perform action)
+                self.execute_bookmarks_submenu_action()?;
                 return Ok(true);
             }
         }

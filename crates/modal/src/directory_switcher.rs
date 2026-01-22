@@ -30,6 +30,8 @@ pub struct DirectoryItem {
     pub display: String,
     /// Whether this is the current panel's directory
     pub is_current: bool,
+    /// Whether this is a bookmarked directory
+    pub is_bookmark: bool,
 }
 
 /// Directory switcher modal window
@@ -154,20 +156,20 @@ impl Modal for DirectorySwitcherModal {
             .take(MAX_VISIBLE_ITEMS)
         {
             let is_selected = idx == self.cursor;
-            let is_current = item.is_current;
 
             // Line: Path with selection indicator
             let prefix = if is_selected { "▶ " } else { "  " };
 
-            let path_suffix = if is_current { " (*)" } else { "" };
+            // No suffix markers - clean display
+            let path_suffix = "";
 
             let path_style = if is_selected {
                 Style::default()
                     .fg(theme.fg)
                     .bg(theme.bg)
                     .add_modifier(Modifier::BOLD)
-            } else if is_current {
-                // Current directory - same color as panel border and selected files
+            } else if item.is_current {
+                // Current directory highlighted with accent color
                 Style::default().fg(theme.accented_fg)
             } else {
                 Style::default().fg(theme.bg)

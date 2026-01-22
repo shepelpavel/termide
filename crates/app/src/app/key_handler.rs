@@ -46,9 +46,14 @@ impl App {
             return self.handle_tools_submenu_key(key);
         }
 
-        // If Actions submenu is open, handle its navigation
-        if self.state.ui.actions_submenu.open {
-            return self.handle_actions_submenu_key(key);
+        // If Scripts submenu is open, handle its navigation
+        if self.state.ui.scripts_submenu.open {
+            return self.handle_scripts_submenu_key(key);
+        }
+
+        // If Bookmarks submenu is open, handle its navigation
+        if self.state.ui.bookmarks_submenu.open {
+            return self.handle_bookmarks_submenu_key(key);
         }
 
         // If Options submenu is open, handle submenu navigation
@@ -195,7 +200,8 @@ impl App {
             | PendingAction::GitFileAction { .. }
             | PendingAction::GitCommit { .. }
             | PendingAction::GitRevertFile { .. }
-            | PendingAction::SwitchDirectory => {
+            | PendingAction::SwitchDirectory
+            | PendingAction::AddBookmark => {
                 // These actions don't require panel_index update
             }
         }

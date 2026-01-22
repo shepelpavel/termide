@@ -89,8 +89,8 @@ impl<'a> Dropdown<'a> {
             .map(|item| item.label.width())
             .max()
             .unwrap_or(0);
-        // " " + label + " ▶" (or "  ")
-        (max_label_len + 4).min(40) as u16
+        // 2 (borders) + 1 (space) + label + 3 (" ▶ ") = label + 6
+        (max_label_len + 6).min(40) as u16
     }
 
     /// Get the height of this dropdown
@@ -149,15 +149,16 @@ impl<'a> Dropdown<'a> {
 
                 // Add submenu indicator or padding
                 let label_width = item.label.width();
-                let padding_len = (width as usize).saturating_sub(label_width + 4); // -4 for " " + " ▶"
+                // -6: borders(2) + leading space(1) + suffix " ▶ "(3)
+                let padding_len = (width as usize).saturating_sub(label_width + 6);
                 if padding_len > 0 {
                     spans.push(Span::styled(" ".repeat(padding_len), base_style));
                 }
 
                 if item.has_submenu {
-                    spans.push(Span::styled(" ▶", base_style));
+                    spans.push(Span::styled(" ▶ ", base_style));
                 } else {
-                    spans.push(Span::styled("  ", base_style));
+                    spans.push(Span::styled("   ", base_style));
                 }
 
                 ListItem::new(Line::from(spans))
@@ -227,6 +228,7 @@ pub fn get_options_items() -> Vec<DropdownItem> {
         DropdownItem::new(t.preferences_themes(), "themes").with_submenu(),
         DropdownItem::new(t.preferences_language(), "language").with_submenu(),
         DropdownItem::new(t.options_manage_scripts(), "manage_scripts"),
+        DropdownItem::new(t.bookmarks_manage(), "manage_bookmarks"),
         DropdownItem::new(t.preferences_edit(), "edit_preferences"),
         DropdownItem::new(t.options_help(), "help"),
         DropdownItem::new(t.menu_quit(), "quit"),
@@ -234,18 +236,18 @@ pub fn get_options_items() -> Vec<DropdownItem> {
 }
 
 /// Number of items in Options submenu
-pub const OPTIONS_SUBMENU_ITEM_COUNT: usize = 6;
+pub const OPTIONS_SUBMENU_ITEM_COUNT: usize = 7;
 
-/// Special action ID for "Add action..." menu item
-pub const ACTION_ADD_NEW: &str = "__add_action__";
+/// Special script ID for "Add script..." menu item
+pub const SCRIPT_ADD_NEW: &str = "__add_script__";
 
-/// Get actions submenu items from ActionsRegistry
-pub fn get_actions_items(registry: &termide_config::actions::ActionsRegistry) -> Vec<DropdownItem> {
+/// Get scripts submenu items from ScriptsRegistry
+pub fn get_scripts_items(registry: &termide_config::scripts::ScriptsRegistry) -> Vec<DropdownItem> {
     let mut items = Vec::new();
 
-    // Add root items (scripts in actions/ root)
-    for action in &registry.root_items {
-        items.push(DropdownItem::new(&action.name, &action.name));
+    // Add root items (scripts in scripts/ root)
+    for script in &registry.root_items {
+        items.push(DropdownItem::new(&script.name, &script.name));
     }
 
     // Add groups (subdirectories) with submenu indicator
@@ -256,15 +258,15 @@ pub fn get_actions_items(registry: &termide_config::actions::ActionsRegistry) ->
     // If no scripts exist, show "Add script..." item
     if items.is_empty() {
         let t = i18n::t();
-        items.push(DropdownItem::new(t.menu_scripts_add(), ACTION_ADD_NEW));
+        items.push(DropdownItem::new(t.menu_scripts_add(), SCRIPT_ADD_NEW));
     }
 
     items
 }
 
-/// Get actions nested submenu items for a specific group
-pub fn get_actions_group_items(
-    registry: &termide_config::actions::ActionsRegistry,
+/// Get scripts nested submenu items for a specific group
+pub fn get_scripts_group_items(
+    registry: &termide_config::scripts::ScriptsRegistry,
     group_name: &str,
 ) -> Vec<DropdownItem> {
     registry
@@ -275,7 +277,64 @@ pub fn get_actions_group_items(
             group
                 .items
                 .iter()
-                .map(|action| DropdownItem::new(&action.name, &action.name))
+                .map(|script| DropdownItem::new(&script.name, &script.name))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Special bookmark action IDs
+pub const BOOKMARK_ADD_CURRENT: &str = "__bookmark_add__";
+pub const BOOKMARK_MANAGE: &str = "__bookmark_manage__";
+
+/// Get bookmarks submenu items from BookmarksConfig
+pub fn get_bookmarks_items(config: &termide_config::BookmarksConfig) -> Vec<DropdownItem> {
+    let t = i18n::t();
+    let mut items = vec![DropdownItem::new(
+        t.bookmarks_add_bookmark(),
+        BOOKMARK_ADD_CURRENT,
+    )];
+
+    if config.is_empty() {
+        items.push(DropdownItem::new(t.bookmarks_no_bookmarks(), ""));
+        return items;
+    }
+
+    // Add named groups first (as submenus)
+    let named_groups = config.named_groups();
+    for group_name in named_groups.keys() {
+        items.push(DropdownItem::new(group_name, group_name).with_submenu());
+    }
+
+    // Add ungrouped bookmarks directly in menu (not in submenu)
+    for bookmark in config.ungrouped() {
+        items.push(DropdownItem::new(bookmark.display_name(), &bookmark.path));
+    }
+
+    items
+}
+
+/// Get bookmarks count for determining submenu item count
+pub fn get_bookmarks_item_count(config: &termide_config::BookmarksConfig) -> usize {
+    if config.is_empty() {
+        2 // add_current + no_bookmarks
+    } else {
+        1 + config.named_groups().len() + config.ungrouped().len()
+    }
+}
+
+/// Get bookmark items for a specific group
+pub fn get_bookmarks_group_items(
+    config: &termide_config::BookmarksConfig,
+    group_name: &str,
+) -> Vec<DropdownItem> {
+    config
+        .grouped()
+        .get(group_name)
+        .map(|bookmarks| {
+            bookmarks
+                .iter()
+                .map(|b| DropdownItem::new(b.display_name(), &b.path))
                 .collect()
         })
         .unwrap_or_default()

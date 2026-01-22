@@ -56,6 +56,7 @@ impl App {
                 ActiveModal::DirectoryPicker(m) => m.handle_key(key)?.map(box_modal_result),
                 ActiveModal::SaveAs(m) => m.handle_key(key)?.map(box_modal_result),
                 ActiveModal::DirectorySwitcher(m) => m.handle_key(key)?.map(box_modal_result),
+                ActiveModal::BookmarkAdd(m) => m.handle_key(key)?.map(box_modal_result),
             };
 
             // If modal window returned result, handle it
@@ -164,6 +165,9 @@ impl App {
                 }
                 ActiveModal::SaveAs(m) => m.handle_mouse(mouse, modal_area)?.map(box_modal_result),
                 ActiveModal::DirectorySwitcher(m) => {
+                    m.handle_mouse(mouse, modal_area)?.map(box_modal_result)
+                }
+                ActiveModal::BookmarkAdd(m) => {
                     m.handle_mouse(mouse, modal_area)?.map(box_modal_result)
                 }
             };
@@ -330,7 +334,41 @@ impl App {
                 PendingAction::SwitchDirectory => {
                     self.handle_switch_directory(value)?;
                 }
+                // Add bookmark
+                PendingAction::AddBookmark => {
+                    self.handle_add_bookmark_result(value)?;
+                }
             }
+        }
+        Ok(())
+    }
+
+    /// Handle bookmark add result
+    fn handle_add_bookmark_result(&mut self, value: Box<dyn std::any::Any>) -> Result<()> {
+        use std::path::Path;
+        use termide_config::Bookmark;
+        use termide_modal::BookmarkAddResult;
+
+        if let Some(result) = value.downcast_ref::<BookmarkAddResult>() {
+            let mut bookmark = Bookmark::new(result.path.clone());
+
+            // Use provided description or generate from path (last component)
+            let description = match &result.description {
+                Some(desc) => desc.clone(),
+                None => Path::new(&result.path)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| result.path.clone()),
+            };
+            bookmark = bookmark.with_description(description);
+
+            if let Some(group) = &result.group {
+                bookmark = bookmark.with_group(group.clone());
+            }
+
+            self.state.bookmarks.add(bookmark);
+            self.state.save_bookmarks();
         }
         Ok(())
     }

@@ -2736,6 +2736,7 @@ name = "termide-config"
 version = "0.9.1"
 dependencies = [
  "anyhow",
+ "chrono",
  "crossterm 0.28.1",
  "dirs",
  "serde",

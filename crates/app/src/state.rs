@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 
 use termide_config::constants::DEFAULT_MAIN_PANEL_WIDTH;
-use termide_config::Config;
+use termide_config::{BookmarksConfig, Config};
 use termide_lsp::{LspConfig, LspManager, LspServerConfig};
 use termide_panel_editor::EditorConfig;
 use termide_system_monitor::SystemMonitor;
@@ -134,6 +134,8 @@ pub struct AppState {
     pub lsp_manager: Option<LspManager>,
     /// All diagnostics from LSP servers, keyed by file path
     pub all_diagnostics: HashMap<PathBuf, Vec<lsp_types::Diagnostic>>,
+    /// User bookmarks
+    pub bookmarks: BookmarksConfig,
 }
 
 impl Default for AppState {
@@ -169,6 +171,9 @@ impl AppState {
             None
         };
 
+        // Load bookmarks from data directory
+        let bookmarks = BookmarksConfig::load();
+
         Self {
             should_quit: false,
             ui: UiState::default(),
@@ -190,6 +195,7 @@ impl AppState {
             last_spinner_update: None,
             lsp_manager,
             all_diagnostics: HashMap::new(),
+            bookmarks,
         }
     }
 
@@ -271,29 +277,29 @@ impl AppState {
         self.ui.tools_submenu.close();
     }
 
-    /// Open Actions submenu
-    pub fn open_actions_submenu(&mut self) {
+    /// Open Scripts submenu
+    pub fn open_scripts_submenu(&mut self) {
         self.ui.close_all_submenus();
-        self.ui.actions_submenu.open();
+        self.ui.scripts_submenu.open();
     }
 
-    /// Close Actions submenu
-    pub fn close_actions_submenu(&mut self) {
-        self.ui.actions_submenu.close();
-        self.ui.actions_nested.close();
-        self.ui.current_actions_group = None;
+    /// Close Scripts submenu
+    pub fn close_scripts_submenu(&mut self) {
+        self.ui.scripts_submenu.close();
+        self.ui.scripts_nested.close();
+        self.ui.current_scripts_group = None;
     }
 
-    /// Open Actions nested submenu (for a group)
-    pub fn open_actions_nested_submenu(&mut self, group_name: String) {
-        self.ui.actions_nested.open();
-        self.ui.current_actions_group = Some(group_name);
+    /// Open Scripts nested submenu (for a group)
+    pub fn open_scripts_nested_submenu(&mut self, group_name: String) {
+        self.ui.scripts_nested.open();
+        self.ui.current_scripts_group = Some(group_name);
     }
 
-    /// Close Actions nested submenu
-    pub fn close_actions_nested_submenu(&mut self) {
-        self.ui.actions_nested.close();
-        self.ui.current_actions_group = None;
+    /// Close Scripts nested submenu
+    pub fn close_scripts_nested_submenu(&mut self) {
+        self.ui.scripts_nested.close();
+        self.ui.current_scripts_group = None;
     }
 
     /// Open nested submenu (e.g., Themes list)
@@ -413,6 +419,38 @@ impl AppState {
     /// Update last session save timestamp
     pub fn update_last_session_save(&mut self) {
         self.last_session_save = Some(std::time::Instant::now());
+    }
+
+    /// Save bookmarks to data directory
+    pub fn save_bookmarks(&self) {
+        if let Err(e) = self.bookmarks.save() {
+            termide_logger::error(format!("Failed to save bookmarks: {}", e));
+        }
+    }
+
+    /// Open bookmarks submenu
+    pub fn open_bookmarks_submenu(&mut self) {
+        self.ui.close_all_submenus();
+        self.ui.bookmarks_submenu.open();
+    }
+
+    /// Close bookmarks submenu
+    pub fn close_bookmarks_submenu(&mut self) {
+        self.ui.bookmarks_submenu.close();
+        self.ui.bookmarks_nested.close();
+        self.ui.current_bookmarks_group = None;
+    }
+
+    /// Open bookmarks nested submenu (for a group)
+    pub fn open_bookmarks_nested_submenu(&mut self, group_name: String) {
+        self.ui.bookmarks_nested.open();
+        self.ui.current_bookmarks_group = Some(group_name);
+    }
+
+    /// Close bookmarks nested submenu
+    pub fn close_bookmarks_nested_submenu(&mut self) {
+        self.ui.bookmarks_nested.close();
+        self.ui.current_bookmarks_group = None;
     }
 }
 

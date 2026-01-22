@@ -131,6 +131,8 @@ pub enum HotkeyAction {
     OpenGitStatus,
     /// Open directory switcher modal
     OpenDirectorySwitcher,
+    /// Open bookmark add dialog
+    OpenBookmarkAdd,
 }
 
 impl HotkeyAction {
@@ -178,6 +180,7 @@ impl HotkeyAction {
             | HotkeyAction::OpenSessions
             | HotkeyAction::OpenGitStatus
             | HotkeyAction::OpenDirectorySwitcher
+            | HotkeyAction::OpenBookmarkAdd
             | HotkeyAction::PrevInGroup
             | HotkeyAction::NextInGroup
             | HotkeyAction::ToggleStacking
@@ -372,6 +375,16 @@ impl DefaultHotkeyProcessor {
             HotkeyAction::OpenDirectorySwitcher,
         );
 
+        // Bookmark Add (Ctrl+B)
+        bindings.insert(
+            KeyBinding::new(KeyCode::Char('b'), KeyModifiers::CONTROL),
+            HotkeyAction::OpenBookmarkAdd,
+        );
+        bindings.insert(
+            KeyBinding::new(KeyCode::Char('B'), KeyModifiers::CONTROL),
+            HotkeyAction::OpenBookmarkAdd,
+        );
+
         // Panel management
         bindings.insert(
             KeyBinding::alt(KeyCode::Backspace),
@@ -513,6 +526,11 @@ impl DefaultHotkeyProcessor {
             &mut processor,
             &config.open_directory_switcher,
             HotkeyAction::OpenDirectorySwitcher,
+        );
+        add_binding(
+            &mut processor,
+            &config.open_bookmark_add,
+            HotkeyAction::OpenBookmarkAdd,
         );
 
         // Panel management

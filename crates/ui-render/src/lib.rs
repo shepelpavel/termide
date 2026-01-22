@@ -11,16 +11,17 @@ pub mod status_bar;
 pub mod theme_dropdown;
 
 pub use dropdown::{
-    get_actions_group_items, get_actions_items, get_options_items, get_sessions_items,
-    get_tools_items, Dropdown, DropdownItem, OPTIONS_SUBMENU_ITEM_COUNT,
+    get_bookmarks_group_items, get_bookmarks_item_count, get_bookmarks_items, get_options_items,
+    get_scripts_group_items, get_scripts_items, get_sessions_items, get_tools_items, Dropdown,
+    DropdownItem, BOOKMARK_ADD_CURRENT, OPTIONS_SUBMENU_ITEM_COUNT, SCRIPT_ADD_NEW,
     SESSIONS_SUBMENU_ITEM_COUNT, TOOLS_SUBMENU_ITEM_COUNT,
 };
 pub use inline_selector::InlineSelector;
 pub use language_dropdown::{find_current_language_index, LanguageDropdown};
 pub use menu::{
     get_menu_item_x_position, get_menu_items, render_menu, resource_color, MenuRenderParams,
-    MENU_ITEM_COUNT, OPTIONS_MENU_INDEX, SCRIPTS_MENU_INDEX, SESSIONS_MENU_INDEX,
-    WINDOWS_MENU_INDEX,
+    BOOKMARKS_MENU_INDEX, MENU_ITEM_COUNT, OPTIONS_MENU_INDEX, SCRIPTS_MENU_INDEX,
+    SESSIONS_MENU_INDEX, WINDOWS_MENU_INDEX,
 };
 pub use panel_rendering::{
     render_collapsed_panel, render_dividers, render_expanded_panel, ExpandedPanelParams,

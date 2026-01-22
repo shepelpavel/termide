@@ -213,12 +213,18 @@ pub struct UiState {
     pub sessions_submenu: SubmenuState,
     /// Tools submenu state
     pub tools_submenu: SubmenuState,
-    /// Actions submenu state
-    pub actions_submenu: SubmenuState,
-    /// Actions nested submenu state (for subdirectory groups)
-    pub actions_nested: SubmenuState,
-    /// Current action group name (for nested submenu)
-    pub current_actions_group: Option<String>,
+    /// Scripts submenu state
+    pub scripts_submenu: SubmenuState,
+    /// Scripts nested submenu state (for subdirectory groups)
+    pub scripts_nested: SubmenuState,
+    /// Current script group name (for nested submenu)
+    pub current_scripts_group: Option<String>,
+    /// Bookmarks submenu state
+    pub bookmarks_submenu: SubmenuState,
+    /// Bookmarks nested submenu state (for groups)
+    pub bookmarks_nested: SubmenuState,
+    /// Current bookmarks group name (for nested submenu)
+    pub current_bookmarks_group: Option<String>,
     /// Is git operation (push/pull) in progress
     pub git_operation_in_progress: bool,
     /// Spinner frame for animated loading indicators
@@ -226,16 +232,19 @@ pub struct UiState {
 }
 
 impl UiState {
-    /// Close all main-level submenus (sessions, tools, options, actions)
+    /// Close all main-level submenus (sessions, tools, options, scripts, bookmarks)
     /// and their nested submenus. Use before opening a specific submenu.
     pub fn close_all_submenus(&mut self) {
         self.sessions_submenu.close();
         self.tools_submenu.close();
         self.options_submenu.close();
         self.nested_submenu.close();
-        self.actions_submenu.close();
-        self.actions_nested.close();
-        self.current_actions_group = None;
+        self.scripts_submenu.close();
+        self.scripts_nested.close();
+        self.current_scripts_group = None;
+        self.bookmarks_submenu.close();
+        self.bookmarks_nested.close();
+        self.current_bookmarks_group = None;
     }
 }
 
@@ -545,6 +554,8 @@ pub enum PendingAction {
     },
     /// Switch active panel's working directory
     SwitchDirectory,
+    /// Add a bookmark
+    AddBookmark,
 }
 
 #[cfg(test)]

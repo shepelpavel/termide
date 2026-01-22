@@ -1,0 +1,397 @@
+//! Bookmarks configuration for termide.
+//!
+//! Provides bookmark storage with grouping support and smart type detection.
+
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+
+use crate::get_data_dir;
+
+/// Bookmarks configuration containing all user bookmarks.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct BookmarksConfig {
+    /// List of all bookmarks
+    #[serde(default)]
+    pub bookmarks: Vec<Bookmark>,
+}
+
+/// A single bookmark entry.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Bookmark {
+    /// Path or URL (required)
+    pub path: String,
+    /// Creation timestamp (required)
+    pub created_at: DateTime<Utc>,
+    /// Optional description (if None, filename is used for display)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Optional group name (if None, goes to "Ungrouped")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
+}
+
+/// Type of bookmark based on path analysis.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BookmarkType {
+    /// Path is a directory
+    Directory,
+    /// Path is a text file (.txt, .md, .rs, .toml, etc.)
+    TextFile,
+    /// Path is a viewer file (.pdf, .png, .jpg, etc.) - open with external viewer
+    ViewerFile,
+    /// Path is an HTTP/HTTPS link
+    HttpLink,
+    /// Unknown type (fallback)
+    Unknown,
+}
+
+impl Bookmark {
+    /// Create a new bookmark with the given path.
+    pub fn new(path: String) -> Self {
+        Self {
+            path,
+            created_at: Utc::now(),
+            description: None,
+            group: None,
+        }
+    }
+
+    /// Create a new bookmark with description.
+    pub fn with_description(mut self, description: impl Into<String>) -> Self {
+        self.description = Some(description.into());
+        self
+    }
+
+    /// Create a new bookmark with group.
+    pub fn with_group(mut self, group: impl Into<String>) -> Self {
+        self.group = Some(group.into());
+        self
+    }
+
+    /// Determine the bookmark type based on path.
+    pub fn bookmark_type(&self) -> BookmarkType {
+        // Check for HTTP links first
+        if self.path.starts_with("http://") || self.path.starts_with("https://") {
+            return BookmarkType::HttpLink;
+        }
+
+        let path = Path::new(&self.path);
+
+        // Check if it's a directory
+        if path.is_dir() {
+            return BookmarkType::Directory;
+        }
+
+        // Check extension for viewer files
+        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            match ext.to_lowercase().as_str() {
+                // Image formats
+                "pdf" | "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" | "bmp" | "ico" |
+                // Audio formats
+                "mp3" | "wav" | "ogg" | "flac" |
+                // Video formats
+                "mp4" | "mkv" | "avi" | "mov" | "webm" => {
+                    return BookmarkType::ViewerFile;
+                }
+                _ => {}
+            }
+        }
+
+        // Default to text file if path exists, unknown otherwise
+        if path.exists() {
+            BookmarkType::TextFile
+        } else {
+            BookmarkType::Unknown
+        }
+    }
+
+    /// Get display name for the bookmark.
+    ///
+    /// Returns description if set, otherwise extracts filename from path.
+    pub fn display_name(&self) -> &str {
+        self.description.as_deref().unwrap_or_else(|| {
+            Path::new(&self.path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(&self.path)
+        })
+    }
+
+    /// Get group name for the bookmark.
+    ///
+    /// Returns group if set, otherwise "Ungrouped".
+    pub fn group_name(&self) -> &str {
+        self.group.as_deref().unwrap_or("Ungrouped")
+    }
+}
+
+impl BookmarksConfig {
+    /// Get the path to the bookmarks config file.
+    pub fn config_file_path() -> anyhow::Result<PathBuf> {
+        let data_dir = get_data_dir()?;
+        Ok(data_dir.join("bookmarks.toml"))
+    }
+
+    /// Load bookmarks from data directory.
+    pub fn load_from_dir(data_dir: &Path) -> Self {
+        let path = data_dir.join("bookmarks.toml");
+        if path.exists() {
+            std::fs::read_to_string(&path)
+                .ok()
+                .and_then(|s| toml::from_str(&s).ok())
+                .unwrap_or_default()
+        } else {
+            Self::default()
+        }
+    }
+
+    /// Load bookmarks from the default data directory.
+    pub fn load() -> Self {
+        match get_data_dir() {
+            Ok(data_dir) => Self::load_from_dir(&data_dir),
+            Err(_) => Self::default(),
+        }
+    }
+
+    /// Save bookmarks to data directory.
+    pub fn save_to_dir(&self, data_dir: &Path) -> std::io::Result<()> {
+        std::fs::create_dir_all(data_dir)?;
+        let path = data_dir.join("bookmarks.toml");
+        let content = toml::to_string_pretty(self).map_err(std::io::Error::other)?;
+        std::fs::write(path, content)
+    }
+
+    /// Save bookmarks to the default data directory.
+    pub fn save(&self) -> std::io::Result<()> {
+        let data_dir = get_data_dir().map_err(std::io::Error::other)?;
+        self.save_to_dir(&data_dir)
+    }
+
+    /// Add a bookmark (ignores duplicates within same group).
+    ///
+    /// Same path can exist in different groups, but not duplicated within same group.
+    pub fn add(&mut self, bookmark: Bookmark) {
+        let exists = self
+            .bookmarks
+            .iter()
+            .any(|b| b.path == bookmark.path && b.group == bookmark.group);
+        if !exists {
+            self.bookmarks.push(bookmark);
+        }
+    }
+
+    /// Remove a bookmark by path.
+    pub fn remove(&mut self, path: &str) {
+        self.bookmarks.retain(|b| b.path != path);
+    }
+
+    /// Check if a bookmark exists for the given path.
+    pub fn contains(&self, path: &str) -> bool {
+        self.bookmarks.iter().any(|b| b.path == path)
+    }
+
+    /// Find a bookmark by path.
+    pub fn find(&self, path: &str) -> Option<&Bookmark> {
+        self.bookmarks.iter().find(|b| b.path == path)
+    }
+
+    /// Find a mutable bookmark by path.
+    pub fn find_mut(&mut self, path: &str) -> Option<&mut Bookmark> {
+        self.bookmarks.iter_mut().find(|b| b.path == path)
+    }
+
+    /// Get bookmarks grouped by group name, sorted alphabetically.
+    ///
+    /// Returns a BTreeMap where keys are group names and values are
+    /// vectors of bookmark references sorted by display name.
+    pub fn grouped(&self) -> BTreeMap<String, Vec<&Bookmark>> {
+        let mut groups: BTreeMap<String, Vec<&Bookmark>> = BTreeMap::new();
+
+        for bookmark in &self.bookmarks {
+            let group = bookmark
+                .group
+                .clone()
+                .unwrap_or_else(|| "Ungrouped".to_string());
+            groups.entry(group).or_default().push(bookmark);
+        }
+
+        // Sort bookmarks within each group alphabetically by display name
+        for bookmarks in groups.values_mut() {
+            bookmarks.sort_by(|a, b| a.display_name().cmp(b.display_name()));
+        }
+
+        groups
+    }
+
+    /// Get only directory bookmarks (for Ctrl+P integration).
+    pub fn directories(&self) -> Vec<&Bookmark> {
+        self.bookmarks
+            .iter()
+            .filter(|b| b.bookmark_type() == BookmarkType::Directory)
+            .collect()
+    }
+
+    /// Get all unique group names.
+    pub fn group_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self
+            .bookmarks
+            .iter()
+            .filter_map(|b| b.group.clone())
+            .collect();
+        names.sort();
+        names.dedup();
+        names
+    }
+
+    /// Get ungrouped bookmarks (those without a group).
+    pub fn ungrouped(&self) -> Vec<&Bookmark> {
+        let mut items: Vec<&Bookmark> = self
+            .bookmarks
+            .iter()
+            .filter(|b| b.group.is_none())
+            .collect();
+        items.sort_by(|a, b| a.display_name().cmp(b.display_name()));
+        items
+    }
+
+    /// Get named groups (excluding ungrouped bookmarks).
+    pub fn named_groups(&self) -> BTreeMap<String, Vec<&Bookmark>> {
+        let mut groups: BTreeMap<String, Vec<&Bookmark>> = BTreeMap::new();
+        for bookmark in &self.bookmarks {
+            if let Some(group) = &bookmark.group {
+                groups.entry(group.clone()).or_default().push(bookmark);
+            }
+        }
+        for bookmarks in groups.values_mut() {
+            bookmarks.sort_by(|a, b| a.display_name().cmp(b.display_name()));
+        }
+        groups
+    }
+
+    /// Check if there are any bookmarks.
+    pub fn is_empty(&self) -> bool {
+        self.bookmarks.is_empty()
+    }
+
+    /// Get the total number of bookmarks.
+    pub fn len(&self) -> usize {
+        self.bookmarks.len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_bookmark_new() {
+        let bookmark = Bookmark::new("/home/user/project".to_string());
+        assert_eq!(bookmark.path, "/home/user/project");
+        assert!(bookmark.description.is_none());
+        assert!(bookmark.group.is_none());
+    }
+
+    #[test]
+    fn test_bookmark_with_description() {
+        let bookmark =
+            Bookmark::new("/home/user/project".to_string()).with_description("My project");
+        assert_eq!(bookmark.description, Some("My project".to_string()));
+    }
+
+    #[test]
+    fn test_bookmark_with_group() {
+        let bookmark = Bookmark::new("/home/user/project".to_string()).with_group("Projects");
+        assert_eq!(bookmark.group, Some("Projects".to_string()));
+    }
+
+    #[test]
+    fn test_bookmark_display_name_with_description() {
+        let bookmark =
+            Bookmark::new("/home/user/project".to_string()).with_description("My project");
+        assert_eq!(bookmark.display_name(), "My project");
+    }
+
+    #[test]
+    fn test_bookmark_display_name_without_description() {
+        let bookmark = Bookmark::new("/home/user/project".to_string());
+        assert_eq!(bookmark.display_name(), "project");
+    }
+
+    #[test]
+    fn test_bookmark_type_http() {
+        let bookmark = Bookmark::new("https://docs.rs".to_string());
+        assert_eq!(bookmark.bookmark_type(), BookmarkType::HttpLink);
+
+        let bookmark = Bookmark::new("http://example.com".to_string());
+        assert_eq!(bookmark.bookmark_type(), BookmarkType::HttpLink);
+    }
+
+    #[test]
+    fn test_bookmark_type_viewer_file() {
+        let bookmark = Bookmark::new("/home/user/image.png".to_string());
+        assert_eq!(bookmark.bookmark_type(), BookmarkType::ViewerFile);
+
+        let bookmark = Bookmark::new("/home/user/document.pdf".to_string());
+        assert_eq!(bookmark.bookmark_type(), BookmarkType::ViewerFile);
+    }
+
+    #[test]
+    fn test_bookmarks_config_add() {
+        let mut config = BookmarksConfig::default();
+        config.add(Bookmark::new("/path/one".to_string()));
+        assert_eq!(config.len(), 1);
+
+        // Adding duplicate (same path, same group) should be ignored
+        config.add(Bookmark::new("/path/one".to_string()));
+        assert_eq!(config.len(), 1);
+
+        // Adding same path to different group should succeed
+        config.add(Bookmark::new("/path/one".to_string()).with_group("Projects"));
+        assert_eq!(config.len(), 2);
+
+        // Adding same path to same group again should be ignored
+        config.add(Bookmark::new("/path/one".to_string()).with_group("Projects"));
+        assert_eq!(config.len(), 2);
+    }
+
+    #[test]
+    fn test_bookmarks_config_remove() {
+        let mut config = BookmarksConfig::default();
+        config.add(Bookmark::new("/path/one".to_string()));
+        config.add(Bookmark::new("/path/two".to_string()));
+        assert_eq!(config.len(), 2);
+
+        config.remove("/path/one");
+        assert_eq!(config.len(), 1);
+        assert!(!config.contains("/path/one"));
+        assert!(config.contains("/path/two"));
+    }
+
+    #[test]
+    fn test_bookmarks_config_grouped() {
+        let mut config = BookmarksConfig::default();
+        config.add(Bookmark::new("/projects/a".to_string()).with_group("Projects"));
+        config.add(Bookmark::new("/projects/b".to_string()).with_group("Projects"));
+        config.add(Bookmark::new("/config/c".to_string()).with_group("Config"));
+        config.add(Bookmark::new("/misc/d".to_string())); // Ungrouped
+
+        let grouped = config.grouped();
+        assert_eq!(grouped.len(), 3);
+        assert_eq!(grouped.get("Projects").map(|v| v.len()), Some(2));
+        assert_eq!(grouped.get("Config").map(|v| v.len()), Some(1));
+        assert_eq!(grouped.get("Ungrouped").map(|v| v.len()), Some(1));
+    }
+
+    #[test]
+    fn test_bookmarks_config_group_names() {
+        let mut config = BookmarksConfig::default();
+        config.add(Bookmark::new("/a".to_string()).with_group("Projects"));
+        config.add(Bookmark::new("/b".to_string()).with_group("Config"));
+        config.add(Bookmark::new("/c".to_string())); // No group
+
+        let names = config.group_names();
+        assert_eq!(names, vec!["Config", "Projects"]);
+    }
+}

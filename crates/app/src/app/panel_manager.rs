@@ -40,6 +40,20 @@ impl App {
             }
         }
 
+        // Check if editor was editing bookmarks.toml - reload bookmarks on close
+        if let Some(panel) = self.layout_manager.active_panel_mut() {
+            if let Some(editor) = panel.as_editor() {
+                if let Some(path) = editor.file_path() {
+                    if let Ok(bookmarks_path) = termide_config::BookmarksConfig::config_file_path()
+                    {
+                        if path == bookmarks_path {
+                            self.state.bookmarks = termide_config::BookmarksConfig::load();
+                        }
+                    }
+                }
+            }
+        }
+
         // Before closing, unwatch filesystem if this is a FileManager panel
         if let Some(panel) = self.layout_manager.active_panel_mut() {
             if let Some(fm) = panel.as_file_manager_mut() {

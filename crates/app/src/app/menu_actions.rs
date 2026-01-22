@@ -57,10 +57,14 @@ impl App {
                     self.state.open_tools_submenu();
                 }
                 2 => {
-                    // Actions - open submenu dropdown (keep menu open)
-                    self.state.open_actions_submenu();
+                    // Scripts - open submenu dropdown (keep menu open)
+                    self.state.open_scripts_submenu();
                 }
                 3 => {
+                    // Bookmarks - open submenu dropdown (keep menu open)
+                    self.state.open_bookmarks_submenu();
+                }
+                4 => {
                     // Options - open submenu dropdown (keep menu open)
                     self.state.open_submenu();
                 }
@@ -154,28 +158,53 @@ impl App {
             .and_then(|p| p.get_working_directory());
 
         // Get all unique paths from all panels
-        let paths = self.collect_panel_paths();
+        let panel_paths = self.collect_panel_paths();
+
+        // Get bookmarked directories
+        let bookmark_dirs = self.state.bookmarks.directories();
+
+        // Build combined items list
+        let mut items: Vec<DirectoryItem> = Vec::new();
+        let mut seen_paths = std::collections::HashSet::new();
+
+        // Add panel paths first
+        for path in panel_paths {
+            let is_current = current_dir.as_ref() == Some(&path);
+            let display = path.display().to_string();
+            seen_paths.insert(path.clone());
+            items.push(DirectoryItem {
+                path,
+                display,
+                is_current,
+                is_bookmark: false,
+            });
+        }
+
+        // Add bookmarked directories (if not already in list)
+        for bookmark in bookmark_dirs {
+            let path = PathBuf::from(&bookmark.path);
+            if !seen_paths.contains(&path) {
+                // Show path instead of display name for consistency
+                let display = bookmark.path.clone();
+                let is_current = current_dir.as_ref() == Some(&path);
+                items.push(DirectoryItem {
+                    path,
+                    display,
+                    is_current,
+                    is_bookmark: true,
+                });
+            }
+        }
+
+        // Sort items alphabetically by display path
+        items.sort_by(|a, b| a.display.cmp(&b.display));
 
         // If no paths available, show info message
-        if paths.is_empty() {
+        if items.is_empty() {
             self.state
                 .set_info(t.directory_switcher_no_paths().to_string());
             return Ok(());
         }
-
-        // Convert to DirectoryItems with is_current flag
-        let items: Vec<DirectoryItem> = paths
-            .into_iter()
-            .map(|path| {
-                let is_current = current_dir.as_ref() == Some(&path);
-                let display = path.display().to_string();
-                DirectoryItem {
-                    path,
-                    display,
-                    is_current,
-                }
-            })
-            .collect();
 
         // Find index of current directory to position cursor there
         let current_idx = items.iter().position(|item| item.is_current).unwrap_or(0);
@@ -294,34 +323,34 @@ impl App {
         Ok(())
     }
 
-    /// Open actions folder in file manager
-    pub(super) fn handle_manage_actions(&mut self) -> Result<()> {
-        use termide_config::get_config_dir;
+    /// Open scripts folder in file manager
+    pub(super) fn handle_manage_scripts(&mut self) -> Result<()> {
+        use termide_config::get_data_dir;
 
-        logger::debug("Opening actions folder in File Manager");
+        logger::debug("Opening scripts folder in File Manager");
         self.close_welcome_panels();
 
-        // Get the actions directory path
-        let actions_dir = match get_config_dir() {
-            Ok(config_dir) => {
-                let actions_path = config_dir.join("actions");
+        // Get the scripts directory path
+        let scripts_dir = match get_data_dir() {
+            Ok(data_dir) => {
+                let scripts_path = data_dir.join("scripts");
                 // Create the directory if it doesn't exist
-                if !actions_path.exists() {
-                    if let Err(e) = std::fs::create_dir_all(&actions_path) {
-                        logger::warn(format!("Failed to create actions directory: {}", e));
+                if !scripts_path.exists() {
+                    if let Err(e) = std::fs::create_dir_all(&scripts_path) {
+                        logger::warn(format!("Failed to create scripts directory: {}", e));
                     }
                 }
-                actions_path
+                scripts_path
             }
             Err(e) => {
-                logger::warn(format!("Failed to get config dir: {}", e));
+                logger::warn(format!("Failed to get data dir: {}", e));
                 self.state
-                    .set_error(format!("Failed to get actions directory: {}", e));
+                    .set_error(format!("Failed to get scripts directory: {}", e));
                 return Ok(());
             }
         };
 
-        let fm_panel = FileManager::new_with_path(actions_dir);
+        let fm_panel = FileManager::new_with_path(scripts_dir);
         self.add_panel(Box::new(fm_panel));
         self.auto_save_session();
         Ok(())
@@ -438,19 +467,24 @@ impl App {
             2 => {
                 // Manage actions - open actions folder in file manager
                 self.state.close_menu();
-                self.handle_manage_actions()?;
+                self.handle_manage_scripts()?;
             }
             3 => {
+                // Manage bookmarks - open bookmarks.toml in editor
+                self.state.close_menu();
+                self.handle_manage_bookmarks()?;
+            }
+            4 => {
                 // Edit preferences - close menu and open config
                 self.state.close_menu();
                 self.open_config_in_editor()?;
             }
-            4 => {
+            5 => {
                 // Help - show help
                 self.state.close_menu();
                 self.handle_new_help()?;
             }
-            5 => {
+            6 => {
                 // Quit - exit
                 self.state.close_menu();
                 if self.has_panels_requiring_confirmation() {
@@ -860,20 +894,20 @@ impl App {
     }
 
     // =========================================================================
-    // Actions submenu handling
+    // Scripts submenu handling
     // =========================================================================
 
-    /// Handle keyboard event in Actions submenu
-    pub(super) fn handle_actions_submenu_key(
+    /// Handle keyboard event in Scripts submenu
+    pub(super) fn handle_scripts_submenu_key(
         &mut self,
         key: crossterm::event::KeyEvent,
     ) -> Result<()> {
         // If nested submenu is open, delegate to nested handler
-        if self.state.ui.actions_nested.open {
-            return self.handle_actions_nested_submenu_key(key);
+        if self.state.ui.scripts_nested.open {
+            return self.handle_scripts_nested_submenu_key(key);
         }
 
-        let registry = termide_config::actions::ActionsRegistry::load();
+        let registry = termide_config::scripts::ScriptsRegistry::load();
         let item_count = registry
             .as_ref()
             .map(|r| r.root_items.len() + r.groups.len())
@@ -882,50 +916,50 @@ impl App {
         if item_count == 0 {
             // Empty menu - just close on any key
             if matches!(key.code, KeyCode::Esc | KeyCode::Left) {
-                self.state.close_actions_submenu();
+                self.state.close_scripts_submenu();
             }
             return Ok(());
         }
 
         match key.code {
             KeyCode::Esc | KeyCode::Left => {
-                self.state.close_actions_submenu();
+                self.state.close_scripts_submenu();
             }
             KeyCode::Up => {
-                if self.state.ui.actions_submenu.selected > 0 {
-                    self.state.ui.actions_submenu.selected -= 1;
+                if self.state.ui.scripts_submenu.selected > 0 {
+                    self.state.ui.scripts_submenu.selected -= 1;
                 } else {
-                    self.state.ui.actions_submenu.selected = item_count.saturating_sub(1);
+                    self.state.ui.scripts_submenu.selected = item_count.saturating_sub(1);
                 }
             }
             KeyCode::Down => {
                 if item_count > 0 {
-                    self.state.ui.actions_submenu.selected =
-                        (self.state.ui.actions_submenu.selected + 1) % item_count;
+                    self.state.ui.scripts_submenu.selected =
+                        (self.state.ui.scripts_submenu.selected + 1) % item_count;
                 }
             }
             KeyCode::Right | KeyCode::Enter => {
-                self.execute_actions_submenu_action()?;
+                self.execute_scripts_submenu_action()?;
             }
             _ => {}
         }
         Ok(())
     }
 
-    /// Execute action for selected Actions submenu item
-    pub(super) fn execute_actions_submenu_action(&mut self) -> Result<()> {
-        let registry = termide_config::actions::ActionsRegistry::load();
+    /// Execute action for selected Scripts submenu item
+    pub(super) fn execute_scripts_submenu_action(&mut self) -> Result<()> {
+        let registry = termide_config::scripts::ScriptsRegistry::load();
 
-        // Check if registry is empty - then the only item is "Add action..."
+        // Check if registry is empty - then the only item is "Add script..."
         let is_empty = registry
             .as_ref()
             .map(|r| r.root_items.is_empty() && r.groups.is_empty())
             .unwrap_or(true);
 
         if is_empty {
-            // "Add action..." selected - open actions folder
+            // "Add script..." selected - open scripts folder
             self.state.close_menu();
-            self.handle_manage_actions()?;
+            self.handle_manage_scripts()?;
             return Ok(());
         }
 
@@ -934,30 +968,30 @@ impl App {
             None => return Ok(()),
         };
 
-        let selected = self.state.ui.actions_submenu.selected;
+        let selected = self.state.ui.scripts_submenu.selected;
         let root_count = registry.root_items.len();
 
         if selected < root_count {
-            // Root item selected - execute the action
-            if let Some(action) = registry.root_items.get(selected) {
+            // Root item selected - execute the script
+            if let Some(script) = registry.root_items.get(selected) {
                 self.state.close_menu();
-                self.run_action_script(action)?;
+                self.run_script(script)?;
             }
         } else {
             // Group selected - open nested submenu
             let group_idx = selected - root_count;
             if let Some(group) = registry.groups.get(group_idx) {
-                self.state.open_actions_nested_submenu(group.name.clone());
+                self.state.open_scripts_nested_submenu(group.name.clone());
             }
         }
 
         Ok(())
     }
 
-    /// Handle keyboard event in Actions nested submenu (group items)
-    fn handle_actions_nested_submenu_key(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
-        let registry = termide_config::actions::ActionsRegistry::load();
-        let group_name = self.state.ui.current_actions_group.clone();
+    /// Handle keyboard event in Scripts nested submenu (group items)
+    fn handle_scripts_nested_submenu_key(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
+        let registry = termide_config::scripts::ScriptsRegistry::load();
+        let group_name = self.state.ui.current_scripts_group.clone();
 
         let item_count = registry
             .as_ref()
@@ -971,37 +1005,37 @@ impl App {
 
         match key.code {
             KeyCode::Esc | KeyCode::Left => {
-                self.state.close_actions_nested_submenu();
+                self.state.close_scripts_nested_submenu();
             }
             KeyCode::Up => {
-                if self.state.ui.actions_nested.selected > 0 {
-                    self.state.ui.actions_nested.selected -= 1;
+                if self.state.ui.scripts_nested.selected > 0 {
+                    self.state.ui.scripts_nested.selected -= 1;
                 } else {
-                    self.state.ui.actions_nested.selected = item_count.saturating_sub(1);
+                    self.state.ui.scripts_nested.selected = item_count.saturating_sub(1);
                 }
             }
             KeyCode::Down => {
                 if item_count > 0 {
-                    self.state.ui.actions_nested.selected =
-                        (self.state.ui.actions_nested.selected + 1) % item_count;
+                    self.state.ui.scripts_nested.selected =
+                        (self.state.ui.scripts_nested.selected + 1) % item_count;
                 }
             }
             KeyCode::Enter => {
-                self.execute_actions_nested_action()?;
+                self.execute_scripts_nested_action()?;
             }
             _ => {}
         }
         Ok(())
     }
 
-    /// Execute action for selected item in Actions nested submenu
-    pub(super) fn execute_actions_nested_action(&mut self) -> Result<()> {
-        let registry = match termide_config::actions::ActionsRegistry::load() {
+    /// Execute action for selected item in Scripts nested submenu
+    pub(super) fn execute_scripts_nested_action(&mut self) -> Result<()> {
+        let registry = match termide_config::scripts::ScriptsRegistry::load() {
             Some(r) => r,
             None => return Ok(()),
         };
 
-        let group_name = match &self.state.ui.current_actions_group {
+        let group_name = match &self.state.ui.current_scripts_group {
             Some(name) => name.clone(),
             None => return Ok(()),
         };
@@ -1011,30 +1045,30 @@ impl App {
             None => return Ok(()),
         };
 
-        if let Some(action) = group.items.get(self.state.ui.actions_nested.selected) {
+        if let Some(script) = group.items.get(self.state.ui.scripts_nested.selected) {
             self.state.close_menu();
-            self.run_action_script(action)?;
+            self.run_script(script)?;
         }
 
         Ok(())
     }
 
-    /// Run an action script
-    fn run_action_script(&mut self, action: &termide_config::actions::ActionItem) -> Result<()> {
+    /// Run a script
+    fn run_script(&mut self, script: &termide_config::scripts::ScriptItem) -> Result<()> {
         use termide_panel_terminal::Terminal;
 
         let cwd = self.get_focused_panel_cwd();
 
-        if action.is_report {
+        if script.is_report {
             // Run in background with output capture, show result in modal
-            self.run_report_script(action, &cwd)?;
-        } else if action.is_background {
+            self.run_report_script(script, &cwd)?;
+        } else if script.is_background {
             // Fire-and-forget spawn (no terminal panel)
             logger::info(format!(
-                "Running background action '{}' in {:?}",
-                action.name, cwd
+                "Running background script '{}' in {:?}",
+                script.name, cwd
             ));
-            match std::process::Command::new(&action.path)
+            match std::process::Command::new(&script.path)
                 .current_dir(&cwd)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -1044,15 +1078,15 @@ impl App {
                 Ok(_) => {}
                 Err(e) => {
                     logger::error(format!(
-                        "Failed to run background action '{}': {}",
-                        action.name, e
+                        "Failed to run background script '{}': {}",
+                        script.name, e
                     ));
-                    self.state.set_error(format!("Failed to run action: {}", e));
+                    self.state.set_error(format!("Failed to run script: {}", e));
                 }
             }
         } else {
             // Run in new terminal panel
-            logger::info(format!("Running action '{}' in {:?}", action.name, cwd));
+            logger::info(format!("Running script '{}' in {:?}", script.name, cwd));
 
             self.close_welcome_panels();
 
@@ -1061,7 +1095,7 @@ impl App {
             let term_height = height.saturating_sub(3);
             let term_width = width.saturating_sub(2);
 
-            let command = action.path.to_string_lossy().to_string();
+            let command = script.path.to_string_lossy().to_string();
 
             match Terminal::new_with_cwd(term_height, term_width, Some(cwd)) {
                 Ok(mut terminal) => {
@@ -1071,10 +1105,10 @@ impl App {
                 }
                 Err(e) => {
                     logger::error(format!(
-                        "Failed to create terminal for action '{}': {}",
-                        action.name, e
+                        "Failed to create terminal for script '{}': {}",
+                        script.name, e
                     ));
-                    self.state.set_error(format!("Failed to run action: {}", e));
+                    self.state.set_error(format!("Failed to run script: {}", e));
                 }
             }
         }
@@ -1085,17 +1119,17 @@ impl App {
     /// Run a report script in background, capturing output for modal display
     fn run_report_script(
         &mut self,
-        action: &termide_config::actions::ActionItem,
+        script: &termide_config::scripts::ScriptItem,
         cwd: &std::path::Path,
     ) -> Result<()> {
         use crate::state::{ScriptOperationHandle, ScriptOperationResult};
 
         logger::info(format!(
             "Running report script '{}' in {:?}",
-            action.name, cwd
+            script.name, cwd
         ));
 
-        let child = std::process::Command::new(&action.path)
+        let child = std::process::Command::new(&script.path)
             .current_dir(cwd)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -1103,7 +1137,7 @@ impl App {
 
         match child {
             Ok(child) => {
-                let script_name = action.name.clone();
+                let script_name = script.name.clone();
                 let (tx, rx) = std::sync::mpsc::channel();
 
                 std::thread::spawn(move || {
@@ -1127,13 +1161,13 @@ impl App {
 
                 self.state.script_operation_handle = Some(ScriptOperationHandle {
                     receiver: rx,
-                    script_name: action.name.clone(),
+                    script_name: script.name.clone(),
                 });
             }
             Err(e) => {
                 logger::error(format!(
                     "Failed to run report script '{}': {}",
-                    action.name, e
+                    script.name, e
                 ));
                 self.state.set_error(format!("Failed to run script: {}", e));
             }
@@ -1153,5 +1187,267 @@ impl App {
 
         // Fallback to project root
         self.project_root.clone()
+    }
+
+    // =========================================================================
+    // Bookmarks submenu handling
+    // =========================================================================
+
+    /// Handle keyboard event in Bookmarks submenu
+    pub(super) fn handle_bookmarks_submenu_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> Result<()> {
+        // If nested submenu is open, delegate to nested handler
+        if self.state.ui.bookmarks_nested.open {
+            return self.handle_bookmarks_nested_submenu_key(key);
+        }
+
+        use termide_ui_render::get_bookmarks_item_count;
+        let item_count = get_bookmarks_item_count(&self.state.bookmarks);
+
+        match key.code {
+            KeyCode::Esc | KeyCode::Left => {
+                self.state.close_bookmarks_submenu();
+            }
+            KeyCode::Up => {
+                if self.state.ui.bookmarks_submenu.selected > 0 {
+                    self.state.ui.bookmarks_submenu.selected -= 1;
+                } else {
+                    self.state.ui.bookmarks_submenu.selected = item_count.saturating_sub(1);
+                }
+            }
+            KeyCode::Down => {
+                if item_count > 0 {
+                    self.state.ui.bookmarks_submenu.selected =
+                        (self.state.ui.bookmarks_submenu.selected + 1) % item_count;
+                }
+            }
+            KeyCode::Right | KeyCode::Enter => {
+                self.execute_bookmarks_submenu_action()?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Execute action for selected Bookmarks submenu item
+    pub(super) fn execute_bookmarks_submenu_action(&mut self) -> Result<()> {
+        let selected = self.state.ui.bookmarks_submenu.selected;
+
+        if selected == 0 {
+            // Add current - open add bookmark modal
+            self.state.close_menu();
+            self.handle_add_bookmark()?;
+            return Ok(());
+        }
+
+        // Get groups and ungrouped counts
+        let named_groups: Vec<String> = self
+            .state
+            .bookmarks
+            .named_groups()
+            .keys()
+            .cloned()
+            .collect();
+        let ungrouped = self.state.bookmarks.ungrouped();
+        let groups_start = 1;
+        let ungrouped_start = groups_start + named_groups.len();
+
+        if selected >= groups_start && selected < ungrouped_start {
+            // Group selected - open nested submenu
+            let group_idx = selected - groups_start;
+            if let Some(group_name) = named_groups.get(group_idx) {
+                self.state.open_bookmarks_nested_submenu(group_name.clone());
+            }
+        } else {
+            // Ungrouped bookmark selected - open directly
+            let ungrouped_idx = selected - ungrouped_start;
+            if let Some(bookmark) = ungrouped.get(ungrouped_idx) {
+                let path = bookmark.path.clone();
+                let bookmark_type = bookmark.bookmark_type();
+                self.state.close_menu();
+                self.open_bookmark(&path, bookmark_type)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Handle keyboard event in Bookmarks nested submenu (group items)
+    fn handle_bookmarks_nested_submenu_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> Result<()> {
+        use termide_ui_render::get_bookmarks_group_items;
+
+        let group_name = self.state.ui.current_bookmarks_group.clone();
+
+        let item_count = group_name
+            .as_ref()
+            .map(|name| get_bookmarks_group_items(&self.state.bookmarks, name).len())
+            .unwrap_or(0);
+
+        match key.code {
+            KeyCode::Esc | KeyCode::Left => {
+                self.state.close_bookmarks_nested_submenu();
+            }
+            KeyCode::Up => {
+                if self.state.ui.bookmarks_nested.selected > 0 {
+                    self.state.ui.bookmarks_nested.selected -= 1;
+                } else {
+                    self.state.ui.bookmarks_nested.selected = item_count.saturating_sub(1);
+                }
+            }
+            KeyCode::Down => {
+                if item_count > 0 {
+                    self.state.ui.bookmarks_nested.selected =
+                        (self.state.ui.bookmarks_nested.selected + 1) % item_count;
+                }
+            }
+            KeyCode::Enter => {
+                self.execute_bookmarks_nested_action()?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Execute action for selected item in Bookmarks nested submenu
+    pub(super) fn execute_bookmarks_nested_action(&mut self) -> Result<()> {
+        let group_name = match &self.state.ui.current_bookmarks_group {
+            Some(name) => name.clone(),
+            None => return Ok(()),
+        };
+
+        let grouped = self.state.bookmarks.grouped();
+        let group_bookmarks = match grouped.get(&group_name) {
+            Some(bookmarks) => bookmarks,
+            None => return Ok(()),
+        };
+
+        if let Some(bookmark) = group_bookmarks.get(self.state.ui.bookmarks_nested.selected) {
+            let path = bookmark.path.clone();
+            let bookmark_type = bookmark.bookmark_type();
+            self.state.close_menu();
+            self.open_bookmark(&path, bookmark_type)?;
+        }
+
+        Ok(())
+    }
+
+    /// Handle adding a bookmark
+    pub(super) fn handle_add_bookmark(&mut self) -> Result<()> {
+        use termide_modal::BookmarkAddModal;
+
+        // Get current path from active panel
+        let current_path = self.get_current_bookmark_path();
+
+        // Get existing group names for autocomplete
+        let existing_groups = self.state.bookmarks.group_names();
+
+        let modal = BookmarkAddModal::new(current_path, existing_groups);
+        self.state.set_pending_action(
+            PendingAction::AddBookmark,
+            ActiveModal::BookmarkAdd(Box::new(modal)),
+        );
+
+        Ok(())
+    }
+
+    /// Get current path from active panel for bookmarking
+    fn get_current_bookmark_path(&self) -> Option<String> {
+        if let Some(panel) = self.layout_manager.active_panel() {
+            // Try to get file path from editor
+            if let Some(editor) = panel.as_editor() {
+                if let Some(path) = editor.file_path() {
+                    return Some(path.display().to_string());
+                }
+            }
+            // Fall back to working directory
+            if let Some(cwd) = panel.get_working_directory() {
+                return Some(cwd.display().to_string());
+            }
+        }
+        None
+    }
+
+    /// Handle managing bookmarks - open bookmarks.toml in editor
+    pub(super) fn handle_manage_bookmarks(&mut self) -> Result<()> {
+        use termide_config::BookmarksConfig;
+
+        self.close_welcome_panels();
+
+        // Get the bookmarks file path
+        let bookmarks_path = match BookmarksConfig::config_file_path() {
+            Ok(path) => {
+                // Create the file if it doesn't exist
+                if !path.exists() {
+                    // Ensure parent directory exists
+                    if let Some(parent) = path.parent() {
+                        if !parent.exists() {
+                            if let Err(e) = std::fs::create_dir_all(parent) {
+                                logger::warn(format!("Failed to create data directory: {}", e));
+                            }
+                        }
+                    }
+                    // Create empty bookmarks file
+                    let empty_config = BookmarksConfig::default();
+                    if let Err(e) = empty_config.save() {
+                        logger::warn(format!("Failed to create bookmarks file: {}", e));
+                    }
+                }
+                path
+            }
+            Err(e) => {
+                logger::warn(format!("Failed to get bookmarks path: {}", e));
+                self.state
+                    .set_error(format!("Failed to get bookmarks path: {}", e));
+                return Ok(());
+            }
+        };
+
+        let _ = self.open_editor_for_file(bookmarks_path);
+        Ok(())
+    }
+
+    /// Open a bookmark based on its type
+    fn open_bookmark(
+        &mut self,
+        path: &str,
+        bookmark_type: termide_config::BookmarkType,
+    ) -> Result<()> {
+        use termide_config::BookmarkType;
+
+        match bookmark_type {
+            BookmarkType::Directory => {
+                // Check if active panel is a file manager - reuse it
+                if let Some(panel) = self.layout_manager.active_panel_mut() {
+                    if let Some(fm) = panel.as_file_manager_mut() {
+                        let _ = fm.navigate_to(PathBuf::from(path));
+                        return Ok(());
+                    }
+                }
+                // No active file manager - create new panel
+                self.close_welcome_panels();
+                let fm_panel = FileManager::new_with_path(PathBuf::from(path));
+                self.add_panel(Box::new(fm_panel));
+                self.auto_save_session();
+            }
+            BookmarkType::TextFile => {
+                // Open in editor
+                let _ = self.open_editor_for_file(PathBuf::from(path));
+            }
+            BookmarkType::ViewerFile | BookmarkType::HttpLink => {
+                // Open with external viewer
+                let _ = std::process::Command::new("xdg-open").arg(path).spawn();
+            }
+            BookmarkType::Unknown => {
+                // Try to open as text file
+                let _ = self.open_editor_for_file(PathBuf::from(path));
+            }
+        }
+
+        Ok(())
     }
 }

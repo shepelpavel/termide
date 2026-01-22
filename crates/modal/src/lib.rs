@@ -19,6 +19,7 @@ pub mod base;
 pub use base::{
     check_mouse_click, check_mouse_click_with_item_height, CursorNavigation, MouseClickResult,
 };
+pub mod bookmark_add;
 pub mod commit;
 pub mod confirm;
 pub mod conflict;
@@ -38,6 +39,7 @@ pub mod search;
 pub mod select;
 pub mod sessions;
 
+pub use bookmark_add::{BookmarkAddModal, BookmarkAddResult};
 pub use commit::CommitModal;
 pub use confirm::ConfirmModal;
 pub use conflict::{ConflictModal, ConflictResolution};
@@ -99,6 +101,8 @@ pub enum ActiveModal {
     SaveAs(Box<SaveAsModal>),
     /// Directory switcher modal
     DirectorySwitcher(Box<DirectorySwitcherModal>),
+    /// Bookmark add modal
+    BookmarkAdd(Box<BookmarkAddModal>),
 }
 
 /// Trait for all modal windows.

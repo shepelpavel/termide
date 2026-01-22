@@ -300,6 +300,18 @@ pub trait Translation: Send + Sync {
     fn menu_quit(&self) -> &str;
     fn menu_navigate_hint(&self) -> &str;
     fn menu_open_hint_label(&self) -> &str;
+    fn menu_bookmarks(&self) -> &str;
+
+    // Bookmarks submenu
+    fn bookmarks_add_bookmark(&self) -> &str;
+    fn bookmarks_manage(&self) -> &str;
+    fn bookmarks_no_bookmarks(&self) -> &str;
+    fn bookmarks_add_title(&self) -> &str;
+    fn bookmarks_add_path(&self) -> &str;
+    fn bookmarks_add_description(&self) -> &str;
+    fn bookmarks_add_group(&self) -> &str;
+    fn bookmarks_add_new_group(&self) -> &str;
+    fn bookmarks_ungrouped(&self) -> &str;
 
     // Tools submenu
     fn tools_files(&self) -> &str;

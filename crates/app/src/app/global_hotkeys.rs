@@ -75,6 +75,9 @@ impl App {
             HotkeyAction::OpenDirectorySwitcher => {
                 self.handle_open_directory_switcher()?;
             }
+            HotkeyAction::OpenBookmarkAdd => {
+                self.handle_add_bookmark()?;
+            }
 
             // Navigation
             HotkeyAction::PrevGroup => {
