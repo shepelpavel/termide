@@ -307,22 +307,28 @@ impl LspServer {
         capabilities: &Arc<Mutex<Option<ServerCapabilities>>>,
         response: JsonRpcResponse,
     ) {
-        // Check if this is the initialize response
-        if let Some(result) = &response.result {
-            if let Ok(init_result) = serde_json::from_value::<InitializeResult>(result.clone()) {
-                *capabilities.lock().unwrap() = Some(init_result.capabilities);
-                log::info!("LSP server initialized, waiting for indexing");
-                termide_logger::info("LSP: Initialized, starting indexing...");
-            }
-        }
-
         // Find and notify the waiting request
         let mut pending = pending.lock().unwrap();
         if let Some(tx) = pending.remove(&response.id) {
             if let Some(result) = response.result {
+                // Try to parse as InitializeResult before sending
+                // This avoids cloning the entire JSON value
+                if let Ok(init_result) = serde_json::from_value::<InitializeResult>(result.clone())
+                {
+                    *capabilities.lock().unwrap() = Some(init_result.capabilities);
+                    log::info!("LSP server initialized, waiting for indexing");
+                    termide_logger::info("LSP: Initialized, starting indexing...");
+                }
                 let _ = tx.send(result);
             } else if let Some(error) = response.error {
                 log::warn!("LSP error {}: {}", error.code, error.message);
+            }
+        } else if let Some(result) = response.result {
+            // No pending request - might be initialize response
+            if let Ok(init_result) = serde_json::from_value::<InitializeResult>(result) {
+                *capabilities.lock().unwrap() = Some(init_result.capabilities);
+                log::info!("LSP server initialized, waiting for indexing");
+                termide_logger::info("LSP: Initialized, starting indexing...");
             }
         }
     }
@@ -387,8 +393,10 @@ impl LspServer {
                     }
                 }
                 ProgressParamsValue::WorkDone(WorkDoneProgress::End(_)) => {
-                    active_progress.lock().unwrap().remove(&token);
-                    if active_progress.lock().unwrap().is_empty() {
+                    let mut progress = active_progress.lock().unwrap();
+                    progress.remove(&token);
+                    if progress.is_empty() {
+                        drop(progress); // Release before acquiring status lock
                         *status.lock().unwrap() = ServerStatus::Running;
                         termide_logger::info("LSP: Ready");
                     }
