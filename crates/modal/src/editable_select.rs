@@ -119,25 +119,21 @@ impl EditableSelectModal {
                 .unwrap_or(0) as u16
         };
 
-        // 3. Input field width (reserve space for arrow)
-        let current_input_len = self.input_handler.text().chars().count() as u16;
-        let min_input_width = current_input_len + 20;
+        // 3. Calculate max option width ALWAYS (stable width regardless of state)
+        let max_option_len = self
+            .options
+            .iter()
+            .map(|s| s.value.chars().count().max(s.display.chars().count()))
+            .max()
+            .unwrap_or(0) as u16;
 
-        // 4. Options list width (only in Expanded state)
-        let max_option_width = if self.state == DropdownState::Expanded {
-            self.options
-                .iter()
-                .map(|s| {
-                    // "▶ " prefix + display
-                    2 + s.display.len()
-                })
-                .max()
-                .unwrap_or(0) as u16
-        } else {
-            0
-        };
+        // 4. Input field width based on max option (not current input)
+        let min_input_width = max_option_len + 5; // +5 for arrow and padding
 
-        // 5. Buttons width: "[ OK ]    [ Cancel ]" = ~21 characters
+        // 5. Options list width (with "▶ " prefix)
+        let max_option_width = max_option_len + 2;
+
+        // 6. Buttons width: "[ OK ]    [ Cancel ]" = ~21 characters
         let buttons_width = 21;
 
         // Take maximum
@@ -240,7 +236,7 @@ impl Modal for EditableSelectModal {
         if prompt_lines > 0 {
             let prompt = Paragraph::new(self.prompt.clone())
                 .alignment(Alignment::Left)
-                .style(Style::default().fg(theme.bg));
+                .style(Style::default().fg(theme.fg));
             prompt.render(chunks[chunk_idx], buf);
             chunk_idx += 1;
         }
@@ -260,9 +256,9 @@ impl Modal for EditableSelectModal {
         let padding_len = input_inner_width.saturating_sub(text_len + 1) as usize; // -1 for arrow
 
         let input_line = Line::from(vec![
-            Span::styled(text_before, Style::default().fg(theme.bg)),
-            Span::styled("█", Style::default().fg(theme.success)),
-            Span::styled(text_after, Style::default().fg(theme.bg)),
+            Span::styled(text_before, Style::default().fg(theme.fg)),
+            Span::styled("█", Style::default().fg(theme.bg).bg(theme.fg)),
+            Span::styled(text_after, Style::default().fg(theme.fg)),
             Span::styled(" ".repeat(padding_len), Style::default()),
             Span::styled(arrow_char, Style::default().fg(theme.disabled)),
         ]);
@@ -278,9 +274,9 @@ impl Modal for EditableSelectModal {
             .block(
                 Block::default()
                     .borders(input_borders)
-                    .border_style(Style::default().fg(theme.success)),
+                    .border_style(Style::default().fg(theme.accented_fg)),
             )
-            .style(Style::default().bg(theme.fg));
+            .style(Style::default().bg(theme.bg));
         input_paragraph.render(chunks[chunk_idx], buf);
 
         // Save input area for mouse handling
@@ -306,7 +302,7 @@ impl Modal for EditableSelectModal {
                             .bg(theme.accented_fg)
                             .add_modifier(Modifier::BOLD)
                     } else {
-                        Style::default().fg(theme.bg)
+                        Style::default().fg(theme.fg)
                     };
 
                     // Truncate long text
@@ -328,9 +324,9 @@ impl Modal for EditableSelectModal {
                 .block(
                     Block::default()
                         .borders(Borders::LEFT | Borders::BOTTOM | Borders::RIGHT) // No top border
-                        .border_style(Style::default().fg(theme.success)),
+                        .border_style(Style::default().fg(theme.accented_fg)),
                 )
-                .style(Style::default().bg(theme.fg));
+                .style(Style::default().bg(theme.bg));
 
             list.render(chunks[chunk_idx], buf);
             chunk_idx += 1;
