@@ -123,9 +123,8 @@ impl App {
             .map(|path| {
                 let path_str = path.display().to_string();
                 termide_modal::SelectOption {
-                    panel_index: 0,          // Not used with LayoutManager
-                    value: path_str.clone(), // Value is the path string
-                    display: path_str,       // Display is also the path string
+                    value: path_str.clone(),
+                    display: path_str,
                 }
             })
             .collect();

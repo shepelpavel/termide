@@ -33,9 +33,6 @@ use crate::{centered_rect_with_size, Modal, ModalResult, TextInputHandler};
 /// Select option for editable select modal
 #[derive(Debug, Clone)]
 pub struct SelectOption {
-    /// Panel index or any other identifier
-    #[allow(dead_code)]
-    pub panel_index: usize,
     /// Value of the option (used for selection result)
     pub value: String,
     /// Display text for the option
