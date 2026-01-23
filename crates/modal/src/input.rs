@@ -139,7 +139,7 @@ impl Modal for InputModal {
         if prompt_lines > 0 {
             let prompt = Paragraph::new(self.prompt.clone())
                 .alignment(Alignment::Left)
-                .style(Style::default().fg(theme.bg));
+                .style(Style::default().fg(theme.fg));
             prompt.render(chunks[chunk_idx], buf);
             chunk_idx += 1;
         }
@@ -148,12 +148,12 @@ impl Modal for InputModal {
         let input_line = Line::from(vec![
             Span::styled(
                 self.input_handler.text_before_cursor(),
-                Style::default().fg(theme.bg),
+                Style::default().fg(theme.fg),
             ),
-            Span::styled("█", Style::default().fg(theme.success)),
+            Span::styled("█", Style::default().fg(theme.bg).bg(theme.fg)),
             Span::styled(
                 self.input_handler.text_after_cursor(),
-                Style::default().fg(theme.bg),
+                Style::default().fg(theme.fg),
             ),
         ]);
 
@@ -161,9 +161,9 @@ impl Modal for InputModal {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(theme.success)),
+                    .border_style(Style::default().fg(theme.accented_fg)),
             )
-            .style(Style::default().bg(theme.fg));
+            .style(Style::default().bg(theme.bg));
         input_paragraph.render(chunks[chunk_idx], buf);
         chunk_idx += 1;
 

@@ -134,9 +134,7 @@ impl<'a> LanguageDropdown<'a> {
                         .bg(self.app_theme.selected_bg)
                         .add_modifier(Modifier::BOLD)
                 } else {
-                    Style::default()
-                        .fg(self.app_theme.fg)
-                        .bg(self.app_theme.accented_bg)
+                    Style::default().fg(self.app_theme.fg).bg(self.app_theme.bg)
                 };
 
                 // Build line with padding
@@ -152,12 +150,12 @@ impl<'a> LanguageDropdown<'a> {
             })
             .collect();
 
-        // Panel-style: accented_bg background, fg for border (like panel borders)
+        // Use modal-style colors: bg background, accented_fg for border
         let list = List::new(items).block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(self.app_theme.fg))
-                .style(Style::default().bg(self.app_theme.accented_bg)),
+                .border_style(Style::default().fg(self.app_theme.accented_fg))
+                .style(Style::default().bg(self.app_theme.bg)),
         );
 
         list.render(area, buf);

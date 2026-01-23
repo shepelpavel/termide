@@ -93,7 +93,7 @@ impl Modal for SelectModal {
 
         let prompt = Paragraph::new(self.prompt.clone())
             .alignment(Alignment::Left)
-            .style(Style::default().fg(theme.bg));
+            .style(Style::default().fg(theme.fg));
         prompt.render(chunks[0], buf);
 
         let items: Vec<ListItem> = self
@@ -109,7 +109,7 @@ impl Modal for SelectModal {
                         .bg(theme.accented_fg)
                         .add_modifier(Modifier::BOLD)
                 } else {
-                    Style::default().fg(theme.bg)
+                    Style::default().fg(theme.fg)
                 };
 
                 ListItem::new(Line::from(vec![
@@ -119,7 +119,7 @@ impl Modal for SelectModal {
             })
             .collect();
 
-        let list = List::new(items).style(Style::default().bg(theme.fg));
+        let list = List::new(items).style(Style::default().bg(theme.bg));
 
         list.render(chunks[1], buf);
 

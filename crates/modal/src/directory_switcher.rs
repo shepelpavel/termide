@@ -172,7 +172,7 @@ impl Modal for DirectorySwitcherModal {
                 // Current directory highlighted with accent color
                 Style::default().fg(theme.accented_fg)
             } else {
-                Style::default().fg(theme.bg)
+                Style::default().fg(theme.fg)
             };
 
             // Pad line to full width (use unicode width for correct calculation)
@@ -189,7 +189,7 @@ impl Modal for DirectorySwitcherModal {
             list_items.push(ListItem::new(vec![line]));
         }
 
-        let list = List::new(list_items).style(Style::default().bg(theme.fg));
+        let list = List::new(list_items).style(Style::default().bg(theme.bg));
         list.render(inner, buf);
 
         self.last_list_area = Some(inner);

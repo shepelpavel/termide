@@ -237,7 +237,7 @@ impl Modal for DirectoryPickerModal {
         // Render selected path (current_dir + selected entry)
         let selected = self.selected_path();
         let path_str = selected.to_string_lossy();
-        let path_style = Style::default().fg(theme.bg);
+        let path_style = Style::default().fg(theme.fg);
         let path_line = Line::from(Span::styled(path_str.as_ref(), path_style));
 
         let path_area = Rect {
@@ -282,7 +282,7 @@ impl Modal for DirectoryPickerModal {
                     .bg(theme.bg)
                     .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(theme.bg)
+                Style::default().fg(theme.fg)
             };
 
             let line_width = prefix.width() + entry.name.width();
@@ -297,7 +297,7 @@ impl Modal for DirectoryPickerModal {
             list_items.push(ListItem::new(line));
         }
 
-        let list = List::new(list_items).style(Style::default().bg(theme.fg));
+        let list = List::new(list_items).style(Style::default().bg(theme.bg));
         list.render(list_area, buf);
         self.last_list_area = Some(list_area);
 
@@ -323,7 +323,7 @@ impl Modal for DirectoryPickerModal {
                 .bg(theme.bg)
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(theme.bg)
+            Style::default().fg(theme.fg)
         };
 
         let cancel_style = if self.button_focused && self.selected_button == 1 {
@@ -332,7 +332,7 @@ impl Modal for DirectoryPickerModal {
                 .bg(theme.bg)
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(theme.bg)
+            Style::default().fg(theme.fg)
         };
 
         let create_btn = format!("[ {} ]", self.create_label);

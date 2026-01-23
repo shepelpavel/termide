@@ -92,11 +92,11 @@ impl RenamePatternModal {
             )),
             Line::from(Span::styled(
                 "  $0-full name  $1-9-parts  $-1-9-from end",
-                Style::default().fg(theme.bg),
+                Style::default().fg(theme.fg),
             )),
             Line::from(Span::styled(
                 "  $I-counter  $C-created  $M-modified",
-                Style::default().fg(theme.bg),
+                Style::default().fg(theme.fg),
             )),
         ]
     }
@@ -146,7 +146,7 @@ impl Modal for RenamePatternModal {
         input_block.render(chunks[1], buf);
 
         let input_text =
-            Paragraph::new(self.input_handler.text()).style(Style::default().fg(theme.bg));
+            Paragraph::new(self.input_handler.text()).style(Style::default().fg(theme.fg));
         input_text.render(input_area, buf);
 
         // Cursor
@@ -176,7 +176,7 @@ impl Modal for RenamePatternModal {
 
         // Help
         let help_text =
-            Paragraph::new(self.get_help_lines(theme)).style(Style::default().fg(theme.bg));
+            Paragraph::new(self.get_help_lines(theme)).style(Style::default().fg(theme.fg));
         help_text.render(chunks[4], buf);
 
         // Buttons

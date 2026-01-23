@@ -170,7 +170,7 @@ impl BookmarkAddModal {
         // Render label (same style as InputModal's prompt)
         // Vertically center label in the 3-row height area
         let label_para = Paragraph::new(label.to_string())
-            .style(Style::default().fg(theme.bg))
+            .style(Style::default().fg(theme.fg))
             .alignment(Alignment::Right);
         let label_area = Rect {
             x: chunks[0].x,
@@ -186,14 +186,14 @@ impl BookmarkAddModal {
 
         let input_line = if is_focused {
             Line::from(vec![
-                Span::styled(text_before, Style::default().fg(theme.bg)),
-                Span::styled("█", Style::default().fg(theme.success)),
-                Span::styled(text_after, Style::default().fg(theme.bg)),
+                Span::styled(text_before, Style::default().fg(theme.fg)),
+                Span::styled("█", Style::default().fg(theme.bg).bg(theme.fg)),
+                Span::styled(text_after, Style::default().fg(theme.fg)),
             ])
         } else {
             Line::from(vec![Span::styled(
                 input.text(),
-                Style::default().fg(theme.bg),
+                Style::default().fg(theme.fg),
             )])
         };
 
@@ -209,7 +209,7 @@ impl BookmarkAddModal {
                     .borders(Borders::ALL)
                     .border_style(border_style),
             )
-            .style(Style::default().bg(theme.fg));
+            .style(Style::default().bg(theme.bg));
         input_para.render(chunks[1], buf);
     }
 
@@ -226,7 +226,7 @@ impl BookmarkAddModal {
 
         // Render label (same style as InputModal's prompt)
         let label_para = Paragraph::new(label.to_string())
-            .style(Style::default().fg(theme.bg))
+            .style(Style::default().fg(theme.fg))
             .alignment(Alignment::Right);
         let label_area = Rect {
             x: chunks[0].x,
@@ -260,13 +260,16 @@ impl BookmarkAddModal {
         // Build the text line with indicator on the right
         let mut spans = Vec::new();
         if is_focused {
-            spans.push(Span::styled(text_before, Style::default().fg(theme.bg)));
-            spans.push(Span::styled("█", Style::default().fg(theme.success)));
-            spans.push(Span::styled(text_after, Style::default().fg(theme.bg)));
+            spans.push(Span::styled(text_before, Style::default().fg(theme.fg)));
+            spans.push(Span::styled(
+                "█",
+                Style::default().fg(theme.bg).bg(theme.fg),
+            ));
+            spans.push(Span::styled(text_after, Style::default().fg(theme.fg)));
         } else {
             spans.push(Span::styled(
                 self.group_input.text(),
-                Style::default().fg(theme.bg),
+                Style::default().fg(theme.fg),
             ));
         }
 
@@ -306,7 +309,7 @@ impl BookmarkAddModal {
 
         let input_para = Paragraph::new(input_line)
             .block(Block::default().borders(borders).border_style(border_style))
-            .style(Style::default().bg(theme.fg));
+            .style(Style::default().bg(theme.bg));
         input_para.render(input_area, buf);
     }
 }
@@ -395,7 +398,7 @@ impl Modal for BookmarkAddModal {
                                 .add_modifier(Modifier::BOLD),
                         )
                     } else {
-                        ("  ", Style::default().fg(theme.bg))
+                        ("  ", Style::default().fg(theme.fg))
                     };
                     ListItem::new(Line::from(Span::styled(
                         format!("{}{}", prefix, group),
@@ -410,7 +413,7 @@ impl Modal for BookmarkAddModal {
                         .borders(Borders::LEFT | Borders::BOTTOM | Borders::RIGHT)
                         .border_style(Style::default().fg(theme.accented_fg)),
                 )
-                .style(Style::default().bg(theme.fg));
+                .style(Style::default().bg(theme.bg));
             list.render(dropdown_chunks[1], buf); // Render in right chunk (after label)
             chunk_idx += 1;
         }

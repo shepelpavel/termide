@@ -148,7 +148,7 @@ impl Modal for SearchModal {
                 match_x,
                 buttons_area.y,
                 &match_text,
-                Style::default().fg(theme.bg),
+                Style::default().fg(theme.fg),
             );
         }
 
@@ -167,7 +167,7 @@ impl Modal for SearchModal {
                     .bg(theme.bg)
                     .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(theme.bg)
+                Style::default().fg(theme.fg)
             };
 
             let button_text = if is_selected {

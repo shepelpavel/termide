@@ -526,12 +526,12 @@ impl Modal for ContentSearchModal {
         let input_line = Line::from(vec![
             Span::styled(
                 self.input_handler.text_before_cursor(),
-                Style::default().fg(theme.bg),
+                Style::default().fg(theme.fg),
             ),
-            Span::styled("█", Style::default().fg(theme.success)),
+            Span::styled("█", Style::default().fg(theme.bg).bg(theme.fg)),
             Span::styled(
                 self.input_handler.text_after_cursor(),
-                Style::default().fg(theme.bg),
+                Style::default().fg(theme.fg),
             ),
         ]);
 
@@ -539,9 +539,9 @@ impl Modal for ContentSearchModal {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(theme.success)),
+                    .border_style(Style::default().fg(theme.accented_fg)),
             )
-            .style(Style::default().bg(theme.fg));
+            .style(Style::default().bg(theme.bg));
         input_paragraph.render(chunks[0], buf);
 
         // Render results list
@@ -619,7 +619,7 @@ impl Modal for ContentSearchModal {
                         .bg(theme.accented_fg)
                         .add_modifier(Modifier::BOLD)
                 } else {
-                    Style::default().fg(theme.bg)
+                    Style::default().fg(theme.fg)
                 };
                 let padding = " ".repeat(content_width.saturating_sub(path_text.chars().count()));
                 buf.set_string(list_area.x, y, &path_text, path_style);

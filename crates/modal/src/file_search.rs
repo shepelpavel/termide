@@ -197,7 +197,7 @@ impl FileSearchModal {
             GitStatus::Modified => Style::default().fg(theme.warning),
             GitStatus::Added => Style::default().fg(theme.success),
             GitStatus::Deleted => Style::default().fg(theme.error),
-            GitStatus::Unmodified => Style::default().fg(theme.bg),
+            GitStatus::Unmodified => Style::default().fg(theme.fg),
         }
     }
 }
@@ -377,12 +377,12 @@ impl Modal for FileSearchModal {
         let input_line = Line::from(vec![
             Span::styled(
                 self.input_handler.text_before_cursor(),
-                Style::default().fg(theme.bg),
+                Style::default().fg(theme.fg),
             ),
-            Span::styled("█", Style::default().fg(theme.success)),
+            Span::styled("█", Style::default().fg(theme.bg).bg(theme.fg)),
             Span::styled(
                 self.input_handler.text_after_cursor(),
-                Style::default().fg(theme.bg),
+                Style::default().fg(theme.fg),
             ),
         ]);
 
@@ -390,9 +390,9 @@ impl Modal for FileSearchModal {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(theme.success)),
+                    .border_style(Style::default().fg(theme.accented_fg)),
             )
-            .style(Style::default().bg(theme.fg));
+            .style(Style::default().bg(theme.bg));
         input_paragraph.render(chunks[0], buf);
 
         // Render results list
@@ -456,7 +456,7 @@ impl Modal for FileSearchModal {
                 })
                 .collect();
 
-            let list = List::new(list_items).style(Style::default().bg(theme.fg));
+            let list = List::new(list_items).style(Style::default().bg(theme.bg));
             list.render(list_area, buf);
         }
     }

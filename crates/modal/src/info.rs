@@ -256,7 +256,7 @@ impl Modal for InfoModal {
                                 .add_modifier(Modifier::BOLD),
                         ),
                         Span::raw("  "), // 2 spaces to align with ": "
-                        Span::styled(wrapped_values[0].clone(), Style::default().fg(theme.bg)),
+                        Span::styled(wrapped_values[0].clone(), Style::default().fg(theme.fg)),
                     ]
                 } else {
                     vec![
@@ -267,7 +267,7 @@ impl Modal for InfoModal {
                                 .add_modifier(Modifier::BOLD),
                         ),
                         Span::raw(": "),
-                        Span::styled(wrapped_values[0].clone(), Style::default().fg(theme.bg)),
+                        Span::styled(wrapped_values[0].clone(), Style::default().fg(theme.fg)),
                     ]
                 };
                 text_lines.push(Line::from(spans));
@@ -278,7 +278,7 @@ impl Modal for InfoModal {
                 for wrapped_line in wrapped_values.iter().skip(1) {
                     text_lines.push(Line::from(vec![Span::styled(
                         format!("{}{}", indent, wrapped_line),
-                        Style::default().fg(theme.bg),
+                        Style::default().fg(theme.fg),
                     )]));
                 }
             }

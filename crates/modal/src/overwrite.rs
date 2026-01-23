@@ -127,7 +127,7 @@ impl Modal for OverwriteModal {
         );
         let prompt = Paragraph::new(message)
             .alignment(Alignment::Left)
-            .style(Style::default().fg(theme.bg));
+            .style(Style::default().fg(theme.fg));
         prompt.render(chunks[0], buf);
 
         // Option list
@@ -144,7 +144,7 @@ impl Modal for OverwriteModal {
                         .bg(theme.accented_fg)
                         .add_modifier(Modifier::BOLD)
                 } else {
-                    Style::default().fg(theme.bg)
+                    Style::default().fg(theme.fg)
                 };
 
                 ListItem::new(Line::from(vec![
@@ -154,7 +154,7 @@ impl Modal for OverwriteModal {
             })
             .collect();
 
-        let list = List::new(items).style(Style::default().bg(theme.fg));
+        let list = List::new(items).style(Style::default().bg(theme.bg));
 
         list.render(chunks[1], buf);
 

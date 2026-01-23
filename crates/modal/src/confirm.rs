@@ -83,7 +83,7 @@ impl Modal for ConfirmModal {
         // Render message
         let message = Paragraph::new(self.message.clone())
             .alignment(Alignment::Center)
-            .style(Style::default().fg(theme.bg));
+            .style(Style::default().fg(theme.fg));
         message.render(chunks[0], buf);
 
         // Render buttons

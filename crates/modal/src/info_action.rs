@@ -311,7 +311,7 @@ impl Modal for InfoActionModal {
                                 .add_modifier(Modifier::BOLD),
                         ),
                         Span::raw("  "),
-                        Span::styled(wrapped_values[0].clone(), Style::default().fg(theme.bg)),
+                        Span::styled(wrapped_values[0].clone(), Style::default().fg(theme.fg)),
                     ]
                 } else {
                     vec![
@@ -322,7 +322,7 @@ impl Modal for InfoActionModal {
                                 .add_modifier(Modifier::BOLD),
                         ),
                         Span::raw(": "),
-                        Span::styled(wrapped_values[0].clone(), Style::default().fg(theme.bg)),
+                        Span::styled(wrapped_values[0].clone(), Style::default().fg(theme.fg)),
                     ]
                 };
                 text_lines.push(Line::from(spans));
@@ -331,7 +331,7 @@ impl Modal for InfoActionModal {
                 for wrapped_line in wrapped_values.iter().skip(1) {
                     text_lines.push(Line::from(vec![Span::styled(
                         format!("{}{}", indent, wrapped_line),
-                        Style::default().fg(theme.bg),
+                        Style::default().fg(theme.fg),
                     )]));
                 }
             }
@@ -377,7 +377,7 @@ impl Modal for InfoActionModal {
                     .bg(theme.accented_fg)
                     .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(theme.bg)
+                Style::default().fg(theme.fg)
             };
 
             if i > 0 {

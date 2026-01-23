@@ -164,20 +164,20 @@ impl CommitModal {
                         Style::default().fg(theme.selected_fg).bg(theme.selected_bg),
                     );
                 } else {
-                    buf.set_string(x, y, ch.to_string(), Style::default().fg(theme.bg));
+                    buf.set_string(x, y, ch.to_string(), Style::default().fg(theme.fg));
                 }
                 x += ch_width;
             }
 
             // Show cursor at end of line or on empty line (inverted space)
             if is_cursor_line && cursor.col >= line_len && x < area.x + area.width {
-                buf.set_string(x, y, " ", Style::default().bg(theme.bg));
+                buf.set_string(x, y, " ", Style::default().bg(theme.fg));
                 x += 1;
             }
 
             // Fill rest of line with background
             while x < area.x + area.width {
-                buf.set_string(x, y, " ", Style::default().bg(theme.fg));
+                buf.set_string(x, y, " ", Style::default().bg(theme.bg));
                 x += 1;
             }
         }

@@ -144,7 +144,7 @@ impl Modal for SaveAsModal {
 
         // Render input field
         let input_border_color = if self.focus == FocusArea::Input {
-            theme.success
+            theme.accented_fg
         } else {
             theme.bg
         };
@@ -152,7 +152,7 @@ impl Modal for SaveAsModal {
         let input_line = Line::from(vec![
             Span::styled(
                 self.input_handler.text_before_cursor(),
-                Style::default().fg(theme.bg),
+                Style::default().fg(theme.fg),
             ),
             Span::styled(
                 if self.focus == FocusArea::Input {
@@ -160,11 +160,11 @@ impl Modal for SaveAsModal {
                 } else {
                     ""
                 },
-                Style::default().fg(theme.success),
+                Style::default().fg(theme.bg).bg(theme.fg),
             ),
             Span::styled(
                 self.input_handler.text_after_cursor(),
-                Style::default().fg(theme.bg),
+                Style::default().fg(theme.fg),
             ),
         ]);
 
@@ -174,15 +174,15 @@ impl Modal for SaveAsModal {
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(input_border_color)),
             )
-            .style(Style::default().bg(theme.fg));
+            .style(Style::default().bg(theme.bg));
         input_paragraph.render(chunks[0], buf);
 
         // Render checkbox
         let checkbox_char = if self.executable { "x" } else { " " };
         let checkbox_style = if self.focus == FocusArea::Checkbox {
-            Style::default().fg(theme.success).bg(theme.fg)
+            Style::default().fg(theme.accented_fg).bg(theme.bg)
         } else {
-            Style::default().fg(theme.bg).bg(theme.fg)
+            Style::default().fg(theme.fg).bg(theme.bg)
         };
 
         let checkbox_text = format!("[{}] {}", checkbox_char, t.checkbox_executable());

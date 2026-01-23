@@ -185,7 +185,7 @@ impl Modal for ReplaceModal {
                 match_x,
                 buttons_area.y,
                 &match_text,
-                Style::default().fg(theme.bg),
+                Style::default().fg(theme.fg),
             );
         }
 
@@ -204,7 +204,7 @@ impl Modal for ReplaceModal {
                     .bg(theme.bg)
                     .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(theme.bg)
+                Style::default().fg(theme.fg)
             };
 
             let button_text = if is_selected {

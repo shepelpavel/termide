@@ -39,11 +39,11 @@ pub fn render_modal_frame(
     let block = Block::default()
         .title(Span::styled(
             title_with_close,
-            Style::default().fg(theme.bg).add_modifier(Modifier::BOLD),
+            Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
         ))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme.bg))
-        .style(Style::default().bg(theme.fg));
+        .border_style(Style::default().fg(theme.accented_fg))
+        .style(Style::default().bg(theme.bg));
 
     // Calculate close button area (the [X] at the beginning of title)
     let close_x = area.x + 1; // Position after space: " [X]"
@@ -70,11 +70,11 @@ pub fn create_modal_block(title: &str, theme: &Theme) -> Block<'static> {
     Block::default()
         .title(Span::styled(
             format!(" {} ", title),
-            Style::default().fg(theme.bg).add_modifier(Modifier::BOLD),
+            Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
         ))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme.bg))
-        .style(Style::default().bg(theme.fg))
+        .border_style(Style::default().fg(theme.accented_fg))
+        .style(Style::default().bg(theme.bg))
 }
 
 /// Render a modal block and return its inner area.
@@ -131,9 +131,9 @@ pub fn render_input_field(
     let text_style = if is_focused {
         Style::default().fg(theme.fg).bg(theme.bg)
     } else {
-        Style::default().fg(theme.bg)
+        Style::default().fg(theme.fg)
     };
-    let selection_style = Style::default().fg(theme.bg).bg(theme.success);
+    let selection_style = Style::default().fg(theme.bg).bg(theme.fg);
     let cursor_style = selection_style;
 
     // Collect chars with their display widths
@@ -228,7 +228,7 @@ pub fn render_labeled_input(
     let label_width = label.len() as u16;
 
     // Render label
-    buf.set_string(area.x, area.y, label, Style::default().fg(theme.bg));
+    buf.set_string(area.x, area.y, label, Style::default().fg(theme.fg));
 
     // Render input field
     let input_x = area.x + label_width;
