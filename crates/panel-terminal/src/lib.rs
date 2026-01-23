@@ -877,6 +877,15 @@ impl Panel for Terminal {
         // On cache hit: Arc clone was O(1), this clone is the only cost
         // On cache miss: Arc wrap was O(1), this clone is the only cost
         let lines = Arc::try_unwrap(arc_lines).unwrap_or_else(|arc| (*arc).clone());
+
+        // Clear the render area with background color to prevent visual artifacts
+        // from previous content (modal borders, old status lines, etc.)
+        let bg_style = Style::default().bg(theme.bg);
+        let blank_line = " ".repeat(area.width as usize);
+        for y in area.top()..area.bottom() {
+            buf.set_string(area.x, y, &blank_line, bg_style);
+        }
+
         let paragraph = Paragraph::new(lines);
         paragraph.render(area, buf);
 
