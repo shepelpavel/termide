@@ -5,6 +5,20 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] - 2026-01-23
+
+### Changed
+- **LSP Performance**: Reduced lock contention and reorganized response handling
+- **Editor Refactoring**: Extracted mouse handling to separate module
+- **Modal Cleanup**: Removed unused panel_index field from SelectOption
+- **Theme Colors**: Updated theme color usage in modals and dropdowns
+
+### Fixed
+- **Terminal Sync Artifacts**: Defer cache invalidation during sync_output batches to prevent partial frame rendering
+- **Terminal Render Clearing**: Clear render area before drawing to prevent visual artifacts
+- **Modal Width Stability**: Fixed editable select width during dropdown toggle
+- **Terminal Cache**: Added cache invalidation for all buffer-modifying operations
+
 ## [0.10.0] - 2026-01-23
 
 ### Added
@@ -713,3 +727,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.9.0]: https://github.com/termide/termide/releases/tag/0.9.0
 [0.8.9]: https://github.com/termide/termide/releases/tag/0.8.9
 [0.9.1]: https://github.com/termide/termide/releases/tag/0.9.1
+[0.10.1]: https://github.com/termide/termide/releases/tag/0.10.1
+[0.10.0]: https://github.com/termide/termide/releases/tag/0.10.0
