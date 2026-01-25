@@ -2164,6 +2164,7 @@ impl App {
         if should_refresh_file_managers {
             for panel in self.layout_manager.iter_all_panels_mut() {
                 if let Some(fm) = panel.as_file_manager_mut() {
+                    fm.clear_selection();
                     let _ = fm.load_directory();
                 }
             }

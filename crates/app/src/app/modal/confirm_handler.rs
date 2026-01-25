@@ -4,9 +4,9 @@ use anyhow::Result;
 use std::path::PathBuf;
 
 use super::super::App;
-use crate::state::{ActiveModal, LocalDeleteOperation};
+use crate::state::ActiveModal;
+use termide_file_ops::{OperationPath, OperationRequest};
 use termide_modal::ProgressModal;
-use termide_panel_file_manager::delete_paths_async;
 use termide_ui::path_utils;
 
 impl App {
@@ -28,19 +28,26 @@ impl App {
 
                 termide_logger::info(format!("Starting async delete of {}", source_display));
 
-                // Start async delete operation
-                let delete_op = delete_paths_async(paths);
+                // Create delete operation request
+                let sources: Vec<OperationPath> =
+                    paths.into_iter().map(OperationPath::Local).collect();
+                let request = OperationRequest::delete(sources);
 
-                // Store operation for progress tracking
-                self.state.local_delete_operation = Some(LocalDeleteOperation {
-                    completion: delete_op.completion,
-                    progress: delete_op.progress,
-                    cancel_flag: delete_op.cancel_flag,
-                });
+                // Get or create VFS manager for operation manager
+                let vfs_manager = std::sync::Arc::new(termide_vfs::VfsManager::new());
 
-                // Show progress modal
-                let modal = ProgressModal::new_delete_progress(0, source_display);
-                self.state.active_modal = Some(ActiveModal::Progress(Box::new(modal)));
+                // Start delete operation via OperationManager
+                match self.state.start_operation_now(request, vfs_manager) {
+                    Ok(_operation_id) => {
+                        // Show progress modal
+                        let modal = ProgressModal::new_delete_progress(0, source_display);
+                        self.state.active_modal = Some(ActiveModal::Progress(Box::new(modal)));
+                    }
+                    Err(e) => {
+                        termide_logger::error(format!("Failed to start delete operation: {}", e));
+                        self.state.set_error(format!("Delete failed: {}", e));
+                    }
+                }
             }
         }
         Ok(())

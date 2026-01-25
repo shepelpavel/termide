@@ -324,7 +324,12 @@ impl std::fmt::Debug for LocalScanOperation {
     }
 }
 
-/// State for async delete operation with progress
+/// State for async delete operation with progress.
+///
+/// DEPRECATED: Use `OperationManager` with `LocalDeleteWorker` instead.
+/// This type is kept for backward compatibility during migration.
+#[deprecated(note = "Use OperationManager with LocalDeleteWorker instead")]
+#[allow(deprecated)]
 pub struct LocalDeleteOperation {
     /// Completion receiver
     pub completion: mpsc::Receiver<anyhow::Result<()>>,
@@ -334,6 +339,7 @@ pub struct LocalDeleteOperation {
     pub cancel_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
+#[allow(deprecated)]
 impl std::fmt::Debug for LocalDeleteOperation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("LocalDeleteOperation")
@@ -410,6 +416,7 @@ pub struct AppState {
     /// Handle for async directory scan operation before copy
     pub local_scan_operation: Option<LocalScanOperation>,
     /// Handle for async delete operation with progress
+    #[allow(deprecated)]
     pub local_delete_operation: Option<LocalDeleteOperation>,
     /// Handle for async VFS upload operation (local→remote single file)
     pub vfs_upload_state: Option<VfsUploadState>,
