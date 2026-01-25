@@ -444,12 +444,16 @@ pub struct UploadProgress {
     pub total_bytes: u64,
 }
 
-/// Handle to an async upload operation with progress reporting.
+/// Handle to an async upload operation with progress reporting and pause/cancel.
 pub struct VfsUploadOperation {
     /// Channel receiver for the operation result.
     completion: mpsc::Receiver<VfsResult<()>>,
     /// Channel receiver for progress updates.
     progress: mpsc::Receiver<UploadProgress>,
+    /// Flag to pause the operation.
+    pub pause_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Flag to cancel the operation.
+    pub cancel_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl VfsUploadOperation {
@@ -457,10 +461,14 @@ impl VfsUploadOperation {
     pub fn new(
         completion: mpsc::Receiver<VfsResult<()>>,
         progress: mpsc::Receiver<UploadProgress>,
+        pause_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        cancel_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
     ) -> Self {
         Self {
             completion,
             progress,
+            pause_flag,
+            cancel_flag,
         }
     }
 
@@ -472,6 +480,8 @@ impl VfsUploadOperation {
         Self {
             completion: rx,
             progress: progress_rx,
+            pause_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            cancel_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 
@@ -493,11 +503,30 @@ impl VfsUploadOperation {
         }
         latest
     }
+
+    /// Set pause state.
+    pub fn set_paused(&self, paused: bool) {
+        self.pause_flag
+            .store(paused, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Check if paused.
+    pub fn is_paused(&self) -> bool {
+        self.pause_flag.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Cancel the operation.
+    pub fn cancel(&self) {
+        self.cancel_flag
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 impl std::fmt::Debug for VfsUploadOperation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("VfsUploadOperation").finish_non_exhaustive()
+        f.debug_struct("VfsUploadOperation")
+            .field("paused", &self.is_paused())
+            .finish_non_exhaustive()
     }
 }
 
@@ -601,6 +630,107 @@ impl VfsDownloadOperation {
 impl std::fmt::Debug for VfsDownloadOperation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("VfsDownloadOperation")
+            .field("paused", &self.is_paused())
+            .finish_non_exhaustive()
+    }
+}
+
+/// Progress information for copy operations.
+#[derive(Debug, Clone)]
+pub struct CopyProgress {
+    /// Bytes copied so far.
+    pub bytes_copied: u64,
+    /// Total bytes to copy.
+    pub total_bytes: u64,
+    /// Files copied so far (for directory copies).
+    pub files_copied: usize,
+    /// Total files to copy (for directory copies).
+    pub total_files: usize,
+    /// Current file being copied.
+    pub current_file: Option<String>,
+}
+
+/// Handle to an async copy operation with progress reporting and pause/cancel.
+pub struct VfsCopyOperation {
+    /// Channel receiver for the operation result.
+    completion: mpsc::Receiver<VfsResult<()>>,
+    /// Channel receiver for progress updates.
+    progress: mpsc::Receiver<CopyProgress>,
+    /// Flag to pause the operation.
+    pub pause_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Flag to cancel the operation.
+    pub cancel_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl VfsCopyOperation {
+    /// Create a new copy operation from receivers.
+    pub fn new(
+        completion: mpsc::Receiver<VfsResult<()>>,
+        progress: mpsc::Receiver<CopyProgress>,
+        pause_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        cancel_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ) -> Self {
+        Self {
+            completion,
+            progress,
+            pause_flag,
+            cancel_flag,
+        }
+    }
+
+    /// Create an error operation.
+    pub fn error(error: VfsError) -> Self {
+        let (tx, rx) = mpsc::channel();
+        let _ = tx.send(Err(error));
+        let (_, progress_rx) = mpsc::channel();
+        Self {
+            completion: rx,
+            progress: progress_rx,
+            pause_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            cancel_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        }
+    }
+
+    /// Try to receive the result without blocking.
+    pub fn try_recv(&self) -> Option<VfsResult<()>> {
+        self.completion.try_recv().ok()
+    }
+
+    /// Try to receive progress update without blocking.
+    pub fn try_recv_progress(&self) -> Option<CopyProgress> {
+        self.progress.try_recv().ok()
+    }
+
+    /// Drain all pending progress updates and return the latest.
+    pub fn drain_progress(&self) -> Option<CopyProgress> {
+        let mut latest = None;
+        while let Ok(p) = self.progress.try_recv() {
+            latest = Some(p);
+        }
+        latest
+    }
+
+    /// Set pause state.
+    pub fn set_paused(&self, paused: bool) {
+        self.pause_flag
+            .store(paused, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Check if paused.
+    pub fn is_paused(&self) -> bool {
+        self.pause_flag.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Cancel the operation.
+    pub fn cancel(&self) {
+        self.cancel_flag
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+impl std::fmt::Debug for VfsCopyOperation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("VfsCopyOperation")
             .field("paused", &self.is_paused())
             .finish_non_exhaustive()
     }

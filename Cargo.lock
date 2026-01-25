@@ -2891,6 +2891,7 @@ dependencies = [
  "termide-clipboard",
  "termide-config",
  "termide-core",
+ "termide-file-ops",
  "termide-git",
  "termide-i18n",
  "termide-keyboard",
@@ -3015,6 +3016,18 @@ dependencies = [
  "termide-session",
  "termide-theme",
  "termide-vfs",
+]
+
+[[package]]
+name = "termide-file-ops"
+version = "0.10.1"
+dependencies = [
+ "anyhow",
+ "log",
+ "tempfile",
+ "termide-logger",
+ "termide-vfs",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

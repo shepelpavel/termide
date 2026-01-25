@@ -12,6 +12,7 @@ use std::sync::{mpsc, Arc};
 
 use termide_config::constants::DEFAULT_MAIN_PANEL_WIDTH;
 use termide_config::{BookmarksConfig, Config};
+use termide_file_ops::OperationManager;
 use termide_lsp::{LspConfig, LspManager, LspServerConfig};
 use termide_panel_editor::EditorConfig;
 use termide_system_monitor::SystemMonitor;
@@ -427,6 +428,10 @@ pub struct AppState {
     pub all_diagnostics: HashMap<PathBuf, Vec<lsp_types::Diagnostic>>,
     /// User bookmarks
     pub bookmarks: BookmarksConfig,
+    /// Unified operation manager for file operations (copy, move, delete, upload, download).
+    /// This is the new centralized system that will eventually replace the individual
+    /// operation handles (local_copy_operation, batch_download_operation, etc.).
+    pub operation_manager: Option<OperationManager>,
 }
 
 impl Default for AppState {
@@ -496,6 +501,7 @@ impl AppState {
             lsp_manager,
             all_diagnostics: HashMap::new(),
             bookmarks,
+            operation_manager: None, // Will be initialized when VfsManager is available
         }
     }
 

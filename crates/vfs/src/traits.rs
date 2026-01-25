@@ -4,8 +4,8 @@ use std::path::Path;
 
 use crate::error::VfsResult;
 use crate::types::{
-    AuthMethod, ConnectOptions, ConnectionState, VfsDownloadOperation, VfsEntry, VfsMetadata,
-    VfsOperation, VfsPath, VfsUploadOperation,
+    AuthMethod, ConnectOptions, ConnectionState, CopyProgress, VfsCopyOperation,
+    VfsDownloadOperation, VfsEntry, VfsMetadata, VfsOperation, VfsPath, VfsUploadOperation,
 };
 
 /// Trait for virtual filesystem providers.
@@ -69,6 +69,27 @@ pub trait VfsProvider: Send + Sync {
     /// Copy a file.
     fn copy(&self, from: &VfsPath, to: &VfsPath) -> VfsOperation<()>;
 
+    /// Copy a file or directory with progress reporting and pause/cancel support.
+    /// Default implementation uses regular copy without progress.
+    fn copy_with_progress(&self, from: &VfsPath, to: &VfsPath) -> VfsCopyOperation {
+        // Default: wrap regular copy without progress
+        let op = self.copy(from, to);
+        let (tx, rx) = std::sync::mpsc::channel();
+        let (_, progress_rx) = std::sync::mpsc::channel::<CopyProgress>();
+
+        std::thread::spawn(move || {
+            let result = op.recv();
+            let _ = tx.send(result);
+        });
+
+        VfsCopyOperation::new(
+            rx,
+            progress_rx,
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        )
+    }
+
     // === Local transfer operations ===
 
     /// Download a remote file to local filesystem.
@@ -79,7 +100,7 @@ pub trait VfsProvider: Send + Sync {
     /// Upload a local file to remote filesystem.
     fn upload(&self, local: &Path, remote: &VfsPath) -> VfsOperation<()>;
 
-    /// Upload a local file with progress reporting.
+    /// Upload a local file with progress reporting and pause/cancel support.
     /// Default implementation uses regular upload without progress.
     fn upload_with_progress(&self, local: &Path, remote: &VfsPath) -> VfsUploadOperation {
         // Default: wrap regular upload without progress
@@ -92,7 +113,12 @@ pub trait VfsProvider: Send + Sync {
             let _ = tx.send(result);
         });
 
-        VfsUploadOperation::new(rx, progress_rx)
+        VfsUploadOperation::new(
+            rx,
+            progress_rx,
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        )
     }
 
     /// Download a remote file/directory with progress reporting and pause/cancel support.

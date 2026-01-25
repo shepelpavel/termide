@@ -61,6 +61,10 @@ pub struct ProgressModal {
     individual_file_bytes: u64,
     /// Individual file progress: total bytes of current file
     individual_file_total: u64,
+    /// ETA (estimated time of arrival) in seconds
+    eta_seconds: Option<u64>,
+    /// Start time for total operation ETA calculation
+    operation_start: Option<std::time::Instant>,
 }
 
 impl ProgressModal {
@@ -91,6 +95,8 @@ impl ProgressModal {
             scan_current_dir: None,
             individual_file_bytes: 0,
             individual_file_total: 0,
+            eta_seconds: None,
+            operation_start: None,
         }
     }
 
@@ -121,6 +127,8 @@ impl ProgressModal {
             scan_current_dir: None,
             individual_file_bytes: 0,
             individual_file_total: 0,
+            eta_seconds: None,
+            operation_start: None,
         }
     }
 
@@ -151,6 +159,8 @@ impl ProgressModal {
             scan_current_dir: None,
             individual_file_bytes: 0,
             individual_file_total: 0,
+            eta_seconds: None,
+            operation_start: None,
         }
     }
 
@@ -181,6 +191,8 @@ impl ProgressModal {
             scan_current_dir: None,
             individual_file_bytes: 0,
             individual_file_total: 0,
+            eta_seconds: None,
+            operation_start: None,
         }
     }
 
@@ -217,6 +229,8 @@ impl ProgressModal {
             scan_current_dir: None,
             individual_file_bytes: 0,
             individual_file_total: 0,
+            eta_seconds: None,
+            operation_start: Some(std::time::Instant::now()),
         }
     }
 
@@ -247,6 +261,8 @@ impl ProgressModal {
             scan_current_dir: None,
             individual_file_bytes: 0,
             individual_file_total: 0,
+            eta_seconds: None,
+            operation_start: None,
         }
     }
 
@@ -277,6 +293,8 @@ impl ProgressModal {
             scan_current_dir: None,
             individual_file_bytes: 0,
             individual_file_total: 0,
+            eta_seconds: None,
+            operation_start: None,
         }
     }
 
@@ -355,12 +373,24 @@ impl ProgressModal {
     pub fn update_file_progress(&mut self, bytes_copied: u64, total_bytes: u64) {
         let now = std::time::Instant::now();
 
-        // Calculate transfer speed
+        // Initialize operation start if not set
+        if self.operation_start.is_none() {
+            self.operation_start = Some(now);
+        }
+
+        // Calculate transfer speed using exponential moving average
         if let Some(last_update) = self.last_update {
             let elapsed = now.duration_since(last_update).as_secs_f64();
             if elapsed > 0.0 {
                 let bytes_delta = bytes_copied.saturating_sub(self.last_bytes);
-                self.transfer_speed_bps = bytes_delta as f64 / elapsed;
+                let instant_speed = bytes_delta as f64 / elapsed;
+
+                // Smooth speed using exponential moving average (alpha = 0.3)
+                if self.transfer_speed_bps > 0.0 {
+                    self.transfer_speed_bps = 0.3 * instant_speed + 0.7 * self.transfer_speed_bps;
+                } else {
+                    self.transfer_speed_bps = instant_speed;
+                }
             }
         }
 
@@ -368,6 +398,20 @@ impl ProgressModal {
         self.total_file_bytes = total_bytes;
         self.last_update = Some(now);
         self.last_bytes = bytes_copied;
+
+        // Calculate ETA based on transfer speed
+        if self.transfer_speed_bps > 0.0 && total_bytes > bytes_copied {
+            let remaining_bytes = total_bytes - bytes_copied;
+            let eta_secs = (remaining_bytes as f64 / self.transfer_speed_bps) as u64;
+            self.eta_seconds = Some(eta_secs);
+        } else {
+            self.eta_seconds = None;
+        }
+    }
+
+    /// Get ETA (estimated time of arrival) in seconds
+    pub fn eta_seconds(&self) -> Option<u64> {
+        self.eta_seconds
     }
 
     /// Update directory copy progress (files count + bytes)
@@ -482,6 +526,21 @@ fn format_speed(bytes_per_sec: f64) -> String {
         format!("{:.1} KB/s", bytes_per_sec / KB)
     } else {
         format!("{:.0} B/s", bytes_per_sec)
+    }
+}
+
+/// Format ETA (estimated time of arrival) to human-readable string
+fn format_eta(seconds: u64) -> String {
+    if seconds < 60 {
+        format!("{}s", seconds)
+    } else if seconds < 3600 {
+        let mins = seconds / 60;
+        let secs = seconds % 60;
+        format!("{}m {}s", mins, secs)
+    } else {
+        let hours = seconds / 3600;
+        let mins = (seconds % 3600) / 60;
+        format!("{}h {}m", hours, mins)
     }
 }
 
@@ -762,9 +821,14 @@ impl Modal for ProgressModal {
             let data_para = Paragraph::new(data_text).style(Style::default().fg(theme.fg));
             data_para.render(chunks[6], buf);
 
-            // Line 3: Speed
+            // Line 3: Speed and ETA
             let speed_text = if self.transfer_speed_bps > 0.0 {
-                format!("Speed: {}", format_speed(self.transfer_speed_bps))
+                let speed_str = format_speed(self.transfer_speed_bps);
+                if let Some(eta_secs) = self.eta_seconds {
+                    format!("Speed: {}  |  ETA: {}", speed_str, format_eta(eta_secs))
+                } else {
+                    format!("Speed: {}", speed_str)
+                }
             } else {
                 String::new()
             };

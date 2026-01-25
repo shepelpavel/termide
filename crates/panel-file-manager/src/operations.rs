@@ -12,11 +12,20 @@ use std::thread;
 use super::FileManager;
 use termide_ui::path_utils;
 
-/// Progress information for file copy operation
+/// Progress information for file copy operation.
+/// This type matches the unified `CopyProgress` from VFS for consistency.
 #[derive(Debug, Clone)]
 pub struct CopyProgress {
+    /// Bytes copied so far.
     pub bytes_copied: u64,
+    /// Total bytes to copy.
     pub total_bytes: u64,
+    /// Files copied so far (for directory copies, 0 for single file).
+    pub files_copied: usize,
+    /// Total files to copy (for directory copies, 1 for single file).
+    pub total_files: usize,
+    /// Current file being copied.
+    pub current_file: Option<String>,
 }
 
 /// Handle for an ongoing copy operation
@@ -103,6 +112,12 @@ pub fn copy_file_with_progress(source: &Path, dest: &Path) -> CopyOperation {
                 let _ = tx_progress.send(CopyProgress {
                     bytes_copied: copied_bytes,
                     total_bytes,
+                    files_copied: 0,
+                    total_files: 1,
+                    current_file: source
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .map(String::from),
                 });
             }
 

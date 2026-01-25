@@ -1,14 +1,17 @@
 //! Local filesystem VFS provider.
 
 use std::fs;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc};
 use std::thread;
 
 use crate::error::{VfsError, VfsResult};
 use crate::traits::{DiskSpace, VfsProvider};
 use crate::types::{
-    AuthMethod, ConnectOptions, ConnectionState, VfsEntry, VfsMetadata, VfsOperation, VfsPath,
+    AuthMethod, ConnectOptions, ConnectionState, CopyProgress, VfsCopyOperation, VfsEntry,
+    VfsMetadata, VfsOperation, VfsPath,
 };
 
 /// Local filesystem provider.
@@ -145,6 +148,187 @@ impl LocalFileSystem {
                 VfsError::Io(e)
             }
         })
+    }
+
+    /// Count files and total size in a directory (internal helper).
+    fn count_directory_contents(path: &Path, depth: usize) -> VfsResult<(usize, u64)> {
+        const MAX_DEPTH: usize = 100;
+
+        if depth > MAX_DEPTH {
+            return Err(VfsError::RemoteError {
+                message: format!("Directory nesting too deep (> {})", MAX_DEPTH),
+            });
+        }
+
+        let mut file_count = 0;
+        let mut total_bytes = 0u64;
+
+        for entry in fs::read_dir(path)? {
+            let entry = entry?;
+            let metadata = fs::symlink_metadata(entry.path())?;
+
+            if metadata.is_dir() && !metadata.is_symlink() {
+                let (sub_count, sub_bytes) =
+                    Self::count_directory_contents(&entry.path(), depth + 1)?;
+                file_count += sub_count;
+                total_bytes += sub_bytes;
+            } else if metadata.is_file() {
+                file_count += 1;
+                total_bytes += metadata.len();
+            } else if metadata.is_symlink() {
+                file_count += 1; // Count symlinks as files
+            }
+        }
+
+        Ok((file_count, total_bytes))
+    }
+
+    /// Copy file with chunked I/O, progress reporting, and pause/cancel support.
+    #[allow(clippy::too_many_arguments)]
+    fn copy_file_chunked(
+        src: &Path,
+        dst: &Path,
+        pause_flag: &Arc<AtomicBool>,
+        cancel_flag: &Arc<AtomicBool>,
+        progress_tx: &mpsc::Sender<CopyProgress>,
+        bytes_offset: u64,
+        total_bytes: u64,
+        files_copied: usize,
+        total_files: usize,
+    ) -> VfsResult<u64> {
+        const CHUNK_SIZE: usize = 1024 * 1024; // 1MB chunks
+
+        let mut src_file = fs::File::open(src)?;
+        let file_size = src_file.metadata()?.len();
+
+        let mut dst_file = fs::File::create(dst)?;
+        let mut buffer = vec![0u8; CHUNK_SIZE];
+        let mut bytes_copied_local = 0u64;
+
+        loop {
+            // Check for cancellation
+            if cancel_flag.load(Ordering::Relaxed) {
+                return Err(VfsError::RemoteError {
+                    message: "Operation cancelled by user".to_string(),
+                });
+            }
+
+            // Wait while paused
+            while pause_flag.load(Ordering::Relaxed) {
+                if cancel_flag.load(Ordering::Relaxed) {
+                    return Err(VfsError::RemoteError {
+                        message: "Operation cancelled by user".to_string(),
+                    });
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+
+            let bytes_read = src_file.read(&mut buffer)?;
+            if bytes_read == 0 {
+                break;
+            }
+
+            dst_file.write_all(&buffer[..bytes_read])?;
+            bytes_copied_local += bytes_read as u64;
+
+            // Send progress update
+            let _ = progress_tx.send(CopyProgress {
+                bytes_copied: bytes_offset + bytes_copied_local,
+                total_bytes,
+                files_copied,
+                total_files,
+                current_file: Some(
+                    src.file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_default(),
+                ),
+            });
+        }
+
+        Ok(file_size)
+    }
+
+    /// Copy directory with progress reporting and pause/cancel support.
+    #[allow(clippy::too_many_arguments)]
+    fn copy_dir_with_progress(
+        src: &Path,
+        dst: &Path,
+        pause_flag: &Arc<AtomicBool>,
+        cancel_flag: &Arc<AtomicBool>,
+        progress_tx: &mpsc::Sender<CopyProgress>,
+        bytes_offset: &mut u64,
+        total_bytes: u64,
+        files_copied: &mut usize,
+        total_files: usize,
+        depth: usize,
+    ) -> VfsResult<()> {
+        const MAX_DEPTH: usize = 100;
+
+        if depth > MAX_DEPTH {
+            return Err(VfsError::RemoteError {
+                message: format!("Directory nesting too deep (> {})", MAX_DEPTH),
+            });
+        }
+
+        fs::create_dir_all(dst)?;
+
+        for entry in fs::read_dir(src)? {
+            // Check for cancellation
+            if cancel_flag.load(Ordering::Relaxed) {
+                return Err(VfsError::RemoteError {
+                    message: "Operation cancelled by user".to_string(),
+                });
+            }
+
+            let entry = entry?;
+            let entry_path = entry.path();
+            let dest_path = dst.join(entry.file_name());
+            let metadata = fs::symlink_metadata(&entry_path)?;
+
+            if metadata.is_symlink() {
+                // Copy symlink
+                #[cfg(unix)]
+                {
+                    let target = fs::read_link(&entry_path)?;
+                    std::os::unix::fs::symlink(target, &dest_path)?;
+                }
+                #[cfg(not(unix))]
+                {
+                    fs::copy(&entry_path, &dest_path)?;
+                }
+                *files_copied += 1;
+            } else if metadata.is_dir() {
+                Self::copy_dir_with_progress(
+                    &entry_path,
+                    &dest_path,
+                    pause_flag,
+                    cancel_flag,
+                    progress_tx,
+                    bytes_offset,
+                    total_bytes,
+                    files_copied,
+                    total_files,
+                    depth + 1,
+                )?;
+            } else {
+                // Copy file with chunked I/O
+                let file_size = Self::copy_file_chunked(
+                    &entry_path,
+                    &dest_path,
+                    pause_flag,
+                    cancel_flag,
+                    progress_tx,
+                    *bytes_offset,
+                    total_bytes,
+                    *files_copied,
+                    total_files,
+                )?;
+                *bytes_offset += file_size;
+                *files_copied += 1;
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -403,6 +587,78 @@ impl VfsProvider for LocalFileSystem {
         });
 
         VfsOperation::new(rx)
+    }
+
+    fn copy_with_progress(&self, from: &VfsPath, to: &VfsPath) -> VfsCopyOperation {
+        let from_path = match Self::to_local_path(from) {
+            Ok(p) => p.to_path_buf(),
+            Err(e) => return VfsCopyOperation::error(e),
+        };
+        let to_path = match Self::to_local_path(to) {
+            Ok(p) => p.to_path_buf(),
+            Err(e) => return VfsCopyOperation::error(e),
+        };
+
+        let (tx_complete, rx_complete) = mpsc::channel();
+        let (tx_progress, rx_progress) = mpsc::channel();
+
+        let pause_flag = Arc::new(AtomicBool::new(false));
+        let cancel_flag = Arc::new(AtomicBool::new(false));
+
+        let pause_flag_clone = Arc::clone(&pause_flag);
+        let cancel_flag_clone = Arc::clone(&cancel_flag);
+
+        thread::spawn(move || {
+            let result = if from_path.is_dir() {
+                // Count total files and size first
+                match Self::count_directory_contents(&from_path, 0) {
+                    Ok((total_files, total_bytes)) => {
+                        let mut bytes_offset = 0u64;
+                        let mut files_copied = 0usize;
+
+                        Self::copy_dir_with_progress(
+                            &from_path,
+                            &to_path,
+                            &pause_flag_clone,
+                            &cancel_flag_clone,
+                            &tx_progress,
+                            &mut bytes_offset,
+                            total_bytes,
+                            &mut files_copied,
+                            total_files,
+                            0,
+                        )
+                    }
+                    Err(e) => Err(e),
+                }
+            } else {
+                // Single file copy
+                let file_size = match fs::metadata(&from_path) {
+                    Ok(m) => m.len(),
+                    Err(e) => {
+                        let _ = tx_complete.send(Err(VfsError::Io(e)));
+                        return;
+                    }
+                };
+
+                Self::copy_file_chunked(
+                    &from_path,
+                    &to_path,
+                    &pause_flag_clone,
+                    &cancel_flag_clone,
+                    &tx_progress,
+                    0,
+                    file_size,
+                    0,
+                    1,
+                )
+                .map(|_| ())
+            };
+
+            let _ = tx_complete.send(result);
+        });
+
+        VfsCopyOperation::new(rx_complete, rx_progress, pause_flag, cancel_flag)
     }
 
     fn download(&self, remote: &VfsPath, local: &Path) -> VfsOperation<PathBuf> {

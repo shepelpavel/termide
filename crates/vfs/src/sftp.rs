@@ -1296,9 +1296,18 @@ impl VfsProvider for SftpProvider {
         let local_path = local.to_path_buf();
         let (tx_complete, rx_complete) = mpsc::channel();
         let (tx_progress, rx_progress) = mpsc::channel();
+        let pause_flag = Arc::new(AtomicBool::new(false));
+        let cancel_flag = Arc::new(AtomicBool::new(false));
+        let pause_flag_clone = Arc::clone(&pause_flag);
+        let cancel_flag_clone = Arc::clone(&cancel_flag);
 
         thread::spawn(move || {
             let result = (|| -> VfsResult<()> {
+                // Check cancel before starting
+                if cancel_flag_clone.load(Ordering::Relaxed) {
+                    return Err(VfsError::Cancelled);
+                }
+
                 // Get file size
                 let metadata = std::fs::metadata(&local_path).map_err(VfsError::Io)?;
                 let total_bytes = metadata.len();
@@ -1321,6 +1330,19 @@ impl VfsProvider for SftpProvider {
                 let mut bytes_uploaded: u64 = 0;
 
                 loop {
+                    // Check cancel
+                    if cancel_flag_clone.load(Ordering::Relaxed) {
+                        return Err(VfsError::Cancelled);
+                    }
+
+                    // Wait while paused
+                    while pause_flag_clone.load(Ordering::Relaxed) {
+                        if cancel_flag_clone.load(Ordering::Relaxed) {
+                            return Err(VfsError::Cancelled);
+                        }
+                        std::thread::sleep(Duration::from_millis(100));
+                    }
+
                     let bytes_read = local_file.read(&mut buffer).map_err(VfsError::Io)?;
                     if bytes_read == 0 {
                         break;
@@ -1344,7 +1366,7 @@ impl VfsProvider for SftpProvider {
             let _ = tx_complete.send(result);
         });
 
-        VfsUploadOperation::new(rx_complete, rx_progress)
+        VfsUploadOperation::new(rx_complete, rx_progress, pause_flag, cancel_flag)
     }
 
     fn download_with_progress(&self, remote: &VfsPath, local: &Path) -> VfsDownloadOperation {

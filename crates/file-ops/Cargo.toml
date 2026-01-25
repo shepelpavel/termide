@@ -1,0 +1,18 @@
+[package]
+name = "termide-file-ops"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Unified file operations system for termide with queue, progress, and pause/cancel support"
+
+[dependencies]
+thiserror = "1.0"
+log = "0.4"
+termide-logger = { path = "../logger" }
+termide-vfs = { path = "../vfs" }
+anyhow.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

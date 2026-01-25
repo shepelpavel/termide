@@ -39,6 +39,7 @@ termide-session = { path = "../session" }
 termide-git = { path = "../git" }
 termide-lsp = { path = "../lsp" }
 termide-vfs = { path = "../vfs" }
+termide-file-ops = { path = "../file-ops" }
 termide-watcher = { path = "../watcher" }
 termide-logger = { path = "../logger" }
 termide-system-monitor = { path = "../system-monitor" }

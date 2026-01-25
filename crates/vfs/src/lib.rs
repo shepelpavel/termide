@@ -63,9 +63,9 @@ pub use error::{VfsError, VfsResult};
 pub use local::LocalFileSystem;
 pub use traits::{DiskSpace, VfsProvider, VfsProviderSync};
 pub use types::{
-    AuthMethod, ConnectOptions, ConnectionState, DownloadProgress, UploadProgress,
-    VfsDownloadOperation, VfsEntry, VfsFileType, VfsMetadata, VfsOperation, VfsPath, VfsProtocol,
-    VfsUploadOperation,
+    AuthMethod, ConnectOptions, ConnectionState, CopyProgress, DownloadProgress, UploadProgress,
+    VfsCopyOperation, VfsDownloadOperation, VfsEntry, VfsFileType, VfsMetadata, VfsOperation,
+    VfsPath, VfsProtocol, VfsUploadOperation,
 };
 pub use url::{is_vfs_url, parse_vfs_url, UrlComponents};
 
@@ -526,6 +526,40 @@ impl VfsManager {
         }
 
         VfsDownloadOperation::error(VfsError::NotConnected)
+    }
+
+    /// Copy a file/directory with progress and pause/cancel support.
+    /// Works for both local and remote paths.
+    pub fn copy_with_progress(&self, from: &VfsPath, to: &VfsPath) -> VfsCopyOperation {
+        // Both must be local OR both must be on the same remote connection
+        if from.is_local() && to.is_local() {
+            return self.local.copy_with_progress(from, to);
+        }
+
+        if from.is_local() != to.is_local() {
+            // Cross-protocol copy - not directly supported, use download/upload instead
+            return VfsCopyOperation::error(VfsError::NotSupported(
+                "Cross-protocol copy not supported. Use download/upload instead.".to_string(),
+            ));
+        }
+
+        // Both remote - must be same connection
+        let from_key = from.connection_key();
+        let to_key = to.connection_key();
+        if from_key != to_key {
+            return VfsCopyOperation::error(VfsError::NotSupported(
+                "Copy between different remote connections not supported".to_string(),
+            ));
+        }
+
+        // Use the remote provider
+        if let Ok(providers) = self.remote_providers.read() {
+            if let Some(provider) = providers.get(&from_key) {
+                return provider.copy_with_progress(from, to);
+            }
+        }
+
+        VfsCopyOperation::error(VfsError::NotConnected)
     }
 }
 
