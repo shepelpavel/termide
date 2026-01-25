@@ -215,7 +215,12 @@ impl std::fmt::Debug for BatchUploadOperation {
     }
 }
 
-/// State for async local file copy operation with progress
+/// State for async local file copy operation with progress.
+///
+/// DEPRECATED: Use `OperationManager` with `LocalCopyWorker` instead.
+/// This type is kept for backward compatibility during migration.
+#[deprecated(note = "Use OperationManager with LocalCopyWorker instead")]
+#[allow(deprecated)]
 pub struct LocalCopyOperation {
     /// Completion receiver
     pub completion: mpsc::Receiver<anyhow::Result<PathBuf>>,
@@ -233,6 +238,7 @@ pub struct LocalCopyOperation {
     pub cancel_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
+#[allow(deprecated)]
 impl std::fmt::Debug for LocalCopyOperation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("LocalCopyOperation")
@@ -397,6 +403,7 @@ pub struct AppState {
     /// Handle for async batch copy download operation (remote→local)
     pub batch_download_operation: Option<BatchDownloadOperation>,
     /// Handle for async local file copy operation with progress
+    #[allow(deprecated)]
     pub local_copy_operation: Option<LocalCopyOperation>,
     /// Handle for async local directory copy operation with progress
     pub local_directory_copy_operation: Option<LocalDirectoryCopyOperation>,
@@ -794,6 +801,19 @@ impl AppState {
         self.operation_manager_mut()
             .expect("operation_manager just initialized")
             .queue_operation(request)
+    }
+
+    /// Start a file operation immediately (bypassing the queue).
+    /// Initializes the operation manager with the provided VFS manager if needed.
+    pub fn start_operation_now(
+        &mut self,
+        request: OperationRequest,
+        vfs_manager: Arc<VfsManager>,
+    ) -> Result<termide_file_ops::OperationId, termide_file_ops::OperationError> {
+        self.init_operation_manager(vfs_manager);
+        self.operation_manager_mut()
+            .expect("operation_manager just initialized")
+            .start_now(request)
     }
 
     /// Poll operation manager for events. Returns empty vec if not initialized.

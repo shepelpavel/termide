@@ -344,28 +344,47 @@ impl App {
                                     return Ok(());
                                 }
 
-                                // Local file - use async chunked copy
+                                // Local file - use OperationManager for async copy
                                 if source.is_file() {
-                                    let copy_op =
-                                        termide_panel_file_manager::copy_file_with_progress(
-                                            &source,
-                                            &final_dest,
-                                        );
+                                    use termide_file_ops::{OperationPath, OperationRequest};
 
-                                    self.state.local_copy_operation =
-                                        Some(crate::state::LocalCopyOperation {
-                                            completion: copy_op.completion,
-                                            progress: copy_op.progress,
-                                            source_path: source.clone(),
-                                            dest_path: final_dest.clone(),
-                                            is_move: operation.operation_type
-                                                == BatchOperationType::Move,
-                                            pause_flag: copy_op.pause_flag,
-                                            cancel_flag: copy_op.cancel_flag,
-                                        });
+                                    let is_move =
+                                        operation.operation_type == BatchOperationType::Move;
+                                    let request = if is_move {
+                                        OperationRequest::r#move(
+                                            vec![OperationPath::Local(source.clone())],
+                                            OperationPath::Local(final_dest.clone()),
+                                        )
+                                    } else {
+                                        OperationRequest::copy(
+                                            vec![OperationPath::Local(source.clone())],
+                                            OperationPath::Local(final_dest.clone()),
+                                        )
+                                    };
 
-                                    self.state.pending_action =
-                                        Some(PendingAction::ContinueBatchOperation { operation });
+                                    let vfs_manager =
+                                        std::sync::Arc::new(termide_vfs::VfsManager::new());
+
+                                    match self.state.start_operation_now(request, vfs_manager) {
+                                        Ok(_operation_id) => {
+                                            self.state.pending_action =
+                                                Some(PendingAction::ContinueBatchOperation {
+                                                    operation,
+                                                });
+                                        }
+                                        Err(e) => {
+                                            termide_logger::error(format!(
+                                                "Failed to start copy operation: {}",
+                                                e
+                                            ));
+                                            operation.increment_error();
+                                            operation.advance();
+                                            self.state.pending_action =
+                                                Some(PendingAction::ContinueBatchOperation {
+                                                    operation,
+                                                });
+                                        }
+                                    }
                                     return Ok(());
                                 }
 
@@ -807,26 +826,42 @@ impl App {
                     return;
                 }
 
-                // Local file - use async chunked copy with progress
+                // Local file - use OperationManager for async copy with progress
                 // Applies to both Copy and Move (move may need copy+delete for cross-filesystem)
                 if source.is_file() {
-                    let copy_op =
-                        termide_panel_file_manager::copy_file_with_progress(&source, &final_dest);
+                    use termide_file_ops::{OperationPath, OperationRequest};
 
-                    // Store operation for async handling
-                    self.state.local_copy_operation = Some(crate::state::LocalCopyOperation {
-                        completion: copy_op.completion,
-                        progress: copy_op.progress,
-                        source_path: source.clone(),
-                        dest_path: final_dest.clone(),
-                        is_move: operation.operation_type == BatchOperationType::Move,
-                        pause_flag: copy_op.pause_flag,
-                        cancel_flag: copy_op.cancel_flag,
-                    });
+                    let is_move = operation.operation_type == BatchOperationType::Move;
+                    let request = if is_move {
+                        OperationRequest::r#move(
+                            vec![OperationPath::Local(source.clone())],
+                            OperationPath::Local(final_dest.clone()),
+                        )
+                    } else {
+                        OperationRequest::copy(
+                            vec![OperationPath::Local(source.clone())],
+                            OperationPath::Local(final_dest.clone()),
+                        )
+                    };
 
-                    // Store batch operation as pending action for continuation after copy
-                    self.state.pending_action =
-                        Some(PendingAction::ContinueBatchOperation { operation });
+                    // Get or create VFS manager for operation manager
+                    let vfs_manager = std::sync::Arc::new(termide_vfs::VfsManager::new());
+
+                    // Start operation immediately via OperationManager
+                    match self.state.start_operation_now(request, vfs_manager) {
+                        Ok(_operation_id) => {
+                            // Store batch operation as pending action for continuation after copy
+                            self.state.pending_action =
+                                Some(PendingAction::ContinueBatchOperation { operation });
+                        }
+                        Err(e) => {
+                            termide_logger::error(format!("Failed to start copy operation: {}", e));
+                            operation.increment_error();
+                            operation.advance();
+                            self.state.pending_action =
+                                Some(PendingAction::ContinueBatchOperation { operation });
+                        }
+                    }
                     return;
                 }
 

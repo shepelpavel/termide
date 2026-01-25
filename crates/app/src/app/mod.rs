@@ -1972,10 +1972,29 @@ impl App {
                 }
                 OperationEvent::Completed(id, result) => {
                     any_completed = true;
+
+                    // Check if this operation is part of a BatchOperation
+                    let has_batch = matches!(
+                        self.state.pending_action,
+                        Some(PendingAction::ContinueBatchOperation { .. })
+                    );
+
                     match result {
                         OperationResult::Success | OperationResult::SuccessWithPath(_) => {
                             logger::info(format!("Operation {} completed successfully", id));
                             should_refresh_file_managers = true;
+
+                            // Continue batch operation if pending
+                            if has_batch {
+                                if let Some(PendingAction::ContinueBatchOperation {
+                                    mut operation,
+                                }) = self.state.pending_action.take()
+                                {
+                                    operation.increment_success();
+                                    operation.advance();
+                                    self.process_batch_operation(operation);
+                                }
+                            }
                         }
                         OperationResult::PartialSuccess {
                             completed,
@@ -1987,7 +2006,27 @@ impl App {
                                 id, completed, skipped, failed
                             ));
                             should_refresh_file_managers = true;
-                            if skipped > 0 || failed > 0 {
+
+                            // Continue batch operation if pending
+                            if has_batch {
+                                if let Some(PendingAction::ContinueBatchOperation {
+                                    mut operation,
+                                }) = self.state.pending_action.take()
+                                {
+                                    // Add completed count to batch
+                                    for _ in 0..completed {
+                                        operation.increment_success();
+                                    }
+                                    for _ in 0..skipped {
+                                        operation.increment_skipped();
+                                    }
+                                    for _ in 0..failed {
+                                        operation.increment_error();
+                                    }
+                                    operation.advance();
+                                    self.process_batch_operation(operation);
+                                }
+                            } else if skipped > 0 || failed > 0 {
                                 self.state.set_info(format!(
                                     "Operation completed: {} done, {} skipped, {} failed",
                                     completed, skipped, failed
@@ -1996,11 +2035,53 @@ impl App {
                         }
                         OperationResult::Failed(err) => {
                             logger::error(format!("Operation {} failed: {}", id, err));
-                            self.state.set_error(format!("Operation failed: {}", err));
+
+                            // Continue batch operation if pending
+                            if has_batch {
+                                if let Some(PendingAction::ContinueBatchOperation {
+                                    mut operation,
+                                }) = self.state.pending_action.take()
+                                {
+                                    operation.increment_error();
+                                    operation.advance();
+                                    self.process_batch_operation(operation);
+                                }
+                            } else {
+                                self.state.set_error(format!("Operation failed: {}", err));
+                            }
                         }
                         OperationResult::Cancelled => {
                             logger::info(format!("Operation {} cancelled", id));
-                            self.state.set_info("Operation cancelled".to_string());
+
+                            // For batch operations, show cleanup modal
+                            if has_batch {
+                                if let Some(PendingAction::ContinueBatchOperation { operation }) =
+                                    self.state.pending_action.take()
+                                {
+                                    // Show cleanup modal similar to check_local_copy_progress
+                                    let all_dest_paths = operation.completed_destinations.clone();
+                                    let buttons = if all_dest_paths.is_empty() {
+                                        vec!["OK".to_string()]
+                                    } else {
+                                        vec!["Delete copied".to_string(), "Keep copied".to_string()]
+                                    };
+                                    let modal = termide_modal::ChoiceModal::buttons_only(
+                                        "Operation Cancelled",
+                                        buttons,
+                                    );
+                                    self.state.active_modal =
+                                        Some(ActiveModal::Choice(Box::new(modal)));
+                                    self.state.pending_action =
+                                        Some(PendingAction::CancelCopyCleanup {
+                                            partial_path: std::path::PathBuf::new(),
+                                            all_dest_paths,
+                                            is_directory: false,
+                                            batch_operation: Some(Box::new(operation)),
+                                        });
+                                }
+                            } else {
+                                self.state.set_info("Operation cancelled".to_string());
+                            }
                         }
                     }
                 }
