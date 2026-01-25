@@ -151,8 +151,8 @@ impl App {
         let is_move = operation_type == BatchOperationType::Move;
         let total_files = sources.len();
 
-        // Start with the first file
-        let source = &sources[0];
+        // Start with the first file (clone to avoid borrow issues)
+        let source = sources[0].clone();
         let source_name = source
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
@@ -160,9 +160,6 @@ impl App {
 
         // Determine final remote destination path
         let final_remote = remote_path.join(&source_name);
-
-        // Get file size for progress tracking
-        let total_bytes = std::fs::metadata(source).map(|m| m.len()).unwrap_or(0);
 
         // Show progress modal with source/destination
         let title = match operation_type {
@@ -174,26 +171,36 @@ impl App {
             total_files,
             source.display().to_string(),
             final_remote.to_url_string(),
-            false, // No pause for VFS upload
+            true, // Support pause via OperationManager
         );
         self.state.active_modal = Some(ActiveModal::Progress(Box::new(modal)));
 
-        // Start the upload operation with progress
-        let upload_op = vfs_manager.upload_with_progress(source, &final_remote);
+        // Create upload operation request
+        use termide_file_ops::OperationRequest;
+        let request = OperationRequest::upload(source.clone(), final_remote);
 
-        // Store batch upload operation for polling
-        self.state.batch_upload_operation = Some(crate::state::BatchUploadOperation {
-            operation: upload_op,
-            source_path: source.clone(),
-            dest_url: final_remote.to_url_string(),
-            total_bytes,
-            started: std::time::Instant::now(),
-            is_move,
+        // Store batch upload state for continuation
+        self.state.pending_batch_upload = Some(crate::state::PendingBatchUpload {
             all_sources: sources,
-            dest_base_url: remote_url.to_string(),
             current_index: 0,
-            vfs_manager,
+            dest_base_url: remote_url.to_string(),
+            vfs_manager: vfs_manager.clone(),
+            is_move,
+            current_source: source.clone(),
         });
+
+        // Start upload via OperationManager
+        match self.state.start_operation_now(request, vfs_manager) {
+            Ok(_operation_id) => {
+                // Operation started, will be polled in poll_operation_manager
+            }
+            Err(e) => {
+                termide_logger::error(format!("Failed to start upload operation: {}", e));
+                self.state.pending_batch_upload = None;
+                self.state.close_modal();
+                self.state.set_error(format!("Upload failed: {}", e));
+            }
+        }
 
         Ok(())
     }

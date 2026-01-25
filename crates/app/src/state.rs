@@ -184,7 +184,12 @@ impl std::fmt::Debug for BatchDownloadOperation {
     }
 }
 
-/// State for async batch upload operation (local→remote) with progress
+/// State for async batch upload operation (local→remote) with progress.
+///
+/// DEPRECATED: Use `OperationManager` with `UploadWorker` and `PendingBatchUpload` instead.
+/// This type is kept for backward compatibility during migration.
+#[deprecated(note = "Use OperationManager with UploadWorker instead")]
+#[allow(deprecated)]
 pub struct BatchUploadOperation {
     /// VFS upload operation handle with progress
     pub operation: termide_vfs::VfsUploadOperation,
@@ -208,6 +213,7 @@ pub struct BatchUploadOperation {
     pub vfs_manager: std::sync::Arc<termide_vfs::VfsManager>,
 }
 
+#[allow(deprecated)]
 impl std::fmt::Debug for BatchUploadOperation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("BatchUploadOperation")
@@ -236,6 +242,36 @@ impl std::fmt::Debug for PendingRemoteDelete {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PendingRemoteDelete")
             .field("vfs_source", &self.vfs_source.to_url_string())
+            .finish_non_exhaustive()
+    }
+}
+
+/// Pending batch upload state (tracks remaining files after current upload completes).
+///
+/// When uploading multiple files via OperationManager, this tracks the batch state
+/// so we can continue with the next file after each upload completes.
+pub struct PendingBatchUpload {
+    /// All source files to upload
+    pub all_sources: Vec<PathBuf>,
+    /// Current file index in the batch
+    pub current_index: usize,
+    /// Remote destination base URL (directory)
+    pub dest_base_url: String,
+    /// VFS manager for the upload
+    pub vfs_manager: std::sync::Arc<termide_vfs::VfsManager>,
+    /// Whether this is a move operation (delete source after upload)
+    pub is_move: bool,
+    /// Current source path being uploaded (for move delete)
+    pub current_source: PathBuf,
+}
+
+impl std::fmt::Debug for PendingBatchUpload {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PendingBatchUpload")
+            .field("current_index", &self.current_index)
+            .field("total_files", &self.all_sources.len())
+            .field("dest_base_url", &self.dest_base_url)
+            .field("is_move", &self.is_move)
             .finish_non_exhaustive()
     }
 }
@@ -447,7 +483,10 @@ pub struct AppState {
     /// Handle for async VFS upload operation (local→remote single file)
     pub vfs_upload_state: Option<VfsUploadState>,
     /// Handle for async batch upload operation (local→remote multiple files)
+    #[allow(deprecated)]
     pub batch_upload_operation: Option<BatchUploadOperation>,
+    /// Pending batch upload state (for OperationManager-based uploads)
+    pub pending_batch_upload: Option<PendingBatchUpload>,
     /// Pending remote delete for move operations (delete source after download)
     pub pending_remote_delete: Option<PendingRemoteDelete>,
     /// Unified watcher for filesystem and git changes
@@ -534,6 +573,7 @@ impl AppState {
             local_delete_operation: None,
             vfs_upload_state: None,
             batch_upload_operation: None,
+            pending_batch_upload: None,
             pending_remote_delete: None,
             watcher: None,
             theme,

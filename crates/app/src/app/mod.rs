@@ -1121,6 +1121,7 @@ impl App {
     }
 
     /// Check batch upload operation result (local→remote batch copy)
+    #[allow(deprecated)]
     fn check_batch_upload_result(&mut self) {
         let mut upload = match self.state.batch_upload_operation.take() {
             Some(u) => u,
@@ -2001,6 +2002,100 @@ impl App {
                                 });
                             }
 
+                            // Handle batch upload continuation
+                            if let Some(mut batch_upload) = self.state.pending_batch_upload.take() {
+                                // Delete local source if this was a move operation
+                                if batch_upload.is_move {
+                                    if let Err(e) =
+                                        std::fs::remove_file(&batch_upload.current_source)
+                                    {
+                                        logger::warn(format!(
+                                            "Failed to delete source after move: {}",
+                                            e
+                                        ));
+                                    }
+                                }
+
+                                // Check if there are more files to upload
+                                batch_upload.current_index += 1;
+                                if batch_upload.current_index < batch_upload.all_sources.len() {
+                                    // Start next file upload
+                                    let next_source = batch_upload.all_sources
+                                        [batch_upload.current_index]
+                                        .clone();
+                                    let source_name = next_source
+                                        .file_name()
+                                        .map(|n| n.to_string_lossy().to_string())
+                                        .unwrap_or_else(|| "file".to_string());
+
+                                    // Parse remote base path and join with filename
+                                    if let Ok(remote_base) =
+                                        termide_vfs::parse_vfs_url(&batch_upload.dest_base_url)
+                                    {
+                                        let final_remote = remote_base.join(&source_name);
+
+                                        // Update modal progress
+                                        if let Some(crate::state::ActiveModal::Progress(
+                                            ref mut modal,
+                                        )) = self.state.active_modal
+                                        {
+                                            modal.update_progress(
+                                                batch_upload.current_index + 1,
+                                                Some(next_source.display().to_string()),
+                                            );
+                                            modal.update_source_dest(
+                                                next_source.display().to_string(),
+                                                final_remote.to_url_string(),
+                                            );
+                                        }
+
+                                        // Create upload request for next file
+                                        let request = termide_file_ops::OperationRequest::upload(
+                                            next_source.clone(),
+                                            final_remote,
+                                        );
+
+                                        // Update batch state
+                                        batch_upload.current_source = next_source;
+
+                                        // Start upload for next file
+                                        match self.state.start_operation_now(
+                                            request,
+                                            batch_upload.vfs_manager.clone(),
+                                        ) {
+                                            Ok(_) => {
+                                                // Put back for next tick
+                                                self.state.pending_batch_upload =
+                                                    Some(batch_upload);
+                                            }
+                                            Err(e) => {
+                                                logger::error(format!(
+                                                    "Failed to start next upload: {}",
+                                                    e
+                                                ));
+                                                self.state.close_modal();
+                                                self.state
+                                                    .set_error(format!("Upload failed: {}", e));
+                                            }
+                                        }
+                                    } else {
+                                        // Failed to parse URL - abort
+                                        self.state.close_modal();
+                                        self.state
+                                            .set_error("Failed to parse remote URL".to_string());
+                                    }
+                                } else {
+                                    // All files uploaded!
+                                    self.state.close_modal();
+                                    let total = batch_upload.all_sources.len();
+                                    if total == 1 {
+                                        self.state.set_info("File uploaded".to_string());
+                                    } else {
+                                        self.state.set_info(format!("{} files uploaded", total));
+                                    }
+                                }
+                            }
+
                             // Continue batch operation if pending
                             if has_batch {
                                 if let Some(PendingAction::ContinueBatchOperation {
@@ -2056,6 +2151,11 @@ impl App {
                             // Clear pending remote delete (don't delete source if download failed)
                             self.state.pending_remote_delete = None;
 
+                            // Clear pending batch upload (don't continue if upload failed)
+                            if self.state.pending_batch_upload.take().is_some() {
+                                self.state.close_modal();
+                            }
+
                             // Continue batch operation if pending
                             if has_batch {
                                 if let Some(PendingAction::ContinueBatchOperation {
@@ -2075,6 +2175,12 @@ impl App {
 
                             // Clear pending remote delete (don't delete source if download cancelled)
                             self.state.pending_remote_delete = None;
+
+                            // Clear pending batch upload (don't continue if upload cancelled)
+                            if self.state.pending_batch_upload.take().is_some() {
+                                self.state.close_modal();
+                                self.state.set_info("Upload cancelled".to_string());
+                            }
 
                             // For batch operations, show cleanup modal
                             if has_batch {
