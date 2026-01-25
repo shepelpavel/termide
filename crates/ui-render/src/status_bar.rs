@@ -19,6 +19,17 @@ use termide_theme::Theme;
 
 use super::menu::resource_color;
 
+/// Summary of background file operations (for status bar display).
+#[derive(Debug, Clone, Default)]
+pub struct BackgroundOpsSummary {
+    /// Whether there are active background operations.
+    pub has_operations: bool,
+    /// Text to display (e.g., "Copying 45%").
+    pub status_text: String,
+    /// Whether any operation is paused.
+    pub is_paused: bool,
+}
+
 /// Status bar rendering parameters (extracted from AppState to avoid cyclic deps)
 pub struct StatusBarParams<'a> {
     /// Theme reference
@@ -30,6 +41,8 @@ pub struct StatusBarParams<'a> {
     pub terminal_height: u16,
     /// Recommended layout string (for Debug panel)
     pub recommended_layout: &'a str,
+    /// Background file operations summary (if any)
+    pub background_ops: Option<BackgroundOpsSummary>,
 }
 
 /// Calculate width of spans accounting for unicode characters.
@@ -63,6 +76,36 @@ fn append_disk_space(
     spans.push(Span::styled(
         disk_text,
         Style::default().fg(disk_color).bg(theme.accented_bg),
+    ));
+}
+
+/// Append background operations indicator to spans.
+fn append_background_ops(spans: &mut Vec<Span<'_>>, ops: &BackgroundOpsSummary, theme: &Theme) {
+    if !ops.has_operations {
+        return;
+    }
+
+    // Add separator
+    spans.push(Span::styled(
+        " | ",
+        Style::default().fg(theme.disabled).bg(theme.accented_bg),
+    ));
+
+    // Spinner character (alternates based on time)
+    let spinner = if ops.is_paused { "⏸" } else { "⟳" };
+
+    let color = if ops.is_paused {
+        theme.warning
+    } else {
+        theme.accented_fg
+    };
+
+    spans.push(Span::styled(
+        format!("{} {} ", spinner, ops.status_text),
+        Style::default()
+            .fg(color)
+            .bg(theme.accented_bg)
+            .add_modifier(Modifier::BOLD),
     ));
 }
 
@@ -166,6 +209,11 @@ impl StatusBar {
             spans.push(Span::styled(" | ", base_style));
             spans.push(Span::styled(info.cwd.as_str(), highlight_style));
 
+            // Add background operations indicator if any
+            if let Some(ref ops) = params.background_ops {
+                append_background_ops(&mut spans, ops, theme);
+            }
+
             // If there's disk information, add it on the right
             if let Some(disk) = &info.disk_space {
                 append_disk_space(&mut spans, disk, theme, total_width);
@@ -224,6 +272,11 @@ impl StatusBar {
                 }
             }
 
+            // Add background operations indicator if any
+            if let Some(ref ops) = params.background_ops {
+                append_background_ops(&mut spans, ops, theme);
+            }
+
             // If there's disk information, add it on the right
             if let Some(disk) = disk_space {
                 append_disk_space(&mut spans, disk, theme, total_width);
@@ -279,6 +332,11 @@ impl StatusBar {
                 ));
             }
 
+            // Add background operations indicator if any
+            if let Some(ref ops) = params.background_ops {
+                append_background_ops(&mut spans, ops, theme);
+            }
+
             // If there's disk information, add it on the right
             if let Some(disk) = disk_space {
                 append_disk_space(&mut spans, disk, theme, total_width);
@@ -295,6 +353,10 @@ impl StatusBar {
             if let Some(disk) = disk_space {
                 // Panels with disk space info (like git status): show title + disk info
                 let mut spans = vec![Span::styled(format!(" {}", panel_title), highlight_style)];
+                // Add background operations indicator if any
+                if let Some(ref ops) = params.background_ops {
+                    append_background_ops(&mut spans, ops, theme);
+                }
                 append_disk_space(&mut spans, disk, theme, total_width);
                 return spans;
             }
@@ -306,7 +368,7 @@ impl StatusBar {
                     let terminal_info =
                         format!("{}x{}", params.terminal_width, params.terminal_height);
 
-                    vec![
+                    let mut spans = vec![
                         Span::styled(format!(" {} ", t.status_terminal()), base_style),
                         Span::styled(terminal_info, highlight_style),
                         Span::styled(
@@ -314,11 +376,22 @@ impl StatusBar {
                             base_style,
                         ),
                         Span::styled(params.recommended_layout.to_string(), highlight_style),
-                    ]
+                    ];
+                    // Add background operations indicator if any
+                    if let Some(ref ops) = params.background_ops {
+                        append_background_ops(&mut spans, ops, theme);
+                    }
+                    spans
                 }
                 _ => {
                     // Default: simple title display
-                    vec![Span::styled(format!(" {}", panel_title), highlight_style)]
+                    let mut spans =
+                        vec![Span::styled(format!(" {}", panel_title), highlight_style)];
+                    // Add background operations indicator if any
+                    if let Some(ref ops) = params.background_ops {
+                        append_background_ops(&mut spans, ops, theme);
+                    }
+                    spans
                 }
             }
         }

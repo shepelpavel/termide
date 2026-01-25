@@ -506,3 +506,75 @@ impl std::fmt::Debug for FileOperation {
             .finish_non_exhaustive()
     }
 }
+
+/// Summary of background operations for status bar display.
+#[derive(Debug, Clone, Default)]
+pub struct BackgroundOperationSummary {
+    /// Number of active operations running in background.
+    pub active_count: usize,
+    /// Number of queued operations waiting.
+    pub queued_count: usize,
+    /// Total bytes transferred across all background operations.
+    pub total_bytes_transferred: u64,
+    /// Total bytes to transfer across all background operations.
+    pub total_bytes: u64,
+    /// Number of files completed across all background operations.
+    pub files_completed: usize,
+    /// Total files to process across all background operations.
+    pub total_files: usize,
+    /// Overall transfer speed in bytes per second.
+    pub speed_bps: f64,
+    /// Whether any operation is paused.
+    pub any_paused: bool,
+    /// Short description of current activity.
+    pub current_activity: Option<String>,
+}
+
+impl BackgroundOperationSummary {
+    /// Calculate overall completion percentage (0.0 - 1.0).
+    pub fn percentage(&self) -> f64 {
+        if self.total_bytes > 0 {
+            self.total_bytes_transferred as f64 / self.total_bytes as f64
+        } else if self.total_files > 0 {
+            self.files_completed as f64 / self.total_files as f64
+        } else {
+            0.0
+        }
+    }
+
+    /// Check if there are any operations (active or queued).
+    pub fn has_operations(&self) -> bool {
+        self.active_count > 0 || self.queued_count > 0
+    }
+
+    /// Format for status bar display.
+    pub fn status_text(&self) -> String {
+        if !self.has_operations() {
+            return String::new();
+        }
+
+        let percent = (self.percentage() * 100.0) as u8;
+        let count = self.active_count + self.queued_count;
+
+        if count == 1 {
+            if let Some(ref activity) = self.current_activity {
+                format!("{} {}%", activity, percent)
+            } else {
+                format!("Operation {}%", percent)
+            }
+        } else {
+            format!("{} ops {}%", count, percent)
+        }
+    }
+
+    /// Format speed for display.
+    pub fn speed_text(&self) -> String {
+        if self.speed_bps < 1024.0 {
+            format!("{:.0} B/s", self.speed_bps)
+        } else if self.speed_bps < 1024.0 * 1024.0 {
+            format!("{:.1} KB/s", self.speed_bps / 1024.0)
+        } else {
+            format!("{:.1} MB/s", self.speed_bps / (1024.0 * 1024.0))
+        }
+    }
+}

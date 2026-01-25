@@ -12,8 +12,9 @@ use termide_vfs::VfsManager;
 use crate::queue::{OperationQueue, QueuedOperation};
 use crate::retry::RetryPolicy;
 use crate::types::{
-    OperationControl, OperationError, OperationEvent, OperationId, OperationInfo, OperationPath,
-    OperationPriority, OperationProgress, OperationRequest, OperationResult, OperationType,
+    BackgroundOperationSummary, OperationControl, OperationError, OperationEvent, OperationId,
+    OperationInfo, OperationPath, OperationPriority, OperationProgress, OperationRequest,
+    OperationResult, OperationType,
 };
 use crate::worker::{
     DownloadWorker, LocalCopyWorker, LocalDeleteWorker, OperationWorker, UploadWorker,
@@ -440,6 +441,42 @@ impl OperationManager {
     /// Change priority of a queued operation.
     pub fn set_priority(&mut self, id: OperationId, priority: OperationPriority) -> bool {
         self.queue.set_priority(id, priority)
+    }
+
+    /// Get a summary of all background operations for status bar display.
+    pub fn background_summary(&self) -> BackgroundOperationSummary {
+        let mut summary = BackgroundOperationSummary {
+            active_count: self.active.len(),
+            queued_count: self.queue.len(),
+            ..Default::default()
+        };
+
+        // Aggregate progress from all active operations
+        for op in self.active.values() {
+            let progress = &op.info.progress;
+            summary.total_bytes_transferred += progress.bytes_transferred;
+            summary.total_bytes += progress.total_bytes;
+            summary.files_completed += progress.files_completed;
+            summary.total_files += progress.total_files;
+            summary.speed_bps += progress.speed_bps;
+
+            if op.info.control.is_paused() {
+                summary.any_paused = true;
+            }
+
+            // Use the first active operation's current item as activity description
+            if summary.current_activity.is_none() {
+                summary.current_activity = match op.info.op_type {
+                    OperationType::Copy => Some("Copying".to_string()),
+                    OperationType::Move => Some("Moving".to_string()),
+                    OperationType::Delete => Some("Deleting".to_string()),
+                    OperationType::Download => Some("Downloading".to_string()),
+                    OperationType::Upload => Some("Uploading".to_string()),
+                };
+            }
+        }
+
+        summary
     }
 }
 

@@ -12,7 +12,9 @@ use std::sync::{mpsc, Arc};
 
 use termide_config::constants::DEFAULT_MAIN_PANEL_WIDTH;
 use termide_config::{BookmarksConfig, Config};
-use termide_file_ops::{OperationEvent, OperationManager, OperationRequest};
+use termide_file_ops::{
+    BackgroundOperationSummary, OperationEvent, OperationManager, OperationRequest,
+};
 use termide_lsp::{LspConfig, LspManager, LspServerConfig};
 use termide_panel_editor::EditorConfig;
 use termide_system_monitor::SystemMonitor;
@@ -813,6 +815,13 @@ impl AppState {
         if let Some(manager) = self.operation_manager_mut() {
             manager.cancel_all();
         }
+    }
+
+    /// Get summary of background operations for status bar display.
+    pub fn background_operations_summary(&self) -> Option<BackgroundOperationSummary> {
+        self.operation_manager()
+            .map(|m| m.background_summary())
+            .filter(|s| s.has_operations())
     }
 }
 

@@ -26,5 +26,5 @@ pub use menu::{
 pub use panel_rendering::{
     render_collapsed_panel, render_dividers, render_expanded_panel, ExpandedPanelParams,
 };
-pub use status_bar::{StatusBar, StatusBarParams};
+pub use status_bar::{BackgroundOpsSummary, StatusBar, StatusBarParams};
 pub use theme_dropdown::ThemeDropdown;
