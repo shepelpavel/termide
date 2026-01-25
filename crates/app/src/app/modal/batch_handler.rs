@@ -402,30 +402,47 @@ impl App {
                                     return Ok(());
                                 }
 
-                                // Local directory - use async scan + copy
+                                // Local directory - use OperationManager (handles scan + copy)
                                 if source.is_dir() {
-                                    let scan_op =
-                                        termide_panel_file_manager::scan_directory_async(&source);
+                                    use termide_file_ops::{OperationPath, OperationRequest};
 
-                                    // Show scanning progress modal
-                                    use termide_modal::ProgressModal;
-                                    let scanning_modal = ProgressModal::new_scanning(
-                                        "Scanning Directory",
-                                        source.display().to_string(),
-                                    );
-                                    self.state.active_modal =
-                                        Some(ActiveModal::Progress(Box::new(scanning_modal)));
+                                    let is_move =
+                                        operation.operation_type == BatchOperationType::Move;
+                                    let request = if is_move {
+                                        OperationRequest::r#move(
+                                            vec![OperationPath::Local(source.clone())],
+                                            OperationPath::Local(final_dest.clone()),
+                                        )
+                                    } else {
+                                        OperationRequest::copy(
+                                            vec![OperationPath::Local(source.clone())],
+                                            OperationPath::Local(final_dest.clone()),
+                                        )
+                                    };
 
-                                    self.state.local_scan_operation =
-                                        Some(crate::state::LocalScanOperation {
-                                            completion: scan_op.completion,
-                                            progress: scan_op.progress,
-                                            source_path: source.clone(),
-                                            dest_path: final_dest.clone(),
-                                            cancel_flag: scan_op.cancel_flag,
-                                            batch_operation: Some(Box::new(operation)),
-                                        });
+                                    let vfs_manager =
+                                        std::sync::Arc::new(termide_vfs::VfsManager::new());
 
+                                    match self.state.start_operation_now(request, vfs_manager) {
+                                        Ok(_operation_id) => {
+                                            self.state.pending_action =
+                                                Some(PendingAction::ContinueBatchOperation {
+                                                    operation,
+                                                });
+                                        }
+                                        Err(e) => {
+                                            termide_logger::error(format!(
+                                                "Failed to start directory copy operation: {}",
+                                                e
+                                            ));
+                                            operation.increment_error();
+                                            operation.advance();
+                                            self.state.pending_action =
+                                                Some(PendingAction::ContinueBatchOperation {
+                                                    operation,
+                                                });
+                                        }
+                                    }
                                     return Ok(());
                                 }
 
@@ -889,30 +906,41 @@ impl App {
                     return;
                 }
 
-                // Local directory - use async scan + background copy with progress
-                // Applies to both Copy and Move (move may need copy+delete for cross-filesystem)
+                // Local directory - use OperationManager (handles scan + copy)
                 if source.is_dir() {
-                    // Start async directory scan first (shows scan progress modal)
-                    let scan_op = termide_panel_file_manager::scan_directory_async(&source);
+                    use termide_file_ops::{OperationPath, OperationRequest};
 
-                    // Show scanning progress modal
-                    use termide_modal::ProgressModal;
-                    let scanning_modal = ProgressModal::new_scanning(
-                        "Scanning Directory",
-                        source.display().to_string(),
-                    );
-                    self.state.active_modal = Some(ActiveModal::Progress(Box::new(scanning_modal)));
+                    let is_move = operation.operation_type == BatchOperationType::Move;
+                    let request = if is_move {
+                        OperationRequest::r#move(
+                            vec![OperationPath::Local(source.clone())],
+                            OperationPath::Local(final_dest),
+                        )
+                    } else {
+                        OperationRequest::copy(
+                            vec![OperationPath::Local(source.clone())],
+                            OperationPath::Local(final_dest),
+                        )
+                    };
 
-                    // Store scan operation for async handling
-                    self.state.local_scan_operation = Some(crate::state::LocalScanOperation {
-                        completion: scan_op.completion,
-                        progress: scan_op.progress,
-                        source_path: source.clone(),
-                        dest_path: final_dest.clone(),
-                        cancel_flag: scan_op.cancel_flag,
-                        batch_operation: Some(Box::new(operation)),
-                    });
+                    let vfs_manager = std::sync::Arc::new(termide_vfs::VfsManager::new());
 
+                    match self.state.start_operation_now(request, vfs_manager) {
+                        Ok(_operation_id) => {
+                            self.state.pending_action =
+                                Some(PendingAction::ContinueBatchOperation { operation });
+                        }
+                        Err(e) => {
+                            termide_logger::error(format!(
+                                "Failed to start directory copy operation: {}",
+                                e
+                            ));
+                            operation.increment_error();
+                            operation.advance();
+                            self.state.pending_action =
+                                Some(PendingAction::ContinueBatchOperation { operation });
+                        }
+                    }
                     return;
                 }
 

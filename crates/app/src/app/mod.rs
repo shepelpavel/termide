@@ -1592,6 +1592,7 @@ impl App {
     }
 
     /// Check and update progress for ongoing local directory copy operation
+    #[allow(deprecated)]
     fn check_local_directory_copy_progress(&mut self) {
         use crate::state::PendingAction;
         use std::sync::atomic::Ordering;
@@ -1711,6 +1712,7 @@ impl App {
     }
 
     /// Check and update progress for ongoing directory scan operation
+    #[allow(deprecated)]
     fn check_local_scan_progress(&mut self) {
         let scan_op = match self.state.local_scan_operation.take() {
             Some(op) => op,

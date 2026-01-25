@@ -318,7 +318,12 @@ impl std::fmt::Debug for LocalCopyOperation {
     }
 }
 
-/// State for async local directory copy operation with progress
+/// State for async local directory copy operation with progress.
+///
+/// DEPRECATED: Use `OperationManager` with `LocalCopyWorker` instead.
+/// LocalCopyWorker handles both files and directories with built-in scanning.
+#[deprecated(note = "Use OperationManager with LocalCopyWorker instead")]
+#[allow(deprecated)]
 pub struct LocalDirectoryCopyOperation {
     /// Completion receiver
     pub completion: mpsc::Receiver<anyhow::Result<PathBuf>>,
@@ -338,6 +343,7 @@ pub struct LocalDirectoryCopyOperation {
     pub current_file: Option<PathBuf>,
 }
 
+#[allow(deprecated)]
 impl std::fmt::Debug for LocalDirectoryCopyOperation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("LocalDirectoryCopyOperation")
@@ -356,7 +362,12 @@ impl std::fmt::Debug for LocalDirectoryCopyOperation {
     }
 }
 
-/// State for async directory scan operation before copy
+/// State for async directory scan operation before copy.
+///
+/// DEPRECATED: Use `OperationManager` with `LocalCopyWorker` instead.
+/// LocalCopyWorker performs scanning internally as part of the copy operation.
+#[deprecated(note = "Use OperationManager with LocalCopyWorker instead")]
+#[allow(deprecated)]
 pub struct LocalScanOperation {
     /// Completion receiver (returns DirectoryScanResult)
     pub completion: mpsc::Receiver<anyhow::Result<termide_panel_file_manager::DirectoryScanResult>>,
@@ -372,6 +383,7 @@ pub struct LocalScanOperation {
     pub batch_operation: Option<Box<BatchOperation>>,
 }
 
+#[allow(deprecated)]
 impl std::fmt::Debug for LocalScanOperation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("LocalScanOperation")
@@ -474,8 +486,10 @@ pub struct AppState {
     #[allow(deprecated)]
     pub local_copy_operation: Option<LocalCopyOperation>,
     /// Handle for async local directory copy operation with progress
+    #[allow(deprecated)]
     pub local_directory_copy_operation: Option<LocalDirectoryCopyOperation>,
     /// Handle for async directory scan operation before copy
+    #[allow(deprecated)]
     pub local_scan_operation: Option<LocalScanOperation>,
     /// Handle for async delete operation with progress
     #[allow(deprecated)]
