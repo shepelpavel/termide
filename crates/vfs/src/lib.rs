@@ -1,0 +1,571 @@
+//! Virtual File System (VFS) abstraction for TermIDE.
+//!
+//! This crate provides a unified interface for accessing local and remote filesystems,
+//! enabling seamless file operations across different protocols (SFTP, FTP, SMB, NFS).
+//!
+//! # Architecture
+//!
+//! The VFS is built around the [`VfsProvider`] trait, which defines the common interface
+//! for all filesystem implementations. Operations are asynchronous via channels to avoid
+//! blocking the UI thread during network operations.
+//!
+//! # URL Format
+//!
+//! Remote paths are specified using URLs:
+//! - `sftp://user@host:port/path` - SFTP (SSH File Transfer Protocol)
+//! - `ftp://host/path` - FTP
+//! - `smb://server/share/path` - SMB/CIFS
+//! - `nfs://server/export/path` - NFS (via FUSE)
+//! - `/local/path` - Local filesystem
+//!
+//! # Example
+//!
+//! ```ignore
+//! use termide_vfs::{VfsManager, parse_vfs_url};
+//!
+//! let manager = VfsManager::new();
+//!
+//! // Parse a URL and get the appropriate provider
+//! let path = parse_vfs_url("sftp://user@host/home/user")?;
+//! let provider = manager.provider_for(&path)?;
+//!
+//! // List directory contents
+//! let entries = provider.list_dir(&path).recv()?;
+//! for entry in entries {
+//!     println!("{}: {:?}", entry.name, entry.metadata.file_type);
+//! }
+//! ```
+
+pub mod cache;
+pub mod error;
+pub mod local;
+pub mod traits;
+pub mod types;
+pub mod url;
+
+#[cfg(feature = "sftp")]
+pub mod sftp;
+#[cfg(feature = "sftp")]
+pub mod ssh_config;
+
+#[cfg(feature = "ftp")]
+pub mod ftp;
+
+#[cfg(feature = "smb")]
+pub mod smb;
+
+#[cfg(feature = "nfs")]
+pub mod fuse_mount;
+
+// Re-exports for convenience
+pub use cache::DirCache;
+pub use error::{VfsError, VfsResult};
+pub use local::LocalFileSystem;
+pub use traits::{DiskSpace, VfsProvider, VfsProviderSync};
+pub use types::{
+    AuthMethod, ConnectOptions, ConnectionState, DownloadProgress, UploadProgress,
+    VfsDownloadOperation, VfsEntry, VfsFileType, VfsMetadata, VfsOperation, VfsPath, VfsProtocol,
+    VfsUploadOperation,
+};
+pub use url::{is_vfs_url, parse_vfs_url, UrlComponents};
+
+use std::collections::HashMap;
+use std::path::Path;
+use std::sync::{Arc, RwLock};
+
+/// Central manager for VFS providers.
+///
+/// The VfsManager maintains a pool of connected providers and handles
+/// connection caching, authentication, and provider lifecycle.
+pub struct VfsManager {
+    /// Local filesystem provider (always available).
+    local: LocalFileSystem,
+    /// Connected remote providers, keyed by connection string.
+    remote_providers: Arc<RwLock<HashMap<String, Box<dyn VfsProvider>>>>,
+    /// Directory cache for all providers.
+    cache: DirCache,
+    /// Pending authentication requests.
+    pending_auth: Arc<RwLock<Vec<AuthRequest>>>,
+}
+
+/// Authentication request for user interaction.
+#[derive(Debug, Clone)]
+pub struct AuthRequest {
+    /// The path that requires authentication.
+    pub path: VfsPath,
+    /// Message to display to user.
+    pub message: String,
+    /// Whether password is required.
+    pub needs_password: bool,
+}
+
+impl Default for VfsManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl VfsManager {
+    /// Create a new VFS manager.
+    pub fn new() -> Self {
+        Self {
+            local: LocalFileSystem::new(),
+            remote_providers: Arc::new(RwLock::new(HashMap::new())),
+            cache: DirCache::new(),
+            pending_auth: Arc::new(RwLock::new(Vec::new())),
+        }
+    }
+
+    /// Get the local filesystem provider.
+    pub fn local(&self) -> &LocalFileSystem {
+        &self.local
+    }
+
+    /// Get the directory cache.
+    pub fn cache(&self) -> &DirCache {
+        &self.cache
+    }
+
+    /// Check if a path is local.
+    pub fn is_local(path: &VfsPath) -> bool {
+        path.is_local()
+    }
+
+    /// Get or create a provider for the given path.
+    ///
+    /// For local paths, returns the local provider.
+    /// For remote paths, returns an existing connected provider or creates a new one.
+    ///
+    /// # Deprecated
+    ///
+    /// This method has a fundamental design flaw and cannot return references to providers
+    /// stored in RwLock. Use specific methods like `read_file()`, `download()`, `upload()` instead.
+    #[deprecated(note = "Use specific methods (read_file, download, upload) instead")]
+    pub fn provider_for(&self, path: &VfsPath) -> VfsResult<&dyn VfsProvider> {
+        if path.is_local() {
+            return Ok(&self.local);
+        }
+
+        let key = path.connection_key();
+
+        // Check if we have an existing connected provider
+        let providers = self
+            .remote_providers
+            .read()
+            .map_err(|_| VfsError::RemoteError {
+                message: "Failed to acquire provider lock".to_string(),
+            })?;
+
+        if providers.contains_key(&key) {
+            // Return reference - this is tricky because we need to release the lock
+            // For now, we'll indicate the provider exists
+            drop(providers);
+
+            // Re-acquire and get reference
+            // This is a limitation - in practice, you'd use get_provider_mut or similar
+            return Err(VfsError::NotConnected);
+        }
+
+        // No existing provider - need to connect
+        Err(VfsError::NotConnected)
+    }
+
+    /// Get a mutable reference to create/connect a provider.
+    ///
+    /// This method handles the creation and connection of remote providers.
+    #[cfg(feature = "sftp")]
+    pub fn connect_sftp(&self, path: &VfsPath, options: ConnectOptions) -> VfsOperation<()> {
+        use crate::sftp::SftpProvider;
+
+        termide_logger::info(format!(
+            "VfsManager::connect_sftp() called for path: {}",
+            path
+        ));
+
+        if !matches!(path.protocol, VfsProtocol::Sftp) {
+            return VfsOperation::error(VfsError::InvalidPath("Expected SFTP path".to_string()));
+        }
+
+        let host = match &path.host {
+            Some(h) => h.clone(),
+            None => {
+                return VfsOperation::error(VfsError::InvalidPath(
+                    "Missing host in SFTP path".to_string(),
+                ))
+            }
+        };
+
+        let port = path.effective_port().unwrap_or(22);
+        let username = path.username.clone();
+
+        let key = path.connection_key();
+        let providers = Arc::clone(&self.remote_providers);
+
+        let (tx, rx) = std::sync::mpsc::channel();
+
+        termide_logger::info("VfsManager::connect_sftp(): Spawning connection thread".to_string());
+        std::thread::spawn(move || {
+            termide_logger::info("VfsManager thread STARTED".to_string());
+            let mut provider = SftpProvider::new(&host, port, username.as_deref());
+
+            termide_logger::info(
+                "VfsManager thread: Calling provider.connect().recv()...".to_string(),
+            );
+            let result = provider.connect(options).recv();
+            termide_logger::info("VfsManager thread: recv() returned".to_string());
+
+            // Diagnostic logging to trace error flow
+            match &result {
+                Ok(()) => termide_logger::info(
+                    "VfsManager: Connection succeeded, forwarding to main thread".to_string(),
+                ),
+                Err(e) => termide_logger::error(format!(
+                    "VfsManager: Connection failed: {}, forwarding to main thread",
+                    e
+                )),
+            }
+
+            if result.is_ok() {
+                if let Ok(mut providers) = providers.write() {
+                    providers.insert(key.clone(), Box::new(provider));
+                    termide_logger::debug(format!("VfsManager: Provider stored for key '{}'", key));
+                }
+            }
+
+            match tx.send(result) {
+                Ok(()) => termide_logger::info(
+                    "VfsManager: Result successfully sent to channel".to_string(),
+                ),
+                Err(e) => termide_logger::error(format!(
+                    "VfsManager: Failed to send result to channel: {:?}",
+                    e
+                )),
+            }
+        });
+
+        VfsOperation::new(rx)
+    }
+
+    /// Disconnect and remove a provider for the given connection key.
+    pub fn disconnect(&self, connection_key: &str) {
+        if let Ok(mut providers) = self.remote_providers.write() {
+            if let Some(mut provider) = providers.remove(connection_key) {
+                provider.disconnect();
+            }
+        }
+
+        // Invalidate cache for this connection
+        self.cache.invalidate_connection(connection_key);
+    }
+
+    /// Disconnect all remote providers.
+    pub fn disconnect_all(&self) {
+        if let Ok(mut providers) = self.remote_providers.write() {
+            for (_, mut provider) in providers.drain() {
+                provider.disconnect();
+            }
+        }
+
+        self.cache.clear();
+    }
+
+    /// Check for pending authentication requests.
+    pub fn pending_auth_requests(&self) -> Vec<AuthRequest> {
+        self.pending_auth
+            .read()
+            .map(|v| v.clone())
+            .unwrap_or_default()
+    }
+
+    /// Clear pending authentication requests.
+    pub fn clear_pending_auth(&self) {
+        if let Ok(mut pending) = self.pending_auth.write() {
+            pending.clear();
+        }
+    }
+
+    /// Get list of active connections.
+    pub fn active_connections(&self) -> Vec<String> {
+        self.remote_providers
+            .read()
+            .map(|p| p.keys().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    /// Check if a remote path is connected.
+    pub fn is_connected(&self, path: &VfsPath) -> bool {
+        if path.is_local() {
+            return true;
+        }
+
+        let key = path.connection_key();
+
+        self.remote_providers
+            .read()
+            .map(|p| p.contains_key(&key))
+            .unwrap_or(false)
+    }
+
+    /// Get the home directory for a connected remote path.
+    ///
+    /// For local paths, returns the user's home directory.
+    /// For remote paths, returns the home directory from the connected provider.
+    pub fn get_home_dir(&self, path: &VfsPath) -> Option<VfsPath> {
+        if path.is_local() {
+            return dirs::home_dir().map(VfsPath::local);
+        }
+
+        let key = path.connection_key();
+        if let Ok(providers) = self.remote_providers.read() {
+            if let Some(provider) = providers.get(&key) {
+                return provider.home_dir();
+            }
+        }
+        None
+    }
+
+    // === Convenience methods for common operations ===
+
+    /// List directory contents with caching.
+    pub fn list_dir(&self, path: &VfsPath) -> VfsOperation<Vec<VfsEntry>> {
+        // Check cache first
+        if let Some(entries) = self.cache.get(path) {
+            return VfsOperation::ready(Ok(entries));
+        }
+
+        // Use local provider for local paths
+        if path.is_local() {
+            let result = self.local.list_dir(path);
+            // Cache will be updated when result is received by caller
+            return result;
+        }
+
+        // For remote paths, use connected provider
+        let key = path.connection_key();
+        if let Ok(providers) = self.remote_providers.read() {
+            if let Some(provider) = providers.get(&key) {
+                log::debug!("VfsManager: Using connected provider for key '{}'", key);
+                return provider.list_dir(path);
+            }
+        }
+
+        log::debug!("VfsManager: No connected provider for key '{}'", key);
+        VfsOperation::error(VfsError::NotConnected)
+    }
+
+    /// Read a file.
+    pub fn read_file(&self, path: &VfsPath) -> VfsOperation<Vec<u8>> {
+        if path.is_local() {
+            return self.local.read_file(path);
+        }
+
+        // For remote paths, use connected provider
+        let key = path.connection_key();
+        if let Ok(providers) = self.remote_providers.read() {
+            if let Some(provider) = providers.get(&key) {
+                return provider.read_file(path);
+            }
+        }
+
+        VfsOperation::error(VfsError::NotConnected)
+    }
+
+    /// Write a file.
+    pub fn write_file(&self, path: &VfsPath, data: &[u8]) -> VfsOperation<()> {
+        if path.is_local() {
+            self.cache.invalidate_with_parent(path);
+            return self.local.write_file(path, data);
+        }
+
+        // For remote paths, use connected provider
+        let key = path.connection_key();
+        if let Ok(providers) = self.remote_providers.read() {
+            if let Some(provider) = providers.get(&key) {
+                self.cache.invalidate_with_parent(path);
+                return provider.write_file(path, data);
+            }
+        }
+
+        VfsOperation::error(VfsError::NotConnected)
+    }
+
+    /// Create a directory.
+    pub fn create_dir(&self, path: &VfsPath) -> VfsOperation<()> {
+        if path.is_local() {
+            self.cache.invalidate_with_parent(path);
+            return self.local.create_dir(path);
+        }
+
+        // For remote paths, use connected provider
+        let key = path.connection_key();
+        if let Ok(providers) = self.remote_providers.read() {
+            if let Some(provider) = providers.get(&key) {
+                self.cache.invalidate_with_parent(path);
+                return provider.create_dir(path);
+            }
+        }
+
+        VfsOperation::error(VfsError::NotConnected)
+    }
+
+    /// Delete a file or directory.
+    pub fn delete(&self, path: &VfsPath) -> VfsOperation<()> {
+        if path.is_local() {
+            self.cache.invalidate_with_parent(path);
+            return self.local.delete(path);
+        }
+
+        // For remote paths, use connected provider
+        let key = path.connection_key();
+        if let Ok(providers) = self.remote_providers.read() {
+            if let Some(provider) = providers.get(&key) {
+                self.cache.invalidate_with_parent(path);
+                return provider.delete(path);
+            }
+        }
+
+        VfsOperation::error(VfsError::NotConnected)
+    }
+
+    /// Download a remote file to a local path.
+    ///
+    /// Returns the path to the downloaded local file.
+    pub fn download(&self, remote: &VfsPath, local: &Path) -> VfsOperation<std::path::PathBuf> {
+        if remote.is_local() {
+            // For local paths, just copy
+            return self.local.download(remote, local);
+        }
+
+        // For remote paths, use connected provider
+        let key = remote.connection_key();
+        if let Ok(providers) = self.remote_providers.read() {
+            if let Some(provider) = providers.get(&key) {
+                return provider.download(remote, local);
+            }
+        }
+
+        VfsOperation::error(VfsError::NotConnected)
+    }
+
+    /// Download a remote file to local temp directory.
+    ///
+    /// Returns the path to the downloaded local file.
+    pub fn download_to_temp(&self, remote: &VfsPath) -> VfsOperation<std::path::PathBuf> {
+        if remote.is_local() {
+            // Already local, just return the path
+            return VfsOperation::ready(Ok(remote.path.clone()));
+        }
+
+        // Create temp file path
+        let temp_dir = std::env::temp_dir().join("termide-vfs");
+        let _ = std::fs::create_dir_all(&temp_dir);
+
+        let filename = remote
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "download".to_string());
+
+        let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S_%3f");
+        let temp_path = temp_dir.join(format!("{}_{}", timestamp, filename));
+
+        // Use the download method
+        self.download(remote, &temp_path)
+    }
+
+    /// Upload a local file to remote path.
+    pub fn upload(&self, local: &Path, remote: &VfsPath) -> VfsOperation<()> {
+        if remote.is_local() {
+            // Just copy locally
+            return self.local.upload(local, remote);
+        }
+
+        // For remote paths, use connected provider
+        let key = remote.connection_key();
+        if let Ok(providers) = self.remote_providers.read() {
+            if let Some(provider) = providers.get(&key) {
+                self.cache.invalidate_with_parent(remote);
+                return provider.upload(local, remote);
+            }
+        }
+
+        VfsOperation::error(VfsError::NotConnected)
+    }
+
+    /// Upload a local file to remote path with progress reporting.
+    pub fn upload_with_progress(&self, local: &Path, remote: &VfsPath) -> VfsUploadOperation {
+        if remote.is_local() {
+            // For local, use default implementation (no progress)
+            return self.local.upload_with_progress(local, remote);
+        }
+
+        // For remote paths, use connected provider
+        let key = remote.connection_key();
+        if let Ok(providers) = self.remote_providers.read() {
+            if let Some(provider) = providers.get(&key) {
+                self.cache.invalidate_with_parent(remote);
+                return provider.upload_with_progress(local, remote);
+            }
+        }
+
+        VfsUploadOperation::error(VfsError::NotConnected)
+    }
+
+    /// Download a remote file/directory to local path with progress and pause/cancel support.
+    pub fn download_with_progress(&self, remote: &VfsPath, local: &Path) -> VfsDownloadOperation {
+        if remote.is_local() {
+            // For local, use default implementation
+            return self.local.download_with_progress(remote, local);
+        }
+
+        // For remote paths, use connected provider
+        let key = remote.connection_key();
+        if let Ok(providers) = self.remote_providers.read() {
+            if let Some(provider) = providers.get(&key) {
+                return provider.download_with_progress(remote, local);
+            }
+        }
+
+        VfsDownloadOperation::error(VfsError::NotConnected)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_vfs_manager_creation() {
+        let manager = VfsManager::new();
+        assert!(manager.local().is_connected());
+        assert!(manager.active_connections().is_empty());
+    }
+
+    #[test]
+    fn test_local_path_detection() {
+        let local = VfsPath::local("/home/user");
+        let remote = VfsPath::remote(VfsProtocol::Sftp, "host", "/path");
+
+        assert!(VfsManager::is_local(&local));
+        assert!(!VfsManager::is_local(&remote));
+    }
+
+    #[test]
+    fn test_is_connected() {
+        let manager = VfsManager::new();
+
+        let local = VfsPath::local("/home/user");
+        assert!(manager.is_connected(&local));
+
+        let remote = VfsPath::remote(VfsProtocol::Sftp, "host", "/path");
+        assert!(!manager.is_connected(&remote));
+    }
+
+    #[test]
+    fn test_list_local_dir() {
+        let manager = VfsManager::new();
+        let path = VfsPath::local(std::env::temp_dir());
+
+        let result = manager.list_dir(&path).recv();
+        assert!(result.is_ok());
+    }
+}

@@ -27,6 +27,72 @@ impl FileManager {
 
         let entry = self.entries.get(self.selected)?;
 
+        // Handle ".." directory for remote paths
+        if entry.name == ".." && self.is_remote() {
+            return Some(FileInfo {
+                name: "..".to_string(),
+                file_type: "Directory".to_string(),
+                size: "DIR".to_string(),
+                owner: "remote".to_string(),
+                group: "remote".to_string(),
+                modified: "Unknown".to_string(),
+                mode: "????".to_string(),
+            });
+        }
+
+        // For remote files, use FileEntry metadata directly (from VfsEntry)
+        if self.is_remote() {
+            let file_type = if entry.is_dir {
+                "Directory"
+            } else if entry.is_symlink {
+                "Symlink"
+            } else {
+                "File"
+            };
+
+            let size = if entry.is_dir {
+                "DIR".to_string()
+            } else {
+                entry
+                    .size
+                    .map(utils::format_size)
+                    .unwrap_or_else(|| "Unknown".to_string())
+            };
+
+            let modified = entry
+                .modified
+                .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
+                .map(|d| {
+                    chrono::DateTime::from_timestamp(d.as_secs() as i64, 0)
+                        .map(|dt| {
+                            dt.with_timezone(&chrono::Local)
+                                .format("%Y-%m-%d %H:%M:%S")
+                                .to_string()
+                        })
+                        .unwrap_or_else(|| "Unknown".to_string())
+                })
+                .unwrap_or_else(|| "Unknown".to_string());
+
+            let mode = if entry.is_executable {
+                "0755".to_string()
+            } else if entry.is_readonly {
+                "0444".to_string()
+            } else {
+                "0644".to_string()
+            };
+
+            return Some(FileInfo {
+                name: entry.name.clone(),
+                file_type: file_type.to_string(),
+                size,
+                owner: "remote".to_string(),
+                group: "remote".to_string(),
+                modified,
+                mode,
+            });
+        }
+
+        // Local file handling
         let file_path = if entry.name == ".." {
             self.current_path
                 .parent()
@@ -90,6 +156,70 @@ impl FileManager {
         use std::time::SystemTime;
 
         if let Some(entry) = self.entries.get(self.selected) {
+            // Handle remote file info display
+            if self.is_remote() {
+                let t = termide_i18n::t();
+
+                // Determine type and title
+                let (modal_title, is_dir) = if entry.is_dir {
+                    (t.file_info_title_directory(&entry.name), true)
+                } else if entry.is_symlink {
+                    (t.file_info_title_symlink(&entry.name), false)
+                } else {
+                    (t.file_info_title_file(&entry.name), false)
+                };
+
+                let size = if is_dir {
+                    "DIR".to_string()
+                } else {
+                    entry
+                        .size
+                        .map(utils::format_size)
+                        .unwrap_or_else(|| "Unknown".to_string())
+                };
+
+                let modified = entry
+                    .modified
+                    .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
+                    .map(|d| {
+                        chrono::DateTime::from_timestamp(d.as_secs() as i64, 0)
+                            .map(|dt| {
+                                dt.with_timezone(&chrono::Local)
+                                    .format("%Y-%m-%d %H:%M:%S")
+                                    .to_string()
+                            })
+                            .unwrap_or_else(|| "Unknown".to_string())
+                    })
+                    .unwrap_or_else(|| "Unknown".to_string());
+
+                let mode = if entry.is_executable {
+                    "0755"
+                } else if entry.is_readonly {
+                    "0444"
+                } else {
+                    "0644"
+                };
+
+                // Collect data for remote file (no git status)
+                let data = vec![
+                    (t.file_info_path().to_string(), self.display_path()),
+                    (t.file_info_size().to_string(), size),
+                    (t.file_info_owner().to_string(), "remote".to_string()),
+                    (t.file_info_group().to_string(), "remote".to_string()),
+                    (t.file_info_modified().to_string(), modified),
+                    ("Mode".to_string(), mode.to_string()),
+                ];
+
+                let modal = termide_modal::InfoModal::new(modal_title, data);
+                self.modal_request = Some((
+                    PendingAction::ClosePanel { panel_index: 0 },
+                    ActiveModal::Info(Box::new(modal)),
+                ));
+
+                return;
+            }
+
+            // Local file handling
             let file_path = if entry.name == ".." {
                 self.current_path
                     .parent()
@@ -265,6 +395,10 @@ impl FileManager {
 
     /// Get disk space information for the current directory.
     pub fn get_disk_space_info(&self) -> Option<DiskSpaceInfo> {
+        // Don't show disk info during VFS connection (status bar should show connection status)
+        if self.vfs.has_pending_operation() {
+            return None;
+        }
         termide_system_monitor::get_disk_space_info(&self.current_path)
     }
 }

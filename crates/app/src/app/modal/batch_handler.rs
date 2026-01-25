@@ -4,14 +4,54 @@
 #![allow(deprecated)]
 
 use anyhow::Result;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use super::super::App;
-use crate::state::{ActiveModal, BatchOperation, BatchOperationType, ConflictMode, PendingAction};
+use crate::state::{
+    ActiveModal, BatchDownloadOperation, BatchOperation, BatchOperationType, ConflictMode,
+    PendingAction,
+};
 use crate::PanelExt;
 use termide_i18n as i18n;
 use termide_modal::ConflictModal;
 use termide_ui::path_utils;
+use termide_vfs::VfsPath;
+
+/// Format VfsPath for display in progress modal
+fn format_vfs_path_for_display(vfs_path: &VfsPath, file_path: &Path) -> String {
+    if vfs_path.is_local() {
+        file_path.display().to_string()
+    } else {
+        let mut result = String::new();
+
+        // Add username@host
+        if let Some(ref user) = vfs_path.username {
+            result.push_str(user);
+            result.push('@');
+        }
+
+        if let Some(ref host) = vfs_path.host {
+            result.push_str(host);
+        }
+
+        // Add port if non-standard
+        if let Some(port) = vfs_path.port {
+            let default_port = vfs_path.default_port();
+            if Some(port) != default_port {
+                result.push(':');
+                result.push_str(&port.to_string());
+            }
+        }
+
+        // Add path (no colon separator)
+        let full_path = vfs_path
+            .path
+            .join(file_path.file_name().unwrap_or_default());
+        result.push_str(&full_path.display().to_string());
+
+        result
+    }
+}
 
 impl App {
     /// Common method for handling file operations (Copy/Move)
@@ -23,51 +63,55 @@ impl App {
         target_directory: Option<PathBuf>,
         value: Box<dyn std::any::Any>,
     ) -> Result<()> {
-        // Determine absolute destination path
+        // Extract destination string first to check if it's a remote URL
+        let destination_str: Option<String> = if let Some(confirmed) = value.downcast_ref::<bool>()
+        {
+            if !confirmed {
+                return Ok(()); // Operation cancelled by user
+            }
+            // Use target_directory as string for Ctrl+V confirmation
+            target_directory.as_ref().map(|p| p.display().to_string())
+        } else if let Some(s) = value.downcast_ref::<String>() {
+            Some(s.clone())
+        } else {
+            return Ok(()); // Invalid response type
+        };
+
+        let Some(dest_str) = destination_str else {
+            return Ok(());
+        };
+
+        // Check if destination is a remote VFS URL (e.g., sftp://user@host/path)
+        if termide_vfs::is_vfs_url(&dest_str) {
+            // Local-to-remote upload
+            return self.start_upload_operation(operation_type, sources, &dest_str);
+        }
+
+        // Local destination - determine absolute path
         let absolute_destination = if let Some(target_dir) = target_directory {
-            // target_directory already set
-            // First check bool (for Ctrl+V with ConfirmModal)
-            if let Some(confirmed) = value.downcast_ref::<bool>() {
-                if !confirmed {
-                    return Ok(()); // Operation cancelled by user
-                }
-                target_dir
-            // Then check String (for F5/C/M with InputModal)
-            } else if let Some(destination_str) = value.downcast_ref::<String>() {
-                let destination = PathBuf::from(destination_str);
-                // If path is relative, use target_dir as base
-                if destination.is_absolute() {
-                    destination
-                } else {
-                    target_dir.join(&destination)
-                }
+            let destination = PathBuf::from(&dest_str);
+            if destination.is_absolute() {
+                destination
             } else {
-                return Ok(()); // Invalid response type
+                target_dir.join(&destination)
             }
         } else {
-            // target_directory not set, get string from InputModal
-            if let Some(destination_str) = value.downcast_ref::<String>() {
-                // Get active FileManager panel to determine base path
-                if let Some(panel) = self.layout_manager.active_panel_mut() {
-                    if let Some(fm) = panel.as_file_manager_mut() {
-                        let destination = PathBuf::from(destination_str);
-
-                        // If path is relative, make it absolute
-                        if destination.is_absolute() {
-                            destination
-                        } else {
-                            fm.get_current_directory().join(&destination)
-                        }
+            // Get active FileManager panel to determine base path
+            if let Some(panel) = self.layout_manager.active_panel_mut() {
+                if let Some(fm) = panel.as_file_manager_mut() {
+                    let destination = PathBuf::from(&dest_str);
+                    if destination.is_absolute() {
+                        destination
                     } else {
-                        termide_logger::error(format!("Panel {} is not FileManager", panel_index));
-                        return Ok(());
+                        fm.get_current_directory().join(&destination)
                     }
                 } else {
-                    termide_logger::error(format!("Panel with index {} not found", panel_index));
+                    termide_logger::error(format!("Panel {} is not FileManager", panel_index));
                     return Ok(());
                 }
             } else {
-                return Ok(()); // Invalid response type
+                termide_logger::error(format!("Panel with index {} not found", panel_index));
+                return Ok(());
             }
         };
 
@@ -76,6 +120,109 @@ impl App {
 
         self.process_batch_operation(batch_op);
         Ok(())
+    }
+
+    /// Start upload operation for local-to-remote file transfer
+    fn start_upload_operation(
+        &mut self,
+        operation_type: BatchOperationType,
+        sources: Vec<PathBuf>,
+        remote_url: &str,
+    ) -> Result<()> {
+        use termide_modal::ProgressModal;
+
+        if sources.is_empty() {
+            return Ok(());
+        }
+
+        // Parse the remote URL
+        let remote_path = match termide_vfs::parse_vfs_url(remote_url) {
+            Ok(path) => path,
+            Err(e) => {
+                termide_logger::error(format!("Invalid remote URL '{}': {}", remote_url, e));
+                self.state.set_error(format!("Invalid remote URL: {}", e));
+                return Ok(());
+            }
+        };
+
+        // Get VFS manager from an existing remote panel or create a new one
+        let vfs_manager = self.get_or_create_vfs_manager(&remote_path);
+
+        let is_move = operation_type == BatchOperationType::Move;
+        let total_files = sources.len();
+
+        // Start with the first file
+        let source = &sources[0];
+        let source_name = source
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "file".to_string());
+
+        // Determine final remote destination path
+        let final_remote = remote_path.join(&source_name);
+
+        // Get file size for progress tracking
+        let total_bytes = std::fs::metadata(source).map(|m| m.len()).unwrap_or(0);
+
+        // Show progress modal with source/destination
+        let title = match operation_type {
+            BatchOperationType::Copy => "Upload",
+            BatchOperationType::Move => "Upload (Move)",
+        };
+        let modal = ProgressModal::new_copy_progress(
+            title,
+            total_files,
+            source.display().to_string(),
+            final_remote.to_url_string(),
+            false, // No pause for VFS upload
+        );
+        self.state.active_modal = Some(ActiveModal::Progress(Box::new(modal)));
+
+        // Start the upload operation with progress
+        let upload_op = vfs_manager.upload_with_progress(source, &final_remote);
+
+        // Store batch upload operation for polling
+        self.state.batch_upload_operation = Some(crate::state::BatchUploadOperation {
+            operation: upload_op,
+            source_path: source.clone(),
+            dest_url: final_remote.to_url_string(),
+            total_bytes,
+            started: std::time::Instant::now(),
+            is_move,
+            all_sources: sources,
+            dest_base_url: remote_url.to_string(),
+            current_index: 0,
+            vfs_manager,
+        });
+
+        Ok(())
+    }
+
+    /// Get VFS manager from an existing remote FM panel or create a new one
+    fn get_or_create_vfs_manager(
+        &self,
+        remote_path: &termide_vfs::VfsPath,
+    ) -> std::sync::Arc<termide_vfs::VfsManager> {
+        // Try to find an existing FM panel connected to the same host
+        for group in &self.layout_manager.panel_groups {
+            for panel in group.panels() {
+                if let Some(fm) = panel
+                    .as_any()
+                    .downcast_ref::<termide_panel_file_manager::FileManager>()
+                {
+                    if fm.is_remote() {
+                        let fm_path = fm.vfs_state().current_path();
+                        // Check if same connection (protocol + host + username)
+                        if fm_path.connection_key() == remote_path.connection_key() {
+                            return fm.vfs_state().manager_arc();
+                        }
+                    }
+                }
+            }
+        }
+
+        // No existing connection found - create a new manager
+        std::sync::Arc::new(termide_vfs::VfsManager::new())
     }
 
     /// Handle file copying
@@ -125,8 +272,6 @@ impl App {
                 ConflictResolution::Overwrite => {
                     // Overwrite this file - execute operation directly
                     if let Some(source) = operation.current_source().cloned() {
-                        let item_name = path_utils::get_file_name_string(&source);
-
                         let final_dest = path_utils::resolve_batch_destination_path(
                             &source,
                             &operation.destination,
@@ -136,59 +281,215 @@ impl App {
                         // Execute operation
                         if let Some(panel) = self.layout_manager.active_panel_mut() {
                             if let Some(fm) = panel.as_file_manager_mut() {
-                                let result = match operation.operation_type {
-                                    BatchOperationType::Copy => fm.copy_path(source, final_dest),
-                                    BatchOperationType::Move => fm.move_path(source, final_dest),
+                                // Show progress modal for the operation
+                                use termide_modal::ProgressModal;
+                                let title = match operation.operation_type {
+                                    BatchOperationType::Copy => "Copy",
+                                    BatchOperationType::Move => "Move",
                                 };
+                                let source_display = source.display().to_string();
+                                let dest_display = final_dest.display().to_string();
+                                let modal = ProgressModal::new_copy_progress(
+                                    title,
+                                    operation.total_count(),
+                                    source_display,
+                                    dest_display,
+                                    true,
+                                );
+                                self.state.active_modal =
+                                    Some(ActiveModal::Progress(Box::new(modal)));
 
-                                match result {
-                                    Ok(_) => {
-                                        let action_name = match operation.operation_type {
-                                            BatchOperationType::Copy => "copied",
-                                            BatchOperationType::Move => "moved",
-                                        };
-                                        termide_logger::info(format!(
-                                            "File {}: {}",
-                                            action_name, item_name
-                                        ));
-                                        operation.increment_success();
-                                    }
-                                    Err(e) => {
-                                        let action_name = match operation.operation_type {
-                                            BatchOperationType::Copy => "copy",
-                                            BatchOperationType::Move => "move",
-                                        };
-                                        termide_logger::error(format!(
-                                            "Failed to {} '{}': {}",
-                                            action_name, item_name, e
-                                        ));
-                                        operation.increment_error();
-                                    }
+                                // Check if source is remote - use VFS download instead of local copy/move
+                                if fm.is_remote() {
+                                    // For remote-to-local copy/move, use VFS download (async)
+                                    let source_name = source
+                                        .file_name()
+                                        .map(|n| n.to_string_lossy().to_string())
+                                        .unwrap_or_default();
+                                    let vfs_source =
+                                        fm.vfs_state().current_path().join(&source_name);
+                                    let vfs_manager = fm.vfs_state().manager_arc();
+
+                                    // Start async download with progress and pause/cancel support
+                                    let download_op = vfs_manager
+                                        .download_with_progress(&vfs_source, &final_dest);
+
+                                    let is_move =
+                                        operation.operation_type == BatchOperationType::Move;
+
+                                    // Store operation for async handling
+                                    self.state.batch_download_operation =
+                                        Some(BatchDownloadOperation {
+                                            operation: download_op,
+                                            dest_path: final_dest.clone(),
+                                            started: std::time::Instant::now(),
+                                            is_move,
+                                            vfs_source: if is_move {
+                                                Some(vfs_source)
+                                            } else {
+                                                None
+                                            },
+                                            vfs_manager: if is_move {
+                                                Some(vfs_manager)
+                                            } else {
+                                                None
+                                            },
+                                            last_total_files: 0,
+                                            last_total_bytes: 0,
+                                        });
+
+                                    // Store batch operation as pending action for continuation after download
+                                    self.state.pending_action =
+                                        Some(PendingAction::ContinueBatchOperation { operation });
+                                    return Ok(());
                                 }
+
+                                // Local file - use async chunked copy
+                                if source.is_file() {
+                                    let copy_op =
+                                        termide_panel_file_manager::copy_file_with_progress(
+                                            &source,
+                                            &final_dest,
+                                        );
+
+                                    self.state.local_copy_operation =
+                                        Some(crate::state::LocalCopyOperation {
+                                            completion: copy_op.completion,
+                                            progress: copy_op.progress,
+                                            source_path: source.clone(),
+                                            dest_path: final_dest.clone(),
+                                            is_move: operation.operation_type
+                                                == BatchOperationType::Move,
+                                            pause_flag: copy_op.pause_flag,
+                                            cancel_flag: copy_op.cancel_flag,
+                                        });
+
+                                    self.state.pending_action =
+                                        Some(PendingAction::ContinueBatchOperation { operation });
+                                    return Ok(());
+                                }
+
+                                // Local directory - use async scan + copy
+                                if source.is_dir() {
+                                    let scan_op =
+                                        termide_panel_file_manager::scan_directory_async(&source);
+
+                                    // Show scanning progress modal
+                                    use termide_modal::ProgressModal;
+                                    let scanning_modal = ProgressModal::new_scanning(
+                                        "Scanning Directory",
+                                        source.display().to_string(),
+                                    );
+                                    self.state.active_modal =
+                                        Some(ActiveModal::Progress(Box::new(scanning_modal)));
+
+                                    self.state.local_scan_operation =
+                                        Some(crate::state::LocalScanOperation {
+                                            completion: scan_op.completion,
+                                            progress: scan_op.progress,
+                                            source_path: source.clone(),
+                                            dest_path: final_dest.clone(),
+                                            cancel_flag: scan_op.cancel_flag,
+                                            batch_operation: Some(Box::new(operation)),
+                                        });
+
+                                    return Ok(());
+                                }
+
+                                // Unknown source type - skip with error
+                                termide_logger::error(format!(
+                                    "Unsupported source type: {}",
+                                    source.display()
+                                ));
+                                operation.increment_error();
                             }
                         }
                     }
+
+                    // Re-show progress modal BEFORE advancing (check with current index)
+                    // (conflict modal was shown and closed, now we need progress modal back)
+                    if operation.total_count() > 1 {
+                        use termide_modal::ProgressModal;
+                        let title = match operation.operation_type {
+                            BatchOperationType::Copy => "Copying Files",
+                            BatchOperationType::Move => "Moving Files",
+                        };
+                        let modal =
+                            ProgressModal::new_with_controls(title, operation.total_count(), true);
+                        self.state.active_modal = Some(ActiveModal::Progress(Box::new(modal)));
+                    }
+
                     // Move to next file
                     operation.advance();
-                    self.process_batch_operation(operation.clone());
+
+                    // Store and return to allow UI update
+                    self.state.pending_action =
+                        Some(PendingAction::ContinueBatchOperation { operation });
                 }
                 ConflictResolution::Skip => {
                     // Skip this file
                     operation.increment_skipped();
+
+                    // Re-show progress modal BEFORE advancing (check with current index)
+                    if operation.total_count() > 1 {
+                        use termide_modal::ProgressModal;
+                        let title = match operation.operation_type {
+                            BatchOperationType::Copy => "Copying Files",
+                            BatchOperationType::Move => "Moving Files",
+                        };
+                        let modal =
+                            ProgressModal::new_with_controls(title, operation.total_count(), true);
+                        self.state.active_modal = Some(ActiveModal::Progress(Box::new(modal)));
+                    }
+
                     operation.advance();
-                    self.process_batch_operation(operation.clone());
+
+                    // Store and return to allow UI update
+                    self.state.pending_action =
+                        Some(PendingAction::ContinueBatchOperation { operation });
                 }
                 ConflictResolution::OverwriteAll => {
                     // Set "overwrite all" mode
                     operation.set_conflict_mode(ConflictMode::OverwriteAll);
-                    self.process_batch_operation(operation.clone());
+
+                    // Re-show progress modal BEFORE processing (check with current index)
+                    if operation.total_count() > 1 {
+                        use termide_modal::ProgressModal;
+                        let title = match operation.operation_type {
+                            BatchOperationType::Copy => "Copying Files",
+                            BatchOperationType::Move => "Moving Files",
+                        };
+                        let modal =
+                            ProgressModal::new_with_controls(title, operation.total_count(), true);
+                        self.state.active_modal = Some(ActiveModal::Progress(Box::new(modal)));
+                    }
+
+                    // Store and return to allow UI update
+                    self.state.pending_action =
+                        Some(PendingAction::ContinueBatchOperation { operation });
                 }
                 ConflictResolution::SkipAll => {
                     // Set "skip all" mode
                     operation.set_conflict_mode(ConflictMode::SkipAll);
                     operation.increment_skipped();
+
+                    // Re-show progress modal BEFORE advancing (check with current index)
+                    if operation.total_count() > 1 {
+                        use termide_modal::ProgressModal;
+                        let title = match operation.operation_type {
+                            BatchOperationType::Copy => "Copying Files",
+                            BatchOperationType::Move => "Moving Files",
+                        };
+                        let modal =
+                            ProgressModal::new_with_controls(title, operation.total_count(), true);
+                        self.state.active_modal = Some(ActiveModal::Progress(Box::new(modal)));
+                    }
+
                     operation.advance();
-                    self.process_batch_operation(operation.clone());
+
+                    // Store and return to allow UI update
+                    self.state.pending_action =
+                        Some(PendingAction::ContinueBatchOperation { operation });
                 }
                 ConflictResolution::Rename => {
                     // Request rename pattern for single file
@@ -203,7 +504,7 @@ impl App {
                         use termide_modal::RenamePatternModal;
 
                         let modal = RenamePatternModal::new(
-                            "Rename file",
+                            &format!("Rename {}", original_name),
                             &original_name,
                             "$0", // Default pattern
                             created,
@@ -230,7 +531,7 @@ impl App {
                         use termide_modal::RenamePatternModal;
 
                         let modal = RenamePatternModal::new(
-                            "Rename all conflicting files",
+                            &format!("Rename all ({})", original_name),
                             &original_name,
                             "$0", // Default pattern
                             created,
@@ -254,28 +555,128 @@ impl App {
 
     /// Handle batch file operation (copy/move)
     pub(in crate::app) fn process_batch_operation(&mut self, mut operation: BatchOperation) {
+        // Show progress modal for:
+        // 1. Multi-file operations (total_count > 1), OR
+        // 2. Single remote file operations (need network transfer feedback), OR
+        // 3. Single directory operations (recursive copy/move can take time), OR
+        // 4. Single file > 1MB (large file transfer needs progress feedback)
+
+        // Check if this is a remote operation by examining active panel
+        let is_remote_operation = {
+            if let Some(panel) = self.layout_manager.active_panel_mut() {
+                panel
+                    .as_file_manager_mut()
+                    .map(|fm| fm.is_remote())
+                    .unwrap_or(false)
+            } else {
+                false
+            }
+        };
+
+        // Check if source is a directory or large file (>1MB)
+        let needs_progress = operation
+            .current_source()
+            .and_then(|p| {
+                p.metadata().ok().map(|meta| {
+                    meta.is_dir() || meta.len() > 1_048_576 // 1MB
+                })
+            })
+            .unwrap_or(false);
+
+        // Show enhanced progress modal when starting operation
+        // Only create modal if not already shown (check that no progress modal is active)
+        let should_show_modal = operation.current_index == 0
+            && (operation.total_count() > 1 || is_remote_operation || needs_progress)
+            && !matches!(self.state.active_modal, Some(ActiveModal::Progress(_)));
+
+        if should_show_modal {
+            use termide_modal::ProgressModal;
+
+            // Close any existing modal (e.g., destination selection) before showing progress
+            self.state.close_modal();
+
+            let title = match operation.operation_type {
+                BatchOperationType::Copy => "Copy",
+                BatchOperationType::Move => "Move",
+            };
+
+            // Get source and destination paths for display
+            let source_display = if let Some(panel) = self.layout_manager.active_panel_mut() {
+                if let Some(fm) = panel.as_file_manager_mut() {
+                    let vfs_path = fm.vfs_state().current_path();
+                    if let Some(source_file) = operation.current_source() {
+                        format_vfs_path_for_display(vfs_path, source_file)
+                    } else {
+                        String::new()
+                    }
+                } else {
+                    operation
+                        .current_source()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_default()
+                }
+            } else {
+                operation
+                    .current_source()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_default()
+            };
+
+            let dest_display = operation.destination.display().to_string();
+
+            let modal = ProgressModal::new_copy_progress(
+                title,
+                operation.total_count(),
+                source_display,
+                dest_display,
+                true, // pause_enabled
+            );
+            self.state.active_modal = Some(ActiveModal::Progress(Box::new(modal)));
+
+            // Store operation as pending action to allow UI to render modal
+            // before starting actual file operations
+            self.state.pending_action = Some(PendingAction::ContinueBatchOperation { operation });
+            return;
+        }
+
+        // Check if operation is paused - keep modal open and don't process next file
+        if operation.pause_state == termide_state::PauseState::Paused {
+            // Store operation and return - will resume when user unpauses
+            self.state.pending_action = Some(PendingAction::ContinueBatchOperation { operation });
+            return;
+        }
+
         // Check if operation is complete
         if operation.is_complete() {
+            // Close progress modal if open
+            if matches!(self.state.active_modal, Some(ActiveModal::Progress(_))) {
+                self.state.close_modal();
+            }
+
             // Show final results
             self.show_batch_results(&operation);
 
-            // Clear selection and refresh active panel
-            if let Some(panel) = self.layout_manager.active_panel_mut() {
-                if let Some(fm) = panel.as_file_manager_mut() {
-                    if operation.success_count > 0 {
-                        fm.clear_selection();
-                    }
-                    let _ = fm.load_directory();
+            // Refresh ALL file manager panels after batch operation
+            // (both source and destination might need refresh)
+            if operation.success_count > 0 {
+                // Get last successful filename for cursor positioning
+                let last_filename = operation.last_successful_filename();
+                let dest_path = operation.destination_path();
 
-                    // Refresh all FM panels showing target directory
-                    self.refresh_fm_panels(&operation.destination);
+                for group in &mut self.layout_manager.panel_groups {
+                    for panel in group.panels_mut() {
+                        if let Some(fm) = panel.as_file_manager_mut() {
+                            fm.clear_selection();
 
-                    // For move - refresh source directories
-                    if operation.operation_type == BatchOperationType::Move
-                        && !operation.sources.is_empty()
-                    {
-                        if let Some(parent) = operation.sources[0].parent() {
-                            self.refresh_fm_panels(parent);
+                            // Set cursor target BEFORE reload for destination panel
+                            if fm.current_path() == dest_path {
+                                if let Some(ref name) = last_filename {
+                                    fm.set_newly_created(name.clone());
+                                }
+                            }
+
+                            // Force reload by bypassing debounce to ensure file list updates
+                            let _ = fm.force_reload_directory();
                         }
                     }
                 }
@@ -311,6 +712,33 @@ impl App {
             )
         };
 
+        // Update progress modal with current file paths
+        if let Some(ActiveModal::Progress(ref mut modal)) = self.state.active_modal {
+            // Get source display path
+            let source_display = if let Some(panel) = self.layout_manager.active_panel_mut() {
+                if let Some(fm) = panel.as_file_manager_mut() {
+                    let vfs_path = fm.vfs_state().current_path();
+                    format_vfs_path_for_display(vfs_path, &source)
+                } else {
+                    item_name.clone()
+                }
+            } else {
+                item_name.clone()
+            };
+
+            let dest_file = final_dest
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("");
+            let dest_display = operation.destination.join(dest_file).display().to_string();
+
+            modal.update_progress_with_paths(
+                operation.current_index + 1, // 1-based for display
+                source_display,
+                dest_display,
+            );
+        }
+
         // Check conflict
         if final_dest.exists() {
             match operation.conflict_mode {
@@ -331,7 +759,9 @@ impl App {
                     termide_logger::info(format!("'{}' пропущен (файл существует)", item_name));
                     operation.increment_skipped();
                     operation.advance();
-                    self.process_batch_operation(operation);
+                    // Store and return to allow UI update
+                    self.state.pending_action =
+                        Some(PendingAction::ContinueBatchOperation { operation });
                     return;
                 }
                 ConflictMode::OverwriteAll => {
@@ -343,40 +773,105 @@ impl App {
         // Execute operation
         if let Some(panel) = self.layout_manager.active_panel_mut() {
             if let Some(fm) = panel.as_file_manager_mut() {
-                let result = match operation.operation_type {
-                    BatchOperationType::Copy => fm.copy_path(source, final_dest),
-                    BatchOperationType::Move => fm.move_path(source, final_dest),
-                };
+                // Check if source is remote - use VFS download instead of local copy
+                if fm.is_remote() {
+                    // For remote-to-local copy/move, use VFS download (async)
+                    // Construct VfsPath from current VFS path + source filename
+                    let source_name = source
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_default();
+                    let vfs_source = fm.vfs_state().current_path().join(&source_name);
+                    let vfs_manager = fm.vfs_state().manager_arc();
 
-                match result {
-                    Ok(_) => {
-                        let t = i18n::t();
-                        let action_name = match operation.operation_type {
-                            BatchOperationType::Copy => t.action_copied(),
-                            BatchOperationType::Move => t.action_moved(),
-                        };
-                        termide_logger::info(format!("'{}' {}", item_name, action_name));
-                        operation.increment_success();
-                    }
-                    Err(e) => {
-                        let t = i18n::t();
-                        let action_name = match operation.operation_type {
-                            BatchOperationType::Copy => t.action_copying(),
-                            BatchOperationType::Move => t.action_moving(),
-                        };
-                        termide_logger::error(format!(
-                            "Ошибка {} '{}': {}",
-                            action_name, item_name, e
-                        ));
-                        operation.increment_error();
-                    }
+                    // Start async download with progress and pause/cancel support
+                    let download_op = vfs_manager.download_with_progress(&vfs_source, &final_dest);
+
+                    let is_move = operation.operation_type == BatchOperationType::Move;
+
+                    // Store operation for async handling
+                    self.state.batch_download_operation = Some(BatchDownloadOperation {
+                        operation: download_op,
+                        dest_path: final_dest.clone(),
+                        started: std::time::Instant::now(),
+                        is_move,
+                        vfs_source: if is_move { Some(vfs_source) } else { None },
+                        vfs_manager: if is_move { Some(vfs_manager) } else { None },
+                        last_total_files: 0,
+                        last_total_bytes: 0,
+                    });
+
+                    // Store batch operation as pending action for continuation after download
+                    self.state.pending_action =
+                        Some(PendingAction::ContinueBatchOperation { operation });
+                    return;
                 }
+
+                // Local file - use async chunked copy with progress
+                // Applies to both Copy and Move (move may need copy+delete for cross-filesystem)
+                if source.is_file() {
+                    let copy_op =
+                        termide_panel_file_manager::copy_file_with_progress(&source, &final_dest);
+
+                    // Store operation for async handling
+                    self.state.local_copy_operation = Some(crate::state::LocalCopyOperation {
+                        completion: copy_op.completion,
+                        progress: copy_op.progress,
+                        source_path: source.clone(),
+                        dest_path: final_dest.clone(),
+                        is_move: operation.operation_type == BatchOperationType::Move,
+                        pause_flag: copy_op.pause_flag,
+                        cancel_flag: copy_op.cancel_flag,
+                    });
+
+                    // Store batch operation as pending action for continuation after copy
+                    self.state.pending_action =
+                        Some(PendingAction::ContinueBatchOperation { operation });
+                    return;
+                }
+
+                // Local directory - use async scan + background copy with progress
+                // Applies to both Copy and Move (move may need copy+delete for cross-filesystem)
+                if source.is_dir() {
+                    // Start async directory scan first (shows scan progress modal)
+                    let scan_op = termide_panel_file_manager::scan_directory_async(&source);
+
+                    // Show scanning progress modal
+                    use termide_modal::ProgressModal;
+                    let scanning_modal = ProgressModal::new_scanning(
+                        "Scanning Directory",
+                        source.display().to_string(),
+                    );
+                    self.state.active_modal = Some(ActiveModal::Progress(Box::new(scanning_modal)));
+
+                    // Store scan operation for async handling
+                    self.state.local_scan_operation = Some(crate::state::LocalScanOperation {
+                        completion: scan_op.completion,
+                        progress: scan_op.progress,
+                        source_path: source.clone(),
+                        dest_path: final_dest.clone(),
+                        cancel_flag: scan_op.cancel_flag,
+                        batch_operation: Some(Box::new(operation)),
+                    });
+
+                    return;
+                }
+
+                // Unknown source type (symlink?) - skip with error
+                termide_logger::error(format!("Unsupported source type: {}", source.display()));
+                operation.increment_error();
             }
         }
 
         // Move to next file
         operation.advance();
-        self.process_batch_operation(operation);
+
+        // Store operation and return to allow UI update between files
+        // This enables:
+        // 1. Progress bar to update visually
+        // 2. User to pause/cancel between files
+        // 3. Spinner animation to work
+        self.state.pending_action = Some(PendingAction::ContinueBatchOperation { operation });
     }
 
     /// Show batch operation final results
@@ -464,12 +959,14 @@ impl App {
 
                     // Execute operation with new name
                     operation.destination = new_dest;
+                    // Continue processing the batch operation
                     self.process_batch_operation(operation);
                 }
             } else {
                 // This is RenameAll - pattern already set in operation,
                 // just continue processing
                 operation.set_rename_pattern(pattern);
+                // Continue processing the batch operation
                 self.process_batch_operation(operation);
             }
         }

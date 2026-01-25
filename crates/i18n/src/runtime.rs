@@ -280,6 +280,30 @@ impl Translation for RuntimeTranslation {
         self.get_string("content_search_title")
     }
 
+    fn fm_goto_title(&self) -> &str {
+        self.get_string("fm_goto_title")
+    }
+
+    fn fm_goto_prompt(&self) -> &str {
+        self.get_string("fm_goto_prompt")
+    }
+
+    fn connection_cancelled_title(&self) -> &str {
+        self.get_string("connection_cancelled_title")
+    }
+
+    fn connection_error_title(&self) -> &str {
+        self.get_string("connection_error_title")
+    }
+
+    fn connection_timeout_title(&self) -> &str {
+        self.get_string("connection_timeout_title")
+    }
+
+    fn connection_timeout_message(&self) -> &str {
+        self.get_string("connection_timeout_message")
+    }
+
     fn terminal_exit_confirm(&self) -> &str {
         self.get_string("terminal_exit_confirm")
     }

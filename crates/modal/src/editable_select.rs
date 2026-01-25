@@ -27,6 +27,7 @@ use termide_config::constants::{
 };
 use termide_i18n as i18n;
 use termide_theme::Theme;
+use termide_ui::path_utils::truncate_right;
 
 use crate::{centered_rect_with_size, Modal, ModalResult, TextInputHandler};
 
@@ -303,11 +304,8 @@ impl Modal for EditableSelectModal {
                     };
 
                     // Truncate long text
-                    let display_text = if option.display.len() > (modal_width as usize - 10) {
-                        format!("{}...", &option.display[..(modal_width as usize - 13)])
-                    } else {
-                        option.display.clone()
-                    };
+                    let max_text_width = modal_width as usize - 10;
+                    let display_text = truncate_right(&option.display, max_text_width);
 
                     ListItem::new(Line::from(vec![
                         Span::styled(prefix, style),

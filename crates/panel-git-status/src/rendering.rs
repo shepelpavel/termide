@@ -10,7 +10,7 @@ use ratatui::{
 use unicode_width::UnicodeWidthStr;
 
 use termide_core::ThemeColors;
-use termide_git::{self as git, truncate_path_left};
+use termide_git::{self as git, truncate_left};
 use termide_ui::ScrollBar;
 use termide_ui_render::InlineSelector;
 
@@ -457,7 +457,7 @@ impl GitStatusPanel {
 
         let path_str = path.to_string_lossy();
         let line = format!(" {}", path_str);
-        let truncated = truncate_path_left(&line, width as usize);
+        let truncated = truncate_left(&line, width as usize);
         buf.set_string(x, y, &truncated, style);
     }
 

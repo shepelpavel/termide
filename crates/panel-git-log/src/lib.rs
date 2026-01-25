@@ -11,7 +11,7 @@ use unicode_width::UnicodeWidthStr;
 
 use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up, Config};
 use termide_core::{Panel, PanelEvent, RenderContext, SessionPanel, ThemeColors};
-use termide_git::{self as git, truncate_to_width, CommitInfo, RepoManager};
+use termide_git::{self as git, truncate_right, truncate_to_width, CommitInfo, RepoManager};
 use termide_theme::Theme;
 use termide_ui::ScrollBar;
 
@@ -363,7 +363,7 @@ impl GitLogPanel {
 
                 // Author
                 if x_pos < max_x {
-                    let author = truncate_str(&commit.author, 15);
+                    let author = truncate_right(&commit.author, 15);
                     let author_style = if is_selected {
                         Style::default()
                             .fg(theme.selection_fg)
@@ -377,7 +377,7 @@ impl GitLogPanel {
 
                 // Date
                 if x_pos < max_x {
-                    let date = truncate_str(&commit.date, 12);
+                    let date = truncate_right(&commit.date, 12);
                     let date_style = if is_selected {
                         Style::default()
                             .fg(theme.selection_fg)
@@ -554,15 +554,6 @@ impl GitLogPanel {
         }
 
         x
-    }
-}
-
-/// Truncate string to max characters
-fn truncate_str(s: &str, max: usize) -> String {
-    if s.len() > max {
-        format!("{}…", &s[..max.saturating_sub(1)])
-    } else {
-        s.to_string()
     }
 }
 

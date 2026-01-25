@@ -213,6 +213,7 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
         match modal {
             ActiveModal::Commit(m) => m.render(area, frame.buffer_mut(), theme),
             ActiveModal::Confirm(m) => m.render(area, frame.buffer_mut(), theme),
+            ActiveModal::Choice(m) => m.render(area, frame.buffer_mut(), theme),
             ActiveModal::Input(m) => m.render(area, frame.buffer_mut(), theme),
             ActiveModal::Select(m) => m.render(area, frame.buffer_mut(), theme),
             ActiveModal::Overwrite(m) => m.render(area, frame.buffer_mut(), theme),
@@ -230,6 +231,7 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
             ActiveModal::SaveAs(m) => m.render(area, frame.buffer_mut(), theme),
             ActiveModal::DirectorySwitcher(m) => m.render(area, frame.buffer_mut(), theme),
             ActiveModal::BookmarkAdd(m) => m.render(area, frame.buffer_mut(), theme),
+            ActiveModal::Progress(m) => m.render(area, frame.buffer_mut(), theme),
         }
     }
 }

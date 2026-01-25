@@ -43,8 +43,44 @@ pub enum BookmarkType {
     ViewerFile,
     /// Path is an HTTP/HTTPS link
     HttpLink,
+    /// SSH connection (ssh://user@host) - opens terminal
+    SshConnection,
+    /// SFTP remote path (sftp://user@host/path)
+    SftpPath,
+    /// FTP remote path (ftp://host/path)
+    FtpPath,
+    /// SMB/CIFS remote path (smb://server/share/path)
+    SmbPath,
+    /// NFS remote path (nfs://server/export/path)
+    NfsPath,
     /// Unknown type (fallback)
     Unknown,
+}
+
+impl BookmarkType {
+    /// Check if this bookmark type is a remote/network path.
+    pub fn is_remote(&self) -> bool {
+        matches!(
+            self,
+            BookmarkType::SftpPath
+                | BookmarkType::FtpPath
+                | BookmarkType::SmbPath
+                | BookmarkType::NfsPath
+        )
+    }
+
+    /// Check if this bookmark type is a web link.
+    pub fn is_web(&self) -> bool {
+        matches!(self, BookmarkType::HttpLink)
+    }
+
+    /// Check if this bookmark type is a local filesystem path.
+    pub fn is_local(&self) -> bool {
+        matches!(
+            self,
+            BookmarkType::Directory | BookmarkType::TextFile | BookmarkType::ViewerFile
+        )
+    }
 }
 
 impl Bookmark {
@@ -77,6 +113,25 @@ impl Bookmark {
             return BookmarkType::HttpLink;
         }
 
+        // Check for SSH connection (terminal)
+        if self.path.starts_with("ssh://") {
+            return BookmarkType::SshConnection;
+        }
+
+        // Check for network filesystem URLs
+        if self.path.starts_with("sftp://") {
+            return BookmarkType::SftpPath;
+        }
+        if self.path.starts_with("ftp://") {
+            return BookmarkType::FtpPath;
+        }
+        if self.path.starts_with("smb://") || self.path.starts_with("cifs://") {
+            return BookmarkType::SmbPath;
+        }
+        if self.path.starts_with("nfs://") {
+            return BookmarkType::NfsPath;
+        }
+
         let path = Path::new(&self.path);
 
         // Check if it's a directory
@@ -105,6 +160,11 @@ impl Bookmark {
         } else {
             BookmarkType::Unknown
         }
+    }
+
+    /// Check if this bookmark is a remote/network path.
+    pub fn is_remote(&self) -> bool {
+        self.bookmark_type().is_remote()
     }
 
     /// Get display name for the bookmark.

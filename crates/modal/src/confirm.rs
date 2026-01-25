@@ -59,9 +59,9 @@ impl Modal for ConfirmModal {
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, theme: &Theme) {
         // Calculate required height based on content:
-        // 1 (top border) + N (message lines) + 1 (buttons) + 1 (bottom border) = N + 3
+        // 1 (top border) + N (message lines) + 1 (buttons) + 1 (empty line) + 1 (bottom border) = N + 4
         let message_lines = self.message.lines().count().max(1);
-        let modal_height = (message_lines + 3) as u16;
+        let modal_height = (message_lines + 4) as u16;
 
         // Calculate dynamic width based on content
         let modal_width = self.calculate_modal_width(area.width);
@@ -71,12 +71,13 @@ impl Modal for ConfirmModal {
 
         let inner = render_modal_block(modal_area, buf, &self.title, theme);
 
-        // Split into: message, buttons
+        // Split into: message, buttons, empty line
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Length(message_lines as u16), // Message
                 Constraint::Length(1),                    // Buttons
+                Constraint::Length(1),                    // Empty line after buttons
             ])
             .split(inner);
 

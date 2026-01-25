@@ -48,8 +48,12 @@ impl App {
                     }
                     Err(e) => {
                         termide_logger::error(format!("File creation error '{}': {}", name, e));
-                        self.state
-                            .set_error(t.status_error_create_file(&e.to_string()));
+                        // Show error in modal instead of status bar
+                        use termide_modal::{ActiveModal, InfoModal};
+                        let error_msg = format!("Failed to create file '{}': {}", name, e);
+                        let lines = vec![(String::new(), error_msg)];
+                        let modal = InfoModal::new("Error", lines);
+                        self.state.active_modal = Some(ActiveModal::Info(Box::new(modal)));
                     }
                 }
             }
@@ -96,8 +100,12 @@ impl App {
                             "Directory creation error '{}': {}",
                             name, e
                         ));
-                        self.state
-                            .set_error(t.status_error_create_dir(&e.to_string()));
+                        // Show error in modal instead of status bar
+                        use termide_modal::{ActiveModal, InfoModal};
+                        let error_msg = format!("Failed to create directory '{}': {}", name, e);
+                        let lines = vec![(String::new(), error_msg)];
+                        let modal = InfoModal::new("Error", lines);
+                        self.state.active_modal = Some(ActiveModal::Info(Box::new(modal)));
                     }
                 }
             }

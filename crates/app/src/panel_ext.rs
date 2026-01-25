@@ -69,6 +69,15 @@ pub trait PanelExt {
     fn is_journal(&self) -> bool;
     /// Take modal request from FileManager, Editor, or GitStatusPanel.
     fn take_modal_request(&mut self) -> Option<(PendingAction, ActiveModal)>;
+
+    /// Take pending upload operation from Editor.
+    fn take_pending_upload(
+        &mut self,
+    ) -> Option<(
+        termide_vfs::VfsOperation<()>,
+        termide_vfs::VfsPath,
+        std::path::PathBuf,
+    )>;
 }
 
 #[allow(deprecated)]
@@ -113,6 +122,19 @@ impl PanelExt for dyn Panel {
         }
         None
     }
+
+    fn take_pending_upload(
+        &mut self,
+    ) -> Option<(
+        termide_vfs::VfsOperation<()>,
+        termide_vfs::VfsPath,
+        std::path::PathBuf,
+    )> {
+        if let Some(editor) = self.as_editor_mut() {
+            return editor.take_pending_upload();
+        }
+        None
+    }
 }
 
 #[allow(deprecated)]
@@ -147,5 +169,15 @@ impl PanelExt for Box<dyn Panel> {
 
     fn take_modal_request(&mut self) -> Option<(PendingAction, ActiveModal)> {
         (**self).take_modal_request()
+    }
+
+    fn take_pending_upload(
+        &mut self,
+    ) -> Option<(
+        termide_vfs::VfsOperation<()>,
+        termide_vfs::VfsPath,
+        std::path::PathBuf,
+    )> {
+        (**self).take_pending_upload()
     }
 }

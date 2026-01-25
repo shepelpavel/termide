@@ -38,6 +38,7 @@ termide-i18n = { path = "../i18n" }
 termide-session = { path = "../session" }
 termide-git = { path = "../git" }
 termide-lsp = { path = "../lsp" }
+termide-vfs = { path = "../vfs" }
 termide-watcher = { path = "../watcher" }
 termide-logger = { path = "../logger" }
 termide-system-monitor = { path = "../system-monitor" }

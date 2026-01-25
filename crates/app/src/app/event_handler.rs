@@ -57,6 +57,10 @@ impl App {
                 self.event_open_external(path)?;
             }
 
+            PanelEvent::OpenRemoteFile(url) => {
+                self.event_open_remote_file(url)?;
+            }
+
             PanelEvent::ClosePanel => {
                 // Request close of current panel (with confirmation if needed)
                 self.handle_close_panel_request(0)?;
@@ -498,6 +502,89 @@ impl App {
             self.state
                 .set_error(format!("Failed to open {}: {}", filename, e));
         }
+        Ok(())
+    }
+
+    /// Handle OpenRemoteFile event - open remote file via VFS
+    fn event_open_remote_file(&mut self, url: String) -> Result<()> {
+        self.close_welcome_panels();
+
+        // Parse URL to VfsPath
+        let vfs_path = match termide_vfs::parse_vfs_url(&url) {
+            Ok(path) => path,
+            Err(e) => {
+                let error_msg = format!("Invalid remote URL: {}", e);
+                logger::error(error_msg.clone());
+                self.state.set_error(error_msg);
+                return Ok(());
+            }
+        };
+
+        let filename = vfs_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("remote")
+            .to_string();
+
+        // Get VfsManager from active FileManager panel
+        let vfs_manager = if let Some(panel) = self.layout_manager.active_panel() {
+            if let Some(fm) = panel
+                .as_any()
+                .downcast_ref::<termide_panel_file_manager::FileManager>()
+            {
+                fm.vfs_state().manager_arc()
+            } else {
+                let error_msg = "No file manager panel available for remote file access";
+                logger::error(error_msg.to_string());
+                self.state.set_error(error_msg.to_string());
+                return Ok(());
+            }
+        } else {
+            let error_msg = "No active panel";
+            logger::error(error_msg.to_string());
+            self.state.set_error(error_msg.to_string());
+            return Ok(());
+        };
+
+        logger::debug(format!("Opening remote file: {}", url));
+
+        // Create temp directory for remote files
+        let temp_dir = std::env::temp_dir().join("termide-remote-edit");
+        if let Err(e) = std::fs::create_dir_all(&temp_dir) {
+            let error_msg = format!("Failed to create temp directory: {}", e);
+            logger::error(error_msg.clone());
+            self.state.set_error(error_msg);
+            return Ok(());
+        }
+
+        // Generate unique temp file name
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let temp_path = temp_dir.join(format!("{}_{}", timestamp, filename));
+
+        // Start async download - DON'T call .recv()!
+        let operation = vfs_manager.download(&vfs_path, &temp_path);
+
+        // Show progress modal
+        let modal = termide_modal::ProgressModal::indeterminate(
+            "Downloading File",
+            format!("Downloading {}...", filename),
+        );
+        self.state.active_modal = Some(crate::state::ActiveModal::Progress(Box::new(modal)));
+
+        // Store operation for polling
+        self.state.download_operation = Some(crate::state::DownloadOperation {
+            operation,
+            remote_path: vfs_path,
+            temp_path,
+            config: self.state.editor_config(),
+            vfs_manager,
+            started: std::time::Instant::now(),
+        });
+
+        logger::info(format!("Started downloading remote file '{}'", filename));
         Ok(())
     }
 

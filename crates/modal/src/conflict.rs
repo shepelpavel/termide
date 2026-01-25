@@ -7,16 +7,13 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style},
+    style::Style,
     text::{Line, Span},
-    widgets::{List, ListItem, Paragraph, Widget},
+    widgets::{Paragraph, Widget},
 };
 
-use crate::base::render_modal_block;
+use crate::base::{button_style, render_modal_block};
 
-use termide_config::constants::{
-    MODAL_MAX_WIDTH_PERCENTAGE_DEFAULT, MODAL_MIN_WIDTH_DEFAULT, MODAL_PADDING_WITH_BORDER,
-};
 use termide_theme::Theme;
 
 use crate::{centered_rect_with_size, Modal, ModalResult};
@@ -47,8 +44,8 @@ pub struct ConflictModal {
     dest_name: String,
     is_directory: bool,
     remaining_items: usize, // Number of items remaining in queue (excluding current)
-    cursor: usize,
-    last_list_area: Option<Rect>,
+    selected: usize,
+    button_areas: Vec<Rect>,
 }
 
 impl ConflictModal {
@@ -78,65 +75,38 @@ impl ConflictModal {
             dest_name,
             is_directory,
             remaining_items,
-            cursor: 0,
-            last_list_area: None,
+            selected: 0,
+            button_areas: Vec::new(),
         }
     }
 
-    fn get_options(&self) -> Vec<(String, String)> {
-        let item_type = if self.is_directory {
-            "directory"
+    #[allow(dead_code)]
+    fn get_button_labels(&self) -> Vec<&str> {
+        if self.remaining_items == 0 {
+            vec!["Overwrite", "Skip", "Rename"]
         } else {
-            "file"
-        };
-
-        let mut options = vec![
-            (
-                "Overwrite".to_string(),
-                format!("Replace existing {}", item_type),
-            ),
-            (
-                "Skip".to_string(),
-                format!("Do not copy this {}", item_type),
-            ),
-            (
-                "Rename".to_string(),
-                format!("Set new name for this {}", item_type),
-            ),
-        ];
-
-        // Only add "All" variants if there are more items remaining
-        if self.remaining_items > 0 {
-            options.extend(vec![
-                (
-                    "Overwrite All".to_string(),
-                    "Replace all subsequent conflicts".to_string(),
-                ),
-                (
-                    "Skip All".to_string(),
-                    "Skip all subsequent conflicts".to_string(),
-                ),
-                (
-                    "Rename All".to_string(),
-                    "Set pattern for all conflicts".to_string(),
-                ),
-            ]);
+            vec![
+                "Overwrite",
+                "Skip",
+                "Rename",
+                "Overwrite All",
+                "Skip All",
+                "Rename All",
+            ]
         }
-
-        options
     }
 
     fn get_resolution(&self) -> ConflictResolution {
         // If there are no remaining items, only 3 options available
         if self.remaining_items == 0 {
-            match self.cursor {
+            match self.selected {
                 0 => ConflictResolution::Overwrite,
                 1 => ConflictResolution::Skip,
                 _ => ConflictResolution::Rename,
             }
         } else {
             // All 6 options available
-            match self.cursor {
+            match self.selected {
                 0 => ConflictResolution::Overwrite,
                 1 => ConflictResolution::Skip,
                 2 => ConflictResolution::Rename,
@@ -146,67 +116,19 @@ impl ConflictModal {
             }
         }
     }
-
-    /// Calculate dynamic modal width
-    fn calculate_modal_width(&self, screen_width: u16) -> u16 {
-        // 1. Title width (with spaces on the edges)
-        let title_width = self.title.len() as u16 + 2;
-
-        // 2. Message width
-        let item_type = if self.is_directory {
-            "Directory"
-        } else {
-            "File"
-        };
-        let message = format!(
-            "{} '{}' already exists.\nWhat to do?",
-            item_type, self.dest_name
-        );
-        let message_max_line_width =
-            message.lines().map(|line| line.len()).max().unwrap_or(0) as u16;
-
-        // 3. Maximum option width
-        let options = self.get_options();
-        let max_option_width = options
-            .iter()
-            .map(|(label, desc)| {
-                // "▶ " + label + " - " + desc = prefix 2 + label + 3 + desc
-                2 + label.len() + 3 + desc.len()
-            })
-            .max()
-            .unwrap_or(0) as u16;
-
-        // Take the maximum of all components
-        let content_width = title_width
-            .max(message_max_line_width)
-            .max(max_option_width);
-
-        // Add padding and borders
-        let total_width = content_width + MODAL_PADDING_WITH_BORDER;
-
-        // Apply constraints
-        let max_width = (screen_width as f32 * MODAL_MAX_WIDTH_PERCENTAGE_DEFAULT) as u16;
-        total_width
-            .max(MODAL_MIN_WIDTH_DEFAULT)
-            .min(max_width)
-            .min(screen_width)
-    }
 }
 
 impl Modal for ConflictModal {
     type Result = ConflictResolution;
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, theme: &Theme) {
-        // Calculate dynamic width
-        let modal_width = self.calculate_modal_width(area.width);
+        let modal_width = 60;
 
-        // Calculate height dynamically based on number of options:
-        // - 3 options: 1 (top border) + 2 (message) + 3 (list) + 1 (bottom border) = 7
-        // - 6 options: 1 (top border) + 2 (message) + 6 (list) + 1 (bottom border) = 10
+        // Calculate height: top empty (1) + message (1) + empty (1) + buttons row1 (1) + buttons row2 (1 if needed) + bottom empty (1)
         let modal_height = if self.remaining_items == 0 {
-            7 // Only 3 options
+            7 // 1 (top) + 1 (msg) + 1 (empty) + 1 (buttons) + 1 (bottom) + 2 (borders)
         } else {
-            10 // All 6 options
+            8 // 1 (top) + 1 (msg) + 1 (empty) + 2 (buttons) + 1 (bottom) + 2 (borders)
         };
 
         // Create centered area
@@ -214,20 +136,31 @@ impl Modal for ConflictModal {
 
         let inner = render_modal_block(modal_area, buf, &self.title, theme);
 
-        // Calculate list constraint based on number of options
-        let list_constraint = if self.remaining_items == 0 {
-            Constraint::Length(3) // 3 options
+        // Layout
+        let chunks = if self.remaining_items == 0 {
+            Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Length(1), // Top empty line
+                    Constraint::Length(1), // Message
+                    Constraint::Length(1), // Empty line
+                    Constraint::Length(1), // Buttons
+                    Constraint::Length(1), // Bottom empty line
+                ])
+                .split(inner)
         } else {
-            Constraint::Length(6) // 6 options
+            Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Length(1), // Top empty line
+                    Constraint::Length(1), // Message
+                    Constraint::Length(1), // Empty line
+                    Constraint::Length(1), // Buttons row 1
+                    Constraint::Length(1), // Buttons row 2
+                    Constraint::Length(1), // Bottom empty line
+                ])
+                .split(inner)
         };
-
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(2), // Message
-                list_constraint,       // Option list
-            ])
-            .split(inner);
 
         // Conflict message
         let item_type = if self.is_directory {
@@ -235,50 +168,86 @@ impl Modal for ConflictModal {
         } else {
             "File"
         };
-        let message = format!(
-            "{} '{}' already exists.\nWhat to do?",
-            item_type, self.dest_name
-        );
+        let message = format!("{} '{}' already exists.", item_type, self.dest_name);
         let prompt = Paragraph::new(message)
-            .alignment(Alignment::Left)
+            .alignment(Alignment::Center)
             .style(Style::default().fg(theme.fg));
-        prompt.render(chunks[0], buf);
+        prompt.render(chunks[1], buf); // Changed from chunks[0] to chunks[1]
 
-        // Option list
-        let options = self.get_options();
-        let items: Vec<ListItem> = options
-            .iter()
-            .enumerate()
-            .map(|(idx, (label, desc))| {
-                let prefix = if idx == self.cursor { "▶ " } else { "  " };
+        // Render buttons
+        let has_remaining = self.remaining_items > 0;
+        let labels = if has_remaining {
+            vec![
+                "Overwrite",
+                "Skip",
+                "Rename",
+                "Overwrite All",
+                "Skip All",
+                "Rename All",
+            ]
+        } else {
+            vec!["Overwrite", "Skip", "Rename"]
+        };
 
-                let style = if idx == self.cursor {
-                    Style::default()
-                        .fg(theme.fg)
-                        .bg(theme.accented_fg)
-                        .add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default().fg(theme.fg)
-                };
+        self.button_areas.clear();
 
-                ListItem::new(Line::from(vec![
-                    Span::styled(prefix, style),
-                    Span::styled(format!("{} - {}", label, desc), style),
-                ]))
-            })
-            .collect();
+        if !has_remaining {
+            // Single row: [ Overwrite ]  [ Skip ]  [ Rename ]
+            let mut button_spans = Vec::new();
+            for (i, label) in labels.iter().enumerate() {
+                if i > 0 {
+                    button_spans.push(Span::raw("  "));
+                }
+                let style = button_style(i == self.selected, theme);
+                button_spans.push(Span::styled(format!("[ {} ]", label), style));
+            }
 
-        let list = List::new(items).style(Style::default().bg(theme.bg));
+            let buttons_line = Line::from(button_spans);
+            let buttons_para = Paragraph::new(buttons_line).alignment(Alignment::Center);
+            buttons_para.render(chunks[3], buf); // Changed from chunks[2] to chunks[3]
 
-        list.render(chunks[1], buf);
+            // Store button areas (approximate for mouse handling)
+            self.button_areas = vec![chunks[3], chunks[3], chunks[3]];
+        } else {
+            // Row 1: [ Overwrite ]  [ Skip ]  [ Rename ]
+            let mut row1_spans = Vec::new();
+            for (i, label) in labels.iter().take(3).enumerate() {
+                if i > 0 {
+                    row1_spans.push(Span::raw("  "));
+                }
+                let style = button_style(i == self.selected, theme);
+                row1_spans.push(Span::styled(format!("[ {} ]", label), style));
+            }
 
-        // Save list area for mouse handling
-        self.last_list_area = Some(chunks[1]);
+            let row1_line = Line::from(row1_spans);
+            let row1_para = Paragraph::new(row1_line).alignment(Alignment::Center);
+            row1_para.render(chunks[3], buf); // Changed from chunks[2] to chunks[3]
+
+            // Row 2: [ Overwrite All ]  [ Skip All ]  [ Rename All ]
+            let mut row2_spans = Vec::new();
+            for (i, label) in labels.iter().skip(3).enumerate() {
+                if i > 0 {
+                    row2_spans.push(Span::raw("  "));
+                }
+                let idx = i + 3;
+                let style = button_style(idx == self.selected, theme);
+                row2_spans.push(Span::styled(format!("[ {} ]", label), style));
+            }
+
+            let row2_line = Line::from(row2_spans);
+            let row2_para = Paragraph::new(row2_line).alignment(Alignment::Center);
+            row2_para.render(chunks[4], buf); // Changed from chunks[3] to chunks[4]
+
+            // Store button areas (approximate)
+            self.button_areas = vec![
+                chunks[3], chunks[3], chunks[3], chunks[4], chunks[4], chunks[4],
+            ];
+        }
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<Option<ModalResult<Self::Result>>> {
-        // Calculate max cursor based on number of options
-        let max_cursor = if self.remaining_items == 0 {
+        // Calculate max index based on number of options
+        let max_index = if self.remaining_items == 0 {
             2 // Only 3 options: Overwrite, Skip, Rename
         } else {
             5 // All 6 options
@@ -286,24 +255,37 @@ impl Modal for ConflictModal {
 
         match key.code {
             KeyCode::Esc => Ok(Some(ModalResult::Cancelled)),
-            KeyCode::Up => {
-                if self.cursor > 0 {
-                    self.cursor -= 1;
+            KeyCode::Left | KeyCode::Up => {
+                if self.selected > 0 {
+                    self.selected -= 1;
+                } else {
+                    self.selected = max_index; // Wrap around
                 }
                 Ok(None)
             }
-            KeyCode::Down => {
-                if self.cursor < max_cursor {
-                    self.cursor += 1;
+            KeyCode::Right | KeyCode::Down => {
+                if self.selected < max_index {
+                    self.selected += 1;
+                } else {
+                    self.selected = 0; // Wrap around
+                }
+                Ok(None)
+            }
+            KeyCode::Tab => {
+                // Tab moves forward
+                if self.selected < max_index {
+                    self.selected += 1;
+                } else {
+                    self.selected = 0; // Wrap around
                 }
                 Ok(None)
             }
             KeyCode::Home => {
-                self.cursor = 0;
+                self.selected = 0;
                 Ok(None)
             }
             KeyCode::End => {
-                self.cursor = max_cursor;
+                self.selected = max_index;
                 Ok(None)
             }
             KeyCode::Enter => Ok(Some(ModalResult::Confirmed(self.get_resolution()))),
@@ -323,32 +305,19 @@ impl Modal for ConflictModal {
             return Ok(None);
         }
 
-        // Check if we have stored list area
-        let Some(list_area) = self.last_list_area else {
-            return Ok(None);
-        };
-
-        // Check if click is within list area
-        if mouse.row < list_area.y
-            || mouse.row >= list_area.y + list_area.height
-            || mouse.column < list_area.x
-            || mouse.column >= list_area.x + list_area.width
-        {
-            return Ok(None);
+        // Check if click is within any button area and determine which button
+        for (i, button_area) in self.button_areas.iter().enumerate() {
+            if mouse.row >= button_area.y
+                && mouse.row < button_area.y + button_area.height
+                && mouse.column >= button_area.x
+                && mouse.column < button_area.x + button_area.width
+            {
+                // Button clicked - select and confirm immediately
+                self.selected = i;
+                return Ok(Some(ModalResult::Confirmed(self.get_resolution())));
+            }
         }
 
-        // Calculate which item was clicked
-        let clicked_item = (mouse.row - list_area.y) as usize;
-
-        // Calculate max cursor based on number of options
-        let max_items = if self.remaining_items == 0 { 3 } else { 6 };
-
-        if clicked_item < max_items {
-            // Item clicked - select and confirm immediately
-            self.cursor = clicked_item;
-            Ok(Some(ModalResult::Confirmed(self.get_resolution())))
-        } else {
-            Ok(None)
-        }
+        Ok(None)
     }
 }

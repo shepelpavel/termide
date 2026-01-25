@@ -9,8 +9,18 @@ mod operations;
 mod rendering;
 mod selection;
 mod utils;
+mod vfs_state;
 
 pub use file_info::FileInfo;
+pub use vfs_state::VfsState;
+
+// Re-export operations for app layer
+pub use operations::{
+    copy_directory_with_progress, copy_file_with_progress, delete_paths_async, scan_directory,
+    scan_directory_async, CopyOperation, CopyProgress, DeleteOperation, DeleteProgress,
+    DirectoryCopyOperation, DirectoryCopyProgress, DirectoryScanResult, ScanOperation,
+    ScanProgress,
+};
 
 use anyhow::Result;
 use crossterm::event::KeyEvent;
@@ -27,10 +37,14 @@ use termide_core::{
     SessionPanel,
 };
 use termide_git::{get_git_status_async, GitStatus, GitStatusAsyncResult, GitStatusCache};
-use termide_modal::{ActiveModal, ConfirmModal, ContentSearchModal, FileSearchModal, InputModal};
+use termide_modal::{
+    ActionButton, ActiveModal, ConfirmModal, ContentSearchModal, FileSearchModal, InfoActionModal,
+    InputModal,
+};
 use termide_state::{DirSizeResult, PendingAction};
 use termide_theme::Theme;
 use termide_ui::{clipboard, path_utils, IndexClickTracker, ScrollBar};
+use termide_vfs::{VfsEntry, VfsFileType};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum DragMode {
@@ -241,6 +255,7 @@ impl SelectionState {
 /// - `previous_dir_name`: Saved directory name when going up (for cursor restoration)
 /// - `navigating_down`: Flag signaling entry into subdirectory (cursor resets to 0)
 /// - `last_reload_time`: Timestamp for debouncing rapid reload_directory() calls
+/// - `newly_created_item`: Name of newly created file/directory (for cursor positioning)
 #[derive(Clone, Default)]
 pub struct NavigationState {
     /// Name of directory we came from (for cursor restoration when going up)
@@ -249,6 +264,8 @@ pub struct NavigationState {
     pub navigating_down: bool,
     /// Last reload time for debouncing rapid reload_directory() calls
     pub last_reload_time: Option<std::time::Instant>,
+    /// Name of newly created item to navigate to after reload
+    pub newly_created_item: Option<String>,
 }
 
 impl NavigationState {
@@ -258,6 +275,7 @@ impl NavigationState {
             previous_dir_name: None,
             navigating_down: false,
             last_reload_time: None,
+            newly_created_item: None,
         }
     }
 
@@ -299,6 +317,16 @@ impl NavigationState {
         self.last_reload_time = Some(now);
         true
     }
+
+    /// Set newly created item name (for cursor navigation after reload)
+    pub fn set_newly_created(&mut self, name: String) {
+        self.newly_created_item = Some(name);
+    }
+
+    /// Take newly created item name (returns and clears it)
+    pub fn take_newly_created(&mut self) -> Option<String> {
+        self.newly_created_item.take()
+    }
 }
 
 /// Smart file manager with advanced features
@@ -332,6 +360,10 @@ pub struct FileManager {
     cached_config: FileManagerSettings,
     /// Cached vim_mode setting for keyboard handling
     vim_mode: bool,
+    /// Cached VFS connection timeout in seconds
+    cached_vfs_timeout_secs: u64,
+    /// VFS state for network filesystem support
+    vfs: VfsState,
 }
 
 #[derive(Debug, Clone)]
@@ -346,6 +378,30 @@ pub(crate) struct FileEntry {
     pub modified: Option<std::time::SystemTime>,
 }
 
+impl FileEntry {
+    /// Create FileEntry from VfsEntry (for remote directories).
+    pub fn from_vfs_entry(entry: VfsEntry) -> Self {
+        Self {
+            name: entry.name,
+            is_dir: matches!(entry.metadata.file_type, VfsFileType::Directory),
+            is_symlink: matches!(entry.metadata.file_type, VfsFileType::Symlink),
+            is_executable: entry
+                .metadata
+                .permissions
+                .map(|p| p & 0o111 != 0)
+                .unwrap_or(false),
+            is_readonly: entry.metadata.readonly,
+            git_status: GitStatus::Unmodified, // Remote files don't have git status
+            size: if matches!(entry.metadata.file_type, VfsFileType::File) {
+                Some(entry.metadata.size)
+            } else {
+                None
+            },
+            modified: entry.metadata.modified,
+        }
+    }
+}
+
 impl FileManager {
     /// Create a new smart file manager
     pub fn new() -> Self {
@@ -355,6 +411,7 @@ impl FileManager {
 
     /// Create a new smart file manager with the specified path
     pub fn new_with_path(current_path: PathBuf) -> Self {
+        let vfs = VfsState::with_path(termide_vfs::VfsPath::local(&current_path), None);
         let mut fm = Self {
             current_path,
             entries: Vec::new(),
@@ -372,9 +429,51 @@ impl FileManager {
             cached_theme: Theme::default(),
             cached_config: FileManagerSettings::default(),
             vim_mode: false,
+            cached_vfs_timeout_secs: 60, // Default, will be updated from config
+            vfs,
         };
         let _ = fm.load_directory();
         fm
+    }
+
+    /// Create a new FileManager at a VFS URL (for cloning remote panels)
+    pub fn new_with_vfs_url(
+        url: &str,
+        vfs_manager: std::sync::Arc<termide_vfs::VfsManager>,
+    ) -> anyhow::Result<Self> {
+        let vfs_path = termide_vfs::parse_vfs_url(url)?;
+        let vfs = VfsState::with_path(vfs_path, Some(vfs_manager));
+
+        let mut fm = Self {
+            current_path: PathBuf::from("/"), // Not used for remote
+            entries: Vec::new(),
+            selected: 0,
+            scroll_offset: 0,
+            modal_request: None,
+            visible_height: 10,
+            click_tracker: IndexClickTracker::new(),
+            selection: SelectionState::default(),
+            git_status_cache: None,
+            git_status_receiver: None,
+            dir_size_receiver: None,
+            navigation: NavigationState::new(),
+            git_root: None,
+            cached_theme: Theme::default(),
+            cached_config: FileManagerSettings::default(),
+            vim_mode: false,
+            cached_vfs_timeout_secs: 60,
+            vfs,
+        };
+
+        // Start the directory listing operation for remote paths
+        fm.vfs.start_list_dir();
+
+        Ok(fm)
+    }
+
+    /// Get the VfsManager Arc (for cloning panels)
+    pub fn vfs_manager_arc(&self) -> std::sync::Arc<termide_vfs::VfsManager> {
+        self.vfs.manager_arc()
     }
 
     /// Get the current directory
@@ -433,15 +532,67 @@ impl FileManager {
     /// Navigate to a specific directory
     pub fn navigate_to(&mut self, path: PathBuf) -> Result<()> {
         if path.is_dir() {
-            self.current_path = path;
+            self.current_path = path.clone();
+            self.vfs.set_path(termide_vfs::VfsPath::local(path));
             self.load_directory()
         } else if let Some(parent) = path.parent() {
             // If path is a file, navigate to its parent directory
             self.current_path = parent.to_path_buf();
+            self.vfs.set_path(termide_vfs::VfsPath::local(parent));
             self.load_directory()
         } else {
             Ok(())
         }
+    }
+
+    /// Navigate to a VFS URL (supports both local and remote paths).
+    ///
+    /// Examples:
+    /// - `/home/user/documents` - local path
+    /// - `sftp://user@host/path` - SFTP remote path
+    /// - `ftp://host/path` - FTP remote path
+    pub fn navigate_to_url(&mut self, url: &str) -> Result<()> {
+        let vfs_path =
+            termide_vfs::parse_vfs_url(url).map_err(|e| anyhow::anyhow!("Invalid URL: {}", e))?;
+
+        if vfs_path.is_local() {
+            // Local path - use existing navigation
+            self.navigate_to(vfs_path.path)
+        } else {
+            // Remote path - update VFS state and trigger connection/listing
+            self.vfs
+                .navigate_to(vfs_path.clone())
+                .map_err(|e| anyhow::anyhow!("VFS navigation failed: {}", e))?;
+
+            // If already connected, start listing (otherwise connection will trigger it)
+            if !self.vfs.is_connecting() && !self.vfs.has_pending_operation() {
+                self.vfs.start_list_dir();
+            }
+
+            // Don't update current_path yet - wait for listing to complete
+            // The path will be synced when tick() succeeds
+            Ok(())
+        }
+    }
+
+    /// Get reference to VFS state (for network filesystem operations).
+    pub fn vfs_state(&self) -> &VfsState {
+        &self.vfs
+    }
+
+    /// Get mutable reference to VFS state.
+    pub fn vfs_state_mut(&mut self) -> &mut VfsState {
+        &mut self.vfs
+    }
+
+    /// Check if current path is a remote (network) filesystem.
+    pub fn is_remote(&self) -> bool {
+        self.vfs.is_remote()
+    }
+
+    /// Get display path (includes protocol for remote paths).
+    pub fn display_path(&self) -> String {
+        self.vfs.display_path()
     }
 
     /// Load the contents of the current directory
@@ -449,7 +600,29 @@ impl FileManager {
         // Invalidate git_root when navigating to a new directory
         // This triggers re-registration with watcher in check_watcher_events()
         self.git_root = None;
+
+        // Update debounce timestamp to prevent rapid subsequent reloads from being skipped
+        self.navigation.last_reload_time = Some(std::time::Instant::now());
+
         self.load_directory_inner(false)
+    }
+
+    /// Force directory reload, bypassing debounce
+    pub fn force_reload_directory(&mut self) -> Result<()> {
+        self.git_root = None;
+        // Clear last_reload_time to bypass debounce
+        self.navigation.last_reload_time = None;
+
+        // For remote paths, invalidate cache and start async listing
+        if self.vfs.is_remote() {
+            self.vfs.invalidate_cache();
+            self.vfs.start_list_dir();
+            // Entries will be populated by tick() when VFS operation completes
+            Ok(())
+        } else {
+            // Local paths can reload synchronously
+            self.load_directory_inner(false)
+        }
     }
 
     /// Navigate to a specific file - opens its parent directory and selects the file
@@ -487,7 +660,104 @@ impl FileManager {
             return Ok(());
         }
 
+        // For remote paths, invalidate cache and start async listing
+        // Entries will be populated by tick() when VFS operation completes
+        if self.vfs.is_remote() {
+            self.vfs.invalidate_cache();
+            self.vfs.start_list_dir();
+            return Ok(());
+        }
+
         self.load_directory_inner(true)
+    }
+
+    /// Update entries from VFS directory listing (for remote directories).
+    fn update_entries_from_vfs(&mut self, vfs_entries: Vec<VfsEntry>) {
+        // Save current state BEFORE clearing entries for cursor restoration
+        let previous_index = self.selected;
+        let previous_scroll_offset = self.scroll_offset;
+        let current_name = self.entries.get(self.selected).map(|e| e.name.clone());
+
+        self.entries.clear();
+        self.selected = 0;
+        self.scroll_offset = 0;
+        self.selection.clear();
+
+        // Add ".." entry for parent directory navigation (unless at root)
+        if self.vfs.current_path().parent().is_some() {
+            self.entries.push(FileEntry {
+                name: "..".to_string(),
+                is_dir: true,
+                is_symlink: false,
+                is_executable: false,
+                is_readonly: false,
+                git_status: GitStatus::Unmodified,
+                size: None,
+                modified: None,
+            });
+        }
+
+        // Convert and add VFS entries
+        let mut file_entries: Vec<FileEntry> = vfs_entries
+            .into_iter()
+            .map(FileEntry::from_vfs_entry)
+            .collect();
+
+        // Sort: directories first, then alphabetically by name (case-insensitive)
+        file_entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+        });
+
+        self.entries.extend(file_entries);
+
+        // Clear git status (not applicable for remote files)
+        self.git_status_cache = None;
+        self.git_root = None;
+
+        // Restore cursor position intelligently
+        // Priority: newly created item > navigating down > normal restoration
+        if let Some(created_name) = self.navigation.take_newly_created() {
+            // Navigate to newly created/copied item (highest priority)
+            if let Some(idx) = self.entries.iter().position(|e| e.name == created_name) {
+                self.selected = idx;
+                // Ensure cursor is visible in viewport
+                if self.visible_height > 0 {
+                    self.adjust_scroll_offset(self.visible_height);
+                }
+            } else if !self.entries.is_empty() {
+                // Item not found (shouldn't happen) - stay on current or last item
+                self.selected = previous_index.min(self.entries.len() - 1);
+            }
+        } else if self.navigation.check_and_reset_navigating_down() {
+            // When entering a subdirectory, always start at first item ("..")
+            self.selected = 0;
+            self.scroll_offset = 0;
+        } else if let Some(name) = current_name {
+            if let Some(pos) = self.entries.iter().position(|e| e.name == name) {
+                // Found file by name - restore to its position
+                self.selected = pos;
+            } else if !self.entries.is_empty() {
+                // File not found (deleted) - use previous index or last available
+                self.selected = previous_index.min(self.entries.len() - 1);
+            }
+
+            // Restore scroll_offset using real visible_height
+            if self.visible_height > 0 {
+                // If all items fit on screen - no scroll needed
+                if self.entries.len() <= self.visible_height {
+                    self.scroll_offset = 0;
+                } else {
+                    // Restore previous offset if still valid
+                    let max_scroll = self.entries.len().saturating_sub(self.visible_height);
+                    self.scroll_offset = previous_scroll_offset.min(max_scroll);
+                }
+                // Ensure cursor is visible
+                self.adjust_scroll_offset(self.visible_height);
+            }
+            // If visible_height == 0, render() will recalculate on first draw
+        }
     }
 
     /// Internal method to load directory with optional selection preservation
@@ -525,7 +795,9 @@ impl FileManager {
         if !preserve_selection {
             self.git_status_cache = None;
         }
-        self.git_status_receiver = Some(get_git_status_async(self.current_path.clone()));
+        if self.vfs.is_local() {
+            self.git_status_receiver = Some(get_git_status_async(self.current_path.clone()));
+        }
 
         // Add parent directory if not at root
         if self.current_path.parent().is_some() {
@@ -542,7 +814,14 @@ impl FileManager {
         }
 
         // Read directory contents
-        if let Ok(read_dir) = fs::read_dir(&self.current_path) {
+        // For remote paths, skip local file reading - entries come from VFS via update_entries_from_vfs()
+        if self.vfs.is_remote() {
+            termide_logger::debug(
+                "load_directory_inner: Skipping local read for remote path".to_string(),
+            );
+            // For remote paths, entries will be populated by update_entries_from_vfs()
+            // when the VFS connection completes and directory listing is received
+        } else if let Ok(read_dir) = fs::read_dir(&self.current_path) {
             for entry in read_dir.flatten() {
                 if let Ok(metadata) = entry.metadata() {
                     let name = entry.file_name().to_string_lossy().to_string();
@@ -609,7 +888,10 @@ impl FileManager {
                 }
             }
         } else {
-            log::warn!("Failed to read directory: {}", self.current_path.display());
+            termide_logger::warn(format!(
+                "Failed to read directory: {}",
+                self.current_path.display()
+            ));
         }
 
         // Note: deleted files are added when async git status completes (apply_git_statuses)
@@ -631,7 +913,20 @@ impl FileManager {
         }
 
         // Restore cursor position
-        if self.navigation.check_and_reset_navigating_down() {
+        // Priority: newly created item > navigating down > normal restoration
+        if let Some(created_name) = self.navigation.take_newly_created() {
+            // Navigate to newly created item (highest priority)
+            if let Some(idx) = self.entries.iter().position(|e| e.name == created_name) {
+                self.selected = idx;
+                // Ensure cursor is visible
+                if self.visible_height > 0 {
+                    self.adjust_scroll_offset(self.visible_height);
+                }
+            } else if !self.entries.is_empty() {
+                // Item not found (shouldn't happen) - stay on current or last item
+                self.selected = previous_index.min(self.entries.len() - 1);
+            }
+        } else if self.navigation.check_and_reset_navigating_down() {
             // When entering a subdirectory, always start at first item ("..")
             self.selected = 0;
             self.scroll_offset = 0;
@@ -685,7 +980,14 @@ impl FileManager {
                 self.navigation
                     .save_for_going_up(dir_name.to_string_lossy().to_string());
             }
-            if let Some(parent) = self.current_path.parent() {
+
+            if self.vfs.is_remote() {
+                // For remote paths, navigate through VFS
+                self.vfs.navigate_up();
+                // Don't update current_path yet - wait for listing to complete
+                // The path will be synced when tick() succeeds
+                self.vfs.start_list_dir();
+            } else if let Some(parent) = self.current_path.parent() {
                 self.current_path = parent.to_path_buf();
                 let _ = self.load_directory();
             }
@@ -694,12 +996,27 @@ impl FileManager {
 
         if entry.is_dir {
             self.navigation.prepare_for_going_down();
-            self.current_path.push(&entry.name);
-            let _ = self.load_directory();
+
+            if self.vfs.is_remote() {
+                // For remote paths, navigate through VFS
+                self.vfs.navigate_down(&entry.name);
+                // Don't update current_path yet - wait for listing to complete
+                // The path will be synced when tick() succeeds
+                self.vfs.start_list_dir();
+            } else {
+                self.current_path.push(&entry.name);
+                let _ = self.load_directory();
+            }
             return None;
         }
 
-        // This is a file - delegate to helper
+        // This is a file - check if remote
+        if self.vfs.is_remote() {
+            let vfs_path = self.vfs.current_path().join(&entry.name);
+            return Some(PanelEvent::OpenRemoteFile(vfs_path.to_url_string()));
+        }
+
+        // Local path handling
         let file_path = self.current_path.join(&entry.name);
         determine_file_open_event(entry, &file_path, FileOpenMode::Default)
     }
@@ -708,6 +1025,23 @@ impl FileManager {
     /// Returns `Some(PanelEvent::OpenFile)` if a file should be opened
     fn edit_file(&mut self) -> Option<PanelEvent> {
         let entry = self.entries.get(self.selected)?;
+
+        // Prohibit operations on deleted files
+        if entry.git_status == GitStatus::Deleted {
+            return None;
+        }
+
+        // Directories and ".." - do nothing for file operations
+        if entry.is_dir || entry.name == ".." {
+            return None;
+        }
+
+        // Check if remote
+        if self.vfs.is_remote() {
+            let vfs_path = self.vfs.current_path().join(&entry.name);
+            return Some(PanelEvent::OpenRemoteFile(vfs_path.to_url_string()));
+        }
+
         let file_path = self.current_path.join(&entry.name);
         determine_file_open_event(entry, &file_path, FileOpenMode::ForceEdit)
     }
@@ -716,6 +1050,23 @@ impl FileManager {
     /// Similar to enter() but treats executables as text files
     fn view_file(&mut self) -> Option<PanelEvent> {
         let entry = self.entries.get(self.selected)?;
+
+        // Prohibit operations on deleted files
+        if entry.git_status == GitStatus::Deleted {
+            return None;
+        }
+
+        // Directories and ".." - do nothing for file operations
+        if entry.is_dir || entry.name == ".." {
+            return None;
+        }
+
+        // Check if remote
+        if self.vfs.is_remote() {
+            let vfs_path = self.vfs.current_path().join(&entry.name);
+            return Some(PanelEvent::OpenRemoteFile(vfs_path.to_url_string()));
+        }
+
         let file_path = self.current_path.join(&entry.name);
         determine_file_open_event(entry, &file_path, FileOpenMode::View)
     }
@@ -834,10 +1185,20 @@ impl Panel for FileManager {
 
     fn title(&self) -> String {
         // Return full path, let smart_truncate_title() handle truncation
-        let path = self.current_path.display().to_string();
-        if self.is_git_status_loading() {
+        // Use VFS display path for remote paths (includes protocol)
+        let path = if self.is_remote() {
+            self.display_path()
+        } else {
+            self.current_path.display().to_string()
+        };
+
+        // Show spinner for VFS loading or git status loading
+        if self.vfs.is_loading() {
             let spinner = constants::spinner_frame();
-            format!("{} {} (git status)", spinner, path)
+            format!("{} {}", spinner, path)
+        } else if self.is_git_status_loading() {
+            let spinner = constants::spinner_frame();
+            format!("{} {} (git)", spinner, path)
         } else {
             path
         }
@@ -847,6 +1208,7 @@ impl Panel for FileManager {
         self.cached_theme = *theme;
         self.cached_config = config.file_manager.clone();
         self.vim_mode = config.general.vim_mode;
+        self.cached_vfs_timeout_secs = config.vfs.connection_timeout_secs;
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
@@ -1112,11 +1474,122 @@ impl Panel for FileManager {
         None
     }
 
+    fn captures_escape(&self) -> bool {
+        // Capture Escape when there's a pending VFS operation (e.g., connecting to remote)
+        // This prevents the global handler from closing the panel
+        self.vfs.has_pending_operation()
+    }
+
+    fn tick(&mut self) -> Vec<PanelEvent> {
+        let mut events = Vec::new();
+
+        // Check for timeout and update status bar during connection
+        if let Some((status, Some(secs))) = self.vfs.connection_status_with_elapsed() {
+            // Update status bar with connection progress
+            events.push(PanelEvent::ShowMessage(format!("{} {}s", status, secs)));
+
+            // Check for timeout
+            if secs >= self.cached_vfs_timeout_secs {
+                termide_logger::warn(format!("VFS connection timeout after {}s", secs));
+                if self.vfs.cancel_pending().is_some() {
+                    // Sync FileManager path with VfsState
+                    self.current_path = self.vfs.path_buf();
+                    let _ = self.load_directory();
+                    let t = termide_i18n::t();
+                    self.show_info_modal(
+                        t.connection_timeout_title(),
+                        t.connection_timeout_message(),
+                    );
+                    events.push(PanelEvent::ClearStatus);
+                    events.push(PanelEvent::NeedsRedraw);
+                    return events;
+                }
+            }
+        }
+
+        // Poll VFS operations for completion
+        if let Some(result) = self.vfs.tick() {
+            match result {
+                Ok(entries) => {
+                    // Directory listing completed - sync path and update entries
+                    self.current_path = self.vfs.path_buf();
+                    self.update_entries_from_vfs(entries);
+                    events.push(PanelEvent::ClearStatus);
+                    events.push(PanelEvent::NeedsRedraw);
+                    return events;
+                }
+                Err(e) => {
+                    termide_logger::error(format!("VFS operation failed: {}", e));
+                    // VfsState already restored to previous path, sync FileManager
+                    self.current_path = self.vfs.path_buf();
+                    let _ = self.load_directory();
+                    let t = termide_i18n::t();
+                    self.show_info_modal(t.connection_error_title(), &format!("{}", e));
+                    events.push(PanelEvent::ClearStatus);
+                    events.push(PanelEvent::NeedsRedraw);
+                    return events;
+                }
+            }
+        }
+
+        // Also check for pending git status (existing functionality)
+        self.check_git_status_async();
+
+        events
+    }
+
     fn to_session(&self, _session_dir: &std::path::Path) -> Option<SessionPanel> {
-        // Save file manager with current directory path
-        Some(SessionPanel::FileManager {
-            path: self.current_path.clone(),
-        })
+        // Save file manager with current directory path or VFS URL
+        let path_or_url = self.display_path(); // Returns VFS URL for remote, local path for local
+
+        // Defensive check: ensure remote paths include protocol
+        if self.is_remote() && !path_or_url.contains("://") {
+            termide_logger::warn(format!(
+                "Session save WARNING: Remote path missing protocol: '{}'. VfsPath details: protocol={:?}, host={:?}, username={:?}, path={:?}",
+                path_or_url,
+                self.vfs.current_path().protocol,
+                self.vfs.current_path().host,
+                self.vfs.current_path().username,
+                self.vfs.current_path().path
+            ));
+
+            // Try to reconstruct the URL manually
+            let vfs_path = self.vfs.current_path();
+            let reconstructed = if vfs_path.protocol.is_remote() {
+                let mut url = format!("{}://", vfs_path.protocol.scheme());
+                if let Some(ref user) = vfs_path.username {
+                    url.push_str(user);
+                    url.push('@');
+                }
+                if let Some(ref host) = vfs_path.host {
+                    url.push_str(host);
+                }
+                if let Some(port) = vfs_path.port {
+                    url.push(':');
+                    url.push_str(&port.to_string());
+                }
+                url.push_str(&vfs_path.path.display().to_string());
+                termide_logger::info(format!("Reconstructed URL: {}", url));
+                url
+            } else {
+                termide_logger::error(
+                    "VfsPath.protocol is not remote but is_remote() returned true!",
+                );
+                path_or_url
+            };
+
+            Some(SessionPanel::FileManager {
+                path_or_url: reconstructed,
+            })
+        } else {
+            termide_logger::debug(format!(
+                "Session save: Saving path '{}' (is_remote={})",
+                path_or_url,
+                self.is_remote()
+            ));
+
+            Some(SessionPanel::FileManager { path_or_url })
+        }
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -1130,6 +1603,11 @@ impl Panel for FileManager {
     fn get_working_directory(&self) -> Option<PathBuf> {
         Some(self.current_path.clone())
     }
+
+    fn get_working_directory_display(&self) -> Option<String> {
+        // For remote paths, return the full URL; for local paths, return the path string
+        Some(self.display_path())
+    }
 }
 
 // Additional methods used by app layer (not part of Panel trait)
@@ -1137,6 +1615,25 @@ impl FileManager {
     /// Take modal window request (if any).
     pub fn take_modal_request(&mut self) -> Option<(PendingAction, ActiveModal)> {
         self.modal_request.take()
+    }
+
+    /// Set newly created item name for cursor navigation after reload
+    pub fn set_newly_created(&mut self, name: String) {
+        self.navigation.set_newly_created(name);
+    }
+
+    /// Show an information modal with a message and OK button.
+    fn show_info_modal(&mut self, title: &str, message: &str) {
+        let t = termide_i18n::t();
+        let modal = InfoActionModal::new(
+            title,
+            vec![("".to_string(), message.to_string())],
+            vec![ActionButton::new(t.modal_ok(), "ok")],
+        );
+        self.modal_request = Some((
+            PendingAction::VfsMessage,
+            ActiveModal::InfoAction(Box::new(modal)),
+        ));
     }
 
     /// Execute a file manager command and return resulting events.
@@ -1191,7 +1688,34 @@ impl FileManager {
                 self.move_down();
             }
             FmCommand::SelectAll => self.select_all(),
-            FmCommand::ClearSelection => self.selection.clear(),
+            FmCommand::ClearSelection => {
+                // If there's a pending VFS operation, cancel it instead of clearing selection
+                if self.vfs.has_pending_operation() {
+                    if let Some(message) = self.vfs.cancel_pending() {
+                        // Sync FileManager path with VfsState
+                        self.current_path = self.vfs.path_buf();
+                        let _ = self.load_directory();
+                        // Show cancellation modal
+                        let t = termide_i18n::t();
+                        self.show_info_modal(t.connection_cancelled_title(), &message);
+                        events.push(PanelEvent::ClearStatus);
+                    }
+                } else {
+                    self.selection.clear();
+                }
+            }
+            FmCommand::CancelOperation => {
+                // Explicitly cancel pending VFS operation
+                if let Some(message) = self.vfs.cancel_pending() {
+                    // Sync FileManager path with VfsState
+                    self.current_path = self.vfs.path_buf();
+                    let _ = self.load_directory();
+                    // Show cancellation modal
+                    let t = termide_i18n::t();
+                    self.show_info_modal(t.connection_cancelled_title(), &message);
+                    events.push(PanelEvent::ClearStatus);
+                }
+            }
             FmCommand::MoveUpWithSelection => self.move_up_with_selection(),
             FmCommand::MoveDownWithSelection => self.move_down_with_selection(),
             FmCommand::PageUpWithSelection => self.page_up_with_selection(),
@@ -1386,6 +1910,18 @@ impl FileManager {
                     PendingAction::PrevPanel,
                     ActiveModal::Confirm(Box::new(modal)),
                 ));
+            }
+            FmCommand::GoToPath => {
+                // Open input modal to enter path or URL (supports sftp://, ftp://, etc.)
+                let t = termide_i18n::t();
+                let current_path = self.display_path();
+                let modal =
+                    InputModal::with_default(t.fm_goto_title(), t.fm_goto_prompt(), &current_path);
+                let action = PendingAction::GoToPath {
+                    panel_index: 0,
+                    current_directory: self.current_path.clone(),
+                };
+                self.modal_request = Some((action, ActiveModal::Input(Box::new(modal))));
             }
 
             // No operation

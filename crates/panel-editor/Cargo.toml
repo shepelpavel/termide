@@ -20,6 +20,7 @@ dirs.workspace = true
 
 # Workspace crates
 termide-buffer = { path = "../buffer" }
+termide-vfs = { path = "../vfs" }
 termide-clipboard = { path = "../clipboard" }
 termide-config = { path = "../config" }
 termide-core = { path = "../core" }

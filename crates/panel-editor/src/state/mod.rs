@@ -13,7 +13,7 @@ mod lsp_state;
 mod rendering_cache;
 mod search_controller;
 
-pub(crate) use file_state::FileState;
+pub use file_state::FileState;
 pub(crate) use git_integration::GitIntegration;
 pub(crate) use input_state::InputState;
 pub(crate) use lsp_state::LspState;

@@ -285,12 +285,21 @@ impl StatusBar {
             }
 
             spans
-        } else if let Some(disk) = disk_space {
-            // Panels with disk space info (like git status): show title + disk info
-            let mut spans = vec![Span::styled(format!(" {}", panel_title), highlight_style)];
-            append_disk_space(&mut spans, disk, theme, total_width);
-            spans
         } else {
+            // No panel-specific info - check for info messages (e.g., VFS connection status)
+            if let Some((message, _is_error)) = params.status_message {
+                return vec![Span::styled(format!(" {} ", message), highlight_style)];
+            }
+
+            // Fall through to disk_space or default handling
+            if let Some(disk) = disk_space {
+                // Panels with disk space info (like git status): show title + disk info
+                let mut spans = vec![Span::styled(format!(" {}", panel_title), highlight_style)];
+                append_disk_space(&mut spans, disk, theme, total_width);
+                return spans;
+            }
+
+            // Default: simple title display
             match panel_title {
                 "Debug" => {
                     // Debug: layout mode and dimensions

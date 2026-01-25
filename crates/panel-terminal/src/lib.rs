@@ -238,6 +238,134 @@ impl Terminal {
         })
     }
 
+    /// Create new terminal that runs a specific command (e.g., ssh user@host)
+    pub fn new_with_command(rows: u16, cols: u16, command: &str) -> Result<Self> {
+        let pty_system = native_pty_system();
+
+        let size = PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        };
+
+        let pair = pty_system.openpty(size)?;
+
+        // Parse command and arguments
+        let parts: Vec<&str> = command.split_whitespace().collect();
+        if parts.is_empty() {
+            anyhow::bail!("Empty command");
+        }
+
+        let mut cmd = CommandBuilder::new(parts[0]);
+        for arg in &parts[1..] {
+            cmd.arg(*arg);
+        }
+
+        // Set working directory to current
+        let working_dir = std::env::current_dir().unwrap_or_else(|_| "/".into());
+        cmd.cwd(&working_dir);
+
+        // Set TERM based on detected terminal capabilities
+        let term_value = get_terminal_caps()
+            .map(|caps| caps.term_for_child())
+            .unwrap_or("xterm-256color");
+        cmd.env("TERM", term_value);
+        cmd.env(
+            "HOME",
+            std::env::var("HOME").unwrap_or_else(|_| "/".to_string()),
+        );
+        cmd.env(
+            "USER",
+            std::env::var("USER").unwrap_or_else(|_| "user".to_string()),
+        );
+        cmd.env(
+            "LANG",
+            std::env::var("LANG").unwrap_or_else(|_| "en_US.UTF-8".to_string()),
+        );
+        if let Ok(lc_all) = std::env::var("LC_ALL") {
+            cmd.env("LC_ALL", lc_all);
+        }
+        cmd.env("PWD", working_dir.display().to_string());
+        cmd.env(
+            "PATH",
+            std::env::var("PATH")
+                .unwrap_or_else(|_| "/run/current-system/sw/bin:/usr/bin:/bin".to_string()),
+        );
+
+        let child = pair.slave.spawn_command(cmd)?;
+        let shell_pid = child.process_id();
+
+        let screen = Arc::new(RwLock::new(TerminalScreen::new(
+            rows as usize,
+            cols as usize,
+        )));
+
+        let mut reader = pair.master.try_clone_reader()?;
+        let writer = pair.master.take_writer()?;
+
+        let pty = Arc::new(Mutex::new(pair.master));
+        let is_alive = Arc::new(Mutex::new(true));
+        let has_new_data = Arc::new(AtomicBool::new(false));
+
+        // Start thread for reading from PTY
+        let screen_clone = Arc::clone(&screen);
+        let is_alive_clone = Arc::clone(&is_alive);
+        let has_new_data_clone = Arc::clone(&has_new_data);
+        thread::spawn(move || {
+            let mut parser = Parser::new();
+            let mut buf = [0u8; 16384];
+            let mut performer = terminal::VtPerformer {
+                screen: Arc::clone(&screen_clone),
+                pending_backslash: false,
+                pending_ops: Vec::with_capacity(8192),
+            };
+
+            loop {
+                match reader.read(&mut buf) {
+                    Ok(n) if n > 0 => {
+                        for byte in &buf[..n] {
+                            parser.advance(&mut performer, *byte);
+                        }
+                        performer.flush();
+                        has_new_data_clone.store(true, Ordering::Release);
+                    }
+                    Ok(_) => break,
+                    Err(_) => break,
+                }
+            }
+
+            if let Ok(mut alive) = is_alive_clone.lock() {
+                *alive = false;
+            }
+        });
+
+        // Title prefix based on command
+        let title_prefix = command.to_string();
+
+        Ok(Self {
+            pty,
+            writer,
+            child,
+            shell_pid,
+            screen,
+            size,
+            is_alive,
+            title_prefix,
+            initial_cwd: working_dir,
+            cached_theme: Theme::default(),
+            keybindings: TerminalKeybindings::default(),
+            has_new_data,
+            cached_lines: None,
+            cached_cursor: (0, 0),
+            cached_cursor_shown: false,
+            cached_focus: false,
+            cached_use_alt_screen: false,
+            hovered_link: None,
+            ctrl_pressed: false,
+        })
+    }
+
     /// Resize terminal
     pub fn resize(&mut self, rows: u16, cols: u16) -> Result<()> {
         self.size = PtySize {

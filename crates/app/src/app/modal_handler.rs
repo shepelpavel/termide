@@ -3,6 +3,7 @@
 use anyhow::Result;
 
 use super::App;
+use crate::panel_ext::PanelExt;
 use crate::state::ActiveModal;
 use termide_modal::{
     Modal, ModalResult, ReplaceAction, ReplaceModalResult, SearchAction, SearchModalResult,
@@ -40,6 +41,7 @@ impl App {
             let modal_result = match modal {
                 ActiveModal::Commit(m) => m.handle_key(key)?.map(box_modal_result),
                 ActiveModal::Confirm(m) => m.handle_key(key)?.map(box_modal_result),
+                ActiveModal::Choice(m) => m.handle_key(key)?.map(box_modal_result),
                 ActiveModal::Input(m) => m.handle_key(key)?.map(box_modal_result),
                 ActiveModal::Select(m) => m.handle_key(key)?.map(box_modal_result),
                 ActiveModal::Overwrite(m) => m.handle_key(key)?.map(box_modal_result),
@@ -57,6 +59,7 @@ impl App {
                 ActiveModal::SaveAs(m) => m.handle_key(key)?.map(box_modal_result),
                 ActiveModal::DirectorySwitcher(m) => m.handle_key(key)?.map(box_modal_result),
                 ActiveModal::BookmarkAdd(m) => m.handle_key(key)?.map(box_modal_result),
+                ActiveModal::Progress(m) => m.handle_key(key)?.map(box_modal_result),
             };
 
             // If modal window returned result, handle it
@@ -65,6 +68,71 @@ impl App {
                 let is_rename_pattern = matches!(modal, ActiveModal::RenamePattern(_));
                 let is_search = matches!(modal, ActiveModal::Search(_));
                 let is_replace = matches!(modal, ActiveModal::Replace(_));
+                let is_progress = matches!(modal, ActiveModal::Progress(_));
+
+                // Handle Progress modal pause/cancel/resume
+                if is_progress {
+                    if let ModalResult::Confirmed(value) = &result {
+                        if let Some(paused) = value.downcast_ref::<bool>() {
+                            if *paused {
+                                // User toggled pause - update BatchOperation pause state
+                                if let Some(
+                                    termide_state::PendingAction::ContinueBatchOperation {
+                                        ref mut operation,
+                                    },
+                                ) = self.state.pending_action
+                                {
+                                    // Get modal pause state to sync
+                                    if let Some(ActiveModal::Progress(m)) = &self.state.active_modal
+                                    {
+                                        operation.pause_state = if m.is_paused() {
+                                            termide_state::PauseState::Paused
+                                        } else {
+                                            termide_state::PauseState::Running
+                                        };
+
+                                        // If resumed, continue processing
+                                        if operation.pause_state
+                                            == termide_state::PauseState::Running
+                                        {
+                                            let op = self.state.pending_action.take().unwrap();
+                                            if let termide_state::PendingAction::ContinueBatchOperation {
+                                                operation: batch_op,
+                                            } = op
+                                            {
+                                                self.process_batch_operation(batch_op);
+                                            }
+                                        }
+                                    }
+                                }
+                                return Ok(()); // Don't close modal
+                            } else {
+                                // User cancelled - signal background thread to cancel
+                                if let Some(ref copy_op) = self.state.local_copy_operation {
+                                    copy_op
+                                        .cancel_flag
+                                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                                }
+                                if let Some(ref copy_op) = self.state.local_directory_copy_operation
+                                {
+                                    copy_op
+                                        .cancel_flag
+                                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                                }
+                                if let Some(ref scan_op) = self.state.local_scan_operation {
+                                    scan_op
+                                        .cancel_flag
+                                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                                }
+
+                                // Close progress modal - the error handler will show the delete confirmation
+                                self.state.close_modal();
+                                // Don't clear operations yet - check_local_*_copy_progress will handle them
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
 
                 // Handle cancellation from RenamePattern - return to ConflictModal
                 if is_rename_pattern && matches!(result, ModalResult::Cancelled) {
@@ -146,6 +214,7 @@ impl App {
             let modal_result = match modal {
                 ActiveModal::Commit(m) => m.handle_mouse(mouse, modal_area)?.map(box_modal_result),
                 ActiveModal::Confirm(m) => m.handle_mouse(mouse, modal_area)?.map(box_modal_result),
+                ActiveModal::Choice(m) => m.handle_mouse(mouse, modal_area)?.map(box_modal_result),
                 ActiveModal::Input(m) => m.handle_mouse(mouse, modal_area)?.map(box_modal_result),
                 ActiveModal::Select(m) => m.handle_mouse(mouse, modal_area)?.map(box_modal_result),
                 ActiveModal::Overwrite(m) => {
@@ -185,6 +254,9 @@ impl App {
                 ActiveModal::BookmarkAdd(m) => {
                     m.handle_mouse(mouse, modal_area)?.map(box_modal_result)
                 }
+                ActiveModal::Progress(m) => {
+                    m.handle_mouse(mouse, modal_area)?.map(box_modal_result)
+                }
             };
 
             // If modal window returned result, handle it
@@ -192,6 +264,71 @@ impl App {
                 // Check modal type before taking state references
                 let is_search = matches!(modal, ActiveModal::Search(_));
                 let is_replace = matches!(modal, ActiveModal::Replace(_));
+                let is_progress = matches!(modal, ActiveModal::Progress(_));
+
+                // Handle Progress modal pause/cancel/resume (same as keyboard handling)
+                if is_progress {
+                    if let ModalResult::Confirmed(value) = &result {
+                        if let Some(paused) = value.downcast_ref::<bool>() {
+                            if *paused {
+                                // User toggled pause - update BatchOperation pause state
+                                if let Some(
+                                    termide_state::PendingAction::ContinueBatchOperation {
+                                        ref mut operation,
+                                    },
+                                ) = self.state.pending_action
+                                {
+                                    // Get modal pause state to sync
+                                    if let Some(ActiveModal::Progress(m)) = &self.state.active_modal
+                                    {
+                                        operation.pause_state = if m.is_paused() {
+                                            termide_state::PauseState::Paused
+                                        } else {
+                                            termide_state::PauseState::Running
+                                        };
+
+                                        // If resumed, continue processing
+                                        if operation.pause_state
+                                            == termide_state::PauseState::Running
+                                        {
+                                            let op = self.state.pending_action.take().unwrap();
+                                            if let termide_state::PendingAction::ContinueBatchOperation {
+                                                operation: batch_op,
+                                            } = op
+                                            {
+                                                self.process_batch_operation(batch_op);
+                                            }
+                                        }
+                                    }
+                                }
+                                return Ok(()); // Don't close modal
+                            } else {
+                                // User cancelled - signal background thread to cancel
+                                if let Some(ref copy_op) = self.state.local_copy_operation {
+                                    copy_op
+                                        .cancel_flag
+                                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                                }
+                                if let Some(ref copy_op) = self.state.local_directory_copy_operation
+                                {
+                                    copy_op
+                                        .cancel_flag
+                                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                                }
+                                if let Some(ref scan_op) = self.state.local_scan_operation {
+                                    scan_op
+                                        .cancel_flag
+                                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                                }
+
+                                // Close progress modal - the error handler will show the delete confirmation
+                                self.state.close_modal();
+                                // Don't clear operations yet - check_local_*_copy_progress will handle them
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
 
                 // Handle search/replace modals with shared helper
                 if self
@@ -352,6 +489,50 @@ impl App {
                 // Add bookmark
                 PendingAction::AddBookmark => {
                     self.handle_add_bookmark_result(value)?;
+                }
+                // Go to path/URL
+                PendingAction::GoToPath {
+                    panel_index: _,
+                    current_directory: _,
+                } => {
+                    self.handle_goto_path(value)?;
+                }
+                // VFS message (connection cancelled, error, etc.) - just close modal
+                PendingAction::VfsMessage => {
+                    // No-op, modal is already closed
+                }
+                // Handle cancelled copy/move operation cleanup
+                PendingAction::CancelCopyCleanup {
+                    partial_path,
+                    all_dest_paths,
+                    is_directory,
+                    batch_operation,
+                } => {
+                    self.handle_cancel_copy_cleanup(
+                        partial_path,
+                        all_dest_paths,
+                        is_directory,
+                        batch_operation,
+                        value,
+                    )?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Handle go to path/URL result
+    fn handle_goto_path(&mut self, value: Box<dyn std::any::Any>) -> Result<()> {
+        if let Some(path_str) = value.downcast_ref::<String>() {
+            if path_str.is_empty() {
+                return Ok(());
+            }
+
+            // Navigate to the path using VFS URL support
+            if let Some(panel) = self.layout_manager.active_panel_mut() {
+                if let Some(fm) = panel.as_file_manager_mut() {
+                    // Try to navigate - errors are silently ignored for now
+                    let _ = fm.navigate_to_url(path_str);
                 }
             }
         }

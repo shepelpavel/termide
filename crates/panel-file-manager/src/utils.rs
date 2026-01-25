@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 use std::time::SystemTime;
 
-use termide_git::GitStatus;
+use termide_git::{truncate_right, GitStatus};
 use termide_ui::constants::{GIGABYTE, KILOBYTE, MEGABYTE};
 
 use super::FileEntry;
@@ -70,16 +70,9 @@ pub fn get_attribute(entry: &FileEntry, is_selected: bool) -> &'static str {
     " "
 }
 
-/// Truncate file name to specified length (in characters, not bytes)
+/// Truncate file name to specified display width
 pub fn truncate_name(name: &str, max_len: usize) -> String {
-    let char_count = name.chars().count();
-    if char_count <= max_len {
-        name.to_string()
-    } else {
-        // Take first (max_len - 1) characters and add ellipsis
-        let truncated: String = name.chars().take(max_len.saturating_sub(1)).collect();
-        format!("{}…", truncated)
-    }
+    truncate_right(name, max_len)
 }
 
 /// Format file size in human-readable format (rounded to whole units)

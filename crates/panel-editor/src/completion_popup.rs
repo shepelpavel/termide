@@ -9,6 +9,7 @@ use ratatui::{
     style::{Modifier, Style},
 };
 use termide_theme::Theme;
+use termide_ui::path_utils::truncate_right;
 use unicode_width::UnicodeWidthStr;
 
 /// Maximum number of visible items in the popup.
@@ -279,7 +280,7 @@ impl CompletionPopup {
             // Render label
             let label_start = popup_rect.left() + 2;
             let max_label_len = (popup_rect.right().saturating_sub(label_start)) as usize;
-            let label = truncate_string(&item.label, max_label_len);
+            let label = truncate_right(&item.label, max_label_len);
 
             for (i, ch) in label.chars().enumerate() {
                 let x = label_start + i as u16;
@@ -370,38 +371,9 @@ fn kind_icon(kind: Option<CompletionItemKind>) -> char {
     }
 }
 
-/// Truncate string to max length with ellipsis.
-fn truncate_string(s: &str, max_len: usize) -> String {
-    if s.width() <= max_len {
-        s.to_string()
-    } else if max_len > 1 {
-        let mut result = String::new();
-        let mut width = 0;
-        for ch in s.chars() {
-            let ch_width = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1);
-            if width + ch_width + 1 > max_len {
-                result.push('…');
-                break;
-            }
-            result.push(ch);
-            width += ch_width;
-        }
-        result
-    } else {
-        s.chars().take(max_len).collect()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_truncate_string() {
-        assert_eq!(truncate_string("hello", 10), "hello");
-        assert_eq!(truncate_string("hello world", 8), "hello w…");
-        assert_eq!(truncate_string("hi", 2), "hi");
-    }
 
     #[test]
     fn test_empty_popup() {

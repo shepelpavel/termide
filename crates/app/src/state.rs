@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc};
 
 use termide_config::constants::DEFAULT_MAIN_PANEL_WIDTH;
 use termide_config::{BookmarksConfig, Config};
@@ -16,6 +16,7 @@ use termide_lsp::{LspConfig, LspManager, LspServerConfig};
 use termide_panel_editor::EditorConfig;
 use termide_system_monitor::SystemMonitor;
 use termide_theme::Theme;
+use termide_vfs::{VfsManager, VfsOperation, VfsPath};
 use termide_watcher::UnifiedWatcher;
 
 // Import core traits
@@ -91,6 +92,278 @@ impl std::fmt::Debug for ScriptOperationHandle {
     }
 }
 
+/// State for async download operation of remote files
+pub struct DownloadOperation {
+    /// VFS operation handle for the download
+    pub operation: VfsOperation<PathBuf>,
+    /// Remote path being downloaded
+    pub remote_path: VfsPath,
+    /// Local temp path where file is being downloaded
+    pub temp_path: PathBuf,
+    /// Editor config for opening the file
+    pub config: EditorConfig,
+    /// VFS manager reference for opening the editor
+    pub vfs_manager: Arc<VfsManager>,
+    /// When the download started (for timeout)
+    pub started: std::time::Instant,
+}
+
+impl std::fmt::Debug for DownloadOperation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DownloadOperation")
+            .field("remote_path", &self.remote_path.to_url_string())
+            .field("temp_path", &self.temp_path)
+            .field("started", &self.started)
+            .finish_non_exhaustive()
+    }
+}
+
+/// State for async upload operation of remote files
+pub struct UploadOperation {
+    /// VFS operation handle for the upload
+    pub operation: VfsOperation<()>,
+    /// Remote path being uploaded to
+    pub remote_path: VfsPath,
+    /// Local temp path being uploaded from
+    pub temp_path: PathBuf,
+    /// Which editor panel triggered this upload (for updating after completion)
+    pub editor_panel_id: usize,
+    /// When the upload started (for timeout)
+    pub started: std::time::Instant,
+    /// Whether to close editor panel after successful upload
+    pub close_after_upload: bool,
+}
+
+impl std::fmt::Debug for UploadOperation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UploadOperation")
+            .field("remote_path", &self.remote_path.to_url_string())
+            .field("temp_path", &self.temp_path)
+            .field("editor_panel_id", &self.editor_panel_id)
+            .field("started", &self.started)
+            .finish_non_exhaustive()
+    }
+}
+
+/// State for async batch copy/move download operation (remote→local) with progress and pause/cancel
+pub struct BatchDownloadOperation {
+    /// VFS download operation handle with progress and pause/cancel
+    pub operation: termide_vfs::VfsDownloadOperation,
+    /// Local destination path where file is being downloaded to
+    pub dest_path: PathBuf,
+    /// When the download started (for timeout)
+    pub started: std::time::Instant,
+    /// Whether this is a move operation (delete source after download)
+    pub is_move: bool,
+    /// VFS source path for deletion after move (only set if is_move)
+    pub vfs_source: Option<termide_vfs::VfsPath>,
+    /// VFS manager for deletion (only set if is_move)
+    pub vfs_manager: Option<std::sync::Arc<termide_vfs::VfsManager>>,
+    /// Last known total files for this item (for cumulative tracking)
+    pub last_total_files: usize,
+    /// Last known total bytes for this item (for cumulative tracking)
+    pub last_total_bytes: u64,
+}
+
+impl std::fmt::Debug for BatchDownloadOperation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BatchDownloadOperation")
+            .field("dest_path", &self.dest_path)
+            .field("started", &self.started)
+            .field("is_move", &self.is_move)
+            .finish_non_exhaustive()
+    }
+}
+
+/// State for async batch upload operation (local→remote) with progress
+pub struct BatchUploadOperation {
+    /// VFS upload operation handle with progress
+    pub operation: termide_vfs::VfsUploadOperation,
+    /// Local source path being uploaded
+    pub source_path: PathBuf,
+    /// Remote destination URL
+    pub dest_url: String,
+    /// Total bytes to upload for current file
+    pub total_bytes: u64,
+    /// When the upload started (for timeout)
+    pub started: std::time::Instant,
+    /// Whether this is a move operation (delete source after upload)
+    pub is_move: bool,
+    /// All source files to upload
+    pub all_sources: Vec<PathBuf>,
+    /// Remote destination base URL (directory)
+    pub dest_base_url: String,
+    /// Current file index in the batch
+    pub current_index: usize,
+    /// VFS manager for the upload
+    pub vfs_manager: std::sync::Arc<termide_vfs::VfsManager>,
+}
+
+impl std::fmt::Debug for BatchUploadOperation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BatchUploadOperation")
+            .field("source_path", &self.source_path)
+            .field("dest_url", &self.dest_url)
+            .field("total_bytes", &self.total_bytes)
+            .field("is_move", &self.is_move)
+            .field("current_index", &self.current_index)
+            .field("total_files", &self.all_sources.len())
+            .finish_non_exhaustive()
+    }
+}
+
+/// State for async local file copy operation with progress
+pub struct LocalCopyOperation {
+    /// Completion receiver
+    pub completion: mpsc::Receiver<anyhow::Result<PathBuf>>,
+    /// Progress receiver
+    pub progress: mpsc::Receiver<termide_panel_file_manager::CopyProgress>,
+    /// Source path (needed for Move to delete after copy)
+    pub source_path: PathBuf,
+    /// Destination path
+    pub dest_path: PathBuf,
+    /// Whether this is a move operation (delete source after copy)
+    pub is_move: bool,
+    /// Pause flag (shared with background thread)
+    pub pause_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Cancel flag (shared with background thread)
+    pub cancel_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl std::fmt::Debug for LocalCopyOperation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LocalCopyOperation")
+            .field("source_path", &self.source_path)
+            .field("dest_path", &self.dest_path)
+            .field("is_move", &self.is_move)
+            .field(
+                "pause_flag",
+                &self.pause_flag.load(std::sync::atomic::Ordering::Relaxed),
+            )
+            .field(
+                "cancel_flag",
+                &self.cancel_flag.load(std::sync::atomic::Ordering::Relaxed),
+            )
+            .finish_non_exhaustive()
+    }
+}
+
+/// State for async local directory copy operation with progress
+pub struct LocalDirectoryCopyOperation {
+    /// Completion receiver
+    pub completion: mpsc::Receiver<anyhow::Result<PathBuf>>,
+    /// Progress receiver
+    pub progress: mpsc::Receiver<termide_panel_file_manager::DirectoryCopyProgress>,
+    /// Source path (needed for Move to delete after copy)
+    pub source_path: PathBuf,
+    /// Destination path
+    pub dest_path: PathBuf,
+    /// Whether this is a move operation (delete source after copy)
+    pub is_move: bool,
+    /// Pause flag (shared with background thread)
+    pub pause_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Cancel flag (shared with background thread)
+    pub cancel_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Current file being copied (updated from progress, used for partial cleanup on cancel)
+    pub current_file: Option<PathBuf>,
+}
+
+impl std::fmt::Debug for LocalDirectoryCopyOperation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LocalDirectoryCopyOperation")
+            .field("source_path", &self.source_path)
+            .field("dest_path", &self.dest_path)
+            .field("is_move", &self.is_move)
+            .field(
+                "pause_flag",
+                &self.pause_flag.load(std::sync::atomic::Ordering::Relaxed),
+            )
+            .field(
+                "cancel_flag",
+                &self.cancel_flag.load(std::sync::atomic::Ordering::Relaxed),
+            )
+            .finish_non_exhaustive()
+    }
+}
+
+/// State for async directory scan operation before copy
+pub struct LocalScanOperation {
+    /// Completion receiver (returns DirectoryScanResult)
+    pub completion: mpsc::Receiver<anyhow::Result<termide_panel_file_manager::DirectoryScanResult>>,
+    /// Progress receiver
+    pub progress: mpsc::Receiver<termide_panel_file_manager::ScanProgress>,
+    /// Source path being scanned
+    pub source_path: PathBuf,
+    /// Destination path for copy after scan
+    pub dest_path: PathBuf,
+    /// Cancel flag (shared with background thread)
+    pub cancel_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Reference to the batch operation to continue after scan
+    pub batch_operation: Option<Box<BatchOperation>>,
+}
+
+impl std::fmt::Debug for LocalScanOperation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LocalScanOperation")
+            .field("source_path", &self.source_path)
+            .field("dest_path", &self.dest_path)
+            .field(
+                "cancel_flag",
+                &self.cancel_flag.load(std::sync::atomic::Ordering::Relaxed),
+            )
+            .finish_non_exhaustive()
+    }
+}
+
+/// State for async delete operation with progress
+pub struct LocalDeleteOperation {
+    /// Completion receiver
+    pub completion: mpsc::Receiver<anyhow::Result<()>>,
+    /// Progress receiver
+    pub progress: mpsc::Receiver<termide_panel_file_manager::DeleteProgress>,
+    /// Cancel flag (shared with background thread)
+    pub cancel_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl std::fmt::Debug for LocalDeleteOperation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LocalDeleteOperation")
+            .field(
+                "cancel_flag",
+                &self.cancel_flag.load(std::sync::atomic::Ordering::Relaxed),
+            )
+            .finish_non_exhaustive()
+    }
+}
+
+/// State for async VFS upload operation (local→remote file copy)
+pub struct VfsUploadState {
+    /// VFS operation handle for the upload (with progress)
+    pub operation: termide_vfs::VfsUploadOperation,
+    /// Local source path being uploaded
+    pub source_path: PathBuf,
+    /// Remote destination URL
+    pub dest_url: String,
+    /// Total bytes to upload
+    pub total_bytes: u64,
+    /// Whether this is a move operation (delete source after upload)
+    pub is_move: bool,
+    /// When the upload started (for timeout)
+    pub started: std::time::Instant,
+}
+
+impl std::fmt::Debug for VfsUploadState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("VfsUploadState")
+            .field("source_path", &self.source_path)
+            .field("dest_url", &self.dest_url)
+            .field("total_bytes", &self.total_bytes)
+            .field("is_move", &self.is_move)
+            .field("started", &self.started)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Global application state
 #[derive(Debug)]
 pub struct AppState {
@@ -114,6 +387,24 @@ pub struct AppState {
     pub git_operation_handle: Option<GitOperationHandle>,
     /// Handle for background script operation (.report. scripts)
     pub script_operation_handle: Option<ScriptOperationHandle>,
+    /// Handle for async remote file download operation
+    pub download_operation: Option<DownloadOperation>,
+    /// Handle for async remote file upload operation
+    pub upload_operation: Option<UploadOperation>,
+    /// Handle for async batch copy download operation (remote→local)
+    pub batch_download_operation: Option<BatchDownloadOperation>,
+    /// Handle for async local file copy operation with progress
+    pub local_copy_operation: Option<LocalCopyOperation>,
+    /// Handle for async local directory copy operation with progress
+    pub local_directory_copy_operation: Option<LocalDirectoryCopyOperation>,
+    /// Handle for async directory scan operation before copy
+    pub local_scan_operation: Option<LocalScanOperation>,
+    /// Handle for async delete operation with progress
+    pub local_delete_operation: Option<LocalDeleteOperation>,
+    /// Handle for async VFS upload operation (local→remote single file)
+    pub vfs_upload_state: Option<VfsUploadState>,
+    /// Handle for async batch upload operation (local→remote multiple files)
+    pub batch_upload_operation: Option<BatchUploadOperation>,
     /// Unified watcher for filesystem and git changes
     pub watcher: Option<UnifiedWatcher>,
     /// Current theme
@@ -185,6 +476,15 @@ impl AppState {
             dir_size_receiver: None,
             git_operation_handle: None,
             script_operation_handle: None,
+            download_operation: None,
+            upload_operation: None,
+            batch_download_operation: None,
+            local_copy_operation: None,
+            local_directory_copy_operation: None,
+            local_scan_operation: None,
+            local_delete_operation: None,
+            vfs_upload_state: None,
+            batch_upload_operation: None,
             watcher: None,
             theme,
             config,

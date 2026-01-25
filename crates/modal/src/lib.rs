@@ -20,6 +20,7 @@ pub use base::{
     check_mouse_click, check_mouse_click_with_item_height, CursorNavigation, MouseClickResult,
 };
 pub mod bookmark_add;
+pub mod choice;
 pub mod commit;
 pub mod confirm;
 pub mod conflict;
@@ -32,6 +33,7 @@ pub mod info;
 pub mod info_action;
 pub mod input;
 pub mod overwrite;
+pub mod progress;
 pub mod rename_pattern;
 pub mod replace;
 pub mod save_as;
@@ -40,6 +42,7 @@ pub mod select;
 pub mod sessions;
 
 pub use bookmark_add::{BookmarkAddModal, BookmarkAddResult};
+pub use choice::ChoiceModal;
 pub use commit::CommitModal;
 pub use confirm::ConfirmModal;
 pub use conflict::{ConflictModal, ConflictResolution};
@@ -52,6 +55,7 @@ pub use info::InfoModal;
 pub use info_action::{ActionButton, InfoActionModal, InfoActionResult};
 pub use input::InputModal;
 pub use overwrite::{OverwriteChoice, OverwriteModal};
+pub use progress::ProgressModal;
 pub use rename_pattern::RenamePatternModal;
 pub use replace::{ReplaceAction, ReplaceModal, ReplaceModalResult};
 pub use save_as::{SaveAsModal, SaveAsResult};
@@ -68,6 +72,8 @@ pub enum ActiveModal {
     Commit(Box<CommitModal>),
     /// Confirmation modal (Yes/No)
     Confirm(Box<ConfirmModal>),
+    /// Choice modal with horizontal buttons
+    Choice(Box<ChoiceModal>),
     /// Text input modal
     Input(Box<InputModal>),
     /// Selection modal (single selection)
@@ -103,6 +109,8 @@ pub enum ActiveModal {
     DirectorySwitcher(Box<DirectorySwitcherModal>),
     /// Bookmark add modal
     BookmarkAdd(Box<BookmarkAddModal>),
+    /// Progress modal for long-running operations
+    Progress(Box<ProgressModal>),
 }
 
 /// Trait for all modal windows.

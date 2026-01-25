@@ -6,6 +6,7 @@
 use anyhow::Result;
 
 use termide_buffer::{Cursor, TextBuffer};
+use termide_ui::path_utils::truncate_right;
 
 /// Result of a clipboard operation.
 pub struct ClipboardResult {
@@ -20,12 +21,7 @@ pub fn copy_to_clipboard(selected_text: Option<String>) -> ClipboardResult {
         Some(text) => {
             // Debug: show what we're trying to copy
             let char_count = text.chars().count();
-            let preview = if char_count > 50 {
-                let preview_text: String = text.chars().take(50).collect();
-                format!("{}...", preview_text)
-            } else {
-                text.clone()
-            };
+            let preview = truncate_right(&text, 50);
 
             match termide_clipboard::copy(&text) {
                 Ok(()) => ClipboardResult {
@@ -52,12 +48,7 @@ pub fn cut_to_clipboard(selected_text: Option<String>) -> (ClipboardResult, bool
     match selected_text {
         Some(text) => {
             let char_count = text.chars().count();
-            let preview = if char_count > 50 {
-                let preview_text: String = text.chars().take(50).collect();
-                format!("{}...", preview_text)
-            } else {
-                text.clone()
-            };
+            let preview = truncate_right(&text, 50);
 
             match termide_clipboard::copy(&text) {
                 Ok(()) => (

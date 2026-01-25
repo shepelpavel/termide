@@ -30,7 +30,7 @@ pub use operations::{
     unstage_file, unstage_files,
 };
 pub use repo_manager::RepoManager;
-pub use utils::{truncate_path_left, truncate_to_width};
+pub use utils::{truncate_left, truncate_path_left, truncate_right, truncate_to_width};
 
 // Re-export diff types
 pub use diff::{

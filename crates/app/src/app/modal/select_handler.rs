@@ -7,7 +7,7 @@ use anyhow::Result;
 use std::path::PathBuf;
 
 use super::super::App;
-use crate::state::{ActiveModal, PendingAction};
+use crate::state::{ActiveModal, PendingAction, UploadOperation};
 use crate::PanelExt;
 use termide_i18n as i18n;
 use termide_ui::path_utils;
@@ -38,12 +38,58 @@ impl App {
                             if editor.has_file_path() {
                                 // File already has path - just save
                                 let t = i18n::t();
-                                if let Err(e) = editor.save() {
-                                    termide_logger::error(format!("Save error: {}", e));
-                                    self.state.set_error(t.status_error_save(&e.to_string()));
-                                    return Ok(());
+
+                                match editor.save() {
+                                    Err(e) => {
+                                        termide_logger::error(format!("Save error: {}", e));
+                                        self.state.set_error(t.status_error_save(&e.to_string()));
+                                        return Ok(());
+                                    }
+                                    Ok(Some((operation, remote_path, temp_path))) => {
+                                        // Remote file - start async upload with progress modal
+                                        termide_logger::info(
+                                            "Starting remote file upload before closing",
+                                        );
+
+                                        let filename = remote_path
+                                            .file_name()
+                                            .map(|n| n.to_string_lossy().to_string())
+                                            .unwrap_or_else(|| "file".to_string());
+                                        let modal = termide_modal::ProgressModal::indeterminate(
+                                            "Uploading File",
+                                            format!("Uploading {}...", filename),
+                                        );
+                                        self.state.active_modal =
+                                            Some(ActiveModal::Progress(Box::new(modal)));
+
+                                        // Get active panel index (we know it's active since we just used it)
+                                        let panel_id = 0; // Active panel is always at index 0 in the active group
+
+                                        self.state.upload_operation = Some(UploadOperation {
+                                            operation,
+                                            remote_path,
+                                            temp_path,
+                                            editor_panel_id: panel_id,
+                                            started: std::time::Instant::now(),
+                                            close_after_upload: true, // Close editor after upload completes
+                                        });
+
+                                        // Set uploading flag to show spinner in editor header
+                                        if let Some(panel) = self.layout_manager.active_panel_mut()
+                                        {
+                                            if let Some(editor) = panel.as_editor_mut() {
+                                                editor.set_uploading(true);
+                                            }
+                                        }
+
+                                        // Don't close panel yet - wait for upload to complete
+                                        return Ok(());
+                                    }
+                                    Ok(None) => {
+                                        // Local file - saved synchronously
+                                        termide_logger::info("File saved before closing");
+                                    }
                                 }
-                                termide_logger::info("File saved before closing");
 
                                 // Collect LSP info for didSave notification
                                 if let Some(lang) = editor.lsp_language() {
@@ -116,10 +162,15 @@ impl App {
                     if let Some(panel) = self.layout_manager.active_panel_mut() {
                         if let Some(editor) = panel.as_editor_mut() {
                             let t = i18n::t();
-                            if let Err(e) = editor.force_save() {
-                                termide_logger::error(format!("Force save error: {}", e));
-                                self.state.set_error(t.status_error_save(&e.to_string()));
-                                return Ok(());
+                            match editor.force_save() {
+                                Err(e) => {
+                                    termide_logger::error(format!("Force save error: {}", e));
+                                    self.state.set_error(t.status_error_save(&e.to_string()));
+                                    return Ok(());
+                                }
+                                Ok(_upload_op) => {
+                                    // TODO: Handle async upload operation for remote files
+                                }
                             }
                         }
                     }
@@ -174,10 +225,15 @@ impl App {
                     if let Some(panel) = self.layout_manager.active_panel_mut() {
                         if let Some(editor) = panel.as_editor_mut() {
                             let t = i18n::t();
-                            if let Err(e) = editor.force_save() {
-                                termide_logger::error(format!("Force save error: {}", e));
-                                self.state.set_error(t.status_error_save(&e.to_string()));
-                                return Ok(());
+                            match editor.force_save() {
+                                Err(e) => {
+                                    termide_logger::error(format!("Force save error: {}", e));
+                                    self.state.set_error(t.status_error_save(&e.to_string()));
+                                    return Ok(());
+                                }
+                                Ok(_upload_op) => {
+                                    // TODO: Handle async upload operation for remote files
+                                }
                             }
                         }
                     }
@@ -204,6 +260,149 @@ impl App {
                 }
             }
         }
+        Ok(())
+    }
+
+    /// Handle cancelled copy/move operation cleanup
+    ///
+    /// For directory copy (is_directory=true):
+    /// - partial_path = the file that was being copied when cancelled
+    /// - all_dest_paths[0] = the destination directory
+    /// - Options: Delete partial (file only), Delete all (entire dir), Keep all
+    ///
+    /// For file copy (is_directory=false):
+    /// - partial_path = the partial file
+    /// - all_dest_paths = previously completed files (empty for single file)
+    /// - Options: Delete (partial), [Delete all], Keep
+    pub(in crate::app) fn handle_cancel_copy_cleanup(
+        &mut self,
+        partial_path: PathBuf,
+        all_dest_paths: Vec<PathBuf>,
+        is_directory: bool,
+        _batch_operation: Option<Box<termide_state::BatchOperation>>,
+        value: Box<dyn std::any::Any>,
+    ) -> Result<()> {
+        // ChoiceModal returns usize (button index)
+        if let Some(&selected) = value.downcast_ref::<usize>() {
+            if is_directory {
+                // Directory copy cancellation - always 3 options:
+                // 0 = Keep all (keep everything as is)
+                // 1 = Delete partial (only the interrupted file)
+                // 2 = Delete all (entire destination directory)
+                match selected {
+                    1 => {
+                        // Delete only the interrupted file
+                        termide_logger::info(format!(
+                            "Cancel cleanup: delete partial file {}",
+                            partial_path.display()
+                        ));
+                        if partial_path.exists() {
+                            if let Err(e) = std::fs::remove_file(&partial_path) {
+                                self.state.set_error(format!("Failed to delete: {}", e));
+                            } else {
+                                self.state.set_info("Partial file deleted".to_string());
+                            }
+                        }
+                    }
+                    2 => {
+                        // Delete entire destination directory
+                        if let Some(dest_dir) = all_dest_paths.first() {
+                            termide_logger::info(format!(
+                                "Cancel cleanup: delete all {}",
+                                dest_dir.display()
+                            ));
+                            if dest_dir.exists() {
+                                if let Err(e) = std::fs::remove_dir_all(dest_dir) {
+                                    self.state.set_error(format!("Failed to delete: {}", e));
+                                } else {
+                                    self.state.set_info("Directory deleted".to_string());
+                                }
+                            }
+                        }
+                    }
+                    _ => {
+                        // Keep all (0 or any other)
+                        termide_logger::info("Cancel cleanup: keep all");
+                    }
+                }
+            } else {
+                // File copy cancellation
+                let has_multiple = !all_dest_paths.is_empty();
+
+                match (selected, has_multiple) {
+                    (0, _) => {
+                        // Delete partial file only
+                        termide_logger::info(format!(
+                            "Cancel cleanup: delete partial {}",
+                            partial_path.display()
+                        ));
+                        if partial_path.exists() {
+                            if let Err(e) = std::fs::remove_file(&partial_path) {
+                                self.state.set_error(format!("Failed to delete: {}", e));
+                            } else {
+                                self.state.set_info("File deleted".to_string());
+                            }
+                        }
+                    }
+                    (1, true) => {
+                        // Delete all copied files
+                        termide_logger::info(format!(
+                            "Cancel cleanup: delete all {} items",
+                            all_dest_paths.len() + 1
+                        ));
+                        let mut deleted = 0;
+                        let mut errors = 0;
+
+                        // Delete partial file first
+                        if partial_path.exists() {
+                            if std::fs::remove_file(&partial_path).is_ok() {
+                                deleted += 1;
+                            } else {
+                                errors += 1;
+                            }
+                        }
+
+                        // Delete all completed files
+                        for dest in &all_dest_paths {
+                            if dest.exists() {
+                                let result = if dest.is_dir() {
+                                    std::fs::remove_dir_all(dest)
+                                } else {
+                                    std::fs::remove_file(dest)
+                                };
+                                if result.is_ok() {
+                                    deleted += 1;
+                                } else {
+                                    errors += 1;
+                                }
+                            }
+                        }
+
+                        if errors > 0 {
+                            self.state
+                                .set_error(format!("Deleted {} items, {} errors", deleted, errors));
+                        } else {
+                            self.state.set_info(format!("Deleted {} items", deleted));
+                        }
+                    }
+                    _ => {
+                        // Keep everything
+                        termide_logger::info("Cancel cleanup: keep everything");
+                    }
+                }
+            }
+        }
+
+        // Refresh file manager panels to show changes
+        if let Some(parent) = partial_path.parent() {
+            self.refresh_fm_panels(parent);
+        }
+        for dest in &all_dest_paths {
+            if let Some(parent) = dest.parent() {
+                self.refresh_fm_panels(parent);
+            }
+        }
+
         Ok(())
     }
 
@@ -254,51 +453,22 @@ impl App {
             };
 
             if should_proceed {
-                // Execute operation using active FileManager
-                if let Some(panel) = self.layout_manager.active_panel_mut() {
-                    if let Some(fm) = panel.as_file_manager_mut() {
-                        let result = if is_move {
-                            fm.move_path(source.clone(), destination.clone())
-                        } else {
-                            fm.copy_path(source.clone(), destination.clone())
-                        };
+                // Use batch operation system for async handling (all operations)
+                use termide_state::{BatchOperation, BatchOperationType};
 
-                        match result {
-                            Ok(_) => {
-                                let t = i18n::t();
-                                let action_name = if is_move {
-                                    t.action_moved()
-                                } else {
-                                    t.action_copied()
-                                };
-                                termide_logger::info(format!("'{}' {}", item_name, action_name));
-                                self.state
-                                    .set_info(t.status_item_actioned(item_name, action_name));
+                let operation_type = if is_move {
+                    BatchOperationType::Move
+                } else {
+                    BatchOperationType::Copy
+                };
 
-                                // Refresh FM panels
-                                if is_move {
-                                    if let Some(parent) = source.parent() {
-                                        self.refresh_fm_panels(parent);
-                                    }
-                                }
-                                if let Some(parent) = destination.parent() {
-                                    self.refresh_fm_panels(parent);
-                                }
-                            }
-                            Err(e) => {
-                                let t = i18n::t();
-                                let action_name = if is_move {
-                                    t.action_moving()
-                                } else {
-                                    t.action_copying()
-                                };
-                                termide_logger::error(format!("Ошибка {}: {}", action_name, e));
-                                self.state
-                                    .set_error(t.status_error_action(action_name, &e.to_string()));
-                            }
-                        }
-                    }
-                }
+                let batch_op = BatchOperation::new(
+                    operation_type,
+                    vec![source.clone()],
+                    final_dest.parent().unwrap_or(&final_dest).to_path_buf(),
+                );
+
+                self.process_batch_operation(batch_op);
             } else {
                 let t = i18n::t();
                 termide_logger::info(format!("Operation '{}' skipped", item_name));

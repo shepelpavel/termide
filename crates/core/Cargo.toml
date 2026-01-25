@@ -16,3 +16,4 @@ anyhow.workspace = true
 termide-theme = { path = "../theme" }
 termide-config = { path = "../config" }
 termide-session = { path = "../session" }
+termide-vfs = { path = "../vfs" }

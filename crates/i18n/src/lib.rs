@@ -100,6 +100,12 @@ pub trait Translation: Send + Sync {
     // File manager
     fn file_search_title(&self) -> &str;
     fn content_search_title(&self) -> &str;
+    fn fm_goto_title(&self) -> &str;
+    fn fm_goto_prompt(&self) -> &str;
+    fn connection_cancelled_title(&self) -> &str;
+    fn connection_error_title(&self) -> &str;
+    fn connection_timeout_title(&self) -> &str;
+    fn connection_timeout_message(&self) -> &str;
 
     // Terminal
     fn terminal_exit_confirm(&self) -> &str;

@@ -131,10 +131,8 @@ impl Modal for RenamePatternModal {
             ])
             .split(inner);
 
-        // Original name
-        let original = Paragraph::new(format!("Original: {}", self.original_name))
-            .style(Style::default().fg(theme.disabled));
-        original.render(chunks[0], buf);
+        // Empty line (was: Original name)
+        // chunks[0] left empty
 
         // Input field
         let input_block = Block::default()
@@ -159,20 +157,24 @@ impl Modal for RenamePatternModal {
             }
         }
 
-        // Preview
+        // Preview - show "New name: ..." in accented_fg color
         let preview = self.get_preview();
         let is_valid = self.is_valid();
-        let preview_color = if is_valid { theme.success } else { theme.error };
-        let preview_text = if preview.is_empty() {
-            "".to_string()
-        } else if is_valid {
-            format!("→ {}", preview)
-        } else {
-            format!("✗ {}", preview)
-        };
-
-        let preview_para = Paragraph::new(preview_text).style(Style::default().fg(preview_color));
-        preview_para.render(chunks[2], buf);
+        if !preview.is_empty() {
+            let preview_line = if is_valid {
+                Line::from(vec![
+                    Span::styled("New name: ", Style::default().fg(theme.accented_fg)),
+                    Span::styled(preview, Style::default().fg(theme.accented_fg)),
+                ])
+            } else {
+                Line::from(vec![
+                    Span::styled("New name: ", Style::default().fg(theme.error)),
+                    Span::styled(preview, Style::default().fg(theme.error)),
+                ])
+            };
+            let preview_para = Paragraph::new(preview_line);
+            preview_para.render(chunks[2], buf);
+        }
 
         // Help
         let help_text =

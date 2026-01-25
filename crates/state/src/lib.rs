@@ -347,6 +347,15 @@ impl RenamePattern {
     }
 }
 
+/// Pause state for batch operations
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PauseState {
+    /// Operation is running
+    Running,
+    /// Operation is paused by user
+    Paused,
+}
+
 /// Batch file operation with conflict support
 #[derive(Debug, Clone)]
 pub struct BatchOperation {
@@ -370,6 +379,18 @@ pub struct BatchOperation {
     pub error_count: usize,
     /// Statistics: skipped
     pub skipped_count: usize,
+    /// Pause state for batch operation
+    pub pause_state: PauseState,
+    /// Paths of successfully copied/moved destinations (for cleanup on cancel)
+    pub completed_destinations: Vec<PathBuf>,
+    /// Cumulative files completed from previous batch items (for multi-folder downloads)
+    pub cumulative_files_completed: usize,
+    /// Cumulative bytes completed from previous batch items
+    pub cumulative_bytes_completed: u64,
+    /// Total files across all batch items (when known)
+    pub cumulative_total_files: usize,
+    /// Total bytes across all batch items (when known)
+    pub cumulative_total_bytes: u64,
 }
 
 impl BatchOperation {
@@ -390,7 +411,18 @@ impl BatchOperation {
             success_count: 0,
             error_count: 0,
             skipped_count: 0,
+            pause_state: PauseState::Running,
+            completed_destinations: Vec::new(),
+            cumulative_files_completed: 0,
+            cumulative_bytes_completed: 0,
+            cumulative_total_files: 0,
+            cumulative_total_bytes: 0,
         }
+    }
+
+    /// Add a successfully completed destination path
+    pub fn add_completed_destination(&mut self, path: PathBuf) {
+        self.completed_destinations.push(path);
     }
 
     /// Set rename pattern
@@ -443,6 +475,26 @@ impl BatchOperation {
     /// Increment skipped counter
     pub fn increment_skipped(&mut self) {
         self.skipped_count += 1;
+    }
+
+    /// Get the last successfully processed source filename
+    /// Returns the filename of the file at current_index - 1 if available
+    pub fn last_successful_filename(&self) -> Option<String> {
+        if self.current_index == 0 || self.success_count == 0 {
+            return None;
+        }
+
+        // Get the file that was just processed (current_index - 1)
+        self.sources
+            .get(self.current_index.saturating_sub(1))
+            .and_then(|path| path.file_name())
+            .and_then(|name| name.to_str())
+            .map(|s| s.to_string())
+    }
+
+    /// Get destination path reference
+    pub fn destination_path(&self) -> &PathBuf {
+        &self.destination
     }
 }
 
@@ -556,6 +608,24 @@ pub enum PendingAction {
     SwitchDirectory,
     /// Add a bookmark
     AddBookmark,
+    /// Go to path/URL (supports local paths and remote URLs like sftp://)
+    GoToPath {
+        panel_index: usize,
+        current_directory: PathBuf,
+    },
+    /// VFS information message (connection cancelled, error, etc.)
+    VfsMessage,
+    /// Handle cancelled copy/move operation cleanup
+    CancelCopyCleanup {
+        /// Path to the partial file/directory being copied
+        partial_path: PathBuf,
+        /// All destination paths created during this batch operation
+        all_dest_paths: Vec<PathBuf>,
+        /// Whether this is a directory (true) or file (false)
+        is_directory: bool,
+        /// Optional batch operation to continue after handling
+        batch_operation: Option<Box<BatchOperation>>,
+    },
 }
 
 #[cfg(test)]

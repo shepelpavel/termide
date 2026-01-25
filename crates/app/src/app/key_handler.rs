@@ -181,7 +181,8 @@ impl App {
             | PendingAction::CloseEditorConflict { panel_index }
             | PendingAction::OverwriteDecision { panel_index, .. }
             | PendingAction::FileSearch { panel_index }
-            | PendingAction::ContentSearch { panel_index } => {
+            | PendingAction::ContentSearch { panel_index }
+            | PendingAction::GoToPath { panel_index, .. } => {
                 *panel_index = 0; // Placeholder value, not used with LayoutManager
             }
             PendingAction::BatchFileOperation { .. }
@@ -201,7 +202,9 @@ impl App {
             | PendingAction::GitCommit { .. }
             | PendingAction::GitRevertFile { .. }
             | PendingAction::SwitchDirectory
-            | PendingAction::AddBookmark => {
+            | PendingAction::AddBookmark
+            | PendingAction::VfsMessage
+            | PendingAction::CancelCopyCleanup { .. } => {
                 // These actions don't require panel_index update
             }
         }
@@ -261,6 +264,9 @@ impl App {
         target_directory: &mut Option<std::path::PathBuf>,
         is_copy: bool,
     ) -> ActiveModal {
+        // CRITICAL: Close any existing modal first to prevent stale modals during operations
+        self.state.close_modal();
+
         // Get source directory to exclude from default selection
         let source_dir = sources[0].parent().map(|p| p.to_path_buf());
         let source_dir_str = source_dir.as_ref().map(|p| p.display().to_string());

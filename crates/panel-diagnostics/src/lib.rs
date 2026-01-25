@@ -19,6 +19,7 @@ use unicode_width::UnicodeWidthStr;
 
 use termide_core::{Panel, PanelEvent, RenderContext, ThemeColors};
 use termide_theme::Theme;
+use termide_ui::path_utils::truncate_right;
 use termide_ui::ScrollBar;
 
 /// Entry representing a single diagnostic item.
@@ -411,22 +412,7 @@ impl Panel for DiagnosticsPanel {
                 let msg_max_width = area.right().saturating_sub(msg_start + 1) as usize;
 
                 if msg_max_width > 3 {
-                    let msg = if entry.message.width() > msg_max_width {
-                        let mut truncated = String::new();
-                        let mut width = 0;
-                        for ch in entry.message.chars() {
-                            let ch_width = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1);
-                            if width + ch_width + 1 > msg_max_width {
-                                truncated.push('…');
-                                break;
-                            }
-                            truncated.push(ch);
-                            width += ch_width;
-                        }
-                        truncated
-                    } else {
-                        entry.message.clone()
-                    };
+                    let msg = truncate_right(&entry.message, msg_max_width);
 
                     for (i, ch) in msg.chars().enumerate() {
                         let x = msg_start + i as u16;

@@ -247,6 +247,13 @@ pub trait Panel: Any {
         None
     }
 
+    /// Get working directory as display string (includes URL for remote paths).
+    /// Override this for panels that support remote paths.
+    fn get_working_directory_display(&self) -> Option<String> {
+        self.get_working_directory()
+            .map(|p| p.display().to_string())
+    }
+
     /// Check if there are running child processes (for terminal).
     fn has_running_processes(&self) -> bool {
         false

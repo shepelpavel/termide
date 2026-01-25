@@ -19,7 +19,7 @@ pub use keybindings::{
 };
 pub use settings::{
     Config, EditorSettings, FileManagerSettings, GeneralSettings, GitStatusSettings, LegacyConfig,
-    LoggingSettings, LspServerSettings, LspSettings, TerminalSettings,
+    LoggingSettings, LspServerSettings, LspSettings, TerminalSettings, VfsSettings,
 };
 pub use xdg::{get_cache_dir, get_config_dir, get_data_dir};
 

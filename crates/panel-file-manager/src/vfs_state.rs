@@ -1,0 +1,657 @@
+//! VFS (Virtual File System) state and operations for FileManager.
+//!
+//! This module provides the integration layer between FileManager and the VFS system,
+//! enabling support for network filesystems (SFTP, FTP, SMB, NFS) alongside local files.
+
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::Instant;
+
+use termide_vfs::{
+    ConnectOptions, DirCache, VfsEntry, VfsError, VfsManager, VfsOperation, VfsPath, VfsProtocol,
+    VfsResult,
+};
+
+/// Result type for pending VFS operations.
+#[allow(dead_code)]
+pub enum PendingVfsOperation {
+    /// Directory listing operation.
+    ListDir(VfsOperation<Vec<VfsEntry>>),
+    /// Connection operation.
+    Connect(VfsOperation<()>),
+    /// File read operation.
+    ReadFile(VfsOperation<Vec<u8>>),
+    /// Generic operation (create, delete, etc.).
+    Generic(VfsOperation<()>),
+}
+
+/// VFS state for FileManager.
+///
+/// Manages the VFS manager, current path (local or remote), and pending async operations.
+pub struct VfsState {
+    /// Shared VFS manager.
+    manager: Arc<VfsManager>,
+    /// Current path (can be local or remote).
+    current_path: VfsPath,
+    /// Previous path before remote navigation (for restore on failure/cancel).
+    previous_path: Option<VfsPath>,
+    /// Pending async operation (if any).
+    pending_operation: Option<PendingVfsOperation>,
+    /// Connection status for display.
+    connection_status: Option<String>,
+    /// Whether we're waiting for a password from the user.
+    awaiting_password: bool,
+    /// When connection started (for elapsed time display).
+    connection_started: Option<Instant>,
+}
+
+impl Default for VfsState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl VfsState {
+    /// Create new VFS state with local filesystem.
+    pub fn new() -> Self {
+        let current_path = std::env::current_dir()
+            .map(VfsPath::local)
+            .unwrap_or_else(|_| VfsPath::local("/"));
+
+        Self {
+            manager: Arc::new(VfsManager::new()),
+            current_path,
+            previous_path: None,
+            pending_operation: None,
+            connection_status: None,
+            awaiting_password: false,
+            connection_started: None,
+        }
+    }
+
+    /// Create VFS state with shared manager.
+    pub fn with_manager(manager: Arc<VfsManager>) -> Self {
+        let current_path = std::env::current_dir()
+            .map(VfsPath::local)
+            .unwrap_or_else(|_| VfsPath::local("/"));
+
+        Self {
+            manager,
+            current_path,
+            previous_path: None,
+            pending_operation: None,
+            connection_status: None,
+            awaiting_password: false,
+            connection_started: None,
+        }
+    }
+
+    /// Create VFS state for a specific path.
+    pub fn with_path(path: VfsPath, manager: Option<Arc<VfsManager>>) -> Self {
+        Self {
+            manager: manager.unwrap_or_else(|| Arc::new(VfsManager::new())),
+            current_path: path,
+            previous_path: None,
+            pending_operation: None,
+            connection_status: None,
+            awaiting_password: false,
+            connection_started: None,
+        }
+    }
+
+    /// Get reference to the VFS manager.
+    pub fn manager(&self) -> &VfsManager {
+        &self.manager
+    }
+
+    /// Get shared reference to the VFS manager (for passing to Editor::open_remote_file).
+    pub fn manager_arc(&self) -> Arc<VfsManager> {
+        Arc::clone(&self.manager)
+    }
+
+    /// Get the current path.
+    pub fn current_path(&self) -> &VfsPath {
+        &self.current_path
+    }
+
+    /// Get current path as local PathBuf (for backwards compatibility).
+    ///
+    /// Returns Some for local paths, None for remote paths.
+    pub fn local_path(&self) -> Option<&Path> {
+        if self.current_path.is_local() {
+            Some(&self.current_path.path)
+        } else {
+            None
+        }
+    }
+
+    /// Get current path as PathBuf (for backwards compatibility).
+    ///
+    /// For remote paths, returns the path component only.
+    pub fn path_buf(&self) -> PathBuf {
+        self.current_path.path.clone()
+    }
+
+    /// Check if current path is local.
+    pub fn is_local(&self) -> bool {
+        self.current_path.is_local()
+    }
+
+    /// Check if current path is remote.
+    pub fn is_remote(&self) -> bool {
+        self.current_path.is_remote()
+    }
+
+    /// Get display string for current path.
+    pub fn display_path(&self) -> String {
+        self.current_path.to_url_string()
+    }
+
+    /// Get connection status message for display.
+    pub fn connection_status(&self) -> Option<&str> {
+        self.connection_status.as_deref()
+    }
+
+    /// Get connection status with elapsed time.
+    /// Returns (status_message, elapsed_seconds) if connecting.
+    pub fn connection_status_with_elapsed(&self) -> Option<(String, Option<u64>)> {
+        if let Some(status) = &self.connection_status {
+            let elapsed = self.connection_started.map(|t| t.elapsed().as_secs());
+            Some((status.clone(), elapsed))
+        } else {
+            None
+        }
+    }
+
+    /// Get elapsed connection time in seconds.
+    pub fn connection_elapsed_secs(&self) -> Option<u64> {
+        self.connection_started.map(|t| t.elapsed().as_secs())
+    }
+
+    /// Check if we're waiting for a password.
+    pub fn awaiting_password(&self) -> bool {
+        self.awaiting_password
+    }
+
+    /// Check if there's a pending operation.
+    pub fn has_pending_operation(&self) -> bool {
+        self.pending_operation.is_some()
+    }
+
+    /// Check if VFS operation is currently in progress (for loading spinners).
+    pub fn is_loading(&self) -> bool {
+        self.pending_operation.is_some()
+    }
+
+    /// Set the current path.
+    pub fn set_path(&mut self, path: VfsPath) {
+        self.current_path = path;
+    }
+
+    /// Navigate to a path string (parses URL if needed).
+    pub fn navigate_to_string(&mut self, path_str: &str) -> VfsResult<()> {
+        let path = termide_vfs::parse_vfs_url(path_str)?;
+        self.navigate_to(path)
+    }
+
+    /// Navigate to a VfsPath.
+    pub fn navigate_to(&mut self, path: VfsPath) -> VfsResult<()> {
+        // For local paths, just update current_path
+        if path.is_local() {
+            if path.path.is_dir() {
+                self.current_path = path;
+                return Ok(());
+            } else if let Some(parent) = path.parent() {
+                self.current_path = parent;
+                return Ok(());
+            }
+            return Err(VfsError::NotFound { path: path.path });
+        }
+
+        // For remote paths, check if we're connected
+        if !self.manager.is_connected(&path) {
+            // Save current local path before attempting remote connection
+            if self.current_path.is_local() {
+                self.previous_path = Some(self.current_path.clone());
+            }
+            // Need to connect first
+            self.connection_status = Some(format!(
+                "Connecting to {}...",
+                path.host.as_deref().unwrap_or("remote")
+            ));
+            self.connection_started = Some(Instant::now());
+            self.start_connect(path)?;
+            return Ok(());
+        }
+
+        // Already connected, just navigate
+        self.current_path = path;
+        Ok(())
+    }
+
+    /// Navigate to parent directory.
+    pub fn navigate_up(&mut self) -> Option<String> {
+        // Save current directory name for cursor restoration
+        let current_name = self
+            .current_path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string());
+
+        if let Some(parent) = self.current_path.parent() {
+            self.current_path = parent;
+        }
+
+        current_name
+    }
+
+    /// Navigate into a subdirectory.
+    pub fn navigate_down(&mut self, name: &str) {
+        self.current_path = self.current_path.join(name);
+    }
+
+    /// Start a connection to a remote path.
+    fn start_connect(&mut self, path: VfsPath) -> VfsResult<()> {
+        termide_logger::debug(format!(
+            "VfsState: Starting connection to {}",
+            path.to_url_string()
+        ));
+        // Start async connection based on protocol
+        let operation = match path.protocol {
+            VfsProtocol::Sftp => {
+                // SFTP is enabled by default in termide-vfs
+                self.manager.connect_sftp(&path, ConnectOptions::default())
+            }
+            VfsProtocol::Ftp => {
+                return Err(VfsError::NotSupported(
+                    "FTP connections not yet fully implemented".to_string(),
+                ));
+            }
+            VfsProtocol::Smb => {
+                return Err(VfsError::NotSupported(
+                    "SMB connections not yet fully implemented".to_string(),
+                ));
+            }
+            VfsProtocol::Nfs => {
+                return Err(VfsError::NotSupported(
+                    "NFS connections not yet fully implemented".to_string(),
+                ));
+            }
+            VfsProtocol::Local => {
+                // Local paths don't need connection
+                return Err(VfsError::InvalidPath(
+                    "Local paths don't require connection".to_string(),
+                ));
+            }
+        };
+
+        // Store pending operation - will be polled in tick()
+        self.pending_operation = Some(PendingVfsOperation::Connect(operation));
+        self.current_path = path;
+        Ok(())
+    }
+
+    /// Start a directory listing operation.
+    ///
+    /// For remote paths, this will automatically start a connection first if not connected.
+    /// The connection completion will trigger directory listing in tick().
+    pub fn start_list_dir(&mut self) {
+        // For remote paths, check if connected and start connection if needed
+        if self.current_path.is_remote() && !self.manager.is_connected(&self.current_path) {
+            termide_logger::debug(format!(
+                "VfsState: Not connected to {}, starting connection",
+                self.current_path.to_url_string()
+            ));
+            self.connection_status = Some(format!(
+                "Connecting to {}...",
+                self.current_path.host.as_deref().unwrap_or("remote")
+            ));
+            self.connection_started = Some(Instant::now());
+            // Start connection - tick() will call start_list_dir() again after connection completes
+            if let Err(e) = self.start_connect(self.current_path.clone()) {
+                termide_logger::error(format!("VfsState: Failed to start connection: {}", e));
+                self.connection_status = None;
+            }
+            return;
+        }
+
+        // Set connection status to show loading spinner
+        self.connection_status = Some("Loading directory...".to_string());
+        let operation = self.manager.list_dir(&self.current_path);
+        self.pending_operation = Some(PendingVfsOperation::ListDir(operation));
+    }
+
+    /// Check pending operations and process results.
+    ///
+    /// Returns Some(entries) if directory listing completed, None otherwise.
+    pub fn tick(&mut self) -> Option<VfsResult<Vec<VfsEntry>>> {
+        let operation = self.pending_operation.take()?;
+
+        match operation {
+            PendingVfsOperation::ListDir(op) => {
+                match op.try_recv() {
+                    Some(Ok(entries)) => {
+                        termide_logger::debug(format!(
+                            "VfsState: ListDir completed with {} entries",
+                            entries.len()
+                        ));
+                        // Clear connection status to stop spinner
+                        self.connection_status = None;
+                        // Operation completed
+                        Some(Ok(entries))
+                    }
+                    Some(Err(e)) => {
+                        termide_logger::error(format!("VfsState: ListDir failed: {}", e));
+
+                        // Clear connection status to stop spinner and status messages
+                        self.connection_status = None;
+
+                        // Restore previous path
+                        if let Some(prev) = self.previous_path.take() {
+                            self.current_path = prev;
+                        }
+
+                        Some(Err(e))
+                    }
+                    None => {
+                        // Note: Using debug level to avoid flooding logs
+                        // termide_logger::debug("VfsState: ListDir still pending".to_string());
+                        // Still pending, put it back
+                        self.pending_operation = Some(PendingVfsOperation::ListDir(op));
+                        None
+                    }
+                }
+            }
+            PendingVfsOperation::Connect(op) => {
+                match op.try_recv() {
+                    Some(Ok(())) => {
+                        termide_logger::debug("VfsState: Connection succeeded".to_string());
+                        // Connection succeeded, start listing
+                        self.connection_status = Some("Connected".to_string());
+                        self.clear_connection_tracking();
+
+                        // If current path is root ("/") or empty, navigate to home directory
+                        let path_str = self.current_path.path.to_string_lossy();
+                        let is_root = path_str == "/" || path_str.is_empty();
+                        termide_logger::debug(format!(
+                            "VfsState: Path is '{}', is_root={}",
+                            path_str, is_root
+                        ));
+                        if is_root {
+                            if let Some(home) = self.manager.get_home_dir(&self.current_path) {
+                                termide_logger::debug(format!(
+                                    "VfsState: Navigating to home directory: {}",
+                                    home.to_url_string()
+                                ));
+                                self.current_path = home;
+                            } else {
+                                termide_logger::debug(
+                                    "VfsState: get_home_dir returned None".to_string(),
+                                );
+                            }
+                        }
+
+                        self.start_list_dir();
+                        None
+                    }
+                    Some(Err(VfsError::AuthenticationFailed(msg))) => {
+                        // Treat authentication failure as a regular error
+                        // Password modal not yet implemented
+                        let e = VfsError::AuthenticationFailed(msg);
+                        termide_logger::error(format!("VfsState: Authentication failed: {}", e));
+                        self.connection_status = None;
+                        self.clear_connection_tracking();
+                        // Restore previous path
+                        if let Some(prev) = self.previous_path.take() {
+                            self.current_path = prev;
+                        }
+                        Some(Err(e))
+                    }
+                    Some(Err(e)) => {
+                        termide_logger::error(format!("VfsState: Connection failed: {}", e));
+                        // Connection failed - clear status (error shown via modal)
+                        self.connection_status = None;
+                        self.clear_connection_tracking();
+                        // Restore previous path
+                        if let Some(prev) = self.previous_path.take() {
+                            self.current_path = prev;
+                        }
+                        Some(Err(e))
+                    }
+                    None => {
+                        // Still connecting, put it back
+                        self.pending_operation = Some(PendingVfsOperation::Connect(op));
+                        None
+                    }
+                }
+            }
+            PendingVfsOperation::ReadFile(op) => {
+                match op.try_recv() {
+                    Some(_result) => {
+                        // File read completed (caller handles result)
+                        None
+                    }
+                    None => {
+                        // Still pending
+                        self.pending_operation = Some(PendingVfsOperation::ReadFile(op));
+                        None
+                    }
+                }
+            }
+            PendingVfsOperation::Generic(op) => {
+                match op.try_recv() {
+                    Some(_result) => {
+                        // Operation completed
+                        None
+                    }
+                    None => {
+                        // Still pending
+                        self.pending_operation = Some(PendingVfsOperation::Generic(op));
+                        None
+                    }
+                }
+            }
+        }
+    }
+
+    /// Provide password for pending authentication.
+    pub fn provide_password(&mut self, _password: String) {
+        self.awaiting_password = false;
+        // Password authentication will be implemented when SFTP support is complete
+        self.connection_status = Some("Password auth not yet implemented".to_string());
+    }
+
+    /// Cancel pending authentication.
+    pub fn cancel_auth(&mut self) {
+        self.awaiting_password = false;
+        self.connection_status = None;
+        // Navigate back to local home if remote auth failed
+        if let Some(home) = dirs::home_dir() {
+            self.current_path = VfsPath::local(home);
+        }
+    }
+
+    /// Disconnect from current remote.
+    pub fn disconnect(&mut self) {
+        if self.current_path.is_remote() {
+            let key = self.current_path.connection_key();
+            self.manager.disconnect(&key);
+            self.connection_status = None;
+            // Navigate back to local home
+            if let Some(home) = dirs::home_dir() {
+                self.current_path = VfsPath::local(home);
+            }
+        }
+    }
+
+    /// Get cache for directory listings.
+    pub fn cache(&self) -> &DirCache {
+        self.manager.cache()
+    }
+
+    /// Invalidate cache for current path.
+    pub fn invalidate_cache(&mut self) {
+        self.manager
+            .cache()
+            .invalidate_with_parent(&self.current_path);
+    }
+
+    /// Check if a path exists.
+    pub fn exists(&self, path: &VfsPath) -> bool {
+        if path.is_local() {
+            path.path.exists()
+        } else {
+            // For remote paths, we can't do synchronous check easily
+            // Assume exists if connected
+            self.manager.is_connected(path)
+        }
+    }
+
+    /// Create local VfsPath from PathBuf.
+    pub fn local_vfs_path(&self, path: PathBuf) -> VfsPath {
+        VfsPath::local(path)
+    }
+
+    /// Join current path with a name.
+    pub fn join(&self, name: &str) -> VfsPath {
+        self.current_path.join(name)
+    }
+
+    /// Check if currently connecting to a remote.
+    pub fn is_connecting(&self) -> bool {
+        matches!(
+            &self.pending_operation,
+            Some(PendingVfsOperation::Connect(_))
+        )
+    }
+
+    /// Cancel any pending operation.
+    /// Returns Some(message) if a connection was cancelled for modal display.
+    pub fn cancel_pending(&mut self) -> Option<String> {
+        if let Some(PendingVfsOperation::Connect(_)) = self.pending_operation.take() {
+            // Connection was cancelled - clear status
+            self.connection_status = None;
+            self.connection_started = None;
+            // Restore to previous path, or home if none
+            if let Some(prev) = self.previous_path.take() {
+                self.current_path = prev;
+            } else if let Some(home) = dirs::home_dir() {
+                self.current_path = VfsPath::local(home);
+            }
+            self.awaiting_password = false;
+            return Some("Connection cancelled".to_string());
+        }
+        // Other operations just get dropped
+        self.awaiting_password = false;
+        None
+    }
+
+    /// Clear connection tracking state (called after connection completes).
+    fn clear_connection_tracking(&mut self) {
+        self.connection_started = None;
+    }
+}
+
+/// Drop implementation ensures cleanup when VfsState is dropped.
+impl Drop for VfsState {
+    fn drop(&mut self) {
+        // Cancel any pending operation (ignore returned message)
+        let _ = self.cancel_pending();
+
+        // Disconnect from any remote connections
+        if self.current_path.is_remote() {
+            let key = self.current_path.connection_key();
+            self.manager.disconnect(&key);
+            log::debug!("VfsState dropped: disconnected from {}", key);
+        }
+    }
+}
+
+/// Convert VfsEntry to FileEntry-compatible data.
+#[allow(dead_code)]
+pub fn vfs_entry_to_file_entry(entry: &VfsEntry) -> VfsEntryInfo {
+    VfsEntryInfo {
+        name: entry.name.clone(),
+        is_dir: entry.is_dir(),
+        is_symlink: entry.is_symlink(),
+        is_executable: entry
+            .metadata
+            .permissions
+            .map(|p| p & 0o111 != 0)
+            .unwrap_or(false),
+        is_readonly: entry.metadata.readonly,
+        size: if entry.is_file() {
+            Some(entry.metadata.size)
+        } else {
+            None
+        },
+        modified: entry.metadata.modified,
+    }
+}
+
+/// Simplified file entry info from VFS.
+#[allow(dead_code)]
+pub struct VfsEntryInfo {
+    pub name: String,
+    pub is_dir: bool,
+    pub is_symlink: bool,
+    pub is_executable: bool,
+    pub is_readonly: bool,
+    pub size: Option<u64>,
+    pub modified: Option<std::time::SystemTime>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_vfs_state_default() {
+        let state = VfsState::new();
+        assert!(state.is_local());
+        assert!(!state.is_remote());
+        assert!(!state.has_pending_operation());
+        assert!(!state.awaiting_password());
+    }
+
+    #[test]
+    fn test_vfs_state_local_navigation() {
+        let mut state = VfsState::new();
+
+        // Navigate to temp directory
+        let temp = std::env::temp_dir();
+        let temp_path = VfsPath::local(&temp);
+        assert!(state.navigate_to(temp_path).is_ok());
+        assert_eq!(state.path_buf(), temp);
+    }
+
+    #[test]
+    fn test_vfs_state_navigate_up() {
+        let mut state = VfsState::new();
+
+        // Set up a nested path
+        let path = VfsPath::local("/home/user/documents");
+        state.set_path(path);
+
+        let name = state.navigate_up();
+        assert_eq!(name, Some("documents".to_string()));
+        assert_eq!(state.path_buf(), PathBuf::from("/home/user"));
+    }
+
+    #[test]
+    fn test_vfs_state_navigate_down() {
+        let mut state = VfsState::new();
+
+        let path = VfsPath::local("/home/user");
+        state.set_path(path);
+
+        state.navigate_down("documents");
+        assert_eq!(state.path_buf(), PathBuf::from("/home/user/documents"));
+    }
+
+    #[test]
+    fn test_vfs_state_display_path() {
+        let state = VfsState::new();
+        // Should display current path as string
+        assert!(!state.display_path().is_empty());
+    }
+}

@@ -3,6 +3,7 @@ use crossterm::event::KeyEvent;
 use ratatui::{buffer::Buffer, layout::Rect};
 use std::any::Any;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use termide_buffer::{Cursor, Selection, TextBuffer, Viewport};
 use termide_config::Config;
@@ -13,6 +14,7 @@ use termide_modal::{ActiveModal, ReplaceModal, SaveAsModal, SearchModal};
 use termide_state::PendingAction;
 use termide_theme::Theme;
 use termide_ui::ScrollBar;
+use termide_vfs::VfsManager;
 
 use crate::{
     config::*,
@@ -68,10 +70,17 @@ pub struct Editor {
     pub(crate) input: InputState,
     /// LSP integration state
     pub(crate) lsp: LspState,
+    /// VFS manager for remote file operations
+    pub(crate) vfs_manager: Option<Arc<VfsManager>>,
 
     // === UI state ===
     /// Modal window request
     modal_request: Option<(PendingAction, ActiveModal)>,
+    /// Pending upload operation (for regular Ctrl+S saves of remote files)
+    pub(crate) pending_upload:
+        Option<(termide_vfs::VfsOperation<()>, termide_vfs::VfsPath, PathBuf)>,
+    /// Pending remote file open operation (for async downloads)
+    pub(crate) pending_remote_open: Option<crate::remote::PendingRemoteOpen>,
     /// Updated config after save (for applying in AppState)
     config_update: Option<Config>,
     /// Status message to display to user
@@ -114,7 +123,10 @@ impl Editor {
             render_cache: RenderingCache::new(),
             input: InputState::new(),
             lsp: LspState::new(),
+            vfs_manager: None,
             modal_request: None,
+            pending_upload: None,
+            pending_remote_open: None,
             config_update: None,
             status_message: None,
             scroll_follows_cursor: true,
@@ -556,7 +568,10 @@ impl Editor {
             render_cache,
             input: InputState::new(),
             lsp: LspState::new(),
+            vfs_manager: None,
             modal_request: None,
+            pending_upload: None,
+            pending_remote_open: None,
             config_update: None,
             status_message: None,
             scroll_follows_cursor: true,
@@ -587,21 +602,73 @@ impl Editor {
             render_cache: RenderingCache::new(),
             input: InputState::new(),
             lsp: LspState::new(),
+            vfs_manager: None,
             modal_request: None,
+            pending_upload: None,
+            pending_remote_open: None,
             config_update: None,
             status_message: None,
             scroll_follows_cursor: true,
             vim: None, // view_only mode doesn't have vim
         }
     }
+
+    /// Set the file state (for remote file handling)
+    pub fn set_file_state(&mut self, file_state: FileState) {
+        self.file_state = file_state;
+    }
+
+    /// Set the VFS manager (for remote file saves)
+    pub fn set_vfs_manager(&mut self, vfs_manager: Arc<VfsManager>) {
+        self.vfs_manager = Some(vfs_manager);
+    }
+
     /// Save file
     /// Returns error if file was modified externally (use force_save() to override)
-    pub fn save(&mut self) -> Result<()> {
+    /// Returns Some((operation, remote_path, temp_path)) for remote files (async upload), None for local files
+    pub fn save(
+        &mut self,
+    ) -> Result<Option<(termide_vfs::VfsOperation<()>, termide_vfs::VfsPath, PathBuf)>> {
         // Check for external modification conflict
         if self.file_state.external_change_detected {
             return Err(anyhow::anyhow!(
                 "File was modified on disk. Use force save (Ctrl+Shift+S) to overwrite or reload (Ctrl+Shift+R) to discard changes."
             ));
+        }
+
+        // Handle remote file saves
+        if self.file_state.is_remote() {
+            let vfs_manager = self
+                .vfs_manager
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("No VFS manager for remote file"))?;
+
+            // Save to local temp file first
+            self.buffer.save()?;
+
+            // Get remote path and temp path
+            let remote_path = self
+                .file_state
+                .remote_path()
+                .ok_or_else(|| anyhow::anyhow!("No remote path"))?
+                .clone();
+            let temp_path = self
+                .file_state
+                .temp_local_path()
+                .ok_or_else(|| anyhow::anyhow!("No temp path"))?
+                .to_path_buf();
+
+            // Start async upload (DON'T call .recv()!)
+            let operation = vfs_manager.upload(&temp_path, &remote_path);
+
+            log::info!(
+                "Starting remote file upload: {}",
+                remote_path.to_url_string()
+            );
+
+            // Return operation for async handling
+            // Note: mtime and external_change_detected will be updated when upload completes
+            return Ok(Some((operation, remote_path, temp_path)));
         }
 
         // Check if this is a config file
@@ -625,7 +692,7 @@ impl Editor {
                         return Err(anyhow::anyhow!("Invalid config: {}", e));
                     }
                 }
-                return Ok(());
+                return Ok(None); // Config file saved locally
             }
         }
 
@@ -641,7 +708,7 @@ impl Editor {
         // Update git diff after successful save
         self.update_git_diff();
 
-        Ok(())
+        Ok(None) // Local file saved
     }
 
     /// Insert text at the beginning of the buffer (for restoring unsaved buffers)
@@ -697,6 +764,11 @@ impl Editor {
 
     /// Check if the file was modified externally (outside of this editor)
     pub fn check_external_modification(&mut self) {
+        // Skip check for remote files - temp file changes don't indicate external edits
+        if self.file_state.is_remote() {
+            return;
+        }
+
         if let Some(file_path) = self.buffer.file_path() {
             if file_io::was_modified_externally(file_path, self.file_state.mtime) {
                 self.file_state.external_change_detected = true;
@@ -737,7 +809,10 @@ impl Editor {
     }
 
     /// Force save (ignore external changes)
-    pub fn force_save(&mut self) -> Result<()> {
+    /// Returns Some((operation, remote_path, temp_path)) for remote files (async upload), None for local files
+    pub fn force_save(
+        &mut self,
+    ) -> Result<Option<(termide_vfs::VfsOperation<()>, termide_vfs::VfsPath, PathBuf)>> {
         self.file_state.external_change_detected = false;
         self.save()
     }
@@ -745,6 +820,24 @@ impl Editor {
     /// Get updated config (if config file was saved)
     pub fn take_config_update(&mut self) -> Option<Config> {
         self.config_update.take()
+    }
+
+    /// Update file modification time (for remote file uploads)
+    pub fn update_file_mtime(&mut self, mtime: Option<std::time::SystemTime>) {
+        self.file_state.mtime = mtime;
+        if self.file_state.is_remote() {
+            self.file_state.update_remote_mtime(mtime);
+        }
+    }
+
+    /// Clear external change detected flag (after successful remote upload)
+    pub fn clear_external_change_detected(&mut self) {
+        self.file_state.external_change_detected = false;
+    }
+
+    /// Set upload state for remote files
+    pub fn set_uploading(&mut self, uploading: bool) {
+        self.file_state.set_uploading(uploading);
     }
 
     /// Save file as (Save As)
@@ -1394,13 +1487,17 @@ impl Editor {
     }
 
     /// Handle save command - either save to existing path or open "Save As" modal
-    pub(crate) fn handle_save(&mut self) -> Result<()> {
+    /// Returns Some((operation, remote_path, temp_path)) for remote files (async upload), None for local files
+    pub(crate) fn handle_save(
+        &mut self,
+    ) -> Result<Option<(termide_vfs::VfsOperation<()>, termide_vfs::VfsPath, PathBuf)>> {
         if self.buffer.file_path().is_some() {
             // File has path - save normally
             self.save()
         } else {
             // File has no path - open "Save As" dialog
-            self.handle_save_as()
+            self.handle_save_as()?;
+            Ok(None)
         }
     }
 
@@ -1493,8 +1590,21 @@ impl Panel for Editor {
             String::new()
         };
 
-        // LSP loading spinner
-        let lsp_indicator = if self.lsp.server_loading {
+        // Upload spinner (takes priority over LSP spinner)
+        let upload_indicator = if self.file_state.uploading {
+            let frame_idx = (std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis()
+                / 100) as usize
+                % SPINNER_FRAMES.len();
+            format!("{} ", SPINNER_FRAMES[frame_idx])
+        } else {
+            String::new()
+        };
+
+        // LSP loading spinner (only if not uploading)
+        let lsp_indicator = if !self.file_state.uploading && self.lsp.server_loading {
             let frame_idx = (std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -1515,7 +1625,8 @@ impl Panel for Editor {
             .unwrap_or_default();
 
         format!(
-            "{}{}{}{}{}{}",
+            "{}{}{}{}{}{}{}",
+            upload_indicator,
             lsp_indicator,
             self.file_state.title,
             modified,
@@ -1725,10 +1836,14 @@ impl Panel for Editor {
                 has_external_change: self.file_state.external_change_detected,
             },
             PanelCommand::Save => match self.save() {
-                Ok(_) => CommandResult::SaveResult {
-                    success: true,
-                    error: None,
-                },
+                Ok(_upload_op) => {
+                    // TODO: Handle async upload operation for remote files
+                    // For now, remote saves will show progress via VFS status messages
+                    CommandResult::SaveResult {
+                        success: true,
+                        error: None,
+                    }
+                }
                 Err(e) => CommandResult::SaveResult {
                     success: false,
                     error: Some(e.to_string()),
@@ -1830,11 +1945,52 @@ impl Editor {
     pub fn take_modal_request(&mut self) -> Option<(PendingAction, ActiveModal)> {
         self.modal_request.take()
     }
+
+    /// Take pending upload operation (if any).
+    pub fn take_pending_upload(
+        &mut self,
+    ) -> Option<(termide_vfs::VfsOperation<()>, termide_vfs::VfsPath, PathBuf)> {
+        self.pending_upload.take()
+    }
+
+    /// Set pending upload operation (called by keyboard handler).
+    pub(crate) fn set_pending_upload(
+        &mut self,
+        upload: (termide_vfs::VfsOperation<()>, termide_vfs::VfsPath, PathBuf),
+    ) {
+        self.pending_upload = Some(upload);
+    }
+
+    /// Take pending remote open operation (if any).
+    pub fn take_pending_remote_open(&mut self) -> Option<crate::remote::PendingRemoteOpen> {
+        self.pending_remote_open.take()
+    }
+
+    /// Set pending remote open operation.
+    pub fn set_pending_remote_open(&mut self, pending: crate::remote::PendingRemoteOpen) {
+        self.pending_remote_open = Some(pending);
+    }
 }
 
 impl Default for Editor {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Drop for Editor {
+    fn drop(&mut self) {
+        // Cleanup remote temp file if present
+        if let Some(temp_path) = self.file_state.temp_local_path() {
+            // Safety check - only cleanup files in our temp directory
+            if let Some(parent) = temp_path.parent() {
+                if parent.ends_with("termide-remote-edit") && temp_path.exists() {
+                    if let Err(e) = std::fs::remove_file(temp_path) {
+                        log::warn!("Failed to cleanup temp file {}: {}", temp_path.display(), e);
+                    }
+                }
+            }
+        }
     }
 }
 

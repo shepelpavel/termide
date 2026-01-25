@@ -617,18 +617,39 @@ impl EditorCommand {
             Self::Redo => editor.handle_undo_redo(|buf| buf.redo()),
 
             // File operations - Save requires special handling for SaveAs modal
-            Self::Save => editor.handle_save(),
+            Self::Save => {
+                match editor.handle_save() {
+                    Ok(Some(upload)) => {
+                        // Remote file - store upload operation for app layer to process
+                        editor.set_pending_upload(upload);
+                        Ok(())
+                    }
+                    Ok(None) => {
+                        // Local file - saved synchronously, no upload needed
+                        Ok(())
+                    }
+                    Err(e) => {
+                        // Error already shown in editor
+                        Err(e)
+                    }
+                }
+            }
             Self::SaveAs => {
                 // This shouldn't be reached from key parsing, but included for completeness
                 editor.handle_save_as()
             }
             Self::ForceSave => {
-                if let Err(e) = editor.force_save() {
-                    editor.status_message = Some(format!("Force save failed: {}", e));
-                } else {
-                    editor.status_message = Some("File force saved".to_string());
+                match editor.force_save() {
+                    Err(e) => {
+                        editor.status_message = Some(format!("Force save failed: {}", e));
+                        Err(e)
+                    }
+                    Ok(_upload_op) => {
+                        // Discard upload operation - async handling not implemented in keyboard shortcuts yet
+                        editor.status_message = Some("File force saved".to_string());
+                        Ok(())
+                    }
                 }
-                Ok(())
             }
             Self::ReloadFromDisk => {
                 if let Err(e) = editor.reload_from_disk() {

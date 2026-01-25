@@ -8,6 +8,7 @@
 
 use anyhow::Result;
 use ratatui::{backend::Backend, Terminal};
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -244,6 +245,49 @@ impl App {
                         }
                     }
 
+                    // Check VFS connection status for FileManager panels and call tick() to process async operations
+                    // Collect events first, then process them (to avoid borrow issues)
+                    let mut all_fm_events = Vec::new();
+                    for panel in self.layout_manager.iter_all_panels_mut() {
+                        if let Some(fm) = panel.as_file_manager_mut() {
+                            // Call tick() to process VFS operations (connection results, directory listings)
+                            let events = fm.tick();
+                            if !events.is_empty() {
+                                self.state.needs_redraw = true;
+                                all_fm_events.extend(events);
+                            }
+                            // Also check for pending operations for spinner animation
+                            if fm.vfs_state().has_pending_operation() {
+                                self.state.needs_redraw = true;
+                            }
+                        }
+                    }
+                    // Process collected events
+                    if !all_fm_events.is_empty() {
+                        let _ = self.process_panel_events(all_fm_events);
+                    }
+
+                    // Check for modal requests from FileManager panels (e.g., VFS error modals)
+                    // This must happen after tick() processing to show connection error modals
+                    let modal_request = self
+                        .layout_manager
+                        .iter_all_panels_mut()
+                        .find_map(|panel| panel.take_modal_request());
+                    if let Some((action, modal)) = modal_request {
+                        let _ = self.handle_modal_request(action, modal);
+                        self.state.needs_redraw = true;
+                    }
+
+                    // Check for pending upload operations from Editor panels (Ctrl+S remote saves)
+                    let pending_upload = self
+                        .layout_manager
+                        .iter_all_panels_mut()
+                        .find_map(|panel| panel.take_pending_upload());
+                    if let Some((operation, remote_path, temp_path)) = pending_upload {
+                        self.handle_pending_upload(operation, remote_path, temp_path);
+                        self.state.needs_redraw = true;
+                    }
+
                     // Check channel for directory size calculation results
                     self.check_dir_size_update();
 
@@ -262,14 +306,64 @@ impl App {
                     // Check background script operation result (.report. scripts)
                     self.check_script_operation_result();
 
+                    // Check download operation result (remote file download)
+                    self.check_download_operation_result();
+
+                    // Check upload operation result (remote file upload from editor)
+                    self.check_upload_operation_result();
+
+                    // Check batch upload operation result (local→remote batch copy)
+                    self.check_batch_upload_result();
+
+                    // Check batch download operation result (remote→local batch copy)
+                    self.check_batch_download_result();
+
+                    // Check local file copy progress (chunked copy with progress)
+                    self.check_local_copy_progress();
+
+                    // Check local directory copy progress (background directory copy)
+                    self.check_local_directory_copy_progress();
+
+                    // Check local directory scan progress (async scan before copy)
+                    self.check_local_scan_progress();
+
+                    // Check pending local batch operation (start after modal rendered)
+                    self.check_pending_batch_operation();
+
+                    // Check local delete operation progress
+                    self.check_delete_progress();
+
+                    // Sync pause state between BatchOperation and ProgressModal (bidirectional)
+                    if let Some(crate::state::ActiveModal::Progress(ref mut modal)) =
+                        self.state.active_modal
+                    {
+                        if let Some(termide_state::PendingAction::ContinueBatchOperation {
+                            ref mut operation,
+                        }) = self.state.pending_action
+                        {
+                            let modal_paused = modal.is_paused();
+                            let operation_paused =
+                                operation.pause_state == termide_state::PauseState::Paused;
+
+                            // If states differ, sync from modal to operation (user interaction takes priority)
+                            if modal_paused != operation_paused {
+                                operation.pause_state = if modal_paused {
+                                    termide_state::PauseState::Paused
+                                } else {
+                                    termide_state::PauseState::Running
+                                };
+                            }
+                        }
+                    }
+
                     // Update system resource monitoring (CPU, RAM)
                     self.update_system_resources();
 
                     // Poll LSP completion responses for active editor
                     self.poll_lsp_completion();
 
-                    // Update spinner in Info modal if it's open
-                    self.update_info_modal_spinner();
+                    // Update spinner in all modals that support animation
+                    self.update_modal_spinners();
                 }
             }
 
@@ -625,28 +719,47 @@ impl App {
         }
     }
 
-    /// Update spinner in Info modal if it's open
+    /// Update spinner in all modals that support animation
     /// Throttled to 125ms (8 FPS) to reduce unnecessary redraws
-    fn update_info_modal_spinner(&mut self) {
+    fn update_modal_spinners(&mut self) {
         use crate::state::ActiveModal;
 
         const SPINNER_INTERVAL: std::time::Duration = std::time::Duration::from_millis(125);
 
-        if let Some(ActiveModal::Info(ref mut modal)) = self.state.active_modal {
-            // Update spinner only if calculation is still ongoing
-            if self.state.dir_size_receiver.is_some() {
-                // Throttle spinner updates
-                let should_update = self
-                    .state
-                    .last_spinner_update
-                    .is_none_or(|t| t.elapsed() >= SPINNER_INTERVAL);
+        // Throttle spinner updates for all modals
+        let should_update = self
+            .state
+            .last_spinner_update
+            .is_none_or(|t| t.elapsed() >= SPINNER_INTERVAL);
 
-                if should_update {
+        if !should_update {
+            return;
+        }
+
+        match &mut self.state.active_modal {
+            Some(ActiveModal::Info(ref mut modal)) => {
+                // Update spinner only if calculation is still ongoing
+                if self.state.dir_size_receiver.is_some() {
                     modal.advance_spinner();
                     self.state.last_spinner_update = Some(std::time::Instant::now());
                     self.state.needs_redraw = true;
                 }
             }
+            Some(ActiveModal::InfoAction(ref mut modal)) => {
+                // Update spinner only if operation is still ongoing
+                if modal.is_operation_in_progress() {
+                    modal.advance_spinner();
+                    self.state.last_spinner_update = Some(std::time::Instant::now());
+                    self.state.needs_redraw = true;
+                }
+            }
+            Some(ActiveModal::Progress(ref mut modal)) => {
+                // Always update spinner when progress modal is visible
+                modal.advance_spinner();
+                self.state.last_spinner_update = Some(std::time::Instant::now());
+                self.state.needs_redraw = true;
+            }
+            _ => {}
         }
     }
 
@@ -732,12 +845,7 @@ impl App {
                     });
                 }
 
-                // Also advance spinner on InfoActionModal if open
-                if let Some(ActiveModal::InfoAction(ref mut modal)) = self.state.active_modal {
-                    if modal.is_operation_in_progress() {
-                        modal.advance_spinner();
-                    }
-                }
+                // InfoActionModal spinner updated by update_modal_spinners()
 
                 // Put handle back
                 self.state.git_operation_handle = Some(handle);
@@ -808,6 +916,1004 @@ impl App {
             Err(TryRecvError::Disconnected) => {
                 // Thread finished without sending (shouldn't happen)
                 // Just ignore
+            }
+        }
+    }
+
+    /// Check download operation result (remote file download)
+    fn check_download_operation_result(&mut self) {
+        use termide_panel_editor::{Editor, FileState};
+
+        let download = match self.state.download_operation.take() {
+            Some(d) => d,
+            None => return,
+        };
+
+        match download.operation.try_recv() {
+            Some(Ok(_)) => {
+                // Download complete!
+                self.state.close_modal();
+
+                // Get metadata from downloaded temp file
+                let (size, mtime) = match std::fs::metadata(&download.temp_path) {
+                    Ok(meta) => (meta.len(), meta.modified().ok()),
+                    Err(_) => (0, None),
+                };
+
+                // Open editor with temp file and mark as remote
+                match Editor::open_file_with_config(download.temp_path.clone(), download.config) {
+                    Ok(mut editor) => {
+                        // Set remote file state
+                        editor.set_file_state(FileState::from_remote(
+                            download.remote_path.clone(),
+                            download.temp_path,
+                            mtime,
+                            size,
+                        ));
+
+                        // Store VfsManager for saves
+                        editor.set_vfs_manager(download.vfs_manager);
+
+                        // Initialize LSP
+                        if let Some(lsp) = &mut self.state.lsp_manager {
+                            editor.init_lsp(lsp);
+                        }
+
+                        self.add_panel(Box::new(editor));
+                        self.auto_save_session();
+
+                        let filename = download
+                            .remote_path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("remote file");
+                        logger::info(format!("Remote file '{}' opened in editor", filename));
+                        self.state.set_info(format!("File {} opened", filename));
+                    }
+                    Err(e) => {
+                        let error_msg = format!("Failed to open downloaded file: {}", e);
+                        logger::error(error_msg.clone());
+                        self.state.set_error(error_msg);
+                        // Clean up temp file
+                        let _ = std::fs::remove_file(&download.temp_path);
+                    }
+                }
+            }
+            Some(Err(e)) => {
+                // Download failed
+                self.state.close_modal();
+                let error_msg = format!("Download failed: {}", e);
+                logger::error(error_msg.clone());
+                self.state.set_error(error_msg);
+                // Clean up temp file
+                let _ = std::fs::remove_file(&download.temp_path);
+            }
+            None => {
+                // Still downloading - check timeout
+                if download.started.elapsed().as_secs() > 120 {
+                    self.state.close_modal();
+                    logger::error("Download timeout (120s)".to_string());
+                    self.state.set_error("Download timeout (120s)".to_string());
+                    // Clean up temp file
+                    let _ = std::fs::remove_file(&download.temp_path);
+                } else {
+                    // Put back for next tick
+                    self.state.download_operation = Some(download);
+                }
+            }
+        }
+    }
+
+    /// Handle pending upload operation from Editor (regular Ctrl+S save of remote file)
+    fn handle_pending_upload(
+        &mut self,
+        operation: termide_vfs::VfsOperation<()>,
+        remote_path: termide_vfs::VfsPath,
+        temp_path: PathBuf,
+    ) {
+        // Show progress modal
+        let filename = remote_path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "file".to_string());
+
+        let modal = termide_modal::ProgressModal::indeterminate(
+            "Uploading File",
+            format!("Uploading {}...", filename),
+        );
+        self.state.active_modal = Some(crate::state::ActiveModal::Progress(Box::new(modal)));
+
+        // Set uploading flag on active editor
+        if let Some(panel) = self.layout_manager.active_panel_mut() {
+            if let Some(editor) = panel.as_editor_mut() {
+                editor.set_uploading(true);
+            }
+        }
+
+        // Store operation for polling (reuse existing infrastructure)
+        self.state.upload_operation = Some(crate::state::UploadOperation {
+            operation,
+            remote_path,
+            temp_path,
+            editor_panel_id: 0, // Active panel
+            started: std::time::Instant::now(),
+            close_after_upload: false, // Regular save - keep editor open
+        });
+    }
+
+    /// Check upload operation result (remote file upload)
+    fn check_upload_operation_result(&mut self) {
+        let upload = match self.state.upload_operation.take() {
+            Some(u) => u,
+            None => return,
+        };
+
+        // Non-blocking poll
+        match upload.operation.try_recv() {
+            Some(Ok(_)) => {
+                // Upload complete!
+                self.state.close_modal();
+
+                // Update editor mtime to prevent "changed on disk" warning
+                // Note: We use active_panel since the editor should still be active
+                // (upload happens during save-before-close which doesn't close until upload completes)
+                if let Some(panel) = self.layout_manager.active_panel_mut() {
+                    if let Some(editor) = panel.as_editor_mut() {
+                        // Update editor mtime from temp file
+                        if let Ok(meta) = std::fs::metadata(&upload.temp_path) {
+                            if let Ok(mtime) = meta.modified() {
+                                editor.update_file_mtime(Some(mtime));
+                            }
+                        }
+                        editor.clear_external_change_detected();
+                        editor.set_uploading(false);
+                    }
+                }
+
+                let filename = upload
+                    .remote_path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "file".to_string());
+                logger::info(format!("Remote file '{}' uploaded successfully", filename));
+                self.state.set_info(format!("File {} uploaded", filename));
+
+                // Close editor if this was a "save and close" operation
+                if upload.close_after_upload {
+                    self.close_panel_at_index(0);
+                }
+            }
+            Some(Err(e)) => {
+                // Upload failed
+                self.state.close_modal();
+                // Clear uploading flag on error
+                if let Some(panel) = self.layout_manager.active_panel_mut() {
+                    if let Some(editor) = panel.as_editor_mut() {
+                        editor.set_uploading(false);
+                    }
+                }
+                let error_msg = format!("Upload failed: {}", e);
+                logger::error(error_msg.clone());
+                self.state.set_error(error_msg);
+            }
+            None => {
+                // Still uploading - check timeout
+                if upload.started.elapsed().as_secs() > 120 {
+                    self.state.close_modal();
+                    // Clear uploading flag on timeout
+                    if let Some(panel) = self.layout_manager.active_panel_mut() {
+                        if let Some(editor) = panel.as_editor_mut() {
+                            editor.set_uploading(false);
+                        }
+                    }
+                    logger::error("Upload timeout (120s)".to_string());
+                    self.state.set_error("Upload timeout (120s)".to_string());
+                } else {
+                    // Still uploading - spinner updated by update_modal_spinners()
+                    // Put back for next tick
+                    self.state.upload_operation = Some(upload);
+                }
+            }
+        }
+    }
+
+    /// Check batch upload operation result (local→remote batch copy)
+    fn check_batch_upload_result(&mut self) {
+        let mut upload = match self.state.batch_upload_operation.take() {
+            Some(u) => u,
+            None => return,
+        };
+
+        // Check for progress updates and update modal
+        if let Some(progress) = upload.operation.drain_progress() {
+            if let Some(crate::state::ActiveModal::Progress(ref mut modal)) =
+                self.state.active_modal
+            {
+                modal.update_file_progress(progress.bytes_uploaded, progress.total_bytes);
+            }
+        }
+
+        // Non-blocking poll for completion
+        match upload.operation.try_recv() {
+            Some(Ok(_)) => {
+                // Current file upload complete!
+                let filename = std::path::Path::new(&upload.dest_url)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "file".to_string());
+
+                logger::info(format!("File '{}' uploaded successfully", filename));
+
+                // If this was a move operation, delete the local source
+                if upload.is_move {
+                    if let Err(e) = std::fs::remove_file(&upload.source_path) {
+                        logger::warn(format!("Failed to delete source after move: {}", e));
+                    }
+                }
+
+                // Check if there are more files to upload
+                upload.current_index += 1;
+                if upload.current_index < upload.all_sources.len() {
+                    // Start next file upload
+                    let next_source = &upload.all_sources[upload.current_index];
+                    let source_name = next_source
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_else(|| "file".to_string());
+
+                    // Parse remote base path and join with filename
+                    if let Ok(remote_base) = termide_vfs::parse_vfs_url(&upload.dest_base_url) {
+                        let final_remote = remote_base.join(&source_name);
+                        let total_bytes =
+                            std::fs::metadata(next_source).map(|m| m.len()).unwrap_or(0);
+
+                        // Update modal progress
+                        if let Some(crate::state::ActiveModal::Progress(ref mut modal)) =
+                            self.state.active_modal
+                        {
+                            modal.update_progress(
+                                upload.current_index + 1,
+                                Some(next_source.display().to_string()),
+                            );
+                            modal.update_source_dest(
+                                next_source.display().to_string(),
+                                final_remote.to_url_string(),
+                            );
+                            // Reset file progress for new file
+                            modal.update_file_progress(0, total_bytes);
+                        }
+
+                        // Start upload for next file
+                        let upload_op = upload
+                            .vfs_manager
+                            .upload_with_progress(next_source, &final_remote);
+
+                        // Update upload state
+                        upload.operation = upload_op;
+                        upload.source_path = next_source.clone();
+                        upload.dest_url = final_remote.to_url_string();
+                        upload.total_bytes = total_bytes;
+                        upload.started = std::time::Instant::now();
+
+                        // Put back for next tick
+                        self.state.batch_upload_operation = Some(upload);
+                    } else {
+                        // Failed to parse URL - abort
+                        self.state.close_modal();
+                        self.state
+                            .set_error("Failed to parse remote URL".to_string());
+                    }
+                } else {
+                    // All files uploaded!
+                    self.state.close_modal();
+                    let total = upload.all_sources.len();
+                    if total == 1 {
+                        self.state.set_info(format!("File {} uploaded", filename));
+                    } else {
+                        self.state.set_info(format!("{} files uploaded", total));
+                    }
+
+                    // Refresh file manager panels that show the destination directory
+                    if let Ok(dest_path) = termide_vfs::parse_vfs_url(&upload.dest_url) {
+                        if let Some(parent) = dest_path.parent() {
+                            for group in &mut self.layout_manager.panel_groups {
+                                for panel in group.panels_mut() {
+                                    if let Some(fm) = panel.as_file_manager_mut() {
+                                        if fm.is_remote() {
+                                            let fm_path = fm.vfs_state().current_path();
+                                            if fm_path.connection_key() == parent.connection_key()
+                                                && fm_path.path == parent.path
+                                            {
+                                                let _ = fm.reload_directory();
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Some(Err(e)) => {
+                // Upload failed - log error and continue with next file
+                logger::error(format!(
+                    "Upload failed for {}: {}",
+                    upload.source_path.display(),
+                    e
+                ));
+
+                upload.current_index += 1;
+                if upload.current_index < upload.all_sources.len() {
+                    // Try next file
+                    let next_source = &upload.all_sources[upload.current_index];
+                    let source_name = next_source
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_else(|| "file".to_string());
+
+                    if let Ok(remote_base) = termide_vfs::parse_vfs_url(&upload.dest_base_url) {
+                        let final_remote = remote_base.join(&source_name);
+                        let total_bytes =
+                            std::fs::metadata(next_source).map(|m| m.len()).unwrap_or(0);
+
+                        // Update modal
+                        if let Some(crate::state::ActiveModal::Progress(ref mut modal)) =
+                            self.state.active_modal
+                        {
+                            modal.update_progress(
+                                upload.current_index + 1,
+                                Some(next_source.display().to_string()),
+                            );
+                            modal.update_source_dest(
+                                next_source.display().to_string(),
+                                final_remote.to_url_string(),
+                            );
+                            modal.update_file_progress(0, total_bytes);
+                        }
+
+                        let upload_op = upload
+                            .vfs_manager
+                            .upload_with_progress(next_source, &final_remote);
+                        upload.operation = upload_op;
+                        upload.source_path = next_source.clone();
+                        upload.dest_url = final_remote.to_url_string();
+                        upload.total_bytes = total_bytes;
+                        upload.started = std::time::Instant::now();
+                        self.state.batch_upload_operation = Some(upload);
+                    } else {
+                        self.state.close_modal();
+                        self.state.set_error(format!("Upload failed: {}", e));
+                    }
+                } else {
+                    // No more files - show error
+                    self.state.close_modal();
+                    self.state.set_error(format!("Upload failed: {}", e));
+                }
+            }
+            None => {
+                // Still uploading - check timeout
+                if upload.started.elapsed().as_secs() > 300 {
+                    // 5 minute timeout for file upload
+                    self.state.close_modal();
+                    logger::error("Upload timeout (5 min)".to_string());
+                    self.state.set_error("Upload timeout (5 min)".to_string());
+                } else {
+                    // Still uploading - put back for next tick
+                    self.state.batch_upload_operation = Some(upload);
+                }
+            }
+        }
+    }
+
+    /// Check batch download operation result (remote→local file copy/move during batch operations)
+    fn check_batch_download_result(&mut self) {
+        use crate::state::PendingAction;
+        use std::sync::atomic::Ordering;
+
+        let mut download = match self.state.batch_download_operation.take() {
+            Some(d) => d,
+            None => return,
+        };
+
+        // Sync pause state: BatchOperation -> download operation
+        if let Some(PendingAction::ContinueBatchOperation { ref operation }) =
+            self.state.pending_action
+        {
+            let should_pause = operation.pause_state == termide_state::PauseState::Paused;
+            download
+                .operation
+                .pause_flag
+                .store(should_pause, Ordering::Relaxed);
+        }
+
+        // Poll progress updates (drain all available progress messages)
+        if let Some(progress) = download.operation.drain_progress() {
+            // Update last known totals for this item
+            download.last_total_files = progress.total_files;
+            download.last_total_bytes = progress.total_bytes;
+
+            if let Some(crate::state::ActiveModal::Progress(ref mut modal)) =
+                self.state.active_modal
+            {
+                // Get cumulative values from batch operation
+                let (cumulative_files, cumulative_bytes) =
+                    if let Some(PendingAction::ContinueBatchOperation { ref operation }) =
+                        self.state.pending_action
+                    {
+                        (
+                            operation.cumulative_files_completed,
+                            operation.cumulative_bytes_completed,
+                        )
+                    } else {
+                        (0, 0)
+                    };
+
+                // Use update_directory_copy_progress with cumulative + current values
+                modal.update_directory_copy_progress(
+                    cumulative_files + progress.files_downloaded,
+                    cumulative_files + progress.total_files, // Approximate total (will grow as we process more items)
+                    cumulative_bytes + progress.bytes_downloaded,
+                    cumulative_bytes + progress.total_bytes, // Approximate total
+                );
+                // Update individual file progress for chunked downloads (progress bar)
+                modal.update_individual_file_progress(
+                    progress.current_file_bytes,
+                    progress.current_file_total,
+                );
+                // Also update current item being downloaded
+                if let Some(ref file) = progress.current_file {
+                    modal.update_progress(
+                        cumulative_files + progress.files_downloaded,
+                        Some(file.clone()),
+                    );
+                }
+                self.state.needs_redraw = true;
+            }
+        }
+
+        match download.operation.try_recv() {
+            Some(Ok(_)) => {
+                // Download complete - for Move, delete the source file on remote
+                if download.is_move {
+                    if let (Some(vfs_source), Some(vfs_manager)) =
+                        (&download.vfs_source, &download.vfs_manager)
+                    {
+                        // Start async delete operation (fire and forget for now)
+                        let delete_op = vfs_manager.delete(vfs_source);
+                        // Spawn thread to wait for delete result and log error if any
+                        std::thread::spawn(move || {
+                            if let Err(e) = delete_op.recv() {
+                                termide_logger::error(format!(
+                                    "Failed to delete remote source after move: {}",
+                                    e
+                                ));
+                            }
+                        });
+                    }
+                }
+
+                // Continue batch operation
+                if let Some(PendingAction::ContinueBatchOperation { mut operation }) =
+                    self.state.pending_action.take()
+                {
+                    operation.success_count += 1;
+
+                    // Update cumulative counters with completed item's totals
+                    operation.cumulative_files_completed += download.last_total_files;
+                    operation.cumulative_bytes_completed += download.last_total_bytes;
+
+                    // Update progress modal
+                    if let Some(crate::state::ActiveModal::Progress(ref mut modal)) =
+                        self.state.active_modal
+                    {
+                        modal.update_progress(
+                            operation.current_index + 1,
+                            Some(download.dest_path.display().to_string()),
+                        );
+                    }
+
+                    operation.current_index += 1;
+                    self.process_batch_operation(operation);
+                }
+            }
+            Some(Err(e)) => {
+                // Download failed - record error and continue
+                if let Some(PendingAction::ContinueBatchOperation { mut operation }) =
+                    self.state.pending_action.take()
+                {
+                    operation.error_count += 1;
+                    logger::error(format!(
+                        "Batch download failed for {}: {}",
+                        download.dest_path.display(),
+                        e
+                    ));
+
+                    // Still update cumulative counters for the failed item
+                    operation.cumulative_files_completed += download.last_total_files;
+                    operation.cumulative_bytes_completed += download.last_total_bytes;
+
+                    operation.current_index += 1;
+                    self.process_batch_operation(operation);
+                }
+            }
+            None => {
+                // Still downloading - check timeout (5 minutes for potentially large directories)
+                if download.started.elapsed().as_secs() > 300 {
+                    // Timeout - record error and continue
+                    if let Some(PendingAction::ContinueBatchOperation { mut operation }) =
+                        self.state.pending_action.take()
+                    {
+                        operation.error_count += 1;
+                        logger::error(format!(
+                            "Batch download timeout for {}",
+                            download.dest_path.display()
+                        ));
+
+                        // Update cumulative counters even for timeout
+                        operation.cumulative_files_completed += download.last_total_files;
+                        operation.cumulative_bytes_completed += download.last_total_bytes;
+
+                        operation.current_index += 1;
+                        self.process_batch_operation(operation);
+                    }
+                } else {
+                    // Put back for next tick
+                    self.state.batch_download_operation = Some(download);
+                }
+            }
+        }
+    }
+
+    /// Check and update progress for ongoing local file copy operation
+    fn check_local_copy_progress(&mut self) {
+        use crate::state::PendingAction;
+        use std::sync::atomic::Ordering;
+
+        let copy_op = match self.state.local_copy_operation.take() {
+            Some(op) => op,
+            None => return,
+        };
+
+        // Sync pause state: BatchOperation -> CopyOperation
+        if let Some(PendingAction::ContinueBatchOperation { ref operation }) =
+            self.state.pending_action
+        {
+            let should_pause = operation.pause_state == termide_state::PauseState::Paused;
+            copy_op.pause_flag.store(should_pause, Ordering::Relaxed);
+        }
+
+        // Poll progress updates (drain all available progress messages)
+        while let Ok(progress) = copy_op.progress.try_recv() {
+            if let Some(crate::state::ActiveModal::Progress(ref mut modal)) =
+                self.state.active_modal
+            {
+                modal.update_file_progress(progress.bytes_copied, progress.total_bytes);
+                self.state.needs_redraw = true;
+            }
+        }
+
+        // Poll completion status
+        match copy_op.completion.try_recv() {
+            Ok(Ok(_)) => {
+                // Copy complete - for Move, delete the source file
+                if copy_op.is_move {
+                    if let Err(e) = std::fs::remove_file(&copy_op.source_path) {
+                        logger::error(format!(
+                            "Failed to delete source after move: {}: {}",
+                            copy_op.source_path.display(),
+                            e
+                        ));
+                    }
+                }
+
+                // Continue batch operation
+                if let Some(PendingAction::ContinueBatchOperation { mut operation }) =
+                    self.state.pending_action.take()
+                {
+                    // Track completed destination for cleanup if operation is cancelled later
+                    operation.add_completed_destination(copy_op.dest_path.clone());
+                    operation.increment_success();
+                    operation.advance();
+                    self.process_batch_operation(operation);
+                }
+            }
+            Ok(Err(e)) => {
+                // Check if this is a cancellation error
+                let error_msg = e.to_string();
+                let is_cancellation = error_msg.contains("cancelled by user");
+
+                if is_cancellation {
+                    // User cancelled - show modal with cleanup options
+                    use termide_modal::{ActiveModal, ChoiceModal};
+
+                    // Extract batch operation info before setting new pending action
+                    let (all_dest_paths, batch_operation) = self
+                        .state
+                        .pending_action
+                        .take()
+                        .and_then(|action| {
+                            if let PendingAction::ContinueBatchOperation { operation } = action {
+                                Some((
+                                    operation.completed_destinations.clone(),
+                                    Some(Box::new(operation)),
+                                ))
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or_default();
+
+                    // Show different options based on whether there are completed files
+                    let buttons = if all_dest_paths.is_empty() {
+                        // Single file - only two options
+                        vec!["Delete".to_string(), "Keep".to_string()]
+                    } else {
+                        // Multiple files - three options
+                        vec![
+                            "Delete partial".to_string(),
+                            "Delete all".to_string(),
+                            "Keep all".to_string(),
+                        ]
+                    };
+                    let modal = ChoiceModal::buttons_only("Operation Cancelled", buttons);
+                    self.state.active_modal = Some(ActiveModal::Choice(Box::new(modal)));
+                    self.state.pending_action = Some(PendingAction::CancelCopyCleanup {
+                        partial_path: copy_op.dest_path.clone(),
+                        all_dest_paths,
+                        is_directory: false,
+                        batch_operation,
+                    });
+                } else {
+                    // Other error - record and continue
+                    if let Some(PendingAction::ContinueBatchOperation { mut operation }) =
+                        self.state.pending_action.take()
+                    {
+                        operation.increment_error();
+                        logger::error(format!(
+                            "File copy failed for {}: {}",
+                            copy_op.dest_path.display(),
+                            e
+                        ));
+                        operation.advance();
+                        self.process_batch_operation(operation);
+                    }
+                }
+            }
+            Err(_) => {
+                // Still copying - put back for next tick
+                self.state.local_copy_operation = Some(copy_op);
+            }
+        }
+    }
+
+    /// Check and update progress for ongoing local directory copy operation
+    fn check_local_directory_copy_progress(&mut self) {
+        use crate::state::PendingAction;
+        use std::sync::atomic::Ordering;
+
+        let mut copy_op = match self.state.local_directory_copy_operation.take() {
+            Some(op) => op,
+            None => return,
+        };
+
+        // Sync pause state: BatchOperation -> DirectoryCopyOperation
+        if let Some(PendingAction::ContinueBatchOperation { ref operation }) =
+            self.state.pending_action
+        {
+            let should_pause = operation.pause_state == termide_state::PauseState::Paused;
+            copy_op.pause_flag.store(should_pause, Ordering::Relaxed);
+        }
+
+        // Poll progress updates (drain all available progress messages)
+        while let Ok(progress) = copy_op.progress.try_recv() {
+            // Track current file being copied (for cleanup on cancel)
+            copy_op.current_file = Some(progress.current_file.clone());
+
+            if let Some(crate::state::ActiveModal::Progress(ref mut modal)) =
+                self.state.active_modal
+            {
+                modal.update_directory_copy_progress(
+                    progress.files_completed,
+                    progress.total_files,
+                    progress.bytes_copied,
+                    progress.total_bytes,
+                );
+                self.state.needs_redraw = true;
+            }
+        }
+
+        // Poll completion status
+        match copy_op.completion.try_recv() {
+            Ok(Ok(_)) => {
+                // Copy complete - for Move, delete the source directory
+                if copy_op.is_move {
+                    if let Err(e) = std::fs::remove_dir_all(&copy_op.source_path) {
+                        logger::error(format!(
+                            "Failed to delete source directory after move: {}: {}",
+                            copy_op.source_path.display(),
+                            e
+                        ));
+                    }
+                }
+
+                // Continue batch operation
+                if let Some(PendingAction::ContinueBatchOperation { mut operation }) =
+                    self.state.pending_action.take()
+                {
+                    // Track completed destination for cleanup if operation is cancelled later
+                    operation.add_completed_destination(copy_op.dest_path.clone());
+                    operation.increment_success();
+                    operation.advance();
+                    self.process_batch_operation(operation);
+                }
+            }
+            Ok(Err(e)) => {
+                // Check if this is a cancellation error
+                let error_msg = e.to_string();
+                let is_cancellation = error_msg.contains("cancelled by user");
+
+                if is_cancellation {
+                    // User cancelled directory copy - show 3 cleanup options
+                    use termide_modal::{ActiveModal, ChoiceModal};
+
+                    // Extract batch operation info
+                    let batch_operation = self.state.pending_action.take().and_then(|action| {
+                        if let PendingAction::ContinueBatchOperation { operation } = action {
+                            Some(Box::new(operation))
+                        } else {
+                            None
+                        }
+                    });
+
+                    // For directory copy: always show 3 options
+                    // 0 = Keep all (keep everything as is)
+                    // 1 = Delete partial (only the interrupted file)
+                    // 2 = Delete all (entire destination directory)
+                    let buttons = vec![
+                        "Keep all".to_string(),
+                        "Delete partial".to_string(),
+                        "Delete all".to_string(),
+                    ];
+                    let modal = ChoiceModal::buttons_only("Operation Cancelled", buttons);
+                    self.state.active_modal = Some(ActiveModal::Choice(Box::new(modal)));
+                    self.state.pending_action = Some(PendingAction::CancelCopyCleanup {
+                        partial_path: copy_op.current_file.unwrap_or_default(), // The file being copied
+                        all_dest_paths: vec![copy_op.dest_path.clone()], // The destination directory
+                        is_directory: true,
+                        batch_operation,
+                    });
+                } else {
+                    // Other error - record and continue
+                    if let Some(PendingAction::ContinueBatchOperation { mut operation }) =
+                        self.state.pending_action.take()
+                    {
+                        operation.increment_error();
+                        logger::error(format!(
+                            "Directory copy failed for {}: {}",
+                            copy_op.dest_path.display(),
+                            e
+                        ));
+                        operation.advance();
+                        self.process_batch_operation(operation);
+                    }
+                }
+            }
+            Err(_) => {
+                // Still copying - put back for next tick
+                self.state.local_directory_copy_operation = Some(copy_op);
+            }
+        }
+    }
+
+    /// Check and update progress for ongoing directory scan operation
+    fn check_local_scan_progress(&mut self) {
+        let scan_op = match self.state.local_scan_operation.take() {
+            Some(op) => op,
+            None => return,
+        };
+
+        // Poll progress updates (drain all available progress messages)
+        while let Ok(progress) = scan_op.progress.try_recv() {
+            if let Some(crate::state::ActiveModal::Progress(ref mut modal)) =
+                self.state.active_modal
+            {
+                let current_dir = if !progress.current_dir.as_os_str().is_empty() {
+                    Some(progress.current_dir.display().to_string())
+                } else {
+                    None
+                };
+                modal.update_scan_progress(progress.files_count, progress.total_bytes, current_dir);
+                self.state.needs_redraw = true;
+            }
+        }
+
+        // Poll completion status
+        match scan_op.completion.try_recv() {
+            Ok(Ok(scan_result)) => {
+                // Scan complete - start the actual directory copy
+                logger::info(format!(
+                    "Directory scan complete: {} files, {} bytes",
+                    scan_result.files.len(),
+                    scan_result.total_bytes
+                ));
+
+                // Check if this is a move operation
+                let is_move = scan_op
+                    .batch_operation
+                    .as_ref()
+                    .map(|op| op.operation_type == termide_state::BatchOperationType::Move)
+                    .unwrap_or(false);
+
+                // Transition modal from scanning to copying mode
+                let title = if is_move { "Move" } else { "Copy" };
+                if let Some(crate::state::ActiveModal::Progress(ref mut modal)) =
+                    self.state.active_modal
+                {
+                    modal.finish_scanning(
+                        scan_result.files.len(),
+                        scan_result.total_bytes,
+                        scan_op.dest_path.display().to_string(),
+                        title,
+                    );
+                }
+
+                // Start the actual directory copy with scan results
+                match termide_panel_file_manager::copy_directory_with_progress(
+                    &scan_op.source_path,
+                    &scan_op.dest_path,
+                ) {
+                    Ok(copy_op) => {
+                        // Store copy operation for async handling
+                        self.state.local_directory_copy_operation =
+                            Some(crate::state::LocalDirectoryCopyOperation {
+                                completion: copy_op.completion,
+                                progress: copy_op.progress,
+                                source_path: scan_op.source_path.clone(),
+                                dest_path: scan_op.dest_path.clone(),
+                                is_move,
+                                pause_flag: copy_op.pause_flag,
+                                cancel_flag: copy_op.cancel_flag,
+                                current_file: None,
+                            });
+
+                        // Restore batch operation as pending action
+                        if let Some(operation) = scan_op.batch_operation {
+                            self.state.pending_action =
+                                Some(crate::state::PendingAction::ContinueBatchOperation {
+                                    operation: *operation,
+                                });
+                        }
+                    }
+                    Err(e) => {
+                        // Copy failed to start - show error and continue batch
+                        logger::error(format!("Failed to start directory copy: {}", e));
+                        if let Some(mut operation) = scan_op.batch_operation {
+                            operation.increment_error();
+                            operation.advance();
+                            self.state.close_modal();
+                            self.process_batch_operation(*operation);
+                        }
+                    }
+                }
+            }
+            Ok(Err(e)) => {
+                // Scan failed or was cancelled
+                let error_msg = e.to_string();
+                let is_cancellation = error_msg.contains("cancelled");
+
+                if is_cancellation {
+                    // User cancelled - close modal and show status
+                    self.state.close_modal();
+                    self.state.set_info("Directory scan cancelled".to_string());
+
+                    // Continue batch operation without this directory
+                    if let Some(mut operation) = scan_op.batch_operation {
+                        operation.increment_skipped();
+                        operation.advance();
+                        self.process_batch_operation(*operation);
+                    }
+                } else {
+                    // Other error - record and continue
+                    logger::error(format!("Directory scan failed: {}", e));
+                    if let Some(mut operation) = scan_op.batch_operation {
+                        operation.increment_error();
+                        operation.advance();
+                        self.state.close_modal();
+                        self.process_batch_operation(*operation);
+                    }
+                }
+            }
+            Err(_) => {
+                // Still scanning - put back for next tick
+                self.state.local_scan_operation = Some(scan_op);
+            }
+        }
+    }
+
+    /// Check if there's a pending local batch operation that needs to start
+    /// (after progress modal has been rendered)
+    fn check_pending_batch_operation(&mut self) {
+        use crate::state::{ActiveModal, PendingAction};
+
+        // Don't start new operation if background copy/download/scan is already in progress
+        if self.state.local_copy_operation.is_some()
+            || self.state.local_directory_copy_operation.is_some()
+            || self.state.local_scan_operation.is_some()
+            || self.state.batch_download_operation.is_some()
+        {
+            return;
+        }
+
+        // Check if we have a pending batch operation with progress modal open
+        if let Some(ActiveModal::Progress(_)) = &self.state.active_modal {
+            if let Some(PendingAction::ContinueBatchOperation { operation }) =
+                self.state.pending_action.take()
+            {
+                // Modal has been rendered, now start the actual batch operation
+                self.process_batch_operation(operation);
+            }
+        }
+    }
+
+    /// Check and update progress for ongoing local delete operation
+    fn check_delete_progress(&mut self) {
+        let delete_op = match self.state.local_delete_operation.take() {
+            Some(op) => op,
+            None => return,
+        };
+
+        // Poll progress updates (drain all available progress messages)
+        while let Ok(progress) = delete_op.progress.try_recv() {
+            if let Some(crate::state::ActiveModal::Progress(ref mut modal)) =
+                self.state.active_modal
+            {
+                modal.update_delete_progress(progress.files_deleted, progress.total_files);
+                self.state.needs_redraw = true;
+            }
+        }
+
+        // Poll completion status
+        match delete_op.completion.try_recv() {
+            Ok(Ok(_)) => {
+                // Delete complete - close modal and refresh FileManager
+                self.state.close_modal();
+
+                // Refresh FileManager and clear selection
+                if let Some(panel) = self.layout_manager.active_panel_mut() {
+                    if let Some(fm) = panel.as_file_manager_mut() {
+                        fm.clear_selection();
+                        let _ = fm.load_directory();
+                    }
+                }
+
+                let t = termide_i18n::t();
+                self.state.set_info(t.status_item_deleted().to_string());
+                logger::info("Delete operation completed successfully".to_string());
+            }
+            Ok(Err(e)) => {
+                // Delete failed or cancelled
+                self.state.close_modal();
+
+                // Refresh FileManager anyway (partial deletion may have occurred)
+                if let Some(panel) = self.layout_manager.active_panel_mut() {
+                    if let Some(fm) = panel.as_file_manager_mut() {
+                        fm.clear_selection();
+                        let _ = fm.load_directory();
+                    }
+                }
+
+                let error_msg = e.to_string();
+                if error_msg.contains("cancelled") {
+                    self.state.set_info("Delete cancelled".to_string());
+                    logger::info("Delete operation cancelled by user".to_string());
+                } else {
+                    self.state.set_error(format!("Delete failed: {}", e));
+                    logger::error(format!("Delete operation failed: {}", e));
+                }
+            }
+            Err(_) => {
+                // Still deleting - put back for next tick
+                self.state.local_delete_operation = Some(delete_op);
             }
         }
     }

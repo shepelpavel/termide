@@ -36,8 +36,9 @@ pub enum SessionPanel {
     /// File manager panel
     #[serde(rename = "file_manager")]
     FileManager {
-        /// Current directory path
-        path: PathBuf,
+        /// Path for local filesystem, or VFS URL for remote (e.g., "sftp://user@host/path")
+        #[serde(alias = "path")] // Support old format for backward compatibility
+        path_or_url: String,
     },
     /// Text editor panel
     #[serde(rename = "editor")]

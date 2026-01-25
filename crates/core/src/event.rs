@@ -104,6 +104,9 @@ pub enum PanelEvent {
     /// Open file with system default application (xdg-open)
     OpenExternal(PathBuf),
 
+    /// Open a remote file via VFS (URL format: "sftp://user@host/path")
+    OpenRemoteFile(String),
+
     /// Save file to disk
     SaveFile(PathBuf),
 

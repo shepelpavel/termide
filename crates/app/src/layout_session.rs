@@ -76,8 +76,27 @@ impl LayoutManagerSession for LayoutManager {
 
             for session_panel in session_group.panels {
                 let panel: Option<Box<dyn Panel>> = match session_panel {
-                    SessionPanel::FileManager { path } => {
-                        Some(Box::new(FileManager::new_with_path(path)))
+                    SessionPanel::FileManager { path_or_url } => {
+                        // Check if it's a VFS URL (starts with protocol://)
+                        if termide_vfs::is_vfs_url(&path_or_url) {
+                            // Remote path - use VFS restoration
+                            let vfs_manager = std::sync::Arc::new(termide_vfs::VfsManager::new());
+                            match FileManager::new_with_vfs_url(&path_or_url, vfs_manager) {
+                                Ok(fm) => Some(Box::new(fm)),
+                                Err(e) => {
+                                    eprintln!(
+                                        "Failed to restore remote FileManager at '{}': {}",
+                                        path_or_url, e
+                                    );
+                                    None
+                                }
+                            }
+                        } else {
+                            // Local path
+                            Some(Box::new(FileManager::new_with_path(
+                                std::path::PathBuf::from(path_or_url),
+                            )))
+                        }
                     }
                     SessionPanel::Editor {
                         path,

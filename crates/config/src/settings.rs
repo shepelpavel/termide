@@ -38,6 +38,10 @@ pub struct Config {
     /// Logging settings
     #[serde(default)]
     pub logging: LoggingSettings,
+
+    /// VFS (network filesystem) settings
+    #[serde(default)]
+    pub vfs: VfsSettings,
 }
 
 /// General application settings.
@@ -149,6 +153,26 @@ pub struct LoggingSettings {
     /// System resource monitor update interval in ms
     #[serde(default = "default_resource_monitor_interval")]
     pub resource_monitor_interval: u64,
+}
+
+/// VFS (Virtual File System) settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VfsSettings {
+    /// Connection timeout in seconds (default: 60)
+    #[serde(default = "default_vfs_connection_timeout")]
+    pub connection_timeout_secs: u64,
+}
+
+impl Default for VfsSettings {
+    fn default() -> Self {
+        Self {
+            connection_timeout_secs: default_vfs_connection_timeout(),
+        }
+    }
+}
+
+fn default_vfs_connection_timeout() -> u64 {
+    60
 }
 
 /// LSP (Language Server Protocol) settings.
@@ -384,6 +408,7 @@ impl From<LegacyConfig> for Config {
                 min_level: legacy.min_log_level,
                 resource_monitor_interval: legacy.resource_monitor_interval,
             },
+            vfs: VfsSettings::default(),
         }
     }
 }

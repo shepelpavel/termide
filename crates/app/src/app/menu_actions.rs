@@ -245,14 +245,28 @@ impl App {
     pub(super) fn handle_new_file_manager(&mut self) -> Result<()> {
         logger::debug("Opening new FileManager panel");
         self.close_welcome_panels();
-        // Get working directory from current active panel
-        let working_dir = self
+
+        // Check if active panel is a remote FileManager and clone it
+        let remote_info = self
             .layout_manager
             .active_panel_mut()
-            .and_then(|p| p.get_working_directory())
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")));
+            .and_then(|p| p.as_file_manager_mut())
+            .filter(|fm| fm.is_remote())
+            .map(|fm| (fm.display_path(), fm.vfs_manager_arc()));
 
-        let fm_panel = FileManager::new_with_path(working_dir);
+        let fm_panel = if let Some((vfs_url, vfs_manager)) = remote_info {
+            // Clone remote panel with same VFS URL
+            FileManager::new_with_vfs_url(&vfs_url, vfs_manager)?
+        } else {
+            // Fallback to local filesystem
+            let working_dir = self
+                .layout_manager
+                .active_panel_mut()
+                .and_then(|p| p.get_working_directory())
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")));
+            FileManager::new_with_path(working_dir)
+        };
+
         self.add_panel(Box::new(fm_panel));
         self.auto_save_session();
         Ok(())
@@ -1441,6 +1455,71 @@ impl App {
             BookmarkType::ViewerFile | BookmarkType::HttpLink => {
                 // Open with external viewer
                 let _ = std::process::Command::new("xdg-open").arg(path).spawn();
+            }
+            BookmarkType::SshConnection => {
+                // Open SSH connection in terminal
+                // Parse ssh://[user@]host[:port] format into proper ssh command
+                let ssh_cmd = {
+                    let url_part = path.strip_prefix("ssh://").unwrap_or(path);
+                    let mut cmd_parts = vec!["ssh".to_string()];
+
+                    // Split off any path component (ignore it for SSH)
+                    let authority = url_part.split('/').next().unwrap_or(url_part);
+
+                    // Parse user@host:port format
+                    let (user_host, port) = if let Some(colon_pos) = authority.rfind(':') {
+                        // Check if what's after colon looks like a port number
+                        let after_colon = &authority[colon_pos + 1..];
+                        if after_colon.chars().all(|c| c.is_ascii_digit())
+                            && !after_colon.is_empty()
+                        {
+                            (&authority[..colon_pos], Some(after_colon))
+                        } else {
+                            (authority, None)
+                        }
+                    } else {
+                        (authority, None)
+                    };
+
+                    // Add port if specified
+                    if let Some(port) = port {
+                        cmd_parts.push("-p".to_string());
+                        cmd_parts.push(port.to_string());
+                    }
+
+                    cmd_parts.push(user_host.to_string());
+                    cmd_parts.join(" ")
+                };
+
+                let width = self.state.terminal.width;
+                let height = self.state.terminal.height;
+                let term_height = height.saturating_sub(3);
+                let term_width = width.saturating_sub(2);
+
+                self.close_welcome_panels();
+                if let Ok(terminal) = Terminal::new_with_command(term_height, term_width, &ssh_cmd)
+                {
+                    self.add_panel(Box::new(terminal));
+                    self.auto_save_session();
+                }
+            }
+            BookmarkType::SftpPath
+            | BookmarkType::FtpPath
+            | BookmarkType::SmbPath
+            | BookmarkType::NfsPath => {
+                // Navigate to remote path using VFS
+                if let Some(panel) = self.layout_manager.active_panel_mut() {
+                    if let Some(fm) = panel.as_file_manager_mut() {
+                        let _ = fm.navigate_to_url(path);
+                        return Ok(());
+                    }
+                }
+                // No active file manager - create new panel and navigate
+                self.close_welcome_panels();
+                let mut fm_panel = FileManager::new();
+                let _ = fm_panel.navigate_to_url(path);
+                self.add_panel(Box::new(fm_panel));
+                self.auto_save_session();
             }
             BookmarkType::Unknown => {
                 // Try to open as text file

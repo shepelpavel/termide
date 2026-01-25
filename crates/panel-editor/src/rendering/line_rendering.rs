@@ -8,7 +8,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use termide_buffer::{Cursor, TextBuffer, Viewport};
-use termide_git::{GitDiffCache, InlineChangeType};
+use termide_git::{truncate_right, GitDiffCache, InlineChangeType};
 use termide_highlight::LineHighlighter;
 use termide_theme::Theme;
 
@@ -610,7 +610,7 @@ fn render_diagnostic_first_row(
     } else if content_width > start_col + underline_len {
         // Only show underline and partial code
         let available = content_width.saturating_sub(start_col + underline_len);
-        let truncated_code = truncate_to_width(&code_part, available);
+        let truncated_code = truncate_right(&code_part, available);
         format!("{}{}{}", " ".repeat(start_col), wavy, truncated_code)
     } else if content_width > start_col {
         // Only show partial underline
@@ -690,42 +690,6 @@ fn get_message_part(message: &str, char_offset: usize, max_width: usize) -> Stri
         current_width += ch_width;
     }
 
-    result
-}
-
-/// Truncate a string to fit within a given display width.
-///
-/// If truncation is needed, appends '…' and returns a string that fits.
-fn truncate_to_width(s: &str, max_width: usize) -> String {
-    use unicode_width::UnicodeWidthStr;
-
-    if s.width() <= max_width {
-        return s.to_string();
-    }
-
-    if max_width == 0 {
-        return String::new();
-    }
-
-    if max_width == 1 {
-        return "…".to_string();
-    }
-
-    // Leave room for ellipsis
-    let target_width = max_width - 1;
-    let mut result = String::new();
-    let mut current_width = 0;
-
-    for ch in s.chars() {
-        let ch_width = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1);
-        if current_width + ch_width > target_width {
-            break;
-        }
-        result.push(ch);
-        current_width += ch_width;
-    }
-
-    result.push('…');
     result
 }
 

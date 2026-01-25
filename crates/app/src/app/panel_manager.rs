@@ -115,17 +115,28 @@ impl App {
 
     /// Find all panels that have working directories
     /// Returns deduplicated and sorted list of paths from all panel types (FM, Terminal, Editor)
+    /// For remote file managers, returns full URLs (e.g., sftp://user@host/path)
     pub(super) fn find_all_other_panel_paths(&self) -> Vec<termide_modal::SelectOption> {
-        // Convert paths to SelectOptions
-        let mut options: Vec<_> = self
-            .collect_panel_paths()
-            .into_iter()
-            .map(|path| {
-                let path_str = path.display().to_string();
-                termide_modal::SelectOption {
-                    value: path_str.clone(),
-                    display: path_str,
+        use std::collections::HashSet;
+
+        let mut unique_paths: HashSet<String> = HashSet::new();
+
+        // Collect all unique paths from all panels in groups
+        // Use get_working_directory_display() to get full URLs for remote paths
+        for group in &self.layout_manager.panel_groups {
+            for panel in group.panels() {
+                if let Some(path_str) = panel.get_working_directory_display() {
+                    unique_paths.insert(path_str);
                 }
+            }
+        }
+
+        // Convert to SelectOptions
+        let mut options: Vec<_> = unique_paths
+            .into_iter()
+            .map(|path_str| termide_modal::SelectOption {
+                value: path_str.clone(),
+                display: path_str,
             })
             .collect();
 

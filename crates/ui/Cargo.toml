@@ -11,6 +11,7 @@ description = "UI components for termide"
 ratatui.workspace = true
 crossterm.workspace = true
 anyhow.workspace = true
+unicode-width.workspace = true
 
 # Workspace crates
 termide-clipboard = { path = "../clipboard" }
