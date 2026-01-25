@@ -204,7 +204,8 @@ impl App {
             | PendingAction::SwitchDirectory
             | PendingAction::AddBookmark
             | PendingAction::VfsMessage
-            | PendingAction::CancelCopyCleanup { .. } => {
+            | PendingAction::CancelCopyCleanup { .. }
+            | PendingAction::ResolveOperationConflict { .. } => {
                 // These actions don't require panel_index update
             }
         }

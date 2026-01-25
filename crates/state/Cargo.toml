@@ -10,3 +10,4 @@ description = "State types and data structures for termide"
 [dependencies]
 chrono.workspace = true
 termide-config = { path = "../config" }
+termide-file-ops = { path = "../file-ops" }

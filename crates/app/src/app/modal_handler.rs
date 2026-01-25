@@ -516,6 +516,47 @@ impl App {
                         value,
                     )?;
                 }
+                // Handle conflict resolution for OperationManager operations
+                PendingAction::ResolveOperationConflict { operation_id } => {
+                    self.handle_resolve_operation_conflict(operation_id, value)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Handle conflict resolution from ConflictModal for OperationManager operations.
+    fn handle_resolve_operation_conflict(
+        &mut self,
+        operation_id: termide_file_ops::OperationId,
+        value: Box<dyn std::any::Any>,
+    ) -> Result<()> {
+        use termide_file_ops::ConflictResolution as FileOpsResolution;
+        use termide_modal::ConflictResolution as ModalResolution;
+
+        if let Some(modal_resolution) = value.downcast_ref::<ModalResolution>() {
+            // Convert modal resolution to file-ops resolution
+            let file_ops_resolution = match modal_resolution {
+                ModalResolution::Overwrite => FileOpsResolution::Overwrite,
+                ModalResolution::Skip => FileOpsResolution::Skip,
+                ModalResolution::OverwriteAll => FileOpsResolution::OverwriteAll,
+                ModalResolution::SkipAll => FileOpsResolution::SkipAll,
+                ModalResolution::Rename | ModalResolution::RenameAll => {
+                    // Rename is not supported by OperationManager yet, treat as Skip
+                    termide_logger::warn("Rename resolution not yet supported, skipping file");
+                    FileOpsResolution::Skip
+                }
+            };
+
+            // Send resolution to the operation
+            if !self
+                .state
+                .resolve_operation_conflict(operation_id, file_ops_resolution)
+            {
+                termide_logger::error(format!(
+                    "Failed to send conflict resolution for operation {}",
+                    operation_id
+                ));
             }
         }
         Ok(())

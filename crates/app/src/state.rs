@@ -823,6 +823,17 @@ impl AppState {
             .map(|m| m.background_summary())
             .filter(|s| s.has_operations())
     }
+
+    /// Resolve a conflict for an operation waiting for user decision.
+    pub fn resolve_operation_conflict(
+        &mut self,
+        operation_id: termide_file_ops::OperationId,
+        resolution: termide_file_ops::ConflictResolution,
+    ) -> bool {
+        self.operation_manager_mut()
+            .map(|m| m.resolve_conflict(operation_id, resolution))
+            .unwrap_or(false)
+    }
 }
 
 // ============================================================================

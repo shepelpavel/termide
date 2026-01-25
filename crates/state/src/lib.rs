@@ -626,6 +626,11 @@ pub enum PendingAction {
         /// Optional batch operation to continue after handling
         batch_operation: Option<Box<BatchOperation>>,
     },
+    /// Resolve a file conflict for an OperationManager operation
+    ResolveOperationConflict {
+        /// The operation ID waiting for resolution
+        operation_id: termide_file_ops::OperationId,
+    },
 }
 
 #[cfg(test)]

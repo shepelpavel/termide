@@ -17,7 +17,8 @@ use crate::types::{
     OperationProgress, OperationRequest, OperationResult, OperationType,
 };
 use crate::worker::{
-    DownloadWorker, LocalCopyWorker, LocalDeleteWorker, OperationWorker, UploadWorker,
+    ConflictContext, DownloadWorker, LocalCopyWorker, LocalDeleteWorker, OperationWorker,
+    UploadWorker,
 };
 
 /// Configuration for the operation manager.
@@ -147,17 +148,36 @@ impl OperationManager {
         let control = OperationControl::new();
         let (progress_tx, progress_rx) = mpsc::channel();
 
+        // Create conflict resolution channel
+        let (resolution_tx, resolution_rx) = mpsc::channel();
+        let conflict_mode = request.conflict_mode;
+
         // Create worker based on operation type
         let worker: Box<dyn OperationWorker> = self.create_worker(&request)?;
 
         // Clone what we need for the thread
         let control_clone = control.clone();
         let event_tx = self.event_tx.clone();
+        let event_tx_for_conflict = self.event_tx.clone();
 
-        // Start worker thread
+        // Start worker thread with conflict handling
         let thread_handle = thread::spawn(move || {
             let mut worker = worker;
-            let result = worker.execute(&control_clone, &progress_tx);
+
+            // Create conflict context
+            let mut conflict_ctx = ConflictContext {
+                operation_id: id,
+                conflict_mode,
+                event_tx: event_tx_for_conflict,
+                resolution_rx,
+            };
+
+            // Use execute_with_conflicts if available
+            let result = worker.execute_with_conflicts(
+                &control_clone,
+                &progress_tx,
+                Some(&mut conflict_ctx),
+            );
 
             // Send completion event
             let _ = event_tx.send(OperationEvent::Completed(id, result.clone()));
@@ -169,7 +189,6 @@ impl OperationManager {
         let _ = self.event_tx.send(OperationEvent::Started(id));
 
         // Store active operation
-        let conflict_mode = request.conflict_mode;
         let info = OperationInfo {
             id,
             op_type: request.op_type,
@@ -187,7 +206,7 @@ impl OperationManager {
                 thread_handle: Some(thread_handle),
                 progress_rx,
                 conflict_mode,
-                pending_conflict_resolution: None,
+                pending_conflict_resolution: Some(resolution_tx),
             },
         );
 

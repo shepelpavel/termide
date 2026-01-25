@@ -3346,6 +3346,7 @@ version = "0.10.1"
 dependencies = [
  "chrono",
  "termide-config",
+ "termide-file-ops",
 ]
 
 [[package]]

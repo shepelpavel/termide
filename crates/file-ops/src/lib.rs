@@ -90,5 +90,6 @@ pub use types::{
     OperationType,
 };
 pub use worker::{
-    DownloadWorker, LocalCopyWorker, LocalDeleteWorker, OperationWorker, UploadWorker,
+    ConflictContext, DownloadWorker, LocalCopyWorker, LocalDeleteWorker, OperationWorker,
+    UploadWorker,
 };

@@ -1925,7 +1925,8 @@ impl App {
     /// This handles events from the centralized operation manager which will
     /// eventually replace the individual operation handles.
     fn poll_operation_manager(&mut self) {
-        use termide_file_ops::{OperationEvent, OperationPhase, OperationResult};
+        use crate::state::{ActiveModal, PendingAction};
+        use termide_file_ops::{OperationEvent, OperationPath, OperationPhase, OperationResult};
 
         let events = self.state.poll_operations();
         let mut any_completed = false;
@@ -1976,6 +1977,23 @@ impl App {
                             logger::info(format!("Operation {} completed successfully", id));
                             should_refresh_file_managers = true;
                         }
+                        OperationResult::PartialSuccess {
+                            completed,
+                            skipped,
+                            failed,
+                        } => {
+                            logger::info(format!(
+                                "Operation {} partially completed: {} done, {} skipped, {} failed",
+                                id, completed, skipped, failed
+                            ));
+                            should_refresh_file_managers = true;
+                            if skipped > 0 || failed > 0 {
+                                self.state.set_info(format!(
+                                    "Operation completed: {} done, {} skipped, {} failed",
+                                    completed, skipped, failed
+                                ));
+                            }
+                        }
                         OperationResult::Failed(err) => {
                             logger::error(format!("Operation {} failed: {}", id, err));
                             self.state.set_error(format!("Operation failed: {}", err));
@@ -2013,8 +2031,27 @@ impl App {
                         conflict_info.source.display(),
                         conflict_info.destination.display()
                     ));
-                    // TODO: Show ConflictModal and feed resolution back to OperationManager
-                    // For now, just log it
+
+                    // Convert OperationPath to PathBuf for ConflictModal
+                    let source_path = match &conflict_info.source {
+                        OperationPath::Local(p) => p.clone(),
+                        OperationPath::Remote(vfs_path) => vfs_path.path.clone(),
+                    };
+                    let dest_path = match &conflict_info.destination {
+                        OperationPath::Local(p) => p.clone(),
+                        OperationPath::Remote(vfs_path) => vfs_path.path.clone(),
+                    };
+
+                    // Show ConflictModal
+                    let modal = termide_modal::ConflictModal::new(
+                        &source_path,
+                        &dest_path,
+                        conflict_info.remaining_items,
+                    );
+                    self.state.set_pending_action(
+                        PendingAction::ResolveOperationConflict { operation_id: id },
+                        ActiveModal::Conflict(Box::new(modal)),
+                    );
                     self.state.needs_redraw = true;
                 }
             }

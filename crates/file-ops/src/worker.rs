@@ -4,16 +4,101 @@ use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
-use std::time::Instant;
+use std::time::{Instant, UNIX_EPOCH};
 
 use termide_vfs::{VfsManager, VfsPath};
 
 use crate::types::{
-    OperationControl, OperationError, OperationPhase, OperationProgress, OperationResult,
+    ConflictInfo, ConflictMode, ConflictResolution, OperationControl, OperationError,
+    OperationEvent, OperationId, OperationPath, OperationPhase, OperationProgress, OperationResult,
 };
 
 /// Chunk size for file operations (1MB).
 const CHUNK_SIZE: usize = 1024 * 1024;
+
+/// Context for conflict handling in workers.
+pub struct ConflictContext {
+    /// Operation ID for events.
+    pub operation_id: OperationId,
+    /// Current conflict handling mode.
+    pub conflict_mode: ConflictMode,
+    /// Channel to send events (including ConflictDetected).
+    pub event_tx: mpsc::Sender<OperationEvent>,
+    /// Channel to receive conflict resolutions.
+    pub resolution_rx: mpsc::Receiver<ConflictResolution>,
+}
+
+impl ConflictContext {
+    /// Check for conflict and handle according to mode.
+    /// Returns: Ok(true) = proceed with copy, Ok(false) = skip, Err = cancel
+    pub fn check_conflict(
+        &mut self,
+        source: &Path,
+        dest: &Path,
+        remaining_items: usize,
+    ) -> Result<bool, OperationError> {
+        // Check if destination exists
+        if !dest.exists() {
+            return Ok(true); // No conflict
+        }
+
+        // Handle based on current mode
+        match self.conflict_mode {
+            ConflictMode::OverwriteAll => Ok(true),
+            ConflictMode::SkipAll => Ok(false),
+            ConflictMode::Ask => {
+                // Gather file info for the conflict
+                let source_meta = fs::metadata(source).ok();
+                let dest_meta = fs::metadata(dest).ok();
+
+                let conflict_info = ConflictInfo {
+                    source: OperationPath::Local(source.to_path_buf()),
+                    destination: OperationPath::Local(dest.to_path_buf()),
+                    source_size: source_meta.as_ref().map(|m| m.len()).unwrap_or(0),
+                    dest_size: dest_meta.as_ref().map(|m| m.len()).unwrap_or(0),
+                    source_modified: source_meta.as_ref().and_then(|m| {
+                        m.modified()
+                            .ok()
+                            .and_then(|t| t.duration_since(UNIX_EPOCH).ok().map(|d| d.as_secs()))
+                    }),
+                    dest_modified: dest_meta.as_ref().and_then(|m| {
+                        m.modified()
+                            .ok()
+                            .and_then(|t| t.duration_since(UNIX_EPOCH).ok().map(|d| d.as_secs()))
+                    }),
+                    remaining_items,
+                };
+
+                // Send conflict event
+                let _ = self.event_tx.send(OperationEvent::ConflictDetected(
+                    self.operation_id,
+                    conflict_info,
+                ));
+
+                // Wait for resolution (blocking)
+                match self.resolution_rx.recv() {
+                    Ok(resolution) => match resolution {
+                        ConflictResolution::Overwrite => Ok(true),
+                        ConflictResolution::Skip => Ok(false),
+                        ConflictResolution::OverwriteAll => {
+                            self.conflict_mode = ConflictMode::OverwriteAll;
+                            Ok(true)
+                        }
+                        ConflictResolution::SkipAll => {
+                            self.conflict_mode = ConflictMode::SkipAll;
+                            Ok(false)
+                        }
+                        ConflictResolution::Cancel => Err(OperationError::Cancelled),
+                    },
+                    Err(_) => {
+                        // Channel closed - operation cancelled
+                        Err(OperationError::Cancelled)
+                    }
+                }
+            }
+        }
+    }
+}
 
 /// Trait for operation workers.
 pub trait OperationWorker: Send {
@@ -23,6 +108,17 @@ pub trait OperationWorker: Send {
         control: &OperationControl,
         progress_tx: &mpsc::Sender<OperationProgress>,
     ) -> OperationResult;
+
+    /// Execute with conflict handling support.
+    fn execute_with_conflicts(
+        &mut self,
+        control: &OperationControl,
+        progress_tx: &mpsc::Sender<OperationProgress>,
+        _conflict_ctx: Option<&mut ConflictContext>,
+    ) -> OperationResult {
+        // Default implementation ignores conflict context
+        self.execute(control, progress_tx)
+    }
 }
 
 /// Worker for local file/directory copy operations.
@@ -250,6 +346,16 @@ impl OperationWorker for LocalCopyWorker {
         control: &OperationControl,
         progress_tx: &mpsc::Sender<OperationProgress>,
     ) -> OperationResult {
+        // Default implementation without conflict checking
+        self.execute_with_conflicts(control, progress_tx, None)
+    }
+
+    fn execute_with_conflicts(
+        &mut self,
+        control: &OperationControl,
+        progress_tx: &mpsc::Sender<OperationProgress>,
+        mut conflict_ctx: Option<&mut ConflictContext>,
+    ) -> OperationResult {
         let start_time = Instant::now();
 
         // Phase 1: Scan to get totals
@@ -291,6 +397,9 @@ impl OperationWorker for LocalCopyWorker {
         // Phase 2: Copy files
         let mut bytes_copied = 0u64;
         let mut files_copied = 0usize;
+        let mut skipped_files = 0usize;
+        // Track sources that were successfully copied (for move cleanup)
+        let mut copied_sources: Vec<PathBuf> = Vec::new();
 
         for source in &self.sources {
             if control.is_cancelled() {
@@ -308,6 +417,23 @@ impl OperationWorker for LocalCopyWorker {
             } else {
                 self.destination.clone()
             };
+
+            // Check for conflict at top level before copying
+            if let Some(ref mut ctx) = conflict_ctx {
+                let remaining = total_files.saturating_sub(files_copied + skipped_files);
+                match ctx.check_conflict(source, &dest, remaining) {
+                    Ok(true) => {
+                        // Proceed with copy
+                    }
+                    Ok(false) => {
+                        // Skip this item
+                        skipped_files += 1;
+                        continue;
+                    }
+                    Err(OperationError::Cancelled) => return OperationResult::Cancelled,
+                    Err(e) => return OperationResult::Failed(e.to_string()),
+                }
+            }
 
             let result = if metadata.is_dir() && !metadata.is_symlink() {
                 self.copy_directory(
@@ -337,14 +463,16 @@ impl OperationWorker for LocalCopyWorker {
             };
 
             match result {
-                Ok(()) => {}
+                Ok(()) => {
+                    copied_sources.push(source.clone());
+                }
                 Err(OperationError::Cancelled) => return OperationResult::Cancelled,
                 Err(e) => return OperationResult::Failed(e.to_string()),
             }
         }
 
-        // Phase 3: Delete source if move
-        if self.is_move {
+        // Phase 3: Delete source if move (only for successfully copied sources)
+        if self.is_move && !copied_sources.is_empty() {
             let _ = progress_tx.send(OperationProgress {
                 phase: OperationPhase::Cleaning,
                 bytes_transferred: bytes_copied,
@@ -356,7 +484,7 @@ impl OperationWorker for LocalCopyWorker {
                 eta_seconds: None,
             });
 
-            for source in &self.sources {
+            for source in &copied_sources {
                 if control.is_cancelled() {
                     return OperationResult::Cancelled;
                 }
@@ -389,7 +517,15 @@ impl OperationWorker for LocalCopyWorker {
             eta_seconds: None,
         });
 
-        OperationResult::SuccessWithPath(self.destination.clone())
+        if skipped_files > 0 {
+            OperationResult::PartialSuccess {
+                completed: files_copied,
+                skipped: skipped_files,
+                failed: 0,
+            }
+        } else {
+            OperationResult::SuccessWithPath(self.destination.clone())
+        }
     }
 }
 

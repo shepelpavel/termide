@@ -267,6 +267,15 @@ pub enum OperationResult {
     Success,
     /// Operation completed with a result path.
     SuccessWithPath(PathBuf),
+    /// Operation partially succeeded (some items skipped or failed).
+    PartialSuccess {
+        /// Number of items completed successfully.
+        completed: usize,
+        /// Number of items skipped.
+        skipped: usize,
+        /// Number of items that failed.
+        failed: usize,
+    },
     /// Operation failed.
     Failed(String),
     /// Operation was cancelled.
@@ -274,9 +283,12 @@ pub enum OperationResult {
 }
 
 impl OperationResult {
-    /// Check if the result is success.
+    /// Check if the result is success (full or partial).
     pub fn is_success(&self) -> bool {
-        matches!(self, Self::Success | Self::SuccessWithPath(_))
+        matches!(
+            self,
+            Self::Success | Self::SuccessWithPath(_) | Self::PartialSuccess { .. }
+        )
     }
 }
 
