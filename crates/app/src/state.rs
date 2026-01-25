@@ -12,7 +12,7 @@ use std::sync::{mpsc, Arc};
 
 use termide_config::constants::DEFAULT_MAIN_PANEL_WIDTH;
 use termide_config::{BookmarksConfig, Config};
-use termide_file_ops::OperationManager;
+use termide_file_ops::{OperationEvent, OperationManager, OperationRequest};
 use termide_lsp::{LspConfig, LspManager, LspServerConfig};
 use termide_panel_editor::EditorConfig;
 use termide_system_monitor::SystemMonitor;
@@ -757,6 +757,62 @@ impl AppState {
     pub fn close_bookmarks_nested_submenu(&mut self) {
         self.ui.bookmarks_nested.close();
         self.ui.current_bookmarks_group = None;
+    }
+
+    // ========================================================================
+    // Operation Manager Methods
+    // ========================================================================
+
+    /// Initialize the operation manager with a VFS manager.
+    /// This should be called when the first VFS operation is needed.
+    pub fn init_operation_manager(&mut self, vfs_manager: Arc<VfsManager>) {
+        if self.operation_manager.is_none() {
+            self.operation_manager = Some(OperationManager::new(vfs_manager));
+        }
+    }
+
+    /// Get reference to operation manager if initialized.
+    pub fn operation_manager(&self) -> Option<&OperationManager> {
+        self.operation_manager.as_ref()
+    }
+
+    /// Get mutable reference to operation manager if initialized.
+    pub fn operation_manager_mut(&mut self) -> Option<&mut OperationManager> {
+        self.operation_manager.as_mut()
+    }
+
+    /// Queue a file operation. Returns the operation ID if successful.
+    /// Initializes the operation manager with the provided VFS manager if needed.
+    pub fn queue_operation(
+        &mut self,
+        request: OperationRequest,
+        vfs_manager: Arc<VfsManager>,
+    ) -> Result<termide_file_ops::OperationId, termide_file_ops::OperationError> {
+        self.init_operation_manager(vfs_manager);
+        self.operation_manager_mut()
+            .expect("operation_manager just initialized")
+            .queue_operation(request)
+    }
+
+    /// Poll operation manager for events. Returns empty vec if not initialized.
+    pub fn poll_operations(&mut self) -> Vec<OperationEvent> {
+        self.operation_manager_mut()
+            .map(|m| m.poll())
+            .unwrap_or_default()
+    }
+
+    /// Check if there are any active or queued operations.
+    pub fn has_pending_operations(&self) -> bool {
+        self.operation_manager()
+            .map(|m| m.has_operations())
+            .unwrap_or(false)
+    }
+
+    /// Cancel all operations.
+    pub fn cancel_all_operations(&mut self) {
+        if let Some(manager) = self.operation_manager_mut() {
+            manager.cancel_all();
+        }
     }
 }
 

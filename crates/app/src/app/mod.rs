@@ -318,6 +318,9 @@ impl App {
                     // Check batch download operation result (remote→local batch copy)
                     self.check_batch_download_result();
 
+                    // Poll unified operation manager for events (new system)
+                    self.poll_operation_manager();
+
                     // Check local file copy progress (chunked copy with progress)
                     self.check_local_copy_progress();
 
@@ -1914,6 +1917,61 @@ impl App {
             Err(_) => {
                 // Still deleting - put back for next tick
                 self.state.local_delete_operation = Some(delete_op);
+            }
+        }
+    }
+
+    /// Poll the unified operation manager for events (new file-ops system).
+    /// This handles events from the centralized operation manager which will
+    /// eventually replace the individual operation handles.
+    fn poll_operation_manager(&mut self) {
+        use termide_file_ops::{OperationEvent, OperationResult};
+
+        let events = self.state.poll_operations();
+
+        for event in events {
+            match event {
+                OperationEvent::Started(id) => {
+                    logger::info(format!("Operation {} started", id));
+                }
+                OperationEvent::Progress(_id, progress) => {
+                    // Update progress modal if active
+                    if let Some(crate::state::ActiveModal::Progress(ref mut modal)) =
+                        self.state.active_modal
+                    {
+                        modal
+                            .update_file_progress(progress.bytes_transferred, progress.total_bytes);
+                        // ETA is calculated internally by ProgressModal
+                        self.state.needs_redraw = true;
+                    }
+                }
+                OperationEvent::Completed(id, result) => {
+                    match result {
+                        OperationResult::Success | OperationResult::SuccessWithPath(_) => {
+                            logger::info(format!("Operation {} completed successfully", id));
+                            // Refresh file managers
+                            for panel in self.layout_manager.iter_all_panels_mut() {
+                                if let Some(fm) = panel.as_file_manager_mut() {
+                                    let _ = fm.load_directory();
+                                }
+                            }
+                        }
+                        OperationResult::Failed(err) => {
+                            logger::error(format!("Operation {} failed: {}", id, err));
+                            self.state.set_error(format!("Operation failed: {}", err));
+                        }
+                        OperationResult::Cancelled => {
+                            logger::info(format!("Operation {} cancelled", id));
+                            self.state.set_info("Operation cancelled".to_string());
+                        }
+                    }
+                }
+                OperationEvent::Paused(id) => {
+                    logger::info(format!("Operation {} paused", id));
+                }
+                OperationEvent::Resumed(id) => {
+                    logger::info(format!("Operation {} resumed", id));
+                }
             }
         }
     }

@@ -279,7 +279,8 @@ mod tests {
     fn test_retryable_errors() {
         assert!(is_retryable_error("Connection refused"));
         assert!(is_retryable_error("Operation timed out"));
-        assert!(is_retryable_error("Service temporarily unavailable"));
+        assert!(is_retryable_error("service unavailable"));
+        assert!(is_retryable_error("try again later"));
         assert!(!is_retryable_error("Permission denied"));
         assert!(!is_retryable_error("File not found"));
     }
