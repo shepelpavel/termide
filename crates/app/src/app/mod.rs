@@ -1925,36 +1925,56 @@ impl App {
     /// This handles events from the centralized operation manager which will
     /// eventually replace the individual operation handles.
     fn poll_operation_manager(&mut self) {
-        use termide_file_ops::{OperationEvent, OperationResult};
+        use termide_file_ops::{OperationEvent, OperationPhase, OperationResult};
 
         let events = self.state.poll_operations();
+        let mut any_completed = false;
+        let mut should_refresh_file_managers = false;
 
         for event in events {
             match event {
                 OperationEvent::Started(id) => {
                     logger::info(format!("Operation {} started", id));
+                    self.state.needs_redraw = true;
                 }
                 OperationEvent::Progress(_id, progress) => {
                     // Update progress modal if active
                     if let Some(crate::state::ActiveModal::Progress(ref mut modal)) =
                         self.state.active_modal
                     {
+                        // Update byte-level progress
                         modal
                             .update_file_progress(progress.bytes_transferred, progress.total_bytes);
-                        // ETA is calculated internally by ProgressModal
+
+                        // Update file count and current item
+                        if progress.total_files > 0 {
+                            modal.update_progress(
+                                progress.files_completed,
+                                progress.current_item.clone(),
+                            );
+                        } else if let Some(ref current) = progress.current_item {
+                            modal.update_progress(0, Some(current.clone()));
+                        }
+
                         self.state.needs_redraw = true;
+                    }
+
+                    // Check if operation completed via progress phase
+                    if matches!(
+                        progress.phase,
+                        OperationPhase::Completed
+                            | OperationPhase::Failed
+                            | OperationPhase::Cancelled
+                    ) {
+                        any_completed = true;
                     }
                 }
                 OperationEvent::Completed(id, result) => {
+                    any_completed = true;
                     match result {
                         OperationResult::Success | OperationResult::SuccessWithPath(_) => {
                             logger::info(format!("Operation {} completed successfully", id));
-                            // Refresh file managers
-                            for panel in self.layout_manager.iter_all_panels_mut() {
-                                if let Some(fm) = panel.as_file_manager_mut() {
-                                    let _ = fm.load_directory();
-                                }
-                            }
+                            should_refresh_file_managers = true;
                         }
                         OperationResult::Failed(err) => {
                             logger::error(format!("Operation {} failed: {}", id, err));
@@ -1968,9 +1988,54 @@ impl App {
                 }
                 OperationEvent::Paused(id) => {
                     logger::info(format!("Operation {} paused", id));
+                    // Sync pause state with modal
+                    if let Some(crate::state::ActiveModal::Progress(ref mut modal)) =
+                        self.state.active_modal
+                    {
+                        modal.set_paused(true);
+                        self.state.needs_redraw = true;
+                    }
                 }
                 OperationEvent::Resumed(id) => {
                     logger::info(format!("Operation {} resumed", id));
+                    // Sync resume state with modal
+                    if let Some(crate::state::ActiveModal::Progress(ref mut modal)) =
+                        self.state.active_modal
+                    {
+                        modal.set_paused(false);
+                        self.state.needs_redraw = true;
+                    }
+                }
+            }
+        }
+
+        // Close progress modal if all operations are complete
+        if any_completed && !self.state.has_pending_operations() {
+            // Only close if we have a progress modal open for OperationManager operations
+            // (not for legacy operations which have their own check_* methods)
+            if matches!(
+                self.state.active_modal,
+                Some(crate::state::ActiveModal::Progress(_))
+            ) {
+                // Check if this modal is associated with a pending batch operation
+                // If so, don't close it here - let the batch handler manage it
+                let has_batch_pending = matches!(
+                    self.state.pending_action,
+                    Some(termide_state::PendingAction::ContinueBatchOperation { .. })
+                        | Some(termide_state::PendingAction::BatchFileOperation { .. })
+                );
+
+                if !has_batch_pending {
+                    self.state.close_modal();
+                }
+            }
+        }
+
+        // Refresh file managers after successful operations
+        if should_refresh_file_managers {
+            for panel in self.layout_manager.iter_all_panels_mut() {
+                if let Some(fm) = panel.as_file_manager_mut() {
+                    let _ = fm.load_directory();
                 }
             }
         }

@@ -309,6 +309,13 @@ impl ProgressModal {
         self.paused
     }
 
+    /// Set pause state directly (for syncing with external state)
+    pub fn set_paused(&mut self, paused: bool) {
+        if self.pause_enabled {
+            self.paused = paused;
+        }
+    }
+
     /// Toggle pause state
     pub fn toggle_pause(&mut self) {
         if self.pause_enabled {
