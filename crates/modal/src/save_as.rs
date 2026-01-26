@@ -10,7 +10,8 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Widget},
 };
 
-use crate::base::{button_style, render_modal_block};
+use crate::base::{button_style, render_input_field, render_modal_block};
+use crate::input_keys::{handle_input_key, InputKeyResult};
 
 use termide_config::constants::MODAL_BUTTON_SPACING;
 use termide_i18n as i18n;
@@ -142,40 +143,31 @@ impl Modal for SaveAsModal {
             ])
             .split(inner);
 
-        // Render input field
+        // Render input field with border
         let input_border_color = if self.focus == FocusArea::Input {
             theme.accented_fg
         } else {
-            theme.bg
+            theme.disabled
         };
 
-        let input_line = Line::from(vec![
-            Span::styled(
-                self.input_handler.text_before_cursor(),
-                Style::default().fg(theme.fg),
-            ),
-            Span::styled(
-                if self.focus == FocusArea::Input {
-                    "█"
-                } else {
-                    ""
-                },
-                Style::default().fg(theme.bg).bg(theme.fg),
-            ),
-            Span::styled(
-                self.input_handler.text_after_cursor(),
-                Style::default().fg(theme.fg),
-            ),
-        ]);
+        let input_block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(input_border_color));
+        let input_inner = input_block.inner(chunks[0]);
+        input_block.render(chunks[0], buf);
 
-        let input_paragraph = Paragraph::new(input_line)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(input_border_color)),
-            )
-            .style(Style::default().bg(theme.bg));
-        input_paragraph.render(chunks[0], buf);
+        // Render input content with cursor and selection
+        render_input_field(
+            buf,
+            input_inner.x,
+            input_inner.y,
+            input_inner.width,
+            self.input_handler.text(),
+            self.input_handler.cursor_pos(),
+            self.input_handler.selection_range(),
+            self.focus == FocusArea::Input,
+            theme,
+        );
 
         // Render checkbox
         let checkbox_char = if self.executable { "x" } else { " " };
@@ -232,111 +224,85 @@ impl Modal for SaveAsModal {
         }
 
         match self.focus {
-            FocusArea::Input => match key.code {
-                KeyCode::Down => {
-                    self.focus = FocusArea::Checkbox;
-                    Ok(None)
-                }
-                KeyCode::Enter => Ok(self.confirm()),
-                KeyCode::Char(c) => {
-                    if key.modifiers.contains(KeyModifiers::CONTROL) {
+            FocusArea::Input => {
+                // Try common input handling first
+                match handle_input_key(&mut self.input_handler, key) {
+                    InputKeyResult::Handled | InputKeyResult::TextModified => {
                         return Ok(None);
                     }
-                    self.input_handler.insert_char(c);
-                    Ok(None)
+                    InputKeyResult::NotHandled => {}
                 }
-                KeyCode::Backspace => {
-                    self.input_handler.backspace();
-                    Ok(None)
+
+                // Modal-specific handling
+                match key.code {
+                    KeyCode::Down => {
+                        self.focus = FocusArea::Checkbox;
+                        Ok(None)
+                    }
+                    KeyCode::Enter => Ok(self.confirm()),
+                    _ => Ok(None),
                 }
-                KeyCode::Delete => {
-                    self.input_handler.delete();
-                    Ok(None)
-                }
-                KeyCode::Left => {
-                    self.input_handler.move_left();
-                    Ok(None)
-                }
-                KeyCode::Right => {
-                    self.input_handler.move_right();
-                    Ok(None)
-                }
-                KeyCode::Home => {
-                    self.input_handler.move_home();
-                    Ok(None)
-                }
-                KeyCode::End => {
-                    self.input_handler.move_end();
-                    Ok(None)
-                }
-                _ => Ok(None),
-            },
-            FocusArea::Checkbox => match key.code {
-                KeyCode::Up => {
-                    self.focus = FocusArea::Input;
-                    Ok(None)
-                }
-                KeyCode::Down => {
-                    self.focus = FocusArea::Buttons;
-                    Ok(None)
-                }
-                KeyCode::Char(' ') => {
-                    self.executable = !self.executable;
-                    Ok(None)
-                }
-                KeyCode::Enter => Ok(self.confirm()),
-                KeyCode::Char(c) => {
-                    if key.modifiers.contains(KeyModifiers::CONTROL) {
+            }
+            FocusArea::Checkbox => {
+                // Handle text input keys for quick typing
+                match handle_input_key(&mut self.input_handler, key) {
+                    InputKeyResult::Handled | InputKeyResult::TextModified => {
+                        self.focus = FocusArea::Input;
                         return Ok(None);
                     }
-                    // Switch to input and insert character
-                    self.focus = FocusArea::Input;
-                    self.input_handler.insert_char(c);
-                    Ok(None)
+                    InputKeyResult::NotHandled => {}
                 }
-                _ => Ok(None),
-            },
-            FocusArea::Buttons => match key.code {
-                KeyCode::Left => {
-                    self.selected_button = if self.selected_button == 0 { 1 } else { 0 };
-                    Ok(None)
-                }
-                KeyCode::Right => {
-                    self.selected_button = if self.selected_button == 1 { 0 } else { 1 };
-                    Ok(None)
-                }
-                KeyCode::Up => {
-                    self.focus = FocusArea::Checkbox;
-                    Ok(None)
-                }
-                KeyCode::Enter => {
-                    if self.selected_button == 0 {
-                        Ok(self.confirm())
-                    } else {
-                        Ok(Some(ModalResult::Cancelled))
+
+                match key.code {
+                    KeyCode::Up | KeyCode::BackTab => {
+                        self.focus = FocusArea::Input;
+                        Ok(None)
                     }
+                    KeyCode::Down => {
+                        self.focus = FocusArea::Buttons;
+                        Ok(None)
+                    }
+                    KeyCode::Char(' ') => {
+                        self.executable = !self.executable;
+                        Ok(None)
+                    }
+                    KeyCode::Enter => Ok(self.confirm()),
+                    _ => Ok(None),
                 }
-                KeyCode::Char(c) => {
-                    if key.modifiers.contains(KeyModifiers::CONTROL) {
+            }
+            FocusArea::Buttons => {
+                // Handle text input keys even when on buttons
+                match handle_input_key(&mut self.input_handler, key) {
+                    InputKeyResult::Handled | InputKeyResult::TextModified => {
+                        self.focus = FocusArea::Input;
                         return Ok(None);
                     }
-                    // Switch to input and insert character
-                    self.focus = FocusArea::Input;
-                    self.input_handler.insert_char(c);
-                    Ok(None)
+                    InputKeyResult::NotHandled => {}
                 }
-                KeyCode::Backspace => {
-                    self.focus = FocusArea::Input;
-                    self.input_handler.backspace();
-                    Ok(None)
+
+                match key.code {
+                    KeyCode::Left => {
+                        self.selected_button = if self.selected_button == 0 { 1 } else { 0 };
+                        Ok(None)
+                    }
+                    KeyCode::Right => {
+                        self.selected_button = if self.selected_button == 1 { 0 } else { 1 };
+                        Ok(None)
+                    }
+                    KeyCode::Up | KeyCode::BackTab => {
+                        self.focus = FocusArea::Checkbox;
+                        Ok(None)
+                    }
+                    KeyCode::Enter => {
+                        if self.selected_button == 0 {
+                            Ok(self.confirm())
+                        } else {
+                            Ok(Some(ModalResult::Cancelled))
+                        }
+                    }
+                    _ => Ok(None),
                 }
-                KeyCode::Delete => {
-                    self.focus = FocusArea::Input;
-                    self.input_handler.delete();
-                    Ok(None)
-                }
-                _ => Ok(None),
-            },
+            }
         }
     }
 

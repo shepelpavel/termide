@@ -16,9 +16,11 @@ pub use termide_ui::{
 };
 
 pub mod base;
+pub mod input_keys;
 pub use base::{
     check_mouse_click, check_mouse_click_with_item_height, CursorNavigation, MouseClickResult,
 };
+pub use input_keys::{handle_input_key, InputKeyResult};
 pub mod bookmark_add;
 pub mod choice;
 pub mod commit;

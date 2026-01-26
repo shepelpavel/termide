@@ -10,7 +10,7 @@
 //! - Tab completion support
 
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -19,7 +19,8 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph, Widget},
 };
 
-use crate::base::{button_style, render_modal_block};
+use crate::base::{button_style, render_input_field, render_modal_block};
+use crate::input_keys::{handle_input_key, InputKeyResult};
 
 use termide_config::constants::{
     MODAL_BUTTON_SPACING, MODAL_MAX_WIDTH_PERCENTAGE_DEFAULT, MODAL_MIN_WIDTH_WIDE,
@@ -240,26 +241,10 @@ impl Modal for EditableSelectModal {
         }
 
         // Render input field with arrow at right edge
-        let input_inner_width = chunks[chunk_idx].width.saturating_sub(4); // 2 border + 2 padding
         let arrow_char = match self.state {
             DropdownState::Collapsed => "▼",
             DropdownState::Expanded => "▲",
         };
-
-        let text_before = self.input_handler.text_before_cursor();
-        let text_after = self.input_handler.text_after_cursor();
-
-        // Calculate padding to push arrow to the right
-        let text_len = (text_before.chars().count() + 1 + text_after.chars().count()) as u16;
-        let padding_len = input_inner_width.saturating_sub(text_len + 1) as usize; // -1 for arrow
-
-        let input_line = Line::from(vec![
-            Span::styled(text_before, Style::default().fg(theme.fg)),
-            Span::styled("█", Style::default().fg(theme.bg).bg(theme.fg)),
-            Span::styled(text_after, Style::default().fg(theme.fg)),
-            Span::styled(" ".repeat(padding_len), Style::default()),
-            Span::styled(arrow_char, Style::default().fg(theme.disabled)),
-        ]);
 
         // Choose borders based on state: in Expanded, remove bottom border for visual unity
         let input_borders = if self.state == DropdownState::Expanded && !self.options.is_empty() {
@@ -268,17 +253,41 @@ impl Modal for EditableSelectModal {
             Borders::ALL
         };
 
-        let input_paragraph = Paragraph::new(input_line)
-            .block(
-                Block::default()
-                    .borders(input_borders)
-                    .border_style(Style::default().fg(theme.accented_fg)),
-            )
-            .style(Style::default().bg(theme.bg));
-        input_paragraph.render(chunks[chunk_idx], buf);
+        let input_block = Block::default()
+            .borders(input_borders)
+            .border_style(Style::default().fg(theme.accented_fg));
+        let input_inner = input_block.inner(chunks[chunk_idx]);
+        input_block.render(chunks[chunk_idx], buf);
 
-        // Save input area for mouse handling
+        // Save input area for mouse handling (the full bordered area)
         self.last_input_area = Some(chunks[chunk_idx]);
+
+        // Calculate area for text input (excluding arrow)
+        let arrow_width = 2u16; // space + arrow
+        let text_width = input_inner.width.saturating_sub(arrow_width);
+
+        // Render input content with cursor and selection
+        render_input_field(
+            buf,
+            input_inner.x,
+            input_inner.y,
+            text_width,
+            self.input_handler.text(),
+            self.input_handler.cursor_pos(),
+            self.input_handler.selection_range(),
+            self.focus == FocusArea::Input,
+            theme,
+        );
+
+        // Render arrow at right edge
+        let arrow_x = input_inner.x + input_inner.width.saturating_sub(1);
+        buf.set_string(
+            arrow_x,
+            input_inner.y,
+            arrow_char,
+            Style::default().fg(theme.disabled),
+        );
+
         chunk_idx += 1;
 
         // Render options list only in Expanded state
@@ -372,6 +381,20 @@ impl Modal for EditableSelectModal {
 
         match self.focus {
             FocusArea::Input => {
+                // Try common input handling first (but not for navigation keys in dropdown mode)
+                let is_navigation_in_dropdown = self.state == DropdownState::Expanded
+                    && matches!(key.code, KeyCode::Up | KeyCode::Down);
+
+                if !is_navigation_in_dropdown {
+                    match handle_input_key(&mut self.input_handler, key) {
+                        InputKeyResult::Handled | InputKeyResult::TextModified => {
+                            return Ok(None);
+                        }
+                        InputKeyResult::NotHandled => {}
+                    }
+                }
+
+                // Modal-specific handling
                 match key.code {
                     KeyCode::Tab => {
                         // Toggle Collapsed <-> Expanded
@@ -448,42 +471,20 @@ impl Modal for EditableSelectModal {
                             }
                         }
                     }
-                    KeyCode::Char(c) => {
-                        if key.modifiers.contains(KeyModifiers::CONTROL) {
-                            return Ok(None);
-                        }
-                        // Allow typing
-                        self.input_handler.insert_char(c);
-                        Ok(None)
-                    }
-                    KeyCode::Backspace => {
-                        self.input_handler.backspace();
-                        Ok(None)
-                    }
-                    KeyCode::Delete => {
-                        self.input_handler.delete();
-                        Ok(None)
-                    }
-                    KeyCode::Left => {
-                        self.input_handler.move_left();
-                        Ok(None)
-                    }
-                    KeyCode::Right => {
-                        self.input_handler.move_right();
-                        Ok(None)
-                    }
-                    KeyCode::Home => {
-                        self.input_handler.move_home();
-                        Ok(None)
-                    }
-                    KeyCode::End => {
-                        self.input_handler.move_end();
-                        Ok(None)
-                    }
                     _ => Ok(None),
                 }
             }
             FocusArea::Buttons => {
+                // Handle text input keys even when on buttons
+                match handle_input_key(&mut self.input_handler, key) {
+                    InputKeyResult::Handled | InputKeyResult::TextModified => {
+                        // Switch back to input when typing
+                        self.focus = FocusArea::Input;
+                        return Ok(None);
+                    }
+                    InputKeyResult::NotHandled => {}
+                }
+
                 match key.code {
                     KeyCode::Left => {
                         // Move to previous button (wrap around)
@@ -495,7 +496,7 @@ impl Modal for EditableSelectModal {
                         self.selected_button = if self.selected_button == 1 { 0 } else { 1 };
                         Ok(None)
                     }
-                    KeyCode::Up => {
+                    KeyCode::Up | KeyCode::BackTab => {
                         // Move focus back to input
                         self.focus = FocusArea::Input;
                         Ok(None)
@@ -515,27 +516,6 @@ impl Modal for EditableSelectModal {
                             // Cancel button
                             Ok(Some(ModalResult::Cancelled))
                         }
-                    }
-                    KeyCode::Char(c) => {
-                        if key.modifiers.contains(KeyModifiers::CONTROL) {
-                            return Ok(None);
-                        }
-                        // Switch back to input and insert character
-                        self.focus = FocusArea::Input;
-                        self.input_handler.insert_char(c);
-                        Ok(None)
-                    }
-                    KeyCode::Backspace => {
-                        // Switch back to input and delete character
-                        self.focus = FocusArea::Input;
-                        self.input_handler.backspace();
-                        Ok(None)
-                    }
-                    KeyCode::Delete => {
-                        // Switch back to input and delete character
-                        self.focus = FocusArea::Input;
-                        self.input_handler.delete();
-                        Ok(None)
                     }
                     _ => Ok(None),
                 }

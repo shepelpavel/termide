@@ -1,7 +1,7 @@
 //! Text input modal dialog.
 
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -10,7 +10,8 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Widget},
 };
 
-use crate::base::{button_style, render_modal_block};
+use crate::base::{button_style, render_input_field, render_modal_block};
+use crate::input_keys::{handle_input_key, InputKeyResult};
 
 use termide_config::constants::MODAL_BUTTON_SPACING;
 use termide_i18n as i18n;
@@ -37,6 +38,7 @@ pub struct InputModal {
     focus: FocusArea,
     selected_button: usize, // 0 = OK, 1 = Cancel
     last_buttons_area: Option<Rect>,
+    last_input_area: Option<Rect>,
 }
 
 impl InputModal {
@@ -49,6 +51,7 @@ impl InputModal {
             focus: FocusArea::Input,
             selected_button: 0, // OK button selected by default
             last_buttons_area: None,
+            last_input_area: None,
         }
     }
 
@@ -65,6 +68,7 @@ impl InputModal {
             focus: FocusArea::Input,
             selected_button: 0, // OK button selected by default
             last_buttons_area: None,
+            last_input_area: None,
         }
     }
 
@@ -144,27 +148,28 @@ impl Modal for InputModal {
             chunk_idx += 1;
         }
 
-        // Render input field
-        let input_line = Line::from(vec![
-            Span::styled(
-                self.input_handler.text_before_cursor(),
-                Style::default().fg(theme.fg),
-            ),
-            Span::styled("█", Style::default().fg(theme.bg).bg(theme.fg)),
-            Span::styled(
-                self.input_handler.text_after_cursor(),
-                Style::default().fg(theme.fg),
-            ),
-        ]);
+        // Render input field with border
+        let input_block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(theme.accented_fg));
+        let input_inner = input_block.inner(chunks[chunk_idx]);
+        input_block.render(chunks[chunk_idx], buf);
 
-        let input_paragraph = Paragraph::new(input_line)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(theme.accented_fg)),
-            )
-            .style(Style::default().bg(theme.bg));
-        input_paragraph.render(chunks[chunk_idx], buf);
+        // Save input area for mouse handling
+        self.last_input_area = Some(input_inner);
+
+        // Render input content with cursor and selection
+        render_input_field(
+            buf,
+            input_inner.x,
+            input_inner.y,
+            input_inner.width,
+            self.input_handler.text(),
+            self.input_handler.cursor_pos(),
+            self.input_handler.selection_range(),
+            self.focus == FocusArea::Input,
+            theme,
+        );
         chunk_idx += 1;
 
         // Render buttons
@@ -200,8 +205,17 @@ impl Modal for InputModal {
 
         match self.focus {
             FocusArea::Input => {
+                // Try common input handling first
+                match handle_input_key(&mut self.input_handler, key) {
+                    InputKeyResult::Handled | InputKeyResult::TextModified => {
+                        return Ok(None);
+                    }
+                    InputKeyResult::NotHandled => {}
+                }
+
+                // Modal-specific handling
                 match key.code {
-                    KeyCode::Down => {
+                    KeyCode::Down | KeyCode::Tab => {
                         // Move focus to buttons
                         self.focus = FocusArea::Buttons;
                         Ok(None)
@@ -216,41 +230,20 @@ impl Modal for InputModal {
                             )))
                         }
                     }
-                    KeyCode::Char(c) => {
-                        if key.modifiers.contains(KeyModifiers::CONTROL) {
-                            return Ok(None);
-                        }
-                        self.input_handler.insert_char(c);
-                        Ok(None)
-                    }
-                    KeyCode::Backspace => {
-                        self.input_handler.backspace();
-                        Ok(None)
-                    }
-                    KeyCode::Delete => {
-                        self.input_handler.delete();
-                        Ok(None)
-                    }
-                    KeyCode::Left => {
-                        self.input_handler.move_left();
-                        Ok(None)
-                    }
-                    KeyCode::Right => {
-                        self.input_handler.move_right();
-                        Ok(None)
-                    }
-                    KeyCode::Home => {
-                        self.input_handler.move_home();
-                        Ok(None)
-                    }
-                    KeyCode::End => {
-                        self.input_handler.move_end();
-                        Ok(None)
-                    }
                     _ => Ok(None),
                 }
             }
             FocusArea::Buttons => {
+                // Handle text input keys even when on buttons
+                match handle_input_key(&mut self.input_handler, key) {
+                    InputKeyResult::Handled | InputKeyResult::TextModified => {
+                        // Switch back to input when typing
+                        self.focus = FocusArea::Input;
+                        return Ok(None);
+                    }
+                    InputKeyResult::NotHandled => {}
+                }
+
                 match key.code {
                     KeyCode::Left => {
                         // Move to previous button (wrap around)
@@ -262,7 +255,7 @@ impl Modal for InputModal {
                         self.selected_button = if self.selected_button == 1 { 0 } else { 1 };
                         Ok(None)
                     }
-                    KeyCode::Up => {
+                    KeyCode::Up | KeyCode::BackTab => {
                         // Move focus back to input
                         self.focus = FocusArea::Input;
                         Ok(None)
@@ -283,27 +276,6 @@ impl Modal for InputModal {
                             Ok(Some(ModalResult::Cancelled))
                         }
                     }
-                    KeyCode::Char(c) => {
-                        if key.modifiers.contains(KeyModifiers::CONTROL) {
-                            return Ok(None);
-                        }
-                        // Switch back to input and insert character
-                        self.focus = FocusArea::Input;
-                        self.input_handler.insert_char(c);
-                        Ok(None)
-                    }
-                    KeyCode::Backspace => {
-                        // Switch back to input and delete character
-                        self.focus = FocusArea::Input;
-                        self.input_handler.backspace();
-                        Ok(None)
-                    }
-                    KeyCode::Delete => {
-                        // Switch back to input and delete character
-                        self.focus = FocusArea::Input;
-                        self.input_handler.delete();
-                        Ok(None)
-                    }
                     _ => Ok(None),
                 }
             }
@@ -315,66 +287,104 @@ impl Modal for InputModal {
         mouse: crossterm::event::MouseEvent,
         _modal_area: Rect,
     ) -> Result<Option<ModalResult<Self::Result>>> {
-        use crossterm::event::MouseEventKind;
+        use crossterm::event::{MouseButton, MouseEventKind};
 
-        // Only handle left button press
-        if mouse.kind != MouseEventKind::Down(crossterm::event::MouseButton::Left) {
-            return Ok(None);
-        }
+        match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                // Check if click is on input field
+                if let Some(input_area) = self.last_input_area {
+                    if mouse.column >= input_area.x
+                        && mouse.column < input_area.x + input_area.width
+                        && mouse.row == input_area.y
+                    {
+                        self.focus = FocusArea::Input;
+                        let click_x = (mouse.column - input_area.x) as usize;
+                        let char_pos = screen_x_to_char_pos(self.input_handler.text(), click_x);
+                        self.input_handler.set_cursor_with_selection_start(char_pos);
+                        return Ok(None);
+                    }
+                }
 
-        // Check if we have stored buttons area
-        let Some(buttons_area) = self.last_buttons_area else {
-            return Ok(None);
-        };
+                // Check if click is on buttons
+                let Some(buttons_area) = self.last_buttons_area else {
+                    return Ok(None);
+                };
 
-        // Check if click is within buttons area
-        if mouse.row < buttons_area.y
-            || mouse.row >= buttons_area.y + buttons_area.height
-            || mouse.column < buttons_area.x
-            || mouse.column >= buttons_area.x + buttons_area.width
-        {
-            return Ok(None);
-        }
+                if mouse.row < buttons_area.y
+                    || mouse.row >= buttons_area.y + buttons_area.height
+                    || mouse.column < buttons_area.x
+                    || mouse.column >= buttons_area.x + buttons_area.width
+                {
+                    return Ok(None);
+                }
 
-        // Calculate button positions
-        // Buttons are centered: "[ OK ]    [ Cancel ]"
-        let t = i18n::t();
-        let ok_text = format!("[ {} ]", t.ui_ok());
-        let cancel_text = format!("[ {} ]", t.ui_cancel());
-        let total_text_width = ok_text.len() + MODAL_BUTTON_SPACING as usize + cancel_text.len();
+                // Calculate button positions
+                let t = i18n::t();
+                let ok_text = format!("[ {} ]", t.ui_ok());
+                let cancel_text = format!("[ {} ]", t.ui_cancel());
+                let total_text_width =
+                    ok_text.len() + MODAL_BUTTON_SPACING as usize + cancel_text.len();
 
-        let start_col =
-            buttons_area.x + (buttons_area.width.saturating_sub(total_text_width as u16)) / 2;
-        let ok_end = start_col + ok_text.len() as u16;
-        let cancel_start = ok_end + MODAL_BUTTON_SPACING;
-        let cancel_end = cancel_start + cancel_text.len() as u16;
+                let start_col = buttons_area.x
+                    + (buttons_area.width.saturating_sub(total_text_width as u16)) / 2;
+                let ok_end = start_col + ok_text.len() as u16;
+                let cancel_start = ok_end + MODAL_BUTTON_SPACING;
+                let cancel_end = cancel_start + cancel_text.len() as u16;
 
-        // Determine which button was clicked
-        if mouse.column >= start_col && mouse.column < ok_end {
-            // OK button clicked
-            self.focus = FocusArea::Buttons;
-            self.selected_button = 0;
-            // Execute OK action immediately
-            if self.input_handler.is_empty() {
-                Ok(Some(ModalResult::Cancelled))
-            } else {
-                Ok(Some(ModalResult::Confirmed(
-                    self.input_handler.text().to_string(),
-                )))
+                if mouse.column >= start_col && mouse.column < ok_end {
+                    // OK button clicked
+                    self.focus = FocusArea::Buttons;
+                    self.selected_button = 0;
+                    if self.input_handler.is_empty() {
+                        return Ok(Some(ModalResult::Cancelled));
+                    } else {
+                        return Ok(Some(ModalResult::Confirmed(
+                            self.input_handler.text().to_string(),
+                        )));
+                    }
+                } else if mouse.column >= cancel_start && mouse.column < cancel_end {
+                    // Cancel button clicked
+                    self.focus = FocusArea::Buttons;
+                    self.selected_button = 1;
+                    return Ok(Some(ModalResult::Cancelled));
+                }
             }
-        } else if mouse.column >= cancel_start && mouse.column < cancel_end {
-            // Cancel button clicked
-            self.focus = FocusArea::Buttons;
-            self.selected_button = 1;
-            // Execute Cancel action immediately
-            Ok(Some(ModalResult::Cancelled))
-        } else {
-            Ok(None)
+            MouseEventKind::Drag(MouseButton::Left) => {
+                // Extend selection during drag on input field
+                if let Some(input_area) = self.last_input_area {
+                    if mouse.row == input_area.y {
+                        let drag_x = if mouse.column < input_area.x {
+                            0
+                        } else {
+                            (mouse.column - input_area.x) as usize
+                        };
+                        let char_pos = screen_x_to_char_pos(self.input_handler.text(), drag_x);
+                        self.input_handler.extend_selection_to(char_pos);
+                    }
+                }
+            }
+            _ => {}
         }
+
+        Ok(None)
     }
 
     fn handle_paste(&mut self, text: &str) -> bool {
         self.input_handler.paste(text);
         true
     }
+}
+
+/// Convert screen X position to character position in text.
+fn screen_x_to_char_pos(text: &str, screen_x: usize) -> usize {
+    use unicode_width::UnicodeWidthChar;
+    let mut width = 0;
+    for (i, c) in text.chars().enumerate() {
+        let cw = UnicodeWidthChar::width(c).unwrap_or(1);
+        if width + cw > screen_x {
+            return i;
+        }
+        width += cw;
+    }
+    text.chars().count() // Click past end = cursor at end
 }

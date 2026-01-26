@@ -6,11 +6,11 @@ use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
-    text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Widget},
 };
 
-use crate::base::render_modal_block;
+use crate::base::{render_input_field, render_modal_block};
+use crate::input_keys::{handle_input_key, InputKeyResult};
 use regex::Regex;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -522,27 +522,25 @@ impl Modal for ContentSearchModal {
             ])
             .split(inner);
 
-        // Render input field
-        let input_line = Line::from(vec![
-            Span::styled(
-                self.input_handler.text_before_cursor(),
-                Style::default().fg(theme.fg),
-            ),
-            Span::styled("█", Style::default().fg(theme.bg).bg(theme.fg)),
-            Span::styled(
-                self.input_handler.text_after_cursor(),
-                Style::default().fg(theme.fg),
-            ),
-        ]);
+        // Render input field with border
+        let input_block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(theme.accented_fg));
+        let input_inner = input_block.inner(chunks[0]);
+        input_block.render(chunks[0], buf);
 
-        let input_paragraph = Paragraph::new(input_line)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(theme.accented_fg)),
-            )
-            .style(Style::default().bg(theme.bg));
-        input_paragraph.render(chunks[0], buf);
+        // Render input content with cursor and selection
+        render_input_field(
+            buf,
+            input_inner.x,
+            input_inner.y,
+            input_inner.width,
+            self.input_handler.text(),
+            self.input_handler.cursor_pos(),
+            self.input_handler.selection_range(),
+            true, // Always focused (single input field modal)
+            theme,
+        );
 
         // Render results list
         let list_area = chunks[1];
@@ -735,6 +733,15 @@ impl Modal for ContentSearchModal {
             return Ok(Some(ModalResult::Cancelled));
         }
 
+        // Try common input handling first
+        match handle_input_key(&mut self.input_handler, key) {
+            InputKeyResult::Handled | InputKeyResult::TextModified => {
+                return Ok(None);
+            }
+            InputKeyResult::NotHandled => {}
+        }
+
+        // Modal-specific handling
         match key.code {
             KeyCode::Enter => {
                 // Confirm selection
@@ -766,37 +773,6 @@ impl Modal for ContentSearchModal {
             }
             KeyCode::End if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.cursor_end();
-                Ok(None)
-            }
-            KeyCode::Char(c) => {
-                if key.modifiers.contains(KeyModifiers::CONTROL) {
-                    return Ok(None);
-                }
-                self.input_handler.insert_char(c);
-                Ok(None)
-            }
-            KeyCode::Backspace => {
-                self.input_handler.backspace();
-                Ok(None)
-            }
-            KeyCode::Delete => {
-                self.input_handler.delete();
-                Ok(None)
-            }
-            KeyCode::Left => {
-                self.input_handler.move_left();
-                Ok(None)
-            }
-            KeyCode::Right => {
-                self.input_handler.move_right();
-                Ok(None)
-            }
-            KeyCode::Home => {
-                self.input_handler.move_home();
-                Ok(None)
-            }
-            KeyCode::End => {
-                self.input_handler.move_end();
                 Ok(None)
             }
             _ => Ok(None),

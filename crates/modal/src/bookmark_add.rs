@@ -12,7 +12,8 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph, Widget},
 };
 
-use crate::base::{button_style, render_modal_block};
+use crate::base::{button_style, render_input_field, render_modal_block};
+use crate::input_keys::{handle_input_key, InputKeyResult};
 
 use termide_config::constants::{
     MODAL_BUTTON_SPACING, MODAL_MAX_WIDTH_PERCENTAGE_DEFAULT, MODAL_MIN_WIDTH_WIDE,
@@ -152,7 +153,7 @@ impl BookmarkAddModal {
     }
 
     /// Render a labeled input field
-    fn render_input_field(
+    fn render_labeled_input_field(
         &self,
         buf: &mut Buffer,
         area: Rect,
@@ -180,37 +181,31 @@ impl BookmarkAddModal {
         };
         label_para.render(label_area, buf);
 
-        // Render input with border (same style as InputModal)
-        let text_before = input.text_before_cursor();
-        let text_after = input.text_after_cursor();
-
-        let input_line = if is_focused {
-            Line::from(vec![
-                Span::styled(text_before, Style::default().fg(theme.fg)),
-                Span::styled("█", Style::default().fg(theme.bg).bg(theme.fg)),
-                Span::styled(text_after, Style::default().fg(theme.fg)),
-            ])
-        } else {
-            Line::from(vec![Span::styled(
-                input.text(),
-                Style::default().fg(theme.fg),
-            )])
-        };
-
+        // Render input with border
         let border_style = if is_focused {
             Style::default().fg(theme.accented_fg)
         } else {
             Style::default().fg(theme.disabled)
         };
 
-        let input_para = Paragraph::new(input_line)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(border_style),
-            )
-            .style(Style::default().bg(theme.bg));
-        input_para.render(chunks[1], buf);
+        let input_block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(border_style);
+        let input_inner = input_block.inner(chunks[1]);
+        input_block.render(chunks[1], buf);
+
+        // Render input content with cursor and selection
+        render_input_field(
+            buf,
+            input_inner.x,
+            input_inner.y,
+            input_inner.width,
+            input.text(),
+            input.cursor_pos(),
+            input.selection_range(),
+            is_focused,
+            theme,
+        );
     }
 
     /// Render the group input field with dropdown toggle indicator
@@ -224,7 +219,7 @@ impl BookmarkAddModal {
             .constraints([Constraint::Length(15), Constraint::Min(1)])
             .split(area);
 
-        // Render label (same style as InputModal's prompt)
+        // Render label
         let label_para = Paragraph::new(label.to_string())
             .style(Style::default().fg(theme.fg))
             .alignment(Alignment::Right);
@@ -236,7 +231,7 @@ impl BookmarkAddModal {
         };
         label_para.render(label_area, buf);
 
-        // Calculate input area and indicator
+        // Calculate input area
         let input_area = chunks[1];
         let indicator = if has_groups {
             if self.show_group_dropdown {
@@ -247,52 +242,6 @@ impl BookmarkAddModal {
         } else {
             ""
         };
-
-        // Render input text with cursor and indicator
-        let text_before = self.group_input.text_before_cursor();
-        let text_after = self.group_input.text_after_cursor();
-
-        // Calculate available width for text (minus borders and indicator)
-        let inner_width = input_area.width.saturating_sub(2) as usize; // borders
-        let indicator_width = if has_groups { 2 } else { 0 }; // "▲ " or "▼ "
-        let text_width = inner_width.saturating_sub(indicator_width);
-
-        // Build the text line with indicator on the right
-        let mut spans = Vec::new();
-        if is_focused {
-            spans.push(Span::styled(text_before, Style::default().fg(theme.fg)));
-            spans.push(Span::styled(
-                "█",
-                Style::default().fg(theme.bg).bg(theme.fg),
-            ));
-            spans.push(Span::styled(text_after, Style::default().fg(theme.fg)));
-        } else {
-            spans.push(Span::styled(
-                self.group_input.text(),
-                Style::default().fg(theme.fg),
-            ));
-        }
-
-        // Calculate padding needed to push indicator to the right
-        let current_text_len = if is_focused {
-            text_before.chars().count() + 1 + text_after.chars().count()
-        } else {
-            self.group_input.text().chars().count()
-        };
-        let padding_needed = text_width.saturating_sub(current_text_len);
-        if padding_needed > 0 {
-            spans.push(Span::raw(" ".repeat(padding_needed)));
-        }
-
-        // Add indicator
-        if has_groups {
-            spans.push(Span::styled(
-                format!(" {}", indicator),
-                Style::default().fg(theme.disabled),
-            ));
-        }
-
-        let input_line = Line::from(spans);
 
         let border_style = if is_focused {
             Style::default().fg(theme.accented_fg)
@@ -307,10 +256,37 @@ impl BookmarkAddModal {
             Borders::ALL
         };
 
-        let input_para = Paragraph::new(input_line)
-            .block(Block::default().borders(borders).border_style(border_style))
-            .style(Style::default().bg(theme.bg));
-        input_para.render(input_area, buf);
+        let input_block = Block::default().borders(borders).border_style(border_style);
+        let input_inner = input_block.inner(input_area);
+        input_block.render(input_area, buf);
+
+        // Calculate area for text input (excluding indicator)
+        let indicator_width = if has_groups { 2u16 } else { 0u16 }; // " ▲" or " ▼"
+        let text_width = input_inner.width.saturating_sub(indicator_width);
+
+        // Render input content with cursor and selection
+        render_input_field(
+            buf,
+            input_inner.x,
+            input_inner.y,
+            text_width,
+            self.group_input.text(),
+            self.group_input.cursor_pos(),
+            self.group_input.selection_range(),
+            is_focused,
+            theme,
+        );
+
+        // Render indicator at right edge
+        if has_groups {
+            let indicator_x = input_inner.x + input_inner.width.saturating_sub(1);
+            buf.set_string(
+                indicator_x,
+                input_inner.y,
+                indicator,
+                Style::default().fg(theme.disabled),
+            );
+        }
     }
 }
 
@@ -351,7 +327,7 @@ impl Modal for BookmarkAddModal {
         let mut chunk_idx = 0;
 
         // Render Path field
-        self.render_input_field(
+        self.render_labeled_input_field(
             buf,
             chunks[chunk_idx],
             t.bookmarks_add_path(),
@@ -362,7 +338,7 @@ impl Modal for BookmarkAddModal {
         chunk_idx += 1;
 
         // Render Description field
-        self.render_input_field(
+        self.render_labeled_input_field(
             buf,
             chunks[chunk_idx],
             t.bookmarks_add_description(),
@@ -481,7 +457,17 @@ impl Modal for BookmarkAddModal {
         // Handle based on focus
         match self.focus {
             FocusArea::Path | FocusArea::Description => {
-                // Standard input handling
+                // Try common input handling first
+                if let Some(input) = self.current_input() {
+                    match handle_input_key(input, key) {
+                        InputKeyResult::Handled | InputKeyResult::TextModified => {
+                            return Ok(None);
+                        }
+                        InputKeyResult::NotHandled => {}
+                    }
+                }
+
+                // Modal-specific handling
                 match key.code {
                     KeyCode::Down => {
                         self.next_focus();
@@ -490,45 +476,8 @@ impl Modal for BookmarkAddModal {
                         self.prev_focus();
                     }
                     KeyCode::Enter => {
-                        // Move to next field or confirm if on buttons
+                        // Move to next field
                         self.next_focus();
-                    }
-                    KeyCode::Char(c) => {
-                        if !key.modifiers.contains(KeyModifiers::CONTROL) {
-                            if let Some(input) = self.current_input() {
-                                input.insert_char(c);
-                            }
-                        }
-                    }
-                    KeyCode::Backspace => {
-                        if let Some(input) = self.current_input() {
-                            input.backspace();
-                        }
-                    }
-                    KeyCode::Delete => {
-                        if let Some(input) = self.current_input() {
-                            input.delete();
-                        }
-                    }
-                    KeyCode::Left => {
-                        if let Some(input) = self.current_input() {
-                            input.move_left();
-                        }
-                    }
-                    KeyCode::Right => {
-                        if let Some(input) = self.current_input() {
-                            input.move_right();
-                        }
-                    }
-                    KeyCode::Home => {
-                        if let Some(input) = self.current_input() {
-                            input.move_home();
-                        }
-                    }
-                    KeyCode::End => {
-                        if let Some(input) = self.current_input() {
-                            input.move_end();
-                        }
                     }
                     _ => {}
                 }
@@ -559,10 +508,18 @@ impl Modal for BookmarkAddModal {
                         _ => {}
                     }
                 } else {
+                    // Try common input handling first
+                    match handle_input_key(&mut self.group_input, key) {
+                        InputKeyResult::Handled | InputKeyResult::TextModified => {
+                            return Ok(None);
+                        }
+                        InputKeyResult::NotHandled => {}
+                    }
+
+                    // Modal-specific handling
                     match key.code {
                         KeyCode::Down => {
                             // Down arrow moves to next focus (Buttons)
-                            // Tab handles dropdown toggle
                             self.next_focus();
                         }
                         KeyCode::Up => {
@@ -571,35 +528,21 @@ impl Modal for BookmarkAddModal {
                         KeyCode::Enter => {
                             self.next_focus();
                         }
-                        KeyCode::Char(c) => {
-                            if !key.modifiers.contains(KeyModifiers::CONTROL) {
-                                self.group_input.insert_char(c);
-                            }
-                        }
-                        KeyCode::Backspace => {
-                            self.group_input.backspace();
-                        }
-                        KeyCode::Delete => {
-                            self.group_input.delete();
-                        }
-                        KeyCode::Left => {
-                            self.group_input.move_left();
-                        }
-                        KeyCode::Right => {
-                            self.group_input.move_right();
-                        }
-                        KeyCode::Home => {
-                            self.group_input.move_home();
-                        }
-                        KeyCode::End => {
-                            self.group_input.move_end();
-                        }
                         _ => {}
                     }
                 }
                 Ok(None)
             }
             FocusArea::Buttons => {
+                // Handle text input keys even when on buttons
+                match handle_input_key(&mut self.path_input, key) {
+                    InputKeyResult::Handled | InputKeyResult::TextModified => {
+                        self.focus = FocusArea::Path;
+                        return Ok(None);
+                    }
+                    InputKeyResult::NotHandled => {}
+                }
+
                 match key.code {
                     KeyCode::Left => {
                         self.selected_button = if self.selected_button == 0 { 1 } else { 0 };
@@ -607,7 +550,7 @@ impl Modal for BookmarkAddModal {
                     KeyCode::Right => {
                         self.selected_button = if self.selected_button == 1 { 0 } else { 1 };
                     }
-                    KeyCode::Up => {
+                    KeyCode::Up | KeyCode::BackTab => {
                         self.prev_focus();
                     }
                     KeyCode::Enter => {
@@ -646,18 +589,6 @@ impl Modal for BookmarkAddModal {
                             // Cancel button
                             return Ok(Some(ModalResult::Cancelled));
                         }
-                    }
-                    KeyCode::Char(c) => {
-                        if !key.modifiers.contains(KeyModifiers::CONTROL) {
-                            // Switch back to path input and insert character
-                            self.focus = FocusArea::Path;
-                            self.path_input.insert_char(c);
-                        }
-                    }
-                    KeyCode::Backspace => {
-                        // Switch back to path input and delete character
-                        self.focus = FocusArea::Path;
-                        self.path_input.backspace();
                     }
                     _ => {}
                 }

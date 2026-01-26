@@ -3,7 +3,7 @@
 use std::time::SystemTime;
 
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -12,7 +12,8 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Widget},
 };
 
-use crate::base::{button_style, render_modal_block};
+use crate::base::{button_style, render_input_field, render_modal_block};
+use crate::input_keys::{handle_input_key, InputKeyResult};
 
 use termide_i18n as i18n;
 use termide_state::RenamePattern;
@@ -143,19 +144,18 @@ impl Modal for RenamePatternModal {
         let input_area = input_block.inner(chunks[1]);
         input_block.render(chunks[1], buf);
 
-        let input_text =
-            Paragraph::new(self.input_handler.text()).style(Style::default().fg(theme.fg));
-        input_text.render(input_area, buf);
-
-        // Cursor
-        let cursor_pos = self.input_handler.cursor_pos();
-        let char_count = self.input_handler.text().chars().count();
-        if cursor_pos <= char_count {
-            let cursor_x = input_area.x + cursor_pos as u16;
-            if cursor_x < input_area.right() {
-                buf[(cursor_x, input_area.y)].set_style(Style::default().bg(theme.fg).fg(theme.bg));
-            }
-        }
+        // Render input content with cursor and selection
+        render_input_field(
+            buf,
+            input_area.x,
+            input_area.y,
+            input_area.width,
+            self.input_handler.text(),
+            self.input_handler.cursor_pos(),
+            self.input_handler.selection_range(),
+            self.focus == FocusArea::Input,
+            theme,
+        );
 
         // Preview - show "New name: ..." in accented_fg color
         let preview = self.get_preview();
@@ -214,13 +214,22 @@ impl Modal for RenamePatternModal {
 
         match self.focus {
             FocusArea::Input => {
+                // Try common input handling first
+                match handle_input_key(&mut self.input_handler, key) {
+                    InputKeyResult::Handled | InputKeyResult::TextModified => {
+                        return Ok(None);
+                    }
+                    InputKeyResult::NotHandled => {}
+                }
+
+                // Modal-specific handling
                 match key.code {
-                    KeyCode::Down => {
+                    KeyCode::Down | KeyCode::Tab => {
                         // Move focus to buttons
                         self.focus = FocusArea::Buttons;
                         Ok(None)
                     }
-                    KeyCode::Enter | KeyCode::Tab => {
+                    KeyCode::Enter => {
                         if self.is_valid() {
                             Ok(Some(ModalResult::Confirmed(
                                 self.input_handler.text().to_string(),
@@ -229,52 +238,19 @@ impl Modal for RenamePatternModal {
                             Ok(None)
                         }
                     }
-                    KeyCode::Left => {
-                        self.input_handler.move_left();
-                        Ok(None)
-                    }
-                    KeyCode::Right => {
-                        self.input_handler.move_right();
-                        Ok(None)
-                    }
-                    KeyCode::Home => {
-                        self.input_handler.move_home();
-                        Ok(None)
-                    }
-                    KeyCode::End => {
-                        self.input_handler.move_end();
-                        Ok(None)
-                    }
-                    KeyCode::Backspace => {
-                        self.input_handler.backspace();
-                        Ok(None)
-                    }
-                    KeyCode::Delete => {
-                        self.input_handler.delete();
-                        Ok(None)
-                    }
-                    KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        self.input_handler.move_home();
-                        Ok(None)
-                    }
-                    KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        self.input_handler.move_end();
-                        Ok(None)
-                    }
-                    KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        self.input_handler.clear();
-                        Ok(None)
-                    }
-                    KeyCode::Char(c) => {
-                        if !key.modifiers.contains(KeyModifiers::CONTROL) {
-                            self.input_handler.insert_char(c);
-                        }
-                        Ok(None)
-                    }
                     _ => Ok(None),
                 }
             }
             FocusArea::Buttons => {
+                // Handle text input keys even when on buttons
+                match handle_input_key(&mut self.input_handler, key) {
+                    InputKeyResult::Handled | InputKeyResult::TextModified => {
+                        self.focus = FocusArea::Input;
+                        return Ok(None);
+                    }
+                    InputKeyResult::NotHandled => {}
+                }
+
                 match key.code {
                     KeyCode::Left => {
                         // Move to previous button (wrap around)
@@ -286,7 +262,7 @@ impl Modal for RenamePatternModal {
                         self.selected_button = if self.selected_button == 1 { 0 } else { 1 };
                         Ok(None)
                     }
-                    KeyCode::Up => {
+                    KeyCode::Up | KeyCode::BackTab => {
                         // Move focus back to input
                         self.focus = FocusArea::Input;
                         Ok(None)
@@ -306,26 +282,6 @@ impl Modal for RenamePatternModal {
                             // Cancel button
                             Ok(Some(ModalResult::Cancelled))
                         }
-                    }
-                    KeyCode::Char(c) => {
-                        if !key.modifiers.contains(KeyModifiers::CONTROL) {
-                            // Switch back to input and insert character
-                            self.focus = FocusArea::Input;
-                            self.input_handler.insert_char(c);
-                        }
-                        Ok(None)
-                    }
-                    KeyCode::Backspace => {
-                        // Switch back to input and delete character
-                        self.focus = FocusArea::Input;
-                        self.input_handler.backspace();
-                        Ok(None)
-                    }
-                    KeyCode::Delete => {
-                        // Switch back to input and delete character forward
-                        self.focus = FocusArea::Input;
-                        self.input_handler.delete();
-                        Ok(None)
                     }
                     _ => Ok(None),
                 }

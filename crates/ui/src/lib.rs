@@ -525,6 +525,88 @@ impl TextInput {
         self.cursor_pos = self.input.chars().count();
     }
 
+    // === Word navigation methods (Ctrl+arrows) ===
+
+    /// Find word boundary to the left of cursor
+    fn find_word_boundary_left(&self) -> usize {
+        if self.cursor_pos == 0 {
+            return 0;
+        }
+
+        let chars: Vec<char> = self.input.chars().collect();
+        let mut pos = self.cursor_pos;
+
+        // Skip any whitespace immediately before cursor
+        while pos > 0 && chars[pos - 1].is_whitespace() {
+            pos -= 1;
+        }
+
+        // Skip non-alphanumeric characters (punctuation)
+        while pos > 0 && !chars[pos - 1].is_alphanumeric() && !chars[pos - 1].is_whitespace() {
+            pos -= 1;
+        }
+
+        // Skip alphanumeric characters (the word itself)
+        while pos > 0 && chars[pos - 1].is_alphanumeric() {
+            pos -= 1;
+        }
+
+        pos
+    }
+
+    /// Find word boundary to the right of cursor
+    fn find_word_boundary_right(&self) -> usize {
+        let chars: Vec<char> = self.input.chars().collect();
+        let len = chars.len();
+
+        if self.cursor_pos >= len {
+            return len;
+        }
+
+        let mut pos = self.cursor_pos;
+
+        // Skip alphanumeric characters (current word)
+        while pos < len && chars[pos].is_alphanumeric() {
+            pos += 1;
+        }
+
+        // Skip non-alphanumeric characters (punctuation)
+        while pos < len && !chars[pos].is_alphanumeric() && !chars[pos].is_whitespace() {
+            pos += 1;
+        }
+
+        // Skip any whitespace after word
+        while pos < len && chars[pos].is_whitespace() {
+            pos += 1;
+        }
+
+        pos
+    }
+
+    /// Move cursor one word to the left (Ctrl+Left)
+    pub fn move_word_left(&mut self) {
+        self.clear_selection();
+        self.cursor_pos = self.find_word_boundary_left();
+    }
+
+    /// Move cursor one word to the right (Ctrl+Right)
+    pub fn move_word_right(&mut self) {
+        self.clear_selection();
+        self.cursor_pos = self.find_word_boundary_right();
+    }
+
+    /// Move cursor one word left while extending selection (Ctrl+Shift+Left)
+    pub fn move_word_left_with_selection(&mut self) {
+        self.start_selection();
+        self.cursor_pos = self.find_word_boundary_left();
+    }
+
+    /// Move cursor one word right while extending selection (Ctrl+Shift+Right)
+    pub fn move_word_right_with_selection(&mut self) {
+        self.start_selection();
+        self.cursor_pos = self.find_word_boundary_right();
+    }
+
     // === Mouse support methods ===
 
     /// Set cursor position (for mouse click without selection)
