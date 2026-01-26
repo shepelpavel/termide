@@ -91,15 +91,9 @@ impl JournalPanel {
         }
     }
 
-    /// Scroll to the end of the log.
-    fn scroll_to_end(&mut self, content_height: usize) {
-        let line_count = self.editor.buffer().line_count();
-        if line_count > content_height {
-            self.editor.viewport_mut().top_line = line_count.saturating_sub(content_height);
-        }
-        // Move cursor to last line
-        let last_line = line_count.saturating_sub(1);
-        self.editor.set_cursor_line(last_line);
+    /// Scroll to the end of the log (word-wrap aware).
+    fn scroll_to_end(&mut self) {
+        self.editor.scroll_to_document_end();
     }
 
     /// Check if currently at the end of the log.
@@ -130,11 +124,9 @@ impl Panel for JournalPanel {
         // Sync new log entries
         self.sync_logs();
 
-        let content_height = area.height as usize;
-
-        // Auto-scroll if enabled
-        if self.auto_scroll && content_height > 0 {
-            self.scroll_to_end(content_height);
+        // Auto-scroll if enabled (word-wrap aware)
+        if self.auto_scroll && area.height > 0 {
+            self.scroll_to_end();
         }
 
         // Render using editor's rendering with our custom highlighter

@@ -926,6 +926,15 @@ impl Editor {
         self.cursor.column = 0;
     }
 
+    /// Scroll to end of document (word-wrap aware).
+    /// Used by JournalPanel for auto-scroll functionality.
+    pub fn scroll_to_document_end(&mut self) {
+        let last_line = self.buffer.line_count().saturating_sub(1);
+        self.cursor.line = last_line;
+        self.cursor.column = 0;
+        self.scroll_follows_cursor = true;
+    }
+
     /// Go to specific position (for go-to-definition).
     pub fn goto_position(&mut self, line: usize, column: usize) {
         let max_line = self.buffer.line_count().saturating_sub(1);
