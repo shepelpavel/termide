@@ -1017,16 +1017,22 @@ impl Editor {
     fn ensure_preferred_column(&mut self) {
         if self.input.preferred_column.is_none() {
             // Calculate visual offset (position within current visual row)
-            let visual_offset = if self.render_cache.content_width > 0 {
+            let content_width = self.render_cache.content_width;
+            let use_smart_wrap = self.render_cache.use_smart_wrap;
+
+            let visual_offset = if content_width > 0 {
                 if let Some(line_text) = self.buffer.line(self.cursor.line) {
                     use unicode_segmentation::UnicodeSegmentation;
                     let line_text = line_text.trim_end_matches('\n');
                     let line_len = line_text.graphemes(true).count();
                     let cursor_col = self.cursor.column.min(line_len);
-                    let (_visual_rows, wrap_points) = word_wrap::get_line_wrap_points(
-                        line_text,
-                        self.render_cache.content_width,
-                        self.render_cache.use_smart_wrap,
+                    // Use cached wrap points to avoid recalculation
+                    let (_visual_rows, wrap_points) = word_wrap::get_line_wrap_points_cached(
+                        &mut self.render_cache,
+                        &self.buffer,
+                        self.cursor.line,
+                        content_width,
+                        use_smart_wrap,
                     );
                     let current_visual_row =
                         wrap_points.iter().filter(|&&wp| wp <= cursor_col).count();
@@ -1086,14 +1092,20 @@ impl Editor {
         }
 
         // Calculate the visual row of the cursor relative to viewport.top_line
-        let cursor_visual_row = word_wrap::calculate_visual_row_for_cursor(
+        // Use cached version to avoid O(n) recalculation on every keystroke
+        let content_width = self.render_cache.content_width;
+        let use_smart_wrap = self.render_cache.use_smart_wrap;
+        let word_wrap = self.config.word_wrap;
+
+        let cursor_visual_row = word_wrap::calculate_visual_row_for_cursor_cached(
+            &mut self.render_cache,
             &self.buffer,
             self.cursor.line,
             self.cursor.column,
             self.viewport.top_line,
-            self.render_cache.content_width,
-            self.config.word_wrap,
-            self.render_cache.use_smart_wrap,
+            content_width,
+            word_wrap,
+            use_smart_wrap,
         );
 
         // If cursor is below the visible area, scroll down
@@ -1103,14 +1115,15 @@ impl Editor {
             while self.viewport.top_line < self.cursor.line {
                 self.viewport.top_line += 1;
 
-                let new_visual_row = word_wrap::calculate_visual_row_for_cursor(
+                let new_visual_row = word_wrap::calculate_visual_row_for_cursor_cached(
+                    &mut self.render_cache,
                     &self.buffer,
                     self.cursor.line,
                     self.cursor.column,
                     self.viewport.top_line,
-                    self.render_cache.content_width,
-                    self.config.word_wrap,
-                    self.render_cache.use_smart_wrap,
+                    content_width,
+                    word_wrap,
+                    use_smart_wrap,
                 );
 
                 // Stop when cursor is at the bottom of viewport
@@ -1139,18 +1152,23 @@ impl Editor {
 
     /// Get the total count of virtual lines (real buffer lines + deletion marker lines + diagnostics + word wrap)
     /// This is used for viewport calculations to account for deletion markers, diagnostics, and word wrapping
-    fn virtual_line_count(&self, config: &Config) -> usize {
+    fn virtual_line_count(&mut self, config: &Config) -> usize {
         // Count diagnostic virtual lines
         let diagnostic_line_count = self.lsp.diagnostics.len();
 
         // If word wrap is enabled, count visual rows instead of buffer lines
         if self.should_use_visual_movement() {
-            // Use calculate_total_visual_rows which accounts for word wrapping
-            let total_visual_rows = word_wrap::calculate_total_visual_rows(
+            // Use cached version for O(1) lookup when cache is valid
+            let content_width = self.render_cache.content_width;
+            let word_wrap = self.config.word_wrap;
+            let use_smart_wrap = self.render_cache.use_smart_wrap;
+
+            let total_visual_rows = word_wrap::calculate_total_visual_rows_cached(
+                &mut self.render_cache,
                 &self.buffer,
-                self.render_cache.content_width,
-                self.config.word_wrap,
-                self.render_cache.use_smart_wrap,
+                content_width,
+                word_wrap,
+                use_smart_wrap,
             );
 
             // Add deletion markers if git diff is shown (O(1) lookup)
@@ -1344,7 +1362,7 @@ impl Editor {
         Ok(())
     }
 
-    /// Invalidate syntax highlighting cache after text edit and schedule git diff update.
+    /// Invalidate syntax highlighting and wrap caches after text edit and schedule git diff update.
     ///
     /// If the edit is multiline, invalidates all lines from start_line to end of buffer.
     /// Otherwise, invalidates only the single changed line.
@@ -1353,8 +1371,12 @@ impl Editor {
             self.render_cache
                 .highlight
                 .invalidate_range(start_line, self.buffer.line_count());
+            // Invalidate wrap cache for all lines from start_line onwards
+            self.render_cache.invalidate_wrap_range(start_line);
         } else {
             self.render_cache.highlight.invalidate_line(start_line);
+            // Invalidate wrap cache for just this line
+            self.render_cache.invalidate_wrap_line(start_line);
         }
         self.schedule_git_diff_update();
         // Mark for LSP notification

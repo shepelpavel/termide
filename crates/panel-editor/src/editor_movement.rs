@@ -7,7 +7,9 @@
 //! - Document start/end navigation
 //! - Selection operations
 
-use crate::{cursor, selection};
+use termide_buffer::Cursor;
+
+use crate::{cursor, selection, word_wrap};
 
 use super::Editor;
 
@@ -93,21 +95,28 @@ impl Editor {
 
     /// Move cursor up by one visual line (accounting for word wrap)
     pub(crate) fn move_cursor_up_visual(&mut self) {
-        if self.render_cache.content_width == 0 {
+        let content_width = self.render_cache.content_width;
+        if content_width == 0 {
             self.move_cursor_up();
             return;
         }
 
         self.ensure_preferred_column();
 
-        if let Some(new_cursor) = cursor::visual::move_up(
-            &self.cursor,
+        let use_smart_wrap = self.render_cache.use_smart_wrap;
+        let cursor_pos = (self.cursor.line, self.cursor.column);
+        let preferred_column = self.input.preferred_column;
+
+        // Use cached version for better performance
+        if let Some((line, col)) = word_wrap::move_up_cached(
+            &mut self.render_cache,
             &self.buffer,
-            self.input.preferred_column,
-            self.render_cache.content_width,
-            self.render_cache.use_smart_wrap,
+            cursor_pos,
+            preferred_column,
+            content_width,
+            use_smart_wrap,
         ) {
-            self.cursor = new_cursor;
+            self.cursor = Cursor::at(line, col);
         }
 
         self.clamp_cursor();
@@ -115,21 +124,28 @@ impl Editor {
 
     /// Move cursor down by one visual line (accounting for word wrap)
     pub(crate) fn move_cursor_down_visual(&mut self) {
-        if self.render_cache.content_width == 0 {
+        let content_width = self.render_cache.content_width;
+        if content_width == 0 {
             self.move_cursor_down();
             return;
         }
 
         self.ensure_preferred_column();
 
-        if let Some(new_cursor) = cursor::visual::move_down(
-            &self.cursor,
+        let use_smart_wrap = self.render_cache.use_smart_wrap;
+        let cursor_pos = (self.cursor.line, self.cursor.column);
+        let preferred_column = self.input.preferred_column;
+
+        // Use cached version for better performance
+        if let Some((line, col)) = word_wrap::move_down_cached(
+            &mut self.render_cache,
             &self.buffer,
-            self.input.preferred_column,
-            self.render_cache.content_width,
-            self.render_cache.use_smart_wrap,
+            cursor_pos,
+            preferred_column,
+            content_width,
+            use_smart_wrap,
         ) {
-            self.cursor = new_cursor;
+            self.cursor = Cursor::at(line, col);
         }
 
         self.clamp_cursor();
@@ -202,7 +218,8 @@ impl Editor {
 
     /// Move cursor page up by visual lines (accounting for word wrap)
     pub(crate) fn page_up_visual(&mut self) {
-        if self.render_cache.content_width == 0 {
+        let content_width = self.render_cache.content_width;
+        if content_width == 0 {
             // No word wrap - fall back to physical line movement
             self.page_up();
             return;
@@ -210,15 +227,22 @@ impl Editor {
 
         self.ensure_preferred_column();
 
+        let use_smart_wrap = self.render_cache.use_smart_wrap;
+        let cursor_pos = (self.cursor.line, self.cursor.column);
+        let preferred_column = self.input.preferred_column;
         let page_size = self.viewport.height;
-        self.cursor = cursor::visual::page_up(
-            &self.cursor,
+
+        // Use cached version for better performance
+        let (line, col) = word_wrap::page_up_cached(
+            &mut self.render_cache,
             &self.buffer,
-            self.input.preferred_column,
-            self.render_cache.content_width,
-            self.render_cache.use_smart_wrap,
+            cursor_pos,
+            preferred_column,
+            content_width,
+            use_smart_wrap,
             page_size,
         );
+        self.cursor = Cursor::at(line, col);
 
         // Don't manually scroll viewport - let ensure_cursor_visible() handle it during rendering
         // This is correct because the viewport needs to track visual rows, not buffer lines
@@ -226,7 +250,8 @@ impl Editor {
 
     /// Move cursor page down by visual lines (accounting for word wrap)
     pub(crate) fn page_down_visual(&mut self) {
-        if self.render_cache.content_width == 0 {
+        let content_width = self.render_cache.content_width;
+        if content_width == 0 {
             // No word wrap - fall back to physical line movement
             self.page_down();
             return;
@@ -234,15 +259,22 @@ impl Editor {
 
         self.ensure_preferred_column();
 
+        let use_smart_wrap = self.render_cache.use_smart_wrap;
+        let cursor_pos = (self.cursor.line, self.cursor.column);
+        let preferred_column = self.input.preferred_column;
         let page_size = self.viewport.height;
-        self.cursor = cursor::visual::page_down(
-            &self.cursor,
+
+        // Use cached version for better performance
+        let (line, col) = word_wrap::page_down_cached(
+            &mut self.render_cache,
             &self.buffer,
-            self.input.preferred_column,
-            self.render_cache.content_width,
-            self.render_cache.use_smart_wrap,
+            cursor_pos,
+            preferred_column,
+            content_width,
+            use_smart_wrap,
             page_size,
         );
+        self.cursor = Cursor::at(line, col);
 
         // Don't manually scroll viewport - let ensure_cursor_visible() handle it during rendering
         // This is correct because the viewport needs to track visual rows, not buffer lines

@@ -10,7 +10,7 @@ mod file_state;
 mod git_integration;
 mod input_state;
 mod lsp_state;
-mod rendering_cache;
+pub mod rendering_cache;
 mod search_controller;
 
 pub use file_state::FileState;
