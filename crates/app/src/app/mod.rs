@@ -15,7 +15,6 @@ use std::time::Duration;
 use termide_app_core::{LayoutController, PanelProvider};
 use termide_app_event::DefaultHotkeyProcessor;
 use termide_core::event::{Event, EventHandler};
-use termide_i18n::t;
 use termide_layout::LayoutManager;
 use termide_logger as logger;
 
@@ -127,11 +126,10 @@ impl App {
 
     /// Log git availability status to journal
     pub fn log_git_status(&self, git_available: bool) {
-        let tr = t();
         if git_available {
-            logger::info(tr.git_detected());
+            logger::info("Git detected and available");
         } else {
-            logger::warn(tr.git_not_found());
+            logger::warn("Git not found - git integration disabled");
         }
     }
 
