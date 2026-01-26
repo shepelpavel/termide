@@ -10,9 +10,9 @@ Place your scripts in the scripts directory:
 
 | Platform | Path |
 |----------|------|
-| Linux | `~/.config/termide/actions/` |
-| macOS | `~/Library/Application Support/termide/actions/` |
-| Windows | `%APPDATA%\termide\actions\` |
+| Linux | `~/.local/share/termide/scripts/` |
+| macOS | `~/Library/Application Support/termide/scripts/` |
+| Windows | `%APPDATA%\termide\scripts\` |
 
 You can also access this folder via `Options → Manage scripts` in the menu bar.
 
@@ -20,10 +20,10 @@ You can also access this folder via `Options → Manage scripts` in the menu bar
 
 ```bash
 # Create the scripts directory
-mkdir -p ~/.config/termide/actions
+mkdir -p ~/.local/share/termide/scripts
 
 # Create a simple script
-cat > ~/.config/termide/actions/hello.sh << 'EOF'
+cat > ~/.local/share/termide/scripts/hello.sh << 'EOF'
 #!/bin/bash
 echo "Hello from TermIDE!"
 echo "Current directory: $(pwd)"
@@ -31,7 +31,7 @@ read -p "Press Enter to close..."
 EOF
 
 # Make it executable (required on Unix)
-chmod +x ~/.config/termide/actions/hello.sh
+chmod +x ~/.local/share/termide/scripts/hello.sh
 ```
 
 After creating the script, restart TermIDE or use `Options → Manage scripts` to refresh. Your script will appear in the **Scripts** menu.
@@ -54,7 +54,7 @@ The display name is the part of the filename before the first dot.
 You can organize scripts into groups using subdirectories. Each subdirectory becomes a submenu:
 
 ```
-~/.config/termide/actions/
+~/.local/share/termide/scripts/
 ├── build.sh              # Appears in Scripts menu root
 ├── deploy.sh             # Appears in Scripts menu root
 ├── docker/               # Creates "docker" submenu
@@ -113,14 +113,14 @@ Report scripts:
 **Example:**
 ```bash
 # Create a report script
-cat > ~/.config/termide/actions/check.report.sh << 'EOF'
+cat > ~/.local/share/termide/scripts/check.report.sh << 'EOF'
 #!/bin/bash
 echo "Checking system status..."
 echo "Date: $(date)"
 echo "User: $(whoami)"
 echo "PWD: $(pwd)"
 EOF
-chmod +x ~/.config/termide/actions/check.report.sh
+chmod +x ~/.local/share/termide/scripts/check.report.sh
 ```
 
 ## Platform-Specific Notes
@@ -130,7 +130,7 @@ chmod +x ~/.config/termide/actions/check.report.sh
 Scripts must have the executable permission:
 
 ```bash
-chmod +x ~/.config/termide/actions/myscript.sh
+chmod +x ~/.local/share/termide/scripts/myscript.sh
 ```
 
 Any file with the executable bit set will appear in the menu, regardless of extension.

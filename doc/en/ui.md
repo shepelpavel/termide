@@ -48,7 +48,7 @@ Menu activation/deactivation and each item can be accessed by mouse click or [ke
 ## Panels Area
 
 The area fills the vertical space between the menu bar and status bar from left to right edge of the window.
-The area always contains a non-closable file manager panel on the left, and other openable panels are placed on the remaining space on the right, or a help panel when no other panels are open.
+By default, the area shows a two-panel file manager (like Midnight Commander). Other panels (terminal, editor, git) can be opened and will be placed alongside.
 
 **Possible openable panel types:**
 - [file manager](file-manager.md)
@@ -60,12 +60,6 @@ The area always contains a non-closable file manager panel on the left, and othe
 - Have `[X]` close button in panel title (clickable with mouse)
 - Can be closed with Escape, Alt+X, or Alt+Backspace
 - Can be resized with Alt+Plus/Minus
-
-**Features of the non-closable file manager panel:**
-- Does not have a close `[X]` button in the panel header
-- Cannot be closed
-- Is always the leftmost (first) panel
-- Has a default width of 30 characters
 
 ## Status Bar
 

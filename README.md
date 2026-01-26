@@ -220,12 +220,11 @@ cargo build --release
 ### Quick Start
 
 After launching TermIDE, you'll see:
-- File manager panel on the left
-- Welcome panel on the right (when no other panels are open)
+- Two-panel file manager (like Midnight Commander)
 - Menu bar at the top
 - Status bar at the bottom
 
-Use `Alt+M` to open the menu or `Alt+H` for help.
+Use `Tab` to switch between panels, `Alt+M` to open the menu.
 
 ### Documentation
 
@@ -318,6 +317,10 @@ TermIDE follows the [XDG Base Directory Specification](https://specifications.fr
 - Linux/BSD: `~/.cache/termide/termide.log` (or `$XDG_CACHE_HOME/termide/termide.log`)
 - macOS: `~/Library/Caches/termide/termide.log`
 - Windows: `%LOCALAPPDATA%\termide\cache\termide.log`
+
+**Bookmarks location:**
+- Linux/BSD: `~/.local/share/termide/bookmarks.toml` (or `$XDG_DATA_HOME/termide/bookmarks.toml`)
+- macOS: `~/Library/Application Support/termide/bookmarks.toml`
 
 ### Example Configuration
 
@@ -412,9 +415,9 @@ User themes take priority over built-in themes with the same name. See `themes/`
 ### Custom Scripts
 
 You can add custom scripts to the Scripts menu by placing executable files in:
-- Linux: `~/.config/termide/actions/`
-- macOS: `~/Library/Application Support/termide/actions/`
-- Windows: `%APPDATA%\termide\actions\`
+- Linux: `~/.local/share/termide/scripts/`
+- macOS: `~/Library/Application Support/termide/scripts/`
+- Windows: `%APPDATA%\termide\scripts\`
 
 **Features:**
 - Scripts appear in the Scripts menu (menu bar)
@@ -425,18 +428,18 @@ You can add custom scripts to the Scripts menu by placing executable files in:
 
 **Example:**
 ```bash
-# Create actions directory
-mkdir -p ~/.config/termide/actions
+# Create scripts directory
+mkdir -p ~/.local/share/termide/scripts
 
 # Add a simple script
-cat > ~/.config/termide/actions/hello.sh << 'EOF'
+cat > ~/.local/share/termide/scripts/hello.sh << 'EOF'
 #!/bin/bash
 echo "Hello from TermIDE!"
 read -p "Press Enter to close..."
 EOF
 
 # Make it executable (required on Unix)
-chmod +x ~/.config/termide/actions/hello.sh
+chmod +x ~/.local/share/termide/scripts/hello.sh
 ```
 
 **Note:** On Unix systems, scripts must have the executable permission (`chmod +x`). Use `Options → Manage scripts` to open the scripts folder.
@@ -468,15 +471,22 @@ crates/
 ├── clipboard/        # System clipboard integration
 ├── config/           # Configuration management
 ├── core/             # Core Panel trait and types
+├── file-ops/         # File operations (copy, move, delete, upload, download)
 ├── git/              # Git integration
 ├── highlight/        # Syntax highlighting (tree-sitter)
-├── i18n/             # Internationalization (9 languages)
+├── i18n/             # Internationalization (15 languages)
 ├── keyboard/         # Keyboard handling and layout translation
 ├── layout/           # Panel layout and accordion system
 ├── logger/           # Logging system
+├── lsp/              # Language Server Protocol client
 ├── modal/            # Modal dialog implementations
+├── panel-diagnostics/ # LSP diagnostics panel
 ├── panel-editor/     # Text editor panel
 ├── panel-file-manager/ # File manager panel
+├── panel-git-diff/   # Git diff viewer panel
+├── panel-git-log/    # Git log panel
+├── panel-git-status/ # Git status panel
+├── panel-image/      # Image viewer panel
 ├── panel-misc/       # Welcome and Log panels
 ├── panel-terminal/   # Terminal emulator panel
 ├── session/          # Session persistence
@@ -486,6 +496,7 @@ crates/
 ├── theme/            # Theme system and built-in themes
 ├── ui/               # UI utilities and path formatting
 ├── ui-render/        # UI rendering (menu, status bar, panels)
+├── vfs/              # Virtual filesystem (SFTP, FTP, SMB)
 └── watcher/          # File system event watcher
 
 themes/               # Built-in theme definitions (TOML files)

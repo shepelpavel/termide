@@ -10,9 +10,9 @@
 
 | Платформа | Путь |
 |-----------|------|
-| Linux | `~/.config/termide/actions/` |
-| macOS | `~/Library/Application Support/termide/actions/` |
-| Windows | `%APPDATA%\termide\actions\` |
+| Linux | `~/.local/share/termide/scripts/` |
+| macOS | `~/Library/Application Support/termide/scripts/` |
+| Windows | `%APPDATA%\termide\scripts\` |
 
 Вы также можете открыть эту папку через `Options → Управление скриптами` в меню.
 
@@ -20,10 +20,10 @@
 
 ```bash
 # Создаём каталог скриптов
-mkdir -p ~/.config/termide/actions
+mkdir -p ~/.local/share/termide/scripts
 
 # Создаём простой скрипт
-cat > ~/.config/termide/actions/hello.sh << 'EOF'
+cat > ~/.local/share/termide/scripts/hello.sh << 'EOF'
 #!/bin/bash
 echo "Привет из TermIDE!"
 echo "Текущий каталог: $(pwd)"
@@ -31,7 +31,7 @@ read -p "Нажмите Enter для закрытия..."
 EOF
 
 # Делаем скрипт исполняемым (обязательно для Unix)
-chmod +x ~/.config/termide/actions/hello.sh
+chmod +x ~/.local/share/termide/scripts/hello.sh
 ```
 
 После создания скрипта перезапустите TermIDE или используйте `Options → Управление скриптами` для обновления. Ваш скрипт появится в меню **Скрипты**.
@@ -54,7 +54,7 @@ chmod +x ~/.config/termide/actions/hello.sh
 Скрипты можно организовать в группы с помощью подкаталогов. Каждый подкаталог становится подменю:
 
 ```
-~/.config/termide/actions/
+~/.local/share/termide/scripts/
 ├── build.sh              # Появляется в корне меню Скрипты
 ├── deploy.sh             # Появляется в корне меню Скрипты
 ├── docker/               # Создаёт подменю "docker"
@@ -113,14 +113,14 @@ chmod +x ~/.config/termide/actions/hello.sh
 **Пример:**
 ```bash
 # Создаём скрипт с отчётом
-cat > ~/.config/termide/actions/check.report.sh << 'EOF'
+cat > ~/.local/share/termide/scripts/check.report.sh << 'EOF'
 #!/bin/bash
 echo "Проверка состояния системы..."
 echo "Дата: $(date)"
 echo "Пользователь: $(whoami)"
 echo "PWD: $(pwd)"
 EOF
-chmod +x ~/.config/termide/actions/check.report.sh
+chmod +x ~/.local/share/termide/scripts/check.report.sh
 ```
 
 ## Особенности платформ
@@ -130,7 +130,7 @@ chmod +x ~/.config/termide/actions/check.report.sh
 Скрипты должны иметь права на выполнение:
 
 ```bash
-chmod +x ~/.config/termide/actions/myscript.sh
+chmod +x ~/.local/share/termide/scripts/myscript.sh
 ```
 
 Любой файл с установленным битом выполнения появится в меню, независимо от расширения.
