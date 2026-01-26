@@ -420,10 +420,7 @@ impl OperationWorker for LocalCopyWorker {
         let start_time = Instant::now();
 
         // Phase 1: Scan to get totals
-        let _ = progress_tx.send(OperationProgress {
-            phase: OperationPhase::Scanning,
-            ..Default::default()
-        });
+        let _ = progress_tx.send(OperationProgress::scanning());
 
         let mut total_files = 0;
         let mut total_bytes = 0u64;
@@ -571,18 +568,11 @@ impl OperationWorker for LocalCopyWorker {
         }
 
         // Complete
-        let _ = progress_tx.send(OperationProgress {
-            phase: OperationPhase::Completed,
-            bytes_transferred: bytes_copied,
-            total_bytes,
-            files_completed: files_copied,
+        let _ = progress_tx.send(OperationProgress::completed(
+            bytes_copied,
+            files_copied,
             total_files,
-            current_item: None,
-            speed_bps: 0.0,
-            eta_seconds: None,
-            individual_file_bytes: 0,
-            individual_file_total: 0,
-        });
+        ));
 
         if skipped_files > 0 {
             OperationResult::PartialSuccess {
@@ -693,10 +683,7 @@ impl OperationWorker for LocalDeleteWorker {
         progress_tx: &mpsc::Sender<OperationProgress>,
     ) -> OperationResult {
         // Phase 1: Count files
-        let _ = progress_tx.send(OperationProgress {
-            phase: OperationPhase::Scanning,
-            ..Default::default()
-        });
+        let _ = progress_tx.send(OperationProgress::scanning());
 
         let mut total_files = 0;
         for path in &self.paths {
@@ -755,18 +742,7 @@ impl OperationWorker for LocalDeleteWorker {
         }
 
         // Complete
-        let _ = progress_tx.send(OperationProgress {
-            phase: OperationPhase::Completed,
-            bytes_transferred: 0,
-            total_bytes: 0,
-            files_completed: files_deleted,
-            total_files,
-            current_item: None,
-            speed_bps: 0.0,
-            eta_seconds: None,
-            individual_file_bytes: 0,
-            individual_file_total: 0,
-        });
+        let _ = progress_tx.send(OperationProgress::completed(0, files_deleted, total_files));
 
         OperationResult::Success
     }
@@ -931,18 +907,11 @@ impl OperationWorker for DownloadWorker {
         }
 
         // Final progress
-        let _ = progress_tx.send(OperationProgress {
-            phase: OperationPhase::Completed,
+        let _ = progress_tx.send(OperationProgress::completed(
             bytes_transferred,
-            total_bytes: bytes_transferred,
             files_completed,
             total_files,
-            current_item: None,
-            speed_bps: 0.0,
-            eta_seconds: None,
-            individual_file_bytes: 0,
-            individual_file_total: 0,
-        });
+        ));
 
         if failed_files.is_empty() {
             OperationResult::Success
@@ -1326,18 +1295,11 @@ impl OperationWorker for UploadWorker {
         }
 
         // Final progress
-        let _ = progress_tx.send(OperationProgress {
-            phase: OperationPhase::Completed,
-            bytes_transferred: total_bytes,
+        let _ = progress_tx.send(OperationProgress::completed(
             total_bytes,
             files_completed,
             total_files,
-            current_item: None,
-            speed_bps: 0.0,
-            eta_seconds: None,
-            individual_file_bytes: 0,
-            individual_file_total: 0,
-        });
+        ));
 
         if failed_files.is_empty() {
             OperationResult::Success
@@ -1613,18 +1575,7 @@ impl OperationWorker for RemoteDeleteWorker {
         }
 
         // Send final progress
-        let _ = progress_tx.send(OperationProgress {
-            phase: OperationPhase::Completed,
-            bytes_transferred: 0,
-            total_bytes: 0,
-            files_completed: files_deleted,
-            total_files,
-            current_item: None,
-            speed_bps: 0.0,
-            eta_seconds: None,
-            individual_file_bytes: 0,
-            individual_file_total: 0,
-        });
+        let _ = progress_tx.send(OperationProgress::completed(0, files_deleted, total_files));
 
         if failed_files.is_empty() {
             OperationResult::Success

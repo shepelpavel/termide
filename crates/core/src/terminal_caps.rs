@@ -144,9 +144,10 @@ mod tests {
 
     #[test]
     fn test_detect_does_not_panic() {
+        // Just ensure detection doesn't panic and returns valid data
         let caps = TerminalCaps::detect();
-        // Just ensure detection doesn't panic
-        assert!(!caps.term.is_empty() || caps.term.is_empty());
+        // Verify we got a valid struct (term may be empty in some CI environments)
+        let _ = caps.term_for_child();
     }
 
     #[test]

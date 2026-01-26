@@ -181,6 +181,80 @@ impl OperationProgress {
         Self::default()
     }
 
+    /// Create progress for scanning phase.
+    pub fn scanning() -> Self {
+        Self {
+            phase: OperationPhase::Scanning,
+            ..Default::default()
+        }
+    }
+
+    /// Create progress for transferring phase.
+    pub fn transferring(
+        bytes_transferred: u64,
+        total_bytes: u64,
+        files_completed: usize,
+        total_files: usize,
+    ) -> Self {
+        Self {
+            phase: OperationPhase::Transferring,
+            bytes_transferred,
+            total_bytes,
+            files_completed,
+            total_files,
+            ..Default::default()
+        }
+    }
+
+    /// Create progress for cleaning phase.
+    pub fn cleaning(files_completed: usize, total_files: usize) -> Self {
+        Self {
+            phase: OperationPhase::Cleaning,
+            files_completed,
+            total_files,
+            ..Default::default()
+        }
+    }
+
+    /// Create progress for completed phase.
+    pub fn completed(bytes_transferred: u64, files_completed: usize, total_files: usize) -> Self {
+        Self {
+            phase: OperationPhase::Completed,
+            bytes_transferred,
+            total_bytes: bytes_transferred,
+            files_completed,
+            total_files,
+            ..Default::default()
+        }
+    }
+
+    /// Set current item being processed.
+    pub fn with_item(mut self, item: impl Into<String>) -> Self {
+        self.current_item = Some(item.into());
+        self
+    }
+
+    /// Set transfer speed and ETA.
+    pub fn with_speed(mut self, speed_bps: f64, eta_seconds: Option<u64>) -> Self {
+        self.speed_bps = speed_bps;
+        self.eta_seconds = eta_seconds;
+        self
+    }
+
+    /// Set individual file progress (for batch operations).
+    pub fn with_individual(mut self, bytes: u64, total: u64) -> Self {
+        self.individual_file_bytes = bytes;
+        self.individual_file_total = total;
+        self
+    }
+
+    /// Set bytes transferred and total.
+    pub fn with_bytes(mut self, transferred: u64, total: u64) -> Self {
+        self.bytes_transferred = transferred;
+        self.total_bytes = total;
+        self
+    }
+
     /// Calculate completion percentage (0.0 - 1.0).
     pub fn percentage(&self) -> f64 {
         if self.total_bytes > 0 {

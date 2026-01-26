@@ -529,6 +529,10 @@ pub struct AppState {
     /// This is the new centralized system that will eventually replace the individual
     /// operation handles (local_copy_operation, batch_download_operation, etc.).
     pub operation_manager: Option<OperationManager>,
+    /// Timestamp of last mouse scroll event (for throttling heavy operations during scrolling)
+    pub last_mouse_scroll: Option<std::time::Instant>,
+    /// Flag for batching scroll renders (set on scroll, consumed on tick)
+    pub pending_scroll_render: bool,
 }
 
 impl Default for AppState {
@@ -601,6 +605,8 @@ impl AppState {
             all_diagnostics: HashMap::new(),
             bookmarks,
             operation_manager: None, // Will be initialized when VfsManager is available
+            last_mouse_scroll: None,
+            pending_scroll_render: false,
         }
     }
 
