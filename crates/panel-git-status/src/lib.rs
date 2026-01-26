@@ -1113,6 +1113,20 @@ impl Panel for GitStatusPanel {
         vec![]
     }
 
+    fn handle_scroll(&mut self, delta: i32, _panel_area: Rect) -> Vec<PanelEvent> {
+        let lines = delta.unsigned_abs() as usize * 3; // 3 lines per scroll unit
+        if delta < 0 {
+            // Scroll up
+            self.scroll_offset = self.scroll_offset.saturating_sub(lines);
+        } else {
+            // Scroll down
+            let total_lines = self.total_virtual_lines();
+            let max_scroll = total_lines.saturating_sub(self.viewport_height);
+            self.scroll_offset = (self.scroll_offset + lines).min(max_scroll);
+        }
+        vec![]
+    }
+
     fn to_session(&self, _session_dir: &Path) -> Option<SessionPanel> {
         self.repo_manager
             .current()

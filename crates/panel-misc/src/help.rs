@@ -194,6 +194,18 @@ impl Panel for HelpPanel {
         vec![]
     }
 
+    fn handle_scroll(&mut self, delta: i32, area: Rect) -> Vec<PanelEvent> {
+        let lines = delta.unsigned_abs() as usize * 3; // 3 lines per scroll unit
+        let visible_height = area.height as usize;
+
+        if delta < 0 {
+            self.scroll_up(lines);
+        } else {
+            self.scroll_down(lines, visible_height);
+        }
+        vec![]
+    }
+
     fn captures_escape(&self) -> bool {
         // Help panel doesn't need to capture Escape
         false

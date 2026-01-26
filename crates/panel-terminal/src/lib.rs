@@ -1510,6 +1510,17 @@ impl Panel for Terminal {
         vec![]
     }
 
+    fn handle_scroll(&mut self, delta: i32, _panel_area: Rect) -> Vec<PanelEvent> {
+        let lines = delta.unsigned_abs() as usize * 3; // 3 lines per scroll unit
+        let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
+        if delta < 0 {
+            screen.scroll_view_up(lines);
+        } else {
+            screen.scroll_view_down(lines);
+        }
+        vec![]
+    }
+
     fn should_auto_close(&self) -> bool {
         // Automatically close panel if process exited
         !self.is_alive()

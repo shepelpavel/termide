@@ -172,6 +172,19 @@ pub trait Panel: Any {
         vec![]
     }
 
+    /// Handle coalesced scroll events.
+    ///
+    /// Called when multiple scroll events are batched together.
+    /// This is more efficient than processing individual scroll events.
+    ///
+    /// # Arguments
+    /// * `delta` - Combined scroll delta (positive=down, negative=up)
+    /// * `panel_area` - The panel's area
+    fn handle_scroll(&mut self, delta: i32, panel_area: Rect) -> Vec<PanelEvent> {
+        let _ = (delta, panel_area);
+        vec![]
+    }
+
     /// Periodic tick for background tasks.
     ///
     /// Called periodically to allow panels to perform background work

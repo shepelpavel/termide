@@ -191,6 +191,23 @@ impl Panel for JournalPanel {
         vec![]
     }
 
+    fn handle_scroll(&mut self, delta: i32, area: Rect) -> Vec<PanelEvent> {
+        // Handle auto-scroll logic
+        if delta < 0 {
+            // Scrolling up disables auto-scroll
+            self.auto_scroll = false;
+        } else {
+            // Check if scrolling to end
+            let content_height = area.height as usize;
+            if self.is_at_end(content_height) {
+                self.auto_scroll = true;
+            }
+        }
+
+        // Delegate to editor's handle_scroll
+        self.editor.handle_scroll(delta, area)
+    }
+
     fn to_session(&self, _session_dir: &std::path::Path) -> Option<termide_core::SessionPanel> {
         Some(termide_core::SessionPanel::Journal)
     }

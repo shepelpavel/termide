@@ -1385,6 +1385,29 @@ impl Panel for FileManager {
         vec![]
     }
 
+    fn handle_scroll(&mut self, delta: i32, panel_area: Rect) -> Vec<PanelEvent> {
+        let lines = delta.unsigned_abs() as usize * 3; // 3 lines per scroll unit
+        let visible_height = panel_area.height.saturating_sub(2) as usize;
+
+        if delta < 0 {
+            // Scroll up
+            self.scroll_offset = self.scroll_offset.saturating_sub(lines);
+            // Keep selected in visible area
+            if self.selected >= self.scroll_offset + visible_height {
+                self.selected = (self.scroll_offset + visible_height).saturating_sub(1);
+            }
+        } else {
+            // Scroll down
+            let max_scroll = self.entries.len().saturating_sub(visible_height);
+            self.scroll_offset = (self.scroll_offset + lines).min(max_scroll);
+            // Keep selected in visible area
+            if self.selected < self.scroll_offset {
+                self.selected = self.scroll_offset;
+            }
+        }
+        vec![]
+    }
+
     fn reload(&mut self) -> anyhow::Result<()> {
         // Reload directory contents (preserving selection)
         self.reload_directory()

@@ -1801,6 +1801,38 @@ impl Panel for Editor {
         self.handle_mouse_event(mouse, panel_area)
     }
 
+    fn handle_scroll(&mut self, delta: i32, _panel_area: Rect) -> Vec<PanelEvent> {
+        let lines = delta.unsigned_abs() as usize * 3; // 3 lines per scroll unit
+        if delta < 0 {
+            // Scroll up - check popups first
+            if let Some(ref mut popup) = self.lsp.completion_popup {
+                popup.scroll_up(lines);
+                return vec![];
+            }
+            if let Some(ref mut popup) = self.lsp.hover_popup {
+                popup.scroll_up(lines);
+                return vec![];
+            }
+            // No popup - scroll editor
+            self.viewport.scroll_up(lines);
+        } else {
+            // Scroll down - check popups first
+            if let Some(ref mut popup) = self.lsp.completion_popup {
+                popup.scroll_down(lines);
+                return vec![];
+            }
+            if let Some(ref mut popup) = self.lsp.hover_popup {
+                popup.scroll_down(lines);
+                return vec![];
+            }
+            // No popup - scroll editor
+            self.viewport
+                .scroll_down(lines, self.render_cache.virtual_line_count);
+        }
+        self.scroll_follows_cursor = false;
+        vec![]
+    }
+
     fn handle_command(&mut self, cmd: PanelCommand<'_>) -> CommandResult {
         match cmd {
             PanelCommand::GetRepoRoot => {

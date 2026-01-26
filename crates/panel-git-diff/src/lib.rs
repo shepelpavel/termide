@@ -887,6 +887,16 @@ impl Panel for GitDiffPanel {
         vec![]
     }
 
+    fn handle_scroll(&mut self, delta: i32, _panel_area: Rect) -> Vec<PanelEvent> {
+        let lines = delta.unsigned_abs() as usize * 3; // 3 lines per scroll unit
+        if delta < 0 {
+            self.scroll_up(lines);
+        } else {
+            self.scroll_down(lines);
+        }
+        vec![]
+    }
+
     fn to_session(&self, _session_dir: &Path) -> Option<SessionPanel> {
         Some(SessionPanel::GitDiff {
             repo_path: self.repo_path.clone(),

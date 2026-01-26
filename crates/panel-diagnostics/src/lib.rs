@@ -591,6 +591,21 @@ impl Panel for DiagnosticsPanel {
         vec![]
     }
 
+    fn handle_scroll(&mut self, delta: i32, _area: Rect) -> Vec<PanelEvent> {
+        let count = self.filtered_count();
+        let lines = delta.unsigned_abs() as usize;
+
+        if delta < 0 {
+            // Scroll up - move selection up
+            self.selected_index = self.selected_index.saturating_sub(lines);
+        } else {
+            // Scroll down - move selection down
+            self.selected_index = (self.selected_index + lines).min(count.saturating_sub(1));
+        }
+        self.ensure_visible();
+        vec![]
+    }
+
     fn to_session(&self, _session_dir: &std::path::Path) -> Option<termide_core::SessionPanel> {
         // Diagnostics panel doesn't persist to session (it's dynamic)
         None

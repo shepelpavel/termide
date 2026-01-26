@@ -84,6 +84,9 @@ impl App {
             mouse.kind,
             MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
         ) {
+            // Track scroll timing for throttling heavy operations in Event::Tick
+            self.state.last_mouse_scroll = Some(std::time::Instant::now());
+            self.state.pending_scroll_render = true;
             self.forward_scroll_to_panel_at_cursor(mouse)?;
             return Ok(());
         }
@@ -997,5 +1000,58 @@ impl App {
         }
 
         result
+    }
+
+    /// Handle coalesced scroll events (batched for performance).
+    ///
+    /// This method processes multiple scroll events that have been coalesced
+    /// into a single event with a combined delta value.
+    pub(super) fn handle_coalesced_scroll(
+        &mut self,
+        mouse: crossterm::event::MouseEvent,
+        delta: i32,
+    ) -> Result<()> {
+        // Track scroll timing for throttling heavy operations in Event::Tick
+        self.state.last_mouse_scroll = Some(std::time::Instant::now());
+
+        // Skip scroll when modal is active
+        if self.state.active_modal.is_some() {
+            return Ok(());
+        }
+
+        self.forward_coalesced_scroll_to_panel(mouse, delta)
+    }
+
+    /// Forward coalesced scroll to the panel under the mouse cursor.
+    fn forward_coalesced_scroll_to_panel(
+        &mut self,
+        mouse: crossterm::event::MouseEvent,
+        delta: i32,
+    ) -> Result<()> {
+        let panel_rects = self.calculate_panel_rects();
+
+        for (group_idx, _panel_idx, rect, is_expanded) in panel_rects {
+            // Skip collapsed panels
+            if !is_expanded {
+                continue;
+            }
+
+            // Check if mouse is within this panel's area
+            if mouse.column >= rect.x
+                && mouse.column < rect.x + rect.width
+                && mouse.row >= rect.y
+                && mouse.row < rect.y + rect.height
+            {
+                if let Some(group) = self.layout_manager.panel_groups.get_mut(group_idx) {
+                    if let Some(panel) = group.expanded_panel_mut() {
+                        let events = panel.handle_scroll(delta, rect);
+                        self.process_panel_events(events)?;
+                    }
+                }
+                break;
+            }
+        }
+
+        Ok(())
     }
 }

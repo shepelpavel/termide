@@ -231,8 +231,28 @@ impl App {
                     }
                     self.state.needs_redraw = true;
                 }
+                Event::MouseScrollCoalesced { event, delta } => {
+                    // Handle coalesced scroll events (batched for performance)
+                    self.handle_coalesced_scroll(event, delta)?;
+                    self.state.needs_redraw = true;
+                }
                 Event::Tick => {
+                    // Debounce scroll renders: consume pending flag and trigger redraw
+                    if self.state.pending_scroll_render {
+                        self.state.pending_scroll_render = false;
+                        self.state.needs_redraw = true;
+                    }
+
+                    // Detect active scrolling (within 100ms of last scroll event)
+                    // Skip heavy operations during scrolling to prevent UI lag
+                    let is_scrolling = self
+                        .state
+                        .last_mouse_scroll
+                        .map(|t| t.elapsed() < Duration::from_millis(100))
+                        .unwrap_or(false);
+
                     // Check terminal panels for pending output (efficient redraw trigger)
+                    // This is fast, always run it
                     for panel in self.layout_manager.iter_all_panels_mut() {
                         if let Some(terminal) = panel.as_terminal_mut() {
                             if terminal.has_pending_output() {
@@ -242,98 +262,102 @@ impl App {
                         }
                     }
 
-                    // Check VFS connection status for FileManager panels and call tick() to process async operations
-                    // Collect events first, then process them (to avoid borrow issues)
-                    let mut all_fm_events = Vec::new();
-                    for panel in self.layout_manager.iter_all_panels_mut() {
-                        if let Some(fm) = panel.as_file_manager_mut() {
-                            // Call tick() to process VFS operations (connection results, directory listings)
-                            let events = fm.tick();
-                            if !events.is_empty() {
-                                self.state.needs_redraw = true;
-                                all_fm_events.extend(events);
-                            }
-                            // Also check for pending operations for spinner animation
-                            if fm.vfs_state().has_pending_operation() {
-                                self.state.needs_redraw = true;
+                    // Skip heavy operations during active scrolling
+                    if !is_scrolling {
+                        // Check VFS connection status for FileManager panels and call tick() to process async operations
+                        // Collect events first, then process them (to avoid borrow issues)
+                        let mut all_fm_events = Vec::new();
+                        for panel in self.layout_manager.iter_all_panels_mut() {
+                            if let Some(fm) = panel.as_file_manager_mut() {
+                                // Call tick() to process VFS operations (connection results, directory listings)
+                                let events = fm.tick();
+                                if !events.is_empty() {
+                                    self.state.needs_redraw = true;
+                                    all_fm_events.extend(events);
+                                }
+                                // Also check for pending operations for spinner animation
+                                if fm.vfs_state().has_pending_operation() {
+                                    self.state.needs_redraw = true;
+                                }
                             }
                         }
+                        // Process collected events
+                        if !all_fm_events.is_empty() {
+                            let _ = self.process_panel_events(all_fm_events);
+                        }
+
+                        // Check for modal requests from FileManager panels (e.g., VFS error modals)
+                        // This must happen after tick() processing to show connection error modals
+                        let modal_request = self
+                            .layout_manager
+                            .iter_all_panels_mut()
+                            .find_map(|panel| panel.take_modal_request());
+                        if let Some((action, modal)) = modal_request {
+                            let _ = self.handle_modal_request(action, modal);
+                            self.state.needs_redraw = true;
+                        }
+
+                        // Check for pending upload operations from Editor panels (Ctrl+S remote saves)
+                        let pending_upload = self
+                            .layout_manager
+                            .iter_all_panels_mut()
+                            .find_map(|panel| panel.take_pending_upload());
+                        if let Some((temp_path, remote_path, vfs_manager)) = pending_upload {
+                            self.handle_pending_upload(temp_path, remote_path, vfs_manager);
+                            self.state.needs_redraw = true;
+                        }
+
+                        // Check channel for directory size calculation results
+                        self.check_dir_size_update();
+
+                        // Check unified watcher for git and filesystem events
+                        self.check_watcher_events();
+
+                        // Check async git status results for FileManager panels
+                        self.check_fm_git_status_async();
+
+                        // Check pending git diff updates (debounced)
+                        self.check_pending_git_diff_updates();
+
+                        // Check background git operation result (push/pull)
+                        self.check_git_operation_result();
+
+                        // Check background script operation result (.report. scripts)
+                        self.check_script_operation_result();
+
+                        // Check download operation result (remote file download)
+                        self.check_download_operation_result();
+
+                        // Check upload operation result (remote file upload from editor)
+                        self.check_upload_operation_result();
+
+                        // Check batch upload operation result (local→remote batch copy)
+                        self.check_batch_upload_result();
+
+                        // Check batch download operation result (remote→local batch copy)
+                        self.check_batch_download_result();
+
+                        // Poll unified operation manager for events (new system)
+                        self.poll_operation_manager();
+
+                        // Check local file copy progress (chunked copy with progress)
+                        self.check_local_copy_progress();
+
+                        // Check local directory copy progress (background directory copy)
+                        self.check_local_directory_copy_progress();
+
+                        // Check local directory scan progress (async scan before copy)
+                        self.check_local_scan_progress();
+
+                        // Check pending local batch operation (start after modal rendered)
+                        self.check_pending_batch_operation();
+
+                        // Check local delete operation progress
+                        self.check_delete_progress();
                     }
-                    // Process collected events
-                    if !all_fm_events.is_empty() {
-                        let _ = self.process_panel_events(all_fm_events);
-                    }
-
-                    // Check for modal requests from FileManager panels (e.g., VFS error modals)
-                    // This must happen after tick() processing to show connection error modals
-                    let modal_request = self
-                        .layout_manager
-                        .iter_all_panels_mut()
-                        .find_map(|panel| panel.take_modal_request());
-                    if let Some((action, modal)) = modal_request {
-                        let _ = self.handle_modal_request(action, modal);
-                        self.state.needs_redraw = true;
-                    }
-
-                    // Check for pending upload operations from Editor panels (Ctrl+S remote saves)
-                    let pending_upload = self
-                        .layout_manager
-                        .iter_all_panels_mut()
-                        .find_map(|panel| panel.take_pending_upload());
-                    if let Some((temp_path, remote_path, vfs_manager)) = pending_upload {
-                        self.handle_pending_upload(temp_path, remote_path, vfs_manager);
-                        self.state.needs_redraw = true;
-                    }
-
-                    // Check channel for directory size calculation results
-                    self.check_dir_size_update();
-
-                    // Check unified watcher for git and filesystem events
-                    self.check_watcher_events();
-
-                    // Check async git status results for FileManager panels
-                    self.check_fm_git_status_async();
-
-                    // Check pending git diff updates (debounced)
-                    self.check_pending_git_diff_updates();
-
-                    // Check background git operation result (push/pull)
-                    self.check_git_operation_result();
-
-                    // Check background script operation result (.report. scripts)
-                    self.check_script_operation_result();
-
-                    // Check download operation result (remote file download)
-                    self.check_download_operation_result();
-
-                    // Check upload operation result (remote file upload from editor)
-                    self.check_upload_operation_result();
-
-                    // Check batch upload operation result (local→remote batch copy)
-                    self.check_batch_upload_result();
-
-                    // Check batch download operation result (remote→local batch copy)
-                    self.check_batch_download_result();
-
-                    // Poll unified operation manager for events (new system)
-                    self.poll_operation_manager();
-
-                    // Check local file copy progress (chunked copy with progress)
-                    self.check_local_copy_progress();
-
-                    // Check local directory copy progress (background directory copy)
-                    self.check_local_directory_copy_progress();
-
-                    // Check local directory scan progress (async scan before copy)
-                    self.check_local_scan_progress();
-
-                    // Check pending local batch operation (start after modal rendered)
-                    self.check_pending_batch_operation();
-
-                    // Check local delete operation progress
-                    self.check_delete_progress();
 
                     // Sync pause state between BatchOperation and ProgressModal (bidirectional)
+                    // This is fast, always run it
                     if let Some(crate::state::ActiveModal::Progress(ref mut modal)) =
                         self.state.active_modal
                     {
@@ -357,12 +381,15 @@ impl App {
                     }
 
                     // Update system resource monitoring (CPU, RAM)
+                    // This is fast, always run it
                     self.update_system_resources();
 
                     // Poll LSP completion responses for active editor
+                    // This is fast, always run it
                     self.poll_lsp_completion();
 
                     // Update spinner in all modals that support animation
+                    // This is fast, always run it
                     self.update_modal_spinners();
                 }
             }

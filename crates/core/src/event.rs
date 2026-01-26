@@ -5,11 +5,15 @@
 //! - `EventHandler` - Polling for terminal events
 //! - `PanelEvent` - Events emitted by panels to communicate with the application
 
+use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::Result;
-use crossterm::event::{self, Event as CrosstermEvent, KeyEvent, KeyEventKind, MouseEvent};
+use crossterm::event::{
+    self, Event as CrosstermEvent, KeyEvent, KeyEventKind, MouseEvent, MouseEventKind,
+};
 
 /// Application event
 #[derive(Debug, Clone)]
@@ -18,6 +22,13 @@ pub enum Event {
     Key(KeyEvent),
     /// Mouse event
     Mouse(MouseEvent),
+    /// Coalesced mouse scroll events (delta: positive=down, negative=up)
+    MouseScrollCoalesced {
+        /// Original mouse event (for coordinates and modifiers)
+        event: MouseEvent,
+        /// Combined scroll delta (positive=down, negative=up)
+        delta: i32,
+    },
     /// Terminal resize event
     Resize(u16, u16),
     /// Tick event (for animations and periodic updates)
@@ -33,22 +44,40 @@ pub enum Event {
 /// Event handler for polling terminal events
 pub struct EventHandler {
     tick_rate: Duration,
+    /// Events read during coalescing but not yet consumed
+    pending_events: RefCell<VecDeque<Event>>,
 }
 
 impl EventHandler {
     /// Create new event handler with specified tick rate
     pub fn new(tick_rate: Duration) -> Self {
-        Self { tick_rate }
+        Self {
+            tick_rate,
+            pending_events: RefCell::new(VecDeque::new()),
+        }
     }
 
     /// Wait for next event
     pub fn next(&self) -> Result<Event> {
+        // Check pending events first (from previous coalescing)
+        if let Some(event) = self.pending_events.borrow_mut().pop_front() {
+            return Ok(event);
+        }
+
         if event::poll(self.tick_rate)? {
             match event::read()? {
                 // With kitty keyboard protocol, we receive Press, Release, and Repeat events.
                 // Only handle Press events to avoid duplicate actions.
                 CrosstermEvent::Key(key) if key.kind == KeyEventKind::Press => Ok(Event::Key(key)),
                 CrosstermEvent::Key(_) => Ok(Event::Tick), // Ignore Release and Repeat
+                CrosstermEvent::Mouse(mouse)
+                    if matches!(
+                        mouse.kind,
+                        MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
+                    ) =>
+                {
+                    self.coalesce_scroll_events(mouse)
+                }
                 CrosstermEvent::Mouse(mouse) => Ok(Event::Mouse(mouse)),
                 CrosstermEvent::Resize(width, height) => Ok(Event::Resize(width, height)),
                 CrosstermEvent::FocusLost => Ok(Event::FocusLost),
@@ -57,6 +86,69 @@ impl EventHandler {
             }
         } else {
             Ok(Event::Tick)
+        }
+    }
+
+    /// Coalesce multiple scroll events into a single MouseScrollCoalesced event.
+    /// This significantly reduces render cycles during fast scrolling.
+    fn coalesce_scroll_events(&self, first: MouseEvent) -> Result<Event> {
+        let mut delta: i32 = match first.kind {
+            MouseEventKind::ScrollDown => 1,
+            MouseEventKind::ScrollUp => -1,
+            _ => unreachable!(),
+        };
+
+        let (col, row) = (first.column, first.row);
+
+        // Drain queue with zero timeout to collect pending scroll events
+        while event::poll(Duration::ZERO)? {
+            let raw = event::read()?;
+            match &raw {
+                CrosstermEvent::Mouse(m)
+                    if m.column == col
+                        && m.row == row
+                        && matches!(
+                            m.kind,
+                            MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
+                        ) =>
+                {
+                    delta += match m.kind {
+                        MouseEventKind::ScrollDown => 1,
+                        MouseEventKind::ScrollUp => -1,
+                        _ => 0,
+                    };
+                }
+                _ => {
+                    // Queue non-scroll event for later processing
+                    if let Some(ev) = self.convert_crossterm_event(raw) {
+                        self.pending_events.borrow_mut().push_back(ev);
+                    }
+                    break;
+                }
+            }
+        }
+
+        // If scrolls cancelled out, return Tick instead
+        if delta == 0 {
+            return Ok(Event::Tick);
+        }
+
+        Ok(Event::MouseScrollCoalesced {
+            event: first,
+            delta,
+        })
+    }
+
+    /// Convert crossterm event to our Event type.
+    fn convert_crossterm_event(&self, raw: CrosstermEvent) -> Option<Event> {
+        match raw {
+            CrosstermEvent::Key(key) if key.kind == KeyEventKind::Press => Some(Event::Key(key)),
+            CrosstermEvent::Key(_) => None, // Ignore Release and Repeat
+            CrosstermEvent::Mouse(mouse) => Some(Event::Mouse(mouse)),
+            CrosstermEvent::Resize(width, height) => Some(Event::Resize(width, height)),
+            CrosstermEvent::FocusLost => Some(Event::FocusLost),
+            CrosstermEvent::FocusGained => Some(Event::FocusGained),
+            CrosstermEvent::Paste(text) => Some(Event::Paste(text)),
         }
     }
 }

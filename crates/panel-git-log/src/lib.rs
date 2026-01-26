@@ -684,6 +684,19 @@ impl Panel for GitLogPanel {
         vec![]
     }
 
+    fn handle_scroll(&mut self, delta: i32, _panel_area: Rect) -> Vec<PanelEvent> {
+        let lines = delta.unsigned_abs() as usize;
+        if delta < 0 {
+            // Scroll up - move selection up by delta
+            self.selected = self.selected.saturating_sub(lines);
+        } else {
+            // Scroll down - move selection down by delta
+            self.selected = (self.selected + lines).min(self.commits.len().saturating_sub(1));
+        }
+        self.ensure_visible();
+        vec![]
+    }
+
     fn to_session(&self, _session_dir: &Path) -> Option<SessionPanel> {
         self.repo_manager
             .current()
