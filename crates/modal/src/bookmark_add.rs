@@ -57,6 +57,7 @@ pub struct BookmarkAddModal {
     focus: FocusArea,
     selected_button: usize, // 0 = Add, 1 = Cancel
     last_buttons_area: Option<Rect>,
+    last_group_field_area: Option<Rect>,
 }
 
 impl BookmarkAddModal {
@@ -75,6 +76,7 @@ impl BookmarkAddModal {
             focus: FocusArea::Path,
             selected_button: 0,
             last_buttons_area: None,
+            last_group_field_area: None,
         }
     }
 
@@ -104,8 +106,9 @@ impl BookmarkAddModal {
 
         // Calculate height
         // Border(1) + Path(3) + Description(3) + Group(3) + [Dropdown] + Buttons(1) + Border(1)
+        // Dropdown: items + 1 (bottom border only, top is shared with input)
         let dropdown_height = if self.show_group_dropdown && !self.existing_groups.is_empty() {
-            self.existing_groups.len().min(5) as u16 + 2
+            self.existing_groups.len().min(5) as u16 + 1
         } else {
             0
         };
@@ -303,8 +306,9 @@ impl Modal for BookmarkAddModal {
         let inner = render_modal_block(modal_area, buf, t.bookmarks_add_title(), theme);
 
         // Calculate layout
+        // Dropdown: items + 1 (bottom border only, top is shared with input)
         let dropdown_height = if self.show_group_dropdown && !self.existing_groups.is_empty() {
-            self.existing_groups.len().min(5) as u16 + 2
+            self.existing_groups.len().min(5) as u16 + 1
         } else {
             0
         };
@@ -350,6 +354,12 @@ impl Modal for BookmarkAddModal {
 
         // Render Group field with dropdown indicator
         self.render_group_field(buf, chunks[chunk_idx], t.bookmarks_add_group(), theme);
+        // Save group field area for mouse handling (need the input part, not label)
+        let group_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Length(15), Constraint::Min(1)])
+            .split(chunks[chunk_idx]);
+        self.last_group_field_area = Some(group_chunks[1]);
         chunk_idx += 1;
 
         // Render group dropdown if visible (visually connected to input field)
@@ -607,6 +617,30 @@ impl Modal for BookmarkAddModal {
         // Only handle left button press
         if mouse.kind != MouseEventKind::Down(crossterm::event::MouseButton::Left) {
             return Ok(None);
+        }
+
+        // Check if click is on group field (toggle dropdown)
+        if let Some(group_area) = self.last_group_field_area {
+            if mouse.row >= group_area.y
+                && mouse.row < group_area.y + group_area.height
+                && mouse.column >= group_area.x
+                && mouse.column < group_area.x + group_area.width
+            {
+                // Click on group field - toggle dropdown if groups exist
+                if !self.existing_groups.is_empty() {
+                    self.focus = FocusArea::Group;
+                    if self.show_group_dropdown {
+                        self.show_group_dropdown = false;
+                    } else {
+                        self.saved_group_input = self.group_input.text().to_string();
+                        self.show_group_dropdown = true;
+                        self.selected_group_index = 0;
+                    }
+                } else {
+                    self.focus = FocusArea::Group;
+                }
+                return Ok(None);
+            }
         }
 
         // Check if we have stored buttons area
