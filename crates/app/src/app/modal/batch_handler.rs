@@ -106,11 +106,11 @@ impl App {
                         fm.get_current_directory().join(&destination)
                     }
                 } else {
-                    termide_logger::error(format!("Panel {} is not FileManager", panel_index));
+                    log::error!("Panel {} is not FileManager", panel_index);
                     return Ok(());
                 }
             } else {
-                termide_logger::error(format!("Panel with index {} not found", panel_index));
+                log::error!("Panel with index {} not found", panel_index);
                 return Ok(());
             }
         };
@@ -139,7 +139,7 @@ impl App {
         let remote_path = match termide_vfs::parse_vfs_url(remote_url) {
             Ok(path) => path,
             Err(e) => {
-                termide_logger::error(format!("Invalid remote URL '{}': {}", remote_url, e));
+                log::error!("Invalid remote URL '{}': {}", remote_url, e);
                 self.state.set_error(format!("Invalid remote URL: {}", e));
                 return Ok(());
             }
@@ -195,7 +195,7 @@ impl App {
                 // Operation started, will be polled in poll_operation_manager
             }
             Err(e) => {
-                termide_logger::error(format!("Failed to start upload operation: {}", e));
+                log::error!("Failed to start upload operation: {}", e);
                 self.state.pending_batch_upload = None;
                 self.state.close_modal();
                 self.state.set_error(format!("Upload failed: {}", e));
@@ -343,10 +343,10 @@ impl App {
                                                 });
                                         }
                                         Err(e) => {
-                                            termide_logger::error(format!(
+                                            log::error!(
                                                 "Failed to start download operation: {}",
                                                 e
-                                            ));
+                                            );
                                             operation.increment_error();
                                             operation.advance();
                                             self.state.pending_action =
@@ -387,10 +387,7 @@ impl App {
                                                 });
                                         }
                                         Err(e) => {
-                                            termide_logger::error(format!(
-                                                "Failed to start copy operation: {}",
-                                                e
-                                            ));
+                                            log::error!("Failed to start copy operation: {}", e);
                                             operation.increment_error();
                                             operation.advance();
                                             self.state.pending_action =
@@ -431,10 +428,10 @@ impl App {
                                                 });
                                         }
                                         Err(e) => {
-                                            termide_logger::error(format!(
+                                            log::error!(
                                                 "Failed to start directory copy operation: {}",
                                                 e
-                                            ));
+                                            );
                                             operation.increment_error();
                                             operation.advance();
                                             self.state.pending_action =
@@ -447,10 +444,7 @@ impl App {
                                 }
 
                                 // Unknown source type - skip with error
-                                termide_logger::error(format!(
-                                    "Unsupported source type: {}",
-                                    source.display()
-                                ));
+                                log::error!("Unsupported source type: {}", source.display());
                                 operation.increment_error();
                             }
                         }
@@ -806,7 +800,7 @@ impl App {
                 }
                 ConflictMode::SkipAll => {
                     // Skip file
-                    termide_logger::info(format!("'{}' пропущен (файл существует)", item_name));
+                    log::info!("'{}' пропущен (файл существует)", item_name);
                     operation.increment_skipped();
                     operation.advance();
                     // Store and return to allow UI update
@@ -854,10 +848,7 @@ impl App {
                                 Some(PendingAction::ContinueBatchOperation { operation });
                         }
                         Err(e) => {
-                            termide_logger::error(format!(
-                                "Failed to start download operation: {}",
-                                e
-                            ));
+                            log::error!("Failed to start download operation: {}", e);
                             operation.increment_error();
                             operation.advance();
                             self.state.pending_action =
@@ -896,7 +887,7 @@ impl App {
                                 Some(PendingAction::ContinueBatchOperation { operation });
                         }
                         Err(e) => {
-                            termide_logger::error(format!("Failed to start copy operation: {}", e));
+                            log::error!("Failed to start copy operation: {}", e);
                             operation.increment_error();
                             operation.advance();
                             self.state.pending_action =
@@ -931,10 +922,7 @@ impl App {
                                 Some(PendingAction::ContinueBatchOperation { operation });
                         }
                         Err(e) => {
-                            termide_logger::error(format!(
-                                "Failed to start directory copy operation: {}",
-                                e
-                            ));
+                            log::error!("Failed to start directory copy operation: {}", e);
                             operation.increment_error();
                             operation.advance();
                             self.state.pending_action =
@@ -945,7 +933,7 @@ impl App {
                 }
 
                 // Unknown source type (symlink?) - skip with error
-                termide_logger::error(format!("Unsupported source type: {}", source.display()));
+                log::error!("Unsupported source type: {}", source.display());
                 operation.increment_error();
             }
         }

@@ -15,7 +15,7 @@ use crate::PanelExt;
 use termide_app_core::Panel;
 use termide_config::Config;
 use termide_i18n as i18n;
-use termide_logger as logger;
+
 use termide_panel_editor::Editor;
 use termide_panel_file_manager::FileManager;
 use termide_panel_misc::{HelpPanel as Help, JournalPanel as Journal};
@@ -220,7 +220,7 @@ impl App {
 
     /// Create new terminal
     pub(super) fn handle_new_terminal(&mut self) -> Result<()> {
-        logger::debug("Opening new Terminal panel");
+        log::debug!("Opening new Terminal panel");
         self.close_welcome_panels();
         // Get working directory from current active panel
         let working_dir = self
@@ -243,7 +243,7 @@ impl App {
 
     /// Create new file manager
     pub(super) fn handle_new_file_manager(&mut self) -> Result<()> {
-        logger::debug("Opening new FileManager panel");
+        log::debug!("Opening new FileManager panel");
         self.close_welcome_panels();
 
         // Check if active panel is a remote FileManager and clone it
@@ -274,7 +274,7 @@ impl App {
 
     /// Create new editor
     pub(super) fn handle_new_editor(&mut self) -> Result<()> {
-        logger::debug("Opening new Editor panel");
+        log::debug!("Opening new Editor panel");
         self.close_welcome_panels();
 
         // Get working directory from current active panel (e.g., FileManager)
@@ -296,12 +296,12 @@ impl App {
     pub(super) fn handle_new_journal(&mut self) -> Result<()> {
         // Check if Journal panel already exists and focus it
         if self.focus_existing_journal_panel() {
-            logger::debug("Switching focus to existing Journal panel");
+            log::debug!("Switching focus to existing Journal panel");
             return Ok(());
         }
 
         // No existing Journal panel found, create new one
-        logger::debug("Opening new Journal panel");
+        log::debug!("Opening new Journal panel");
         self.close_welcome_panels();
         let journal_panel = Journal::new(self.state.theme);
         self.add_panel(Box::new(journal_panel));
@@ -330,7 +330,7 @@ impl App {
 
     /// Open or switch to help panel (Welcome)
     pub(super) fn handle_new_help(&mut self) -> Result<()> {
-        logger::debug("Opening new Help/Welcome panel");
+        log::debug!("Opening new Help/Welcome panel");
         let welcome = Help::new(&self.state.config);
         self.add_panel(Box::new(welcome));
         self.auto_save_session();
@@ -341,7 +341,7 @@ impl App {
     pub(super) fn handle_manage_scripts(&mut self) -> Result<()> {
         use termide_config::get_data_dir;
 
-        logger::debug("Opening scripts folder in File Manager");
+        log::debug!("Opening scripts folder in File Manager");
         self.close_welcome_panels();
 
         // Get the scripts directory path
@@ -351,13 +351,13 @@ impl App {
                 // Create the directory if it doesn't exist
                 if !scripts_path.exists() {
                     if let Err(e) = std::fs::create_dir_all(&scripts_path) {
-                        logger::warn(format!("Failed to create scripts directory: {}", e));
+                        log::warn!("Failed to create scripts directory: {}", e);
                     }
                 }
                 scripts_path
             }
             Err(e) => {
-                logger::warn(format!("Failed to get data dir: {}", e));
+                log::warn!("Failed to get data dir: {}", e);
                 self.state
                     .set_error(format!("Failed to get scripts directory: {}", e));
                 return Ok(());
@@ -377,7 +377,7 @@ impl App {
         let config_path = match Config::config_file_path() {
             Ok(path) => path,
             Err(e) => {
-                logger::warn(format!("Failed to get config path: {}", e));
+                log::warn!("Failed to get config path: {}", e);
                 self.state
                     .set_error(format!("Failed to get config path: {}", e));
                 return Ok(());
@@ -634,7 +634,7 @@ impl App {
     /// Apply language by code and save preference
     fn apply_language(&mut self, lang_code: &str, lang_name: &str) -> Result<()> {
         if let Err(e) = i18n::set_language(lang_code) {
-            logger::warn(format!("Failed to set language: {}", e));
+            log::warn!("Failed to set language: {}", e);
             self.state
                 .set_error(format!("Failed to set language: {}", e));
             return Ok(());
@@ -645,7 +645,7 @@ impl App {
 
         // Save preference to config file
         if let Err(e) = self.save_language_preference(lang_code) {
-            logger::warn(format!("Failed to save language preference: {}", e));
+            log::warn!("Failed to save language preference: {}", e);
         }
 
         Ok(())
@@ -769,7 +769,7 @@ impl App {
 
         // Save preference to config file
         if let Err(e) = self.save_theme_preference(theme_name) {
-            logger::warn(format!("Failed to save theme preference: {}", e));
+            log::warn!("Failed to save theme preference: {}", e);
         }
 
         Ok(())
@@ -863,7 +863,7 @@ impl App {
 
     /// Open Diagnostics panel
     pub(super) fn handle_open_diagnostics(&mut self) -> Result<()> {
-        logger::debug("Opening Diagnostics panel");
+        log::debug!("Opening Diagnostics panel");
         self.close_welcome_panels();
 
         if !self.find_and_focus_panel_by_name("diagnostics") {
@@ -883,7 +883,7 @@ impl App {
 
     /// Open Git Status panel
     pub(super) fn handle_open_git_status(&mut self) -> Result<()> {
-        logger::debug("Opening Git Status panel");
+        log::debug!("Opening Git Status panel");
         self.close_welcome_panels();
 
         if !self.find_and_focus_panel_by_name("git_status") {
@@ -897,7 +897,7 @@ impl App {
 
     /// Open Git Log panel
     fn handle_open_git_log(&mut self) -> Result<()> {
-        logger::debug("Opening Git Log panel");
+        log::debug!("Opening Git Log panel");
         self.close_welcome_panels();
 
         let paths = self.collect_panel_paths();
@@ -1078,10 +1078,7 @@ impl App {
             self.run_report_script(script, &cwd)?;
         } else if script.is_background {
             // Fire-and-forget spawn (no terminal panel)
-            logger::info(format!(
-                "Running background script '{}' in {:?}",
-                script.name, cwd
-            ));
+            log::info!("Running background script '{}' in {:?}", script.name, cwd);
             match std::process::Command::new(&script.path)
                 .current_dir(&cwd)
                 .stdout(std::process::Stdio::null())
@@ -1091,16 +1088,13 @@ impl App {
             {
                 Ok(_) => {}
                 Err(e) => {
-                    logger::error(format!(
-                        "Failed to run background script '{}': {}",
-                        script.name, e
-                    ));
+                    log::error!("Failed to run background script '{}': {}", script.name, e);
                     self.state.set_error(format!("Failed to run script: {}", e));
                 }
             }
         } else {
             // Run in new terminal panel
-            logger::info(format!("Running script '{}' in {:?}", script.name, cwd));
+            log::info!("Running script '{}' in {:?}", script.name, cwd);
 
             self.close_welcome_panels();
 
@@ -1118,10 +1112,11 @@ impl App {
                     self.auto_save_session();
                 }
                 Err(e) => {
-                    logger::error(format!(
+                    log::error!(
                         "Failed to create terminal for script '{}': {}",
-                        script.name, e
-                    ));
+                        script.name,
+                        e
+                    );
                     self.state.set_error(format!("Failed to run script: {}", e));
                 }
             }
@@ -1138,10 +1133,7 @@ impl App {
     ) -> Result<()> {
         use crate::state::{ScriptOperationHandle, ScriptOperationResult};
 
-        logger::info(format!(
-            "Running report script '{}' in {:?}",
-            script.name, cwd
-        ));
+        log::info!("Running report script '{}' in {:?}", script.name, cwd);
 
         let child = std::process::Command::new(&script.path)
             .current_dir(cwd)
@@ -1179,10 +1171,7 @@ impl App {
                 });
             }
             Err(e) => {
-                logger::error(format!(
-                    "Failed to run report script '{}': {}",
-                    script.name, e
-                ));
+                log::error!("Failed to run report script '{}': {}", script.name, e);
                 self.state.set_error(format!("Failed to run script: {}", e));
             }
         }
@@ -1401,20 +1390,20 @@ impl App {
                     if let Some(parent) = path.parent() {
                         if !parent.exists() {
                             if let Err(e) = std::fs::create_dir_all(parent) {
-                                logger::warn(format!("Failed to create data directory: {}", e));
+                                log::warn!("Failed to create data directory: {}", e);
                             }
                         }
                     }
                     // Create empty bookmarks file
                     let empty_config = BookmarksConfig::default();
                     if let Err(e) = empty_config.save() {
-                        logger::warn(format!("Failed to create bookmarks file: {}", e));
+                        log::warn!("Failed to create bookmarks file: {}", e);
                     }
                 }
                 path
             }
             Err(e) => {
-                logger::warn(format!("Failed to get bookmarks path: {}", e));
+                log::warn!("Failed to get bookmarks path: {}", e);
                 self.state
                     .set_error(format!("Failed to get bookmarks path: {}", e));
                 return Ok(());

@@ -829,7 +829,7 @@ impl AppState {
     /// Save bookmarks to data directory
     pub fn save_bookmarks(&self) {
         if let Err(e) = self.bookmarks.save() {
-            termide_logger::error(format!("Failed to save bookmarks: {}", e));
+            log::error!("Failed to save bookmarks: {}", e);
         }
     }
 

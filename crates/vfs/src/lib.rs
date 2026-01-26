@@ -177,10 +177,7 @@ impl VfsManager {
     pub fn connect_sftp(&self, path: &VfsPath, options: ConnectOptions) -> VfsOperation<()> {
         use crate::sftp::SftpProvider;
 
-        termide_logger::info(format!(
-            "VfsManager::connect_sftp() called for path: {}",
-            path
-        ));
+        log::info!("VfsManager::connect_sftp() called for path: {}", path);
 
         if !matches!(path.protocol, VfsProtocol::Sftp) {
             return VfsOperation::error(VfsError::InvalidPath("Expected SFTP path".to_string()));
@@ -203,43 +200,36 @@ impl VfsManager {
 
         let (tx, rx) = std::sync::mpsc::channel();
 
-        termide_logger::info("VfsManager::connect_sftp(): Spawning connection thread".to_string());
+        log::info!("VfsManager::connect_sftp(): Spawning connection thread");
         std::thread::spawn(move || {
-            termide_logger::info("VfsManager thread STARTED".to_string());
+            log::info!("VfsManager thread STARTED");
             let mut provider = SftpProvider::new(&host, port, username.as_deref());
 
-            termide_logger::info(
-                "VfsManager thread: Calling provider.connect().recv()...".to_string(),
-            );
+            log::info!("VfsManager thread: Calling provider.connect().recv()...",);
             let result = provider.connect(options).recv();
-            termide_logger::info("VfsManager thread: recv() returned".to_string());
+            log::info!("VfsManager thread: recv() returned");
 
             // Diagnostic logging to trace error flow
             match &result {
-                Ok(()) => termide_logger::info(
-                    "VfsManager: Connection succeeded, forwarding to main thread".to_string(),
-                ),
-                Err(e) => termide_logger::error(format!(
+                Ok(()) => {
+                    log::info!("VfsManager: Connection succeeded, forwarding to main thread",)
+                }
+                Err(e) => log::error!(
                     "VfsManager: Connection failed: {}, forwarding to main thread",
                     e
-                )),
+                ),
             }
 
             if result.is_ok() {
                 if let Ok(mut providers) = providers.write() {
                     providers.insert(key.clone(), Box::new(provider));
-                    termide_logger::debug(format!("VfsManager: Provider stored for key '{}'", key));
+                    log::debug!("VfsManager: Provider stored for key '{}'", key);
                 }
             }
 
             match tx.send(result) {
-                Ok(()) => termide_logger::info(
-                    "VfsManager: Result successfully sent to channel".to_string(),
-                ),
-                Err(e) => termide_logger::error(format!(
-                    "VfsManager: Failed to send result to channel: {:?}",
-                    e
-                )),
+                Ok(()) => log::info!("VfsManager: Result successfully sent to channel",),
+                Err(e) => log::error!("VfsManager: Failed to send result to channel: {:?}", e),
             }
         });
 

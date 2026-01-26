@@ -26,7 +26,7 @@ impl App {
                     format!("{} items", paths.len())
                 };
 
-                termide_logger::info(format!("Starting async delete of {}", source_display));
+                log::info!("Starting async delete of {}", source_display);
 
                 // Create delete operation request
                 let sources: Vec<OperationPath> =
@@ -44,7 +44,7 @@ impl App {
                         self.state.active_modal = Some(ActiveModal::Progress(Box::new(modal)));
                     }
                     Err(e) => {
-                        termide_logger::error(format!("Failed to start delete operation: {}", e));
+                        log::error!("Failed to start delete operation: {}", e);
                         self.state.set_error(format!("Delete failed: {}", e));
                     }
                 }

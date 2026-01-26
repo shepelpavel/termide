@@ -10,6 +10,7 @@ description = "Application orchestrator for termide - coordinates all app module
 [dependencies]
 anyhow.workspace = true
 crossterm.workspace = true
+log = "0.4"
 ratatui.workspace = true
 dirs.workspace = true
 chrono.workspace = true

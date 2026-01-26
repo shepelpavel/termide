@@ -77,8 +77,12 @@ pub struct Editor {
     /// Modal window request
     modal_request: Option<(PendingAction, ActiveModal)>,
     /// Pending upload operation (for regular Ctrl+S saves of remote files)
-    pub(crate) pending_upload:
-        Option<(termide_vfs::VfsOperation<()>, termide_vfs::VfsPath, PathBuf)>,
+    /// Contains (temp_path, remote_path, vfs_manager) for app to create upload via OperationManager
+    pub(crate) pending_upload: Option<(
+        PathBuf,
+        termide_vfs::VfsPath,
+        std::sync::Arc<termide_vfs::VfsManager>,
+    )>,
     /// Pending remote file open operation (for async downloads)
     pub(crate) pending_remote_open: Option<crate::remote::PendingRemoteOpen>,
     /// Updated config after save (for applying in AppState)
@@ -625,10 +629,16 @@ impl Editor {
 
     /// Save file
     /// Returns error if file was modified externally (use force_save() to override)
-    /// Returns Some((operation, remote_path, temp_path)) for remote files (async upload), None for local files
+    /// Returns Some((temp_path, remote_path, vfs_manager)) for remote files (async upload via OperationManager), None for local files
     pub fn save(
         &mut self,
-    ) -> Result<Option<(termide_vfs::VfsOperation<()>, termide_vfs::VfsPath, PathBuf)>> {
+    ) -> Result<
+        Option<(
+            PathBuf,
+            termide_vfs::VfsPath,
+            std::sync::Arc<termide_vfs::VfsManager>,
+        )>,
+    > {
         // Check for external modification conflict
         if self.file_state.external_change_detected {
             return Err(anyhow::anyhow!(
@@ -640,7 +650,7 @@ impl Editor {
         if self.file_state.is_remote() {
             let vfs_manager = self
                 .vfs_manager
-                .as_ref()
+                .clone()
                 .ok_or_else(|| anyhow::anyhow!("No VFS manager for remote file"))?;
 
             // Save to local temp file first
@@ -658,17 +668,14 @@ impl Editor {
                 .ok_or_else(|| anyhow::anyhow!("No temp path"))?
                 .to_path_buf();
 
-            // Start async upload (DON'T call .recv()!)
-            let operation = vfs_manager.upload(&temp_path, &remote_path);
-
             log::info!(
-                "Starting remote file upload: {}",
+                "Remote file save requested: {}",
                 remote_path.to_url_string()
             );
 
-            // Return operation for async handling
+            // Return info for async upload via OperationManager
             // Note: mtime and external_change_detected will be updated when upload completes
-            return Ok(Some((operation, remote_path, temp_path)));
+            return Ok(Some((temp_path, remote_path, vfs_manager)));
         }
 
         // Check if this is a config file
@@ -809,10 +816,16 @@ impl Editor {
     }
 
     /// Force save (ignore external changes)
-    /// Returns Some((operation, remote_path, temp_path)) for remote files (async upload), None for local files
+    /// Returns Some((temp_path, remote_path, vfs_manager)) for remote files (async upload), None for local files
     pub fn force_save(
         &mut self,
-    ) -> Result<Option<(termide_vfs::VfsOperation<()>, termide_vfs::VfsPath, PathBuf)>> {
+    ) -> Result<
+        Option<(
+            PathBuf,
+            termide_vfs::VfsPath,
+            std::sync::Arc<termide_vfs::VfsManager>,
+        )>,
+    > {
         self.file_state.external_change_detected = false;
         self.save()
     }
@@ -1487,10 +1500,16 @@ impl Editor {
     }
 
     /// Handle save command - either save to existing path or open "Save As" modal
-    /// Returns Some((operation, remote_path, temp_path)) for remote files (async upload), None for local files
+    /// Returns Some((temp_path, remote_path, vfs_manager)) for remote files (async upload via OperationManager), None for local files
     pub(crate) fn handle_save(
         &mut self,
-    ) -> Result<Option<(termide_vfs::VfsOperation<()>, termide_vfs::VfsPath, PathBuf)>> {
+    ) -> Result<
+        Option<(
+            PathBuf,
+            termide_vfs::VfsPath,
+            std::sync::Arc<termide_vfs::VfsManager>,
+        )>,
+    > {
         if self.buffer.file_path().is_some() {
             // File has path - save normally
             self.save()
@@ -1947,16 +1966,25 @@ impl Editor {
     }
 
     /// Take pending upload operation (if any).
+    /// Returns (temp_path, remote_path, vfs_manager) for app to create upload via OperationManager
     pub fn take_pending_upload(
         &mut self,
-    ) -> Option<(termide_vfs::VfsOperation<()>, termide_vfs::VfsPath, PathBuf)> {
+    ) -> Option<(
+        PathBuf,
+        termide_vfs::VfsPath,
+        std::sync::Arc<termide_vfs::VfsManager>,
+    )> {
         self.pending_upload.take()
     }
 
     /// Set pending upload operation (called by keyboard handler).
     pub(crate) fn set_pending_upload(
         &mut self,
-        upload: (termide_vfs::VfsOperation<()>, termide_vfs::VfsPath, PathBuf),
+        upload: (
+            PathBuf,
+            termide_vfs::VfsPath,
+            std::sync::Arc<termide_vfs::VfsManager>,
+        ),
     ) {
         self.pending_upload = Some(upload);
     }

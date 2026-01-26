@@ -181,22 +181,21 @@ impl SftpProvider {
             AuthMethod::Auto => {
                 // Log SSH_AUTH_SOCK for debugging
                 let ssh_auth_sock = std::env::var("SSH_AUTH_SOCK").ok();
-                termide_logger::debug(format!(
-                    "SFTP Auto auth: SSH_AUTH_SOCK = {:?}",
-                    ssh_auth_sock
-                ));
+                log::debug!("SFTP Auto auth: SSH_AUTH_SOCK = {:?}", ssh_auth_sock);
 
                 // Load SSH config for host-specific settings
                 let ssh_config = SshConfig::from_default_path();
                 let host_config = ssh_config.as_ref().map(|c| c.get_host_config(host));
 
                 if let Some(ref cfg) = host_config {
-                    termide_logger::debug(format!(
+                    log::debug!(
                         "SFTP: SSH config for '{}': identity_files={:?}, identities_only={}",
-                        host, cfg.identity_files, cfg.identities_only
-                    ));
+                        host,
+                        cfg.identity_files,
+                        cfg.identities_only
+                    );
                 } else {
-                    termide_logger::debug(format!("SFTP: No SSH config found for '{}'", host));
+                    log::debug!("SFTP: No SSH config found for '{}'", host);
                 }
 
                 // Try SSH agent first (unless IdentitiesOnly is set)
@@ -210,50 +209,47 @@ impl SftpProvider {
                     match session.agent() {
                         Ok(mut agent) => {
                             if let Err(e) = agent.connect() {
-                                termide_logger::debug(format!("SFTP: Agent connect failed: {}", e));
+                                log::debug!("SFTP: Agent connect failed: {}", e);
                             } else if let Err(e) = agent.list_identities() {
-                                termide_logger::debug(format!(
-                                    "SFTP: Agent list_identities failed: {}",
-                                    e
-                                ));
+                                log::debug!("SFTP: Agent list_identities failed: {}", e);
                             } else {
                                 // Log all identities in the agent
                                 let mut identity_count = 0;
                                 let identities = agent.identities().unwrap_or_default();
                                 for identity in identities.iter() {
                                     identity_count += 1;
-                                    termide_logger::debug(format!(
+                                    log::debug!(
                                         "SFTP: Agent identity {}: comment='{}'",
                                         identity_count,
                                         identity.comment()
-                                    ));
+                                    );
                                     // Try this specific identity
                                     match agent.userauth(username, identity) {
                                         Ok(()) => {
-                                            termide_logger::debug(format!(
+                                            log::debug!(
                                                 "SFTP: Agent auth succeeded with identity '{}'",
                                                 identity.comment()
-                                            ));
+                                            );
                                             return Ok(());
                                         }
                                         Err(e) => {
-                                            termide_logger::debug(format!(
+                                            log::debug!(
                                                 "SFTP: Agent identity '{}' rejected: {}",
                                                 identity.comment(),
                                                 e
-                                            ));
+                                            );
                                         }
                                     }
                                 }
-                                termide_logger::debug(format!(
+                                log::debug!(
                                     "SFTP: Agent has {} identities, none worked",
                                     identity_count
-                                ));
+                                );
                             }
                             let _ = agent.disconnect();
                         }
                         Err(e) => {
-                            termide_logger::debug(format!("SFTP: Failed to create agent: {}", e));
+                            log::debug!("SFTP: Failed to create agent: {}", e);
                         }
                     }
                 }
@@ -289,20 +285,14 @@ impl SftpProvider {
 
                 for key_file in &key_files {
                     if key_file.exists() {
-                        termide_logger::debug(format!("SFTP: Trying key file {:?}", key_file));
+                        log::debug!("SFTP: Trying key file {:?}", key_file);
                         match session.userauth_pubkey_file(username, None, key_file, None) {
                             Ok(()) => {
-                                termide_logger::debug(format!(
-                                    "SFTP: Key file auth succeeded with {:?}",
-                                    key_file
-                                ));
+                                log::debug!("SFTP: Key file auth succeeded with {:?}", key_file);
                                 return Ok(());
                             }
                             Err(e) => {
-                                termide_logger::debug(format!(
-                                    "SFTP: Key file {:?} failed: {}",
-                                    key_file, e
-                                ));
+                                log::debug!("SFTP: Key file {:?} failed: {}", key_file, e);
                             }
                         }
                     }
@@ -703,10 +693,7 @@ impl VfsProvider for SftpProvider {
                         guard.home_dir = Some(home_dir.clone());
                         guard.state = ConnectionState::Connected;
                         guard.connect_started = None;
-                        termide_logger::info(format!(
-                            "SFTP connected to {} (home: {})",
-                            host, home_dir
-                        ));
+                        log::info!("SFTP connected to {} (home: {})", host, home_dir);
                     }
                     let _ = tx.send(Ok(()));
                 }
@@ -715,15 +702,12 @@ impl VfsProvider for SftpProvider {
                         guard.state = ConnectionState::Failed;
                         guard.connect_started = None;
                     }
-                    termide_logger::error(format!("SFTP connection failed: {}", e));
+                    log::error!("SFTP connection failed: {}", e);
                     match tx.send(Err(e)) {
-                        Ok(()) => termide_logger::info(
-                            "SFTP: Error sent to channel successfully".to_string(),
-                        ),
-                        Err(send_err) => termide_logger::error(format!(
-                            "SFTP: Failed to send error to channel: {:?}",
-                            send_err
-                        )),
+                        Ok(()) => log::info!("SFTP: Error sent to channel successfully",),
+                        Err(send_err) => {
+                            log::error!("SFTP: Failed to send error to channel: {:?}", send_err)
+                        }
                     }
                 }
             }
@@ -740,7 +724,7 @@ impl VfsProvider for SftpProvider {
             guard.home_dir = None;
             guard.connect_started = None;
         }
-        termide_logger::info(format!("SFTP disconnected from {}", self.host));
+        log::info!("SFTP disconnected from {}", self.host);
     }
 
     fn list_dir(&self, path: &VfsPath) -> VfsOperation<Vec<VfsEntry>> {

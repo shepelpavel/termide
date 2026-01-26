@@ -16,7 +16,6 @@ use termide_app_core::{LayoutController, PanelProvider};
 use termide_app_event::DefaultHotkeyProcessor;
 use termide_core::event::{Event, EventHandler};
 use termide_layout::LayoutManager;
-use termide_logger as logger;
 
 use crate::LayoutManagerSession;
 
@@ -81,23 +80,23 @@ impl App {
             termide_config::constants::MAX_LOG_ENTRIES,
             min_log_level,
         );
-        termide_logger::info("Application started");
+        log::info!("Application started");
 
         // Initialize unified watcher for filesystem and git events
         match termide_watcher::create_watcher() {
             Ok(watcher) => {
                 state.watcher = Some(watcher);
-                termide_logger::info("Unified watcher initialized");
+                log::info!("Unified watcher initialized");
             }
             Err(e) => {
-                termide_logger::error(format!("Failed to initialize watcher: {}", e));
+                log::error!("Failed to initialize watcher: {}", e);
             }
         }
 
         // Clean up old sessions (configurable retention period)
         let retention_days = state.config.general.session_retention_days;
         if let Err(e) = termide_session::cleanup_old_sessions(&project_root, retention_days) {
-            termide_logger::warn(format!("Failed to cleanup old sessions: {}", e));
+            log::warn!("Failed to cleanup old sessions: {}", e);
         }
 
         // Create hotkey processor from config before moving state
@@ -127,9 +126,9 @@ impl App {
     /// Log git availability status to journal
     pub fn log_git_status(&self, git_available: bool) {
         if git_available {
-            logger::info("Git detected and available");
+            log::info!("Git detected and available");
         } else {
-            logger::warn("Git not found - git integration disabled");
+            log::warn!("Git not found - git integration disabled");
         }
     }
 
@@ -281,8 +280,8 @@ impl App {
                         .layout_manager
                         .iter_all_panels_mut()
                         .find_map(|panel| panel.take_pending_upload());
-                    if let Some((operation, remote_path, temp_path)) = pending_upload {
-                        self.handle_pending_upload(operation, remote_path, temp_path);
+                    if let Some((temp_path, remote_path, vfs_manager)) = pending_upload {
+                        self.handle_pending_upload(temp_path, remote_path, vfs_manager);
                         self.state.needs_redraw = true;
                     }
 
@@ -968,12 +967,12 @@ impl App {
                             .file_name()
                             .and_then(|n| n.to_str())
                             .unwrap_or("remote file");
-                        logger::info(format!("Remote file '{}' opened in editor", filename));
+                        log::info!("Remote file '{}' opened in editor", filename);
                         self.state.set_info(format!("File {} opened", filename));
                     }
                     Err(e) => {
                         let error_msg = format!("Failed to open downloaded file: {}", e);
-                        logger::error(error_msg.clone());
+                        log::error!("{}", error_msg);
                         self.state.set_error(error_msg);
                         // Clean up temp file
                         let _ = std::fs::remove_file(&download.temp_path);
@@ -984,7 +983,7 @@ impl App {
                 // Download failed
                 self.state.close_modal();
                 let error_msg = format!("Download failed: {}", e);
-                logger::error(error_msg.clone());
+                log::error!("{}", error_msg);
                 self.state.set_error(error_msg);
                 // Clean up temp file
                 let _ = std::fs::remove_file(&download.temp_path);
@@ -993,7 +992,7 @@ impl App {
                 // Still downloading - check timeout
                 if download.started.elapsed().as_secs() > 120 {
                     self.state.close_modal();
-                    logger::error("Download timeout (120s)".to_string());
+                    log::error!("Download timeout (120s)");
                     self.state.set_error("Download timeout (120s)".to_string());
                     // Clean up temp file
                     let _ = std::fs::remove_file(&download.temp_path);
@@ -1008,9 +1007,9 @@ impl App {
     /// Handle pending upload operation from Editor (regular Ctrl+S save of remote file)
     fn handle_pending_upload(
         &mut self,
-        operation: termide_vfs::VfsOperation<()>,
-        remote_path: termide_vfs::VfsPath,
         temp_path: PathBuf,
+        remote_path: termide_vfs::VfsPath,
+        vfs_manager: std::sync::Arc<termide_vfs::VfsManager>,
     ) {
         // Show progress modal
         let filename = remote_path
@@ -1031,15 +1030,26 @@ impl App {
             }
         }
 
-        // Store operation for polling (reuse existing infrastructure)
-        self.state.upload_operation = Some(crate::state::UploadOperation {
-            operation,
-            remote_path,
-            temp_path,
-            editor_panel_id: 0, // Active panel
-            started: std::time::Instant::now(),
-            close_after_upload: false, // Regular save - keep editor open
-        });
+        // Create upload request via OperationManager
+        let request = termide_file_ops::OperationRequest::upload(temp_path, remote_path);
+
+        // Start upload via OperationManager
+        match self.state.start_operation_now(request, vfs_manager) {
+            Ok(_operation_id) => {
+                log::info!("Started editor upload operation");
+            }
+            Err(e) => {
+                log::error!("Failed to start upload operation: {}", e);
+                self.state.close_modal();
+                self.state.set_error(format!("Upload failed: {}", e));
+                // Clear uploading flag
+                if let Some(panel) = self.layout_manager.active_panel_mut() {
+                    if let Some(editor) = panel.as_editor_mut() {
+                        editor.set_uploading(false);
+                    }
+                }
+            }
+        }
     }
 
     /// Check upload operation result (remote file upload)
@@ -1076,7 +1086,7 @@ impl App {
                     .file_name()
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_else(|| "file".to_string());
-                logger::info(format!("Remote file '{}' uploaded successfully", filename));
+                log::info!("Remote file '{}' uploaded successfully", filename);
                 self.state.set_info(format!("File {} uploaded", filename));
 
                 // Close editor if this was a "save and close" operation
@@ -1094,7 +1104,7 @@ impl App {
                     }
                 }
                 let error_msg = format!("Upload failed: {}", e);
-                logger::error(error_msg.clone());
+                log::error!("{}", error_msg);
                 self.state.set_error(error_msg);
             }
             None => {
@@ -1107,7 +1117,7 @@ impl App {
                             editor.set_uploading(false);
                         }
                     }
-                    logger::error("Upload timeout (120s)".to_string());
+                    log::error!("Upload timeout (120s)");
                     self.state.set_error("Upload timeout (120s)".to_string());
                 } else {
                     // Still uploading - spinner updated by update_modal_spinners()
@@ -1144,12 +1154,12 @@ impl App {
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_else(|| "file".to_string());
 
-                logger::info(format!("File '{}' uploaded successfully", filename));
+                log::info!("File '{}' uploaded successfully", filename);
 
                 // If this was a move operation, delete the local source
                 if upload.is_move {
                     if let Err(e) = std::fs::remove_file(&upload.source_path) {
-                        logger::warn(format!("Failed to delete source after move: {}", e));
+                        log::warn!("Failed to delete source after move: {}", e);
                     }
                 }
 
@@ -1238,11 +1248,7 @@ impl App {
             }
             Some(Err(e)) => {
                 // Upload failed - log error and continue with next file
-                logger::error(format!(
-                    "Upload failed for {}: {}",
-                    upload.source_path.display(),
-                    e
-                ));
+                log::error!("Upload failed for {}: {}", upload.source_path.display(), e);
 
                 upload.current_index += 1;
                 if upload.current_index < upload.all_sources.len() {
@@ -1297,7 +1303,7 @@ impl App {
                 if upload.started.elapsed().as_secs() > 300 {
                     // 5 minute timeout for file upload
                     self.state.close_modal();
-                    logger::error("Upload timeout (5 min)".to_string());
+                    log::error!("Upload timeout (5 min)");
                     self.state.set_error("Upload timeout (5 min)".to_string());
                 } else {
                     // Still uploading - put back for next tick
@@ -1386,10 +1392,7 @@ impl App {
                         // Spawn thread to wait for delete result and log error if any
                         std::thread::spawn(move || {
                             if let Err(e) = delete_op.recv() {
-                                termide_logger::error(format!(
-                                    "Failed to delete remote source after move: {}",
-                                    e
-                                ));
+                                log::error!("Failed to delete remote source after move: {}", e);
                             }
                         });
                     }
@@ -1425,11 +1428,11 @@ impl App {
                     self.state.pending_action.take()
                 {
                     operation.error_count += 1;
-                    logger::error(format!(
+                    log::error!(
                         "Batch download failed for {}: {}",
                         download.dest_path.display(),
                         e
-                    ));
+                    );
 
                     // Still update cumulative counters for the failed item
                     operation.cumulative_files_completed += download.last_total_files;
@@ -1447,10 +1450,10 @@ impl App {
                         self.state.pending_action.take()
                     {
                         operation.error_count += 1;
-                        logger::error(format!(
+                        log::error!(
                             "Batch download timeout for {}",
                             download.dest_path.display()
-                        ));
+                        );
 
                         // Update cumulative counters even for timeout
                         operation.cumulative_files_completed += download.last_total_files;
@@ -1501,11 +1504,11 @@ impl App {
                 // Copy complete - for Move, delete the source file
                 if copy_op.is_move {
                     if let Err(e) = std::fs::remove_file(&copy_op.source_path) {
-                        logger::error(format!(
+                        log::error!(
                             "Failed to delete source after move: {}: {}",
                             copy_op.source_path.display(),
                             e
-                        ));
+                        );
                     }
                 }
 
@@ -1572,11 +1575,11 @@ impl App {
                         self.state.pending_action.take()
                     {
                         operation.increment_error();
-                        logger::error(format!(
+                        log::error!(
                             "File copy failed for {}: {}",
                             copy_op.dest_path.display(),
                             e
-                        ));
+                        );
                         operation.advance();
                         self.process_batch_operation(operation);
                     }
@@ -1632,11 +1635,11 @@ impl App {
                 // Copy complete - for Move, delete the source directory
                 if copy_op.is_move {
                     if let Err(e) = std::fs::remove_dir_all(&copy_op.source_path) {
-                        logger::error(format!(
+                        log::error!(
                             "Failed to delete source directory after move: {}: {}",
                             copy_op.source_path.display(),
                             e
-                        ));
+                        );
                     }
                 }
 
@@ -1692,11 +1695,11 @@ impl App {
                         self.state.pending_action.take()
                     {
                         operation.increment_error();
-                        logger::error(format!(
+                        log::error!(
                             "Directory copy failed for {}: {}",
                             copy_op.dest_path.display(),
                             e
-                        ));
+                        );
                         operation.advance();
                         self.process_batch_operation(operation);
                     }
@@ -1736,11 +1739,11 @@ impl App {
         match scan_op.completion.try_recv() {
             Ok(Ok(scan_result)) => {
                 // Scan complete - start the actual directory copy
-                logger::info(format!(
+                log::info!(
                     "Directory scan complete: {} files, {} bytes",
                     scan_result.files.len(),
                     scan_result.total_bytes
-                ));
+                );
 
                 // Check if this is a move operation
                 let is_move = scan_op
@@ -1791,7 +1794,7 @@ impl App {
                     }
                     Err(e) => {
                         // Copy failed to start - show error and continue batch
-                        logger::error(format!("Failed to start directory copy: {}", e));
+                        log::error!("Failed to start directory copy: {}", e);
                         if let Some(mut operation) = scan_op.batch_operation {
                             operation.increment_error();
                             operation.advance();
@@ -1819,7 +1822,7 @@ impl App {
                     }
                 } else {
                     // Other error - record and continue
-                    logger::error(format!("Directory scan failed: {}", e));
+                    log::error!("Directory scan failed: {}", e);
                     if let Some(mut operation) = scan_op.batch_operation {
                         operation.increment_error();
                         operation.advance();
@@ -1893,7 +1896,7 @@ impl App {
 
                 let t = termide_i18n::t();
                 self.state.set_info(t.status_item_deleted().to_string());
-                logger::info("Delete operation completed successfully".to_string());
+                log::info!("Delete operation completed successfully");
             }
             Ok(Err(e)) => {
                 // Delete failed or cancelled
@@ -1910,10 +1913,10 @@ impl App {
                 let error_msg = e.to_string();
                 if error_msg.contains("cancelled") {
                     self.state.set_info("Delete cancelled".to_string());
-                    logger::info("Delete operation cancelled by user".to_string());
+                    log::info!("Delete operation cancelled by user");
                 } else {
                     self.state.set_error(format!("Delete failed: {}", e));
-                    logger::error(format!("Delete operation failed: {}", e));
+                    log::error!("Delete operation failed: {}", e);
                 }
             }
             Err(_) => {
@@ -1937,7 +1940,7 @@ impl App {
         for event in events {
             match event {
                 OperationEvent::Started(id) => {
-                    logger::info(format!("Operation {} started", id));
+                    log::info!("Operation {} started", id);
                     self.state.needs_redraw = true;
                 }
                 OperationEvent::Progress(_id, progress) => {
@@ -1983,7 +1986,7 @@ impl App {
 
                     match result {
                         OperationResult::Success | OperationResult::SuccessWithPath(_) => {
-                            logger::info(format!("Operation {} completed successfully", id));
+                            log::info!("Operation {} completed successfully", id);
                             should_refresh_file_managers = true;
 
                             // Handle remote delete for move operations (delete source after download)
@@ -1994,10 +1997,10 @@ impl App {
                                     .delete(&pending_delete.vfs_source);
                                 std::thread::spawn(move || {
                                     if let Err(e) = delete_op.recv() {
-                                        termide_logger::error(format!(
+                                        log::error!(
                                             "Failed to delete remote source after move: {}",
                                             e
-                                        ));
+                                        );
                                     }
                                 });
                             }
@@ -2009,10 +2012,7 @@ impl App {
                                     if let Err(e) =
                                         std::fs::remove_file(&batch_upload.current_source)
                                     {
-                                        logger::warn(format!(
-                                            "Failed to delete source after move: {}",
-                                            e
-                                        ));
+                                        log::warn!("Failed to delete source after move: {}", e);
                                     }
                                 }
 
@@ -2069,10 +2069,7 @@ impl App {
                                                     Some(batch_upload);
                                             }
                                             Err(e) => {
-                                                logger::error(format!(
-                                                    "Failed to start next upload: {}",
-                                                    e
-                                                ));
+                                                log::error!("Failed to start next upload: {}", e);
                                                 self.state.close_modal();
                                                 self.state
                                                     .set_error(format!("Upload failed: {}", e));
@@ -2112,11 +2109,15 @@ impl App {
                             completed,
                             skipped,
                             failed,
+                            ..
                         } => {
-                            logger::info(format!(
+                            log::info!(
                                 "Operation {} partially completed: {} done, {} skipped, {} failed",
-                                id, completed, skipped, failed
-                            ));
+                                id,
+                                completed,
+                                skipped,
+                                failed
+                            );
                             should_refresh_file_managers = true;
 
                             // Continue batch operation if pending
@@ -2146,7 +2147,7 @@ impl App {
                             }
                         }
                         OperationResult::Failed(err) => {
-                            logger::error(format!("Operation {} failed: {}", id, err));
+                            log::error!("Operation {} failed: {}", id, err);
 
                             // Clear pending remote delete (don't delete source if download failed)
                             self.state.pending_remote_delete = None;
@@ -2171,7 +2172,7 @@ impl App {
                             }
                         }
                         OperationResult::Cancelled => {
-                            logger::info(format!("Operation {} cancelled", id));
+                            log::info!("Operation {} cancelled", id);
 
                             // Clear pending remote delete (don't delete source if download cancelled)
                             self.state.pending_remote_delete = None;
@@ -2215,7 +2216,7 @@ impl App {
                     }
                 }
                 OperationEvent::Paused(id) => {
-                    logger::info(format!("Operation {} paused", id));
+                    log::info!("Operation {} paused", id);
                     // Sync pause state with modal
                     if let Some(crate::state::ActiveModal::Progress(ref mut modal)) =
                         self.state.active_modal
@@ -2225,7 +2226,7 @@ impl App {
                     }
                 }
                 OperationEvent::Resumed(id) => {
-                    logger::info(format!("Operation {} resumed", id));
+                    log::info!("Operation {} resumed", id);
                     // Sync resume state with modal
                     if let Some(crate::state::ActiveModal::Progress(ref mut modal)) =
                         self.state.active_modal
@@ -2235,12 +2236,12 @@ impl App {
                     }
                 }
                 OperationEvent::ConflictDetected(id, conflict_info) => {
-                    logger::info(format!(
+                    log::info!(
                         "Operation {} conflict: {} -> {}",
                         id,
                         conflict_info.source.display(),
                         conflict_info.destination.display()
-                    ));
+                    );
 
                     // Convert OperationPath to PathBuf for ConflictModal
                     let source_path = match &conflict_info.source {
@@ -2310,7 +2311,7 @@ impl App {
 
         // Save session to file
         session.save(&self.project_root)?;
-        termide_logger::info("Session saved");
+        log::info!("Session saved");
         Ok(())
     }
 
@@ -2334,7 +2335,7 @@ impl App {
             term_width,
             self.state.editor_config(),
         )?;
-        termide_logger::info("Session loaded");
+        log::info!("Session loaded");
 
         // Initialize LSP for all restored editors
         if let Some(ref mut lsp_manager) = self.state.lsp_manager {
@@ -2349,7 +2350,7 @@ impl App {
 
         // Clean up orphaned buffer files (not referenced in session anymore)
         if let Err(e) = termide_session::cleanup_orphaned_buffers(&session_dir) {
-            termide_logger::warn(format!("Failed to cleanup orphaned buffers: {}", e));
+            log::warn!("Failed to cleanup orphaned buffers: {}", e);
         }
 
         Ok(())
@@ -2359,7 +2360,7 @@ impl App {
     pub fn auto_save_session(&mut self) {
         if let Err(e) = self.save_session() {
             // Log error but don't interrupt user workflow
-            termide_logger::error(format!("Failed to auto-save session: {}", e));
+            log::error!("Failed to auto-save session: {}", e);
         }
     }
 

@@ -12,7 +12,6 @@ use super::App;
 use crate::state::{ActiveModal, PendingAction};
 use crate::PanelExt;
 use termide_i18n as i18n;
-use termide_logger as logger;
 
 impl App {
     /// Handle keyboard event
@@ -21,10 +20,11 @@ impl App {
         let key = termide_keyboard::translate_hotkey(key);
 
         // Log key event for debugging
-        logger::debug(format!(
+        log::debug!(
             "Key event: code={:?}, modifiers={:?}",
-            key.code, key.modifiers
-        ));
+            key.code,
+            key.modifiers
+        );
 
         // Clear status message on any key press
         if self.state.ui.status_message.is_some() {

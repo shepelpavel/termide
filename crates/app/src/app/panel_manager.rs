@@ -30,10 +30,7 @@ impl App {
                         if let Err(e) =
                             termide_session::delete_unsaved_buffer(&session_dir, filename)
                         {
-                            termide_logger::warn(format!(
-                                "Failed to delete unsaved buffer file: {}",
-                                e
-                            ));
+                            log::warn!("Failed to delete unsaved buffer file: {}", e);
                         }
                     }
                 }

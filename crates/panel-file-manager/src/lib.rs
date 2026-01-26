@@ -816,9 +816,7 @@ impl FileManager {
         // Read directory contents
         // For remote paths, skip local file reading - entries come from VFS via update_entries_from_vfs()
         if self.vfs.is_remote() {
-            termide_logger::debug(
-                "load_directory_inner: Skipping local read for remote path".to_string(),
-            );
+            log::debug!("load_directory_inner: Skipping local read for remote path");
             // For remote paths, entries will be populated by update_entries_from_vfs()
             // when the VFS connection completes and directory listing is received
         } else if let Ok(read_dir) = fs::read_dir(&self.current_path) {
@@ -888,10 +886,7 @@ impl FileManager {
                 }
             }
         } else {
-            termide_logger::warn(format!(
-                "Failed to read directory: {}",
-                self.current_path.display()
-            ));
+            log::warn!("Failed to read directory: {}", self.current_path.display());
         }
 
         // Note: deleted files are added when async git status completes (apply_git_statuses)
@@ -1490,7 +1485,7 @@ impl Panel for FileManager {
 
             // Check for timeout
             if secs >= self.cached_vfs_timeout_secs {
-                termide_logger::warn(format!("VFS connection timeout after {}s", secs));
+                log::warn!("VFS connection timeout after {}s", secs);
                 if self.vfs.cancel_pending().is_some() {
                     // Sync FileManager path with VfsState
                     self.current_path = self.vfs.path_buf();
@@ -1519,7 +1514,7 @@ impl Panel for FileManager {
                     return events;
                 }
                 Err(e) => {
-                    termide_logger::error(format!("VFS operation failed: {}", e));
+                    log::error!("VFS operation failed: {}", e);
                     // VfsState already restored to previous path, sync FileManager
                     self.current_path = self.vfs.path_buf();
                     let _ = self.load_directory();
@@ -1544,14 +1539,14 @@ impl Panel for FileManager {
 
         // Defensive check: ensure remote paths include protocol
         if self.is_remote() && !path_or_url.contains("://") {
-            termide_logger::warn(format!(
+            log::warn!(
                 "Session save WARNING: Remote path missing protocol: '{}'. VfsPath details: protocol={:?}, host={:?}, username={:?}, path={:?}",
                 path_or_url,
                 self.vfs.current_path().protocol,
                 self.vfs.current_path().host,
                 self.vfs.current_path().username,
                 self.vfs.current_path().path
-            ));
+            );
 
             // Try to reconstruct the URL manually
             let vfs_path = self.vfs.current_path();
@@ -1569,12 +1564,10 @@ impl Panel for FileManager {
                     url.push_str(&port.to_string());
                 }
                 url.push_str(&vfs_path.path.display().to_string());
-                termide_logger::info(format!("Reconstructed URL: {}", url));
+                log::info!("Reconstructed URL: {}", url);
                 url
             } else {
-                termide_logger::error(
-                    "VfsPath.protocol is not remote but is_remote() returned true!",
-                );
+                log::error!("VfsPath.protocol is not remote but is_remote() returned true!");
                 path_or_url
             };
 
@@ -1582,11 +1575,11 @@ impl Panel for FileManager {
                 path_or_url: reconstructed,
             })
         } else {
-            termide_logger::debug(format!(
+            log::debug!(
                 "Session save: Saving path '{}' (is_remote={})",
                 path_or_url,
                 self.is_remote()
-            ));
+            );
 
             Some(SessionPanel::FileManager { path_or_url })
         }

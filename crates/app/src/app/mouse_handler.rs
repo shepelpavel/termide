@@ -9,7 +9,7 @@ use super::App;
 use crate::PanelExt;
 use termide_config::Config;
 use termide_i18n as i18n;
-use termide_logger as logger;
+
 use termide_theme::Theme;
 use termide_ui_render::{
     get_bookmarks_group_items, get_bookmarks_items, get_menu_item_x_position, get_options_items,
@@ -22,7 +22,7 @@ impl App {
     /// Apply language by code and save preference (for mouse handler)
     fn apply_language_mouse(&mut self, lang_code: &str, lang_name: &str) -> Result<()> {
         if let Err(e) = i18n::set_language(lang_code) {
-            logger::warn(format!("Failed to set language: {}", e));
+            log::warn!("Failed to set language: {}", e);
             self.state
                 .set_error(format!("Failed to set language: {}", e));
             return Ok(());
@@ -33,7 +33,7 @@ impl App {
 
         // Save preference to config file
         if let Err(e) = self.save_language_preference_mouse(lang_code) {
-            logger::warn(format!("Failed to save language preference: {}", e));
+            log::warn!("Failed to save language preference: {}", e);
         }
 
         Ok(())
@@ -295,7 +295,7 @@ impl App {
 
             if (1..=3).contains(&relative_x) {
                 // Click on [X] button - close panel with confirmation if needed
-                termide_logger::debug("Panel close button [X] clicked");
+                log::debug!("Panel close button [X] clicked");
                 // First, activate the clicked panel
                 if let Some(group) = self.layout_manager.panel_groups.get_mut(group_idx) {
                     group.set_expanded(panel_idx);

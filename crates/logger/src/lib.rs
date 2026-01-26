@@ -2,13 +2,20 @@
 //!
 //! Provides a simple, thread-safe logging system with file output
 //! and in-memory log storage for the debug panel.
+//!
+//! This module implements the `log` crate's `Log` trait, allowing use of
+//! standard logging macros like `log::info!()`, `log::error!()`, etc.
 
 use chrono::Local;
+use log::{Level, LevelFilter, Log, Metadata, Record};
 use std::collections::VecDeque;
 use std::fs::{self, OpenOptions};
 use std::io::Write as IoWrite;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
+
+// Re-export log macros for convenient use
+pub use log::{debug, error, info, warn};
 
 /// Log entry
 #[derive(Debug, Clone)]
@@ -53,6 +60,36 @@ impl std::str::FromStr for LogLevel {
             "error" => Ok(LogLevel::Error),
             _ => Err(format!("Unknown log level: {}", s)),
         }
+    }
+}
+
+/// Convert from log crate's Level to our LogLevel
+fn level_to_log_level(level: Level) -> LogLevel {
+    match level {
+        Level::Error => LogLevel::Error,
+        Level::Warn => LogLevel::Warn,
+        Level::Info => LogLevel::Info,
+        Level::Debug | Level::Trace => LogLevel::Debug,
+    }
+}
+
+/// Convert from our LogLevel to log crate's Level
+fn log_level_to_level(level: LogLevel) -> Level {
+    match level {
+        LogLevel::Error => Level::Error,
+        LogLevel::Warn => Level::Warn,
+        LogLevel::Info => Level::Info,
+        LogLevel::Debug => Level::Debug,
+    }
+}
+
+/// Convert from our LogLevel to log crate's LevelFilter
+fn log_level_to_filter(level: LogLevel) -> LevelFilter {
+    match level {
+        LogLevel::Error => LevelFilter::Error,
+        LogLevel::Warn => LevelFilter::Warn,
+        LogLevel::Info => LevelFilter::Info,
+        LogLevel::Debug => LevelFilter::Debug,
     }
 }
 
@@ -136,6 +173,36 @@ impl Logger {
 /// Global logger instance that persists for the application lifetime.
 static LOGGER: OnceLock<Mutex<Logger>> = OnceLock::new();
 
+/// Static logger for registration with log crate
+static TERMIDE_LOGGER: TermideLogger = TermideLogger;
+
+/// Implementation of log::Log trait for integration with standard logging
+struct TermideLogger;
+
+impl Log for TermideLogger {
+    fn enabled(&self, metadata: &Metadata) -> bool {
+        if let Some(logger) = LOGGER.get() {
+            if let Ok(l) = logger.lock() {
+                return log_level_to_level(l.min_level) >= metadata.level();
+            }
+        }
+        true
+    }
+
+    fn log(&self, record: &Record) {
+        if self.enabled(record.metadata()) {
+            if let Some(logger) = LOGGER.get() {
+                if let Ok(mut l) = logger.lock() {
+                    let level = level_to_log_level(record.level());
+                    l.add_entry(level, record.args().to_string());
+                }
+            }
+        }
+    }
+
+    fn flush(&self) {}
+}
+
 /// Get or initialize the global logger instance
 fn get_logger() -> &'static Mutex<Logger> {
     // If logger is not initialized, panic with a helpful message
@@ -156,34 +223,9 @@ fn get_logger() -> &'static Mutex<Logger> {
 /// * `min_level` - Minimum log level to record (Debug, Info, Warn, Error)
 pub fn init(file_path: PathBuf, max_entries: usize, min_level: LogLevel) {
     LOGGER.get_or_init(|| Mutex::new(Logger::new(file_path, max_entries, min_level)));
-}
-
-/// Log a debug message
-pub fn debug(message: impl Into<String>) {
-    if let Ok(mut logger) = get_logger().lock() {
-        logger.add_entry(LogLevel::Debug, message.into());
-    }
-}
-
-/// Log an informational message
-pub fn info(message: impl Into<String>) {
-    if let Ok(mut logger) = get_logger().lock() {
-        logger.add_entry(LogLevel::Info, message.into());
-    }
-}
-
-/// Log a warning message
-pub fn warn(message: impl Into<String>) {
-    if let Ok(mut logger) = get_logger().lock() {
-        logger.add_entry(LogLevel::Warn, message.into());
-    }
-}
-
-/// Log an error message
-pub fn error(message: impl Into<String>) {
-    if let Ok(mut logger) = get_logger().lock() {
-        logger.add_entry(LogLevel::Error, message.into());
-    }
+    // Register with log crate (ignore error if already set)
+    let _ = log::set_logger(&TERMIDE_LOGGER);
+    log::set_max_level(log_level_to_filter(min_level));
 }
 
 /// Get all log entries

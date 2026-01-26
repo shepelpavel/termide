@@ -98,10 +98,7 @@ impl LspServer {
             config.args,
             workspace_root
         );
-        termide_logger::info(format!(
-            "LSP: Starting {} for {:?}",
-            config.command, workspace_root
-        ));
+        log::info!("LSP: Starting {} for {:?}", config.command, workspace_root);
 
         let mut process = Command::new(&config.command)
             .args(&config.args)
@@ -111,7 +108,7 @@ impl LspServer {
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| {
-                termide_logger::error(format!("LSP: Failed to start {}: {}", config.command, e));
+                log::error!("LSP: Failed to start {}: {}", config.command, e);
                 e
             })
             .with_context(|| format!("Failed to start LSP server: {}", config.command))?;
@@ -293,7 +290,7 @@ impl LspServer {
                 Ok(line) if !line.is_empty() => {
                     // Log to journal as warning (not error, since LSP servers often
                     // write informational messages to stderr)
-                    termide_logger::warn(format!("LSP [{}]: {}", lang, line));
+                    log::warn!("LSP [{}]: {}", lang, line);
                 }
                 Err(_) => break,
                 _ => {}
@@ -317,7 +314,7 @@ impl LspServer {
                 {
                     *capabilities.lock().unwrap() = Some(init_result.capabilities);
                     log::info!("LSP server initialized, waiting for indexing");
-                    termide_logger::info("LSP: Initialized, starting indexing...");
+                    log::info!("LSP: Initialized, starting indexing...");
                 }
                 let _ = tx.send(result);
             } else if let Some(error) = response.error {
@@ -328,7 +325,7 @@ impl LspServer {
             if let Ok(init_result) = serde_json::from_value::<InitializeResult>(result) {
                 *capabilities.lock().unwrap() = Some(init_result.capabilities);
                 log::info!("LSP server initialized, waiting for indexing");
-                termide_logger::info("LSP: Initialized, starting indexing...");
+                log::info!("LSP: Initialized, starting indexing...");
             }
         }
     }
@@ -384,7 +381,7 @@ impl LspServer {
                 ProgressParamsValue::WorkDone(WorkDoneProgress::Begin(begin)) => {
                     active_progress.lock().unwrap().insert(token);
                     *status.lock().unwrap() = ServerStatus::Indexing;
-                    termide_logger::info(format!("LSP: {}", begin.title));
+                    log::info!("LSP: {}", begin.title);
                 }
                 ProgressParamsValue::WorkDone(WorkDoneProgress::Report(report)) => {
                     // Optional: could show percentage if available
@@ -398,7 +395,7 @@ impl LspServer {
                     if progress.is_empty() {
                         drop(progress); // Release before acquiring status lock
                         *status.lock().unwrap() = ServerStatus::Running;
-                        termide_logger::info("LSP: Ready");
+                        log::info!("LSP: Ready");
                     }
                 }
             }

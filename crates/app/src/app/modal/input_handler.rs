@@ -26,17 +26,17 @@ impl App {
                 if let Some(fm) = panel.as_file_manager_mut() {
                     let result = fm.create_file(name.clone());
                     if result.is_ok() {
-                        termide_logger::info(format!("File created: {}", name));
+                        log::info!("File created: {}", name);
                         // Refresh directory contents
                         let _ = fm.load_directory();
                     }
                     Some(result)
                 } else {
-                    termide_logger::error("FileManager panel could not be accessed".to_string());
+                    log::error!("FileManager panel could not be accessed");
                     None
                 }
             } else {
-                termide_logger::error("FileManager not found".to_string());
+                log::error!("FileManager not found");
                 None
             };
 
@@ -47,7 +47,7 @@ impl App {
                         self.state.set_info(t.status_file_created(name));
                     }
                     Err(e) => {
-                        termide_logger::error(format!("File creation error '{}': {}", name, e));
+                        log::error!("File creation error '{}': {}", name, e);
                         // Show error in modal instead of status bar
                         use termide_modal::{ActiveModal, InfoModal};
                         let error_msg = format!("Failed to create file '{}': {}", name, e);
@@ -75,17 +75,17 @@ impl App {
                 if let Some(fm) = panel.as_file_manager_mut() {
                     let result = fm.create_directory(name.clone());
                     if result.is_ok() {
-                        termide_logger::info(format!("Directory created: {}", name));
+                        log::info!("Directory created: {}", name);
                         // Refresh directory contents
                         let _ = fm.load_directory();
                     }
                     Some(result)
                 } else {
-                    termide_logger::error("FileManager panel could not be accessed".to_string());
+                    log::error!("FileManager panel could not be accessed");
                     None
                 }
             } else {
-                termide_logger::error("FileManager not found".to_string());
+                log::error!("FileManager not found");
                 None
             };
 
@@ -96,10 +96,7 @@ impl App {
                         self.state.set_info(t.status_dir_created(name));
                     }
                     Err(e) => {
-                        termide_logger::error(format!(
-                            "Directory creation error '{}': {}",
-                            name, e
-                        ));
+                        log::error!("Directory creation error '{}': {}", name, e);
                         // Show error in modal instead of status bar
                         use termide_modal::{ActiveModal, InfoModal};
                         let error_msg = format!("Failed to create directory '{}': {}", name, e);
@@ -143,7 +140,7 @@ impl App {
 
                     match editor.save_file_as(file_path.clone()) {
                         Ok(_) => {
-                            termide_logger::info(format!("File saved as: {}", display_path));
+                            log::info!("File saved as: {}", display_path);
                             self.state.set_info(t.status_file_saved(&display_path));
                             saved_path = Some(file_path.clone());
 
@@ -153,7 +150,7 @@ impl App {
                             }
                         }
                         Err(e) => {
-                            termide_logger::error(format!("Save error '{}': {}", display_path, e));
+                            log::error!("Save error '{}': {}", display_path, e);
                             self.state.set_error(t.status_error_save(&e.to_string()));
                         }
                     }
@@ -174,15 +171,9 @@ impl App {
                         let new_mode = mode | ((mode & 0o444) >> 2);
                         perms.set_mode(new_mode);
                         if let Err(e) = std::fs::set_permissions(path, perms) {
-                            termide_logger::warn(format!(
-                                "Failed to set executable permission: {}",
-                                e
-                            ));
+                            log::warn!("Failed to set executable permission: {}", e);
                         } else {
-                            termide_logger::info(format!(
-                                "Set executable permission on: {}",
-                                path.display()
-                            ));
+                            log::info!("Set executable permission on: {}", path.display());
                         }
                     }
                 }

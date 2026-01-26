@@ -71,12 +71,13 @@ pub trait PanelExt {
     fn take_modal_request(&mut self) -> Option<(PendingAction, ActiveModal)>;
 
     /// Take pending upload operation from Editor.
+    /// Returns (temp_path, remote_path, vfs_manager) for app to create upload via OperationManager
     fn take_pending_upload(
         &mut self,
     ) -> Option<(
-        termide_vfs::VfsOperation<()>,
-        termide_vfs::VfsPath,
         std::path::PathBuf,
+        termide_vfs::VfsPath,
+        std::sync::Arc<termide_vfs::VfsManager>,
     )>;
 }
 
@@ -126,9 +127,9 @@ impl PanelExt for dyn Panel {
     fn take_pending_upload(
         &mut self,
     ) -> Option<(
-        termide_vfs::VfsOperation<()>,
-        termide_vfs::VfsPath,
         std::path::PathBuf,
+        termide_vfs::VfsPath,
+        std::sync::Arc<termide_vfs::VfsManager>,
     )> {
         if let Some(editor) = self.as_editor_mut() {
             return editor.take_pending_upload();
@@ -174,9 +175,9 @@ impl PanelExt for Box<dyn Panel> {
     fn take_pending_upload(
         &mut self,
     ) -> Option<(
-        termide_vfs::VfsOperation<()>,
-        termide_vfs::VfsPath,
         std::path::PathBuf,
+        termide_vfs::VfsPath,
+        std::sync::Arc<termide_vfs::VfsManager>,
     )> {
         (**self).take_pending_upload()
     }

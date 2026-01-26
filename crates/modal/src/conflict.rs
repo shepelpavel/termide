@@ -44,6 +44,12 @@ pub struct ConflictModal {
     dest_name: String,
     is_directory: bool,
     remaining_items: usize, // Number of items remaining in queue (excluding current)
+    /// Current conflict number (1-indexed) - used in title construction.
+    #[allow(dead_code)]
+    current_conflict: usize,
+    /// Total number of conflicts detected - used in title construction.
+    #[allow(dead_code)]
+    total_conflicts: usize,
     selected: usize,
     button_areas: Vec<Rect>,
 }
@@ -51,6 +57,24 @@ pub struct ConflictModal {
 impl ConflictModal {
     /// Create a conflict modal window
     pub fn new(source: &Path, destination: &Path, remaining_items: usize) -> Self {
+        Self::with_counter(source, destination, remaining_items, 1, 1)
+    }
+
+    /// Create a conflict modal window with conflict counter.
+    ///
+    /// # Arguments
+    /// * `source` - Source file path
+    /// * `destination` - Destination file path (existing)
+    /// * `remaining_items` - Number of items remaining in queue (excluding current)
+    /// * `current_conflict` - Current conflict number (1-indexed)
+    /// * `total_conflicts` - Total number of conflicts detected (or best estimate)
+    pub fn with_counter(
+        source: &Path,
+        destination: &Path,
+        remaining_items: usize,
+        current_conflict: usize,
+        total_conflicts: usize,
+    ) -> Self {
         let source_name = source
             .file_name()
             .and_then(|n| n.to_str())
@@ -63,7 +87,15 @@ impl ConflictModal {
             .to_string();
         let is_directory = destination.is_dir();
 
-        let title = if is_directory {
+        // Build title with counter if there are multiple conflicts
+        let title = if total_conflicts > 1 {
+            let base = if is_directory {
+                "Directory Conflict"
+            } else {
+                "File Conflict"
+            };
+            format!("{} ({}/{})", base, current_conflict, total_conflicts)
+        } else if is_directory {
             "Directory Conflict".to_string()
         } else {
             "File Conflict".to_string()
@@ -75,6 +107,8 @@ impl ConflictModal {
             dest_name,
             is_directory,
             remaining_items,
+            current_conflict,
+            total_conflicts,
             selected: 0,
             button_areas: Vec::new(),
         }

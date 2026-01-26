@@ -14,7 +14,6 @@ use super::App;
 use crate::PanelExt;
 use termide_core::{GitOperationType, PanelEvent};
 use termide_i18n as i18n;
-use termide_logger as logger;
 use termide_panel_editor::Editor;
 
 impl App {
@@ -120,7 +119,7 @@ impl App {
             // === Clipboard ===
             PanelEvent::CopyToClipboard(text) => {
                 if let Err(e) = termide_clipboard::copy(&text) {
-                    logger::error(format!("Failed to copy to clipboard: {}", e));
+                    log::error!("Failed to copy to clipboard: {}", e);
                 }
             }
 
@@ -130,7 +129,7 @@ impl App {
             }
 
             PanelEvent::Quit => {
-                logger::debug("Quit event received");
+                log::debug!("Quit event received");
                 self.handle_quit_request()?;
             }
 
@@ -244,11 +243,11 @@ impl App {
         if let Some(panel) = self.layout_manager.active_panel_mut() {
             if let Some(editor) = panel.as_editor_mut() {
                 if let Err(e) = editor.paste_from_clipboard() {
-                    logger::error(format!("Paste to editor failed: {}", e));
+                    log::error!("Paste to editor failed: {}", e);
                 }
             } else if let Some(terminal) = panel.as_terminal_mut() {
                 if let Err(e) = terminal.paste_from_clipboard() {
-                    logger::error(format!("Paste to terminal failed: {}", e));
+                    log::error!("Paste to terminal failed: {}", e);
                 }
             }
         }
@@ -260,11 +259,11 @@ impl App {
         if let Some(panel) = self.layout_manager.active_panel_mut() {
             if let Some(editor) = panel.as_editor_mut() {
                 if let Err(e) = editor.paste_text(&text) {
-                    logger::error(format!("Paste to editor failed: {}", e));
+                    log::error!("Paste to editor failed: {}", e);
                 }
             } else if let Some(terminal) = panel.as_terminal_mut() {
                 if let Err(e) = terminal.paste_text(&text) {
-                    logger::error(format!("Paste to terminal failed: {}", e));
+                    log::error!("Paste to terminal failed: {}", e);
                 }
             }
         }
@@ -279,7 +278,7 @@ impl App {
             .and_then(|n| n.to_str())
             .unwrap_or("?");
         let t = i18n::t();
-        logger::debug(format!("Opening file via event: {}", filename));
+        log::debug!("Opening file via event: {}", filename);
 
         match Editor::open_file_with_config(file_path.clone(), self.state.editor_config()) {
             Ok(mut editor_panel) => {
@@ -290,12 +289,12 @@ impl App {
 
                 self.add_panel(Box::new(editor_panel));
                 self.auto_save_session();
-                logger::info(format!("File '{}' opened in editor", filename));
+                log::info!("File '{}' opened in editor", filename);
                 self.state.set_info(t.editor_file_opened(filename));
             }
             Err(e) => {
                 let error_msg = t.status_error_open_file(filename, &e.to_string());
-                logger::error(format!("Error opening '{}': {}", filename, e));
+                log::error!("Error opening '{}': {}", filename, e);
                 self.state.set_error(error_msg);
             }
         }
@@ -310,12 +309,12 @@ impl App {
             .and_then(|n| n.to_str())
             .unwrap_or("?");
         let t = i18n::t();
-        logger::debug(format!(
+        log::debug!(
             "Opening file at {}:{} via event: {}",
             line + 1,
             column,
             filename
-        ));
+        );
 
         // First check if the file is already open in an editor
         for panel in self.layout_manager.iter_all_panels_mut() {
@@ -325,12 +324,12 @@ impl App {
                     editor.goto_position(line, column);
                     // Focus this panel
                     // Note: This doesn't change focus, but the cursor will move
-                    logger::info(format!(
+                    log::info!(
                         "Jumped to {}:{} in already-open file '{}'",
                         line + 1,
                         column,
                         filename
-                    ));
+                    );
                     self.state
                         .set_info(format!("{}:{}:{}", filename, line + 1, column));
                     return Ok(());
@@ -351,17 +350,12 @@ impl App {
 
                 self.add_panel(Box::new(editor_panel));
                 self.auto_save_session();
-                logger::info(format!(
-                    "File '{}' opened at {}:{}",
-                    filename,
-                    line + 1,
-                    column
-                ));
+                log::info!("File '{}' opened at {}:{}", filename, line + 1, column);
                 self.state.set_info(t.editor_file_opened(filename));
             }
             Err(e) => {
                 let error_msg = t.status_error_open_file(filename, &e.to_string());
-                logger::error(format!("Error opening '{}': {}", filename, e));
+                log::error!("Error opening '{}': {}", filename, e);
                 self.state.set_error(error_msg);
             }
         }
@@ -389,13 +383,10 @@ impl App {
                 let _ = terminal.send_command(&command);
                 self.add_panel(Box::new(terminal));
                 self.auto_save_session();
-                logger::info(format!("Executing '{}' in terminal", filename));
+                log::info!("Executing '{}' in terminal", filename);
             }
             Err(e) => {
-                logger::error(format!(
-                    "Failed to create terminal for '{}': {}",
-                    filename, e
-                ));
+                log::error!("Failed to create terminal for '{}': {}", filename, e);
             }
         }
         Ok(())
@@ -410,13 +401,10 @@ impl App {
                 let _ = terminal.send_command(&command);
                 self.add_panel(Box::new(terminal));
                 self.auto_save_session();
-                logger::info(format!("Running '{}' in terminal", command));
+                log::info!("Running '{}' in terminal", command);
             }
             Err(e) => {
-                logger::error(format!(
-                    "Failed to create terminal for command '{}': {}",
-                    command, e
-                ));
+                log::error!("Failed to create terminal for command '{}': {}", command, e);
             }
         }
         Ok(())
@@ -451,7 +439,7 @@ impl App {
                 if let Some(image_panel) = panel.as_any_mut().downcast_mut::<ImagePanel>() {
                     image_panel.set_image(file_path);
                     self.state.needs_redraw = true;
-                    logger::info(format!("Updating preview to '{}'", filename));
+                    log::info!("Updating preview to '{}'", filename);
                     return Ok(());
                 }
             }
@@ -462,22 +450,23 @@ impl App {
                 Ok(panel) => {
                     self.add_panel_without_focus(Box::new(panel));
                     self.auto_save_session();
-                    logger::info(format!("Previewing '{}' with native graphics", filename));
+                    log::info!("Previewing '{}' with native graphics", filename);
                     return Ok(());
                 }
                 Err(e) => {
-                    logger::debug(format!(
+                    log::debug!(
                         "Native graphics failed for '{}': {}, falling back to xdg-open",
-                        filename, e
-                    ));
+                        filename,
+                        e
+                    );
                 }
             }
         }
 
         // Fallback to system default viewer (xdg-open)
-        logger::info(format!("Opening '{}' with system viewer", filename));
+        log::info!("Opening '{}' with system viewer", filename);
         if let Err(e) = open::that(&file_path) {
-            logger::error(format!("Failed to open '{}': {}", filename, e));
+            log::error!("Failed to open '{}': {}", filename, e);
             self.state
                 .set_error(format!("Failed to open {}: {}", filename, e));
         }
@@ -495,10 +484,10 @@ impl App {
 
         // Show status message
         self.state.set_info(t.status_opening_external(&filename));
-        logger::info(format!("Opening '{}' with system viewer", filename));
+        log::info!("Opening '{}' with system viewer", filename);
 
         if let Err(e) = open::that(&file_path) {
-            logger::error(format!("Failed to open '{}': {}", filename, e));
+            log::error!("Failed to open '{}': {}", filename, e);
             self.state
                 .set_error(format!("Failed to open {}: {}", filename, e));
         }
@@ -514,7 +503,7 @@ impl App {
             Ok(path) => path,
             Err(e) => {
                 let error_msg = format!("Invalid remote URL: {}", e);
-                logger::error(error_msg.clone());
+                log::error!("{}", error_msg);
                 self.state.set_error(error_msg);
                 return Ok(());
             }
@@ -535,24 +524,24 @@ impl App {
                 fm.vfs_state().manager_arc()
             } else {
                 let error_msg = "No file manager panel available for remote file access";
-                logger::error(error_msg.to_string());
+                log::error!("{}", error_msg);
                 self.state.set_error(error_msg.to_string());
                 return Ok(());
             }
         } else {
             let error_msg = "No active panel";
-            logger::error(error_msg.to_string());
+            log::error!("{}", error_msg);
             self.state.set_error(error_msg.to_string());
             return Ok(());
         };
 
-        logger::debug(format!("Opening remote file: {}", url));
+        log::debug!("Opening remote file: {}", url);
 
         // Create temp directory for remote files
         let temp_dir = std::env::temp_dir().join("termide-remote-edit");
         if let Err(e) = std::fs::create_dir_all(&temp_dir) {
             let error_msg = format!("Failed to create temp directory: {}", e);
-            logger::error(error_msg.clone());
+            log::error!("{}", error_msg);
             self.state.set_error(error_msg);
             return Ok(());
         }
@@ -584,7 +573,7 @@ impl App {
             started: std::time::Instant::now(),
         });
 
-        logger::info(format!("Started downloading remote file '{}'", filename));
+        log::info!("Started downloading remote file '{}'", filename);
         Ok(())
     }
 
@@ -595,7 +584,7 @@ impl App {
                 // Convert from 1-based (user-facing) to 0-based (internal)
                 let line_0based = line.saturating_sub(1);
                 editor.set_cursor_line(line_0based);
-                logger::debug(format!("Moved to line {}", line));
+                log::debug!("Moved to line {}", line);
             }
         }
     }
@@ -605,7 +594,7 @@ impl App {
         if let Some(panel) = self.layout_manager.active_panel_mut() {
             if let Some(fm) = panel.as_file_manager_mut() {
                 if let Err(e) = fm.navigate_to(path.clone()) {
-                    logger::error(format!("Navigation failed: {}", e));
+                    log::error!("Navigation failed: {}", e);
                     self.state
                         .set_error(format!("Cannot navigate to: {}", path.display()));
                 }
@@ -655,7 +644,7 @@ impl App {
                         }
                     }
                     Err(e) => {
-                        logger::error(format!("Save failed: {}", e));
+                        log::error!("Save failed: {}", e);
                         self.state.set_error(format!("Save failed: {}", e));
                     }
                 }
@@ -679,18 +668,10 @@ impl App {
                 // Check if it's a git repo
                 if termide_git::find_repo_root(&path).is_some() {
                     if let Err(e) = watcher.watch_repository(path.clone()) {
-                        logger::error(format!(
-                            "Failed to watch repository {}: {}",
-                            path.display(),
-                            e
-                        ));
+                        log::error!("Failed to watch repository {}: {}", path.display(), e);
                     }
                 } else if let Err(e) = watcher.watch_directory(path.clone()) {
-                    logger::error(format!(
-                        "Failed to watch directory {}: {}",
-                        path.display(),
-                        e
-                    ));
+                    log::error!("Failed to watch directory {}: {}", path.display(), e);
                 }
             }
         }
@@ -904,13 +885,13 @@ impl App {
             termide_core::SplitDirection::Horizontal => {
                 // Horizontal split: create new column (unstack if multiple panels in group)
                 if let Err(e) = self.layout_manager.toggle_panel_stacking(terminal_width) {
-                    logger::debug(format!("Split failed: {}", e));
+                    log::debug!("Split failed: {}", e);
                 }
             }
             termide_core::SplitDirection::Vertical => {
                 // Vertical split: stack in same column (merge if single panel)
                 if let Err(e) = self.layout_manager.toggle_panel_stacking(terminal_width) {
-                    logger::debug(format!("Stack failed: {}", e));
+                    log::debug!("Stack failed: {}", e);
                 }
             }
         }
@@ -938,9 +919,9 @@ impl App {
                 group.set_expanded(panel_idx);
             }
             self.layout_manager.focus = group_idx;
-            logger::debug(format!("Focused panel: {}", title));
+            log::debug!("Focused panel: {}", title);
         } else {
-            logger::debug(format!("Panel not found: {}", name));
+            log::debug!("Panel not found: {}", name);
         }
     }
 
@@ -957,7 +938,7 @@ impl App {
 
         // Prevent multiple concurrent operations
         if self.state.ui.git_operation_in_progress {
-            logger::debug("Git operation already in progress, ignoring");
+            log::debug!("Git operation already in progress, ignoring");
             return Ok(());
         }
 
@@ -985,10 +966,7 @@ impl App {
 
         // Get PID before moving child to thread
         let pid = child.id();
-        logger::info(format!(
-            "Running git {} in {:?} (PID: {})",
-            cmd, repo_path, pid
-        ));
+        log::info!("Running git {} in {:?} (PID: {})", cmd, repo_path, pid);
 
         // Set operation state
         self.state.ui.git_operation_in_progress = true;
@@ -1039,10 +1017,7 @@ impl App {
     /// Handle CancelGitOperation event - kill running git process
     pub(super) fn event_cancel_git_operation(&mut self) {
         if let Some(handle) = self.state.git_operation_handle.take() {
-            logger::info(format!(
-                "Cancelling git {} (PID: {})",
-                handle.operation, handle.pid
-            ));
+            log::info!("Cancelling git {} (PID: {})", handle.operation, handle.pid);
 
             // Kill process by PID
             #[cfg(unix)]
@@ -1094,10 +1069,11 @@ impl App {
     ) -> Result<()> {
         use termide_panel_git_diff::GitDiffPanel;
 
-        logger::debug(format!(
+        log::debug!(
             "Opening Git Diff panel for {:?} (commit: {:?})",
-            repo_path, commit_hash
-        ));
+            repo_path,
+            commit_hash
+        );
         self.close_welcome_panels();
 
         let panel = match commit_hash {

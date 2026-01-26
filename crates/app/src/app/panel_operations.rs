@@ -9,16 +9,15 @@ use crate::panel_ext::PanelExt;
 use crate::state::{ActiveModal, PendingAction};
 use termide_core::{CommandResult, PanelCommand};
 use termide_i18n as i18n;
-use termide_logger as logger;
 
 impl App {
     /// Handle panel close request with confirmation if needed
     pub(crate) fn handle_close_panel_request(&mut self, _panel_index: usize) -> Result<()> {
-        logger::debug("Panel close requested");
+        log::debug!("Panel close requested");
         // Check if confirmation is required before closing active panel
         if let Some(panel) = self.layout_manager.active_panel_mut() {
             if let Some(_message) = panel.needs_close_confirmation() {
-                logger::warn("Close requested for panel requiring confirmation");
+                log::warn!("Close requested for panel requiring confirmation");
                 // Check modification status via command (works for Editor panels)
                 let mod_status = panel.handle_command(PanelCommand::GetModificationStatus);
                 if let CommandResult::ModificationStatus {
@@ -95,7 +94,7 @@ impl App {
 
     /// Close all Welcome panels (called before opening new panel)
     pub(super) fn close_welcome_panels(&mut self) {
-        logger::debug("Closing Welcome panel(s)");
+        log::debug!("Closing Welcome panel(s)");
         let mut groups_to_remove = Vec::new();
 
         for group_idx in (0..self.layout_manager.panel_groups.len()).rev() {
@@ -299,10 +298,7 @@ impl App {
 
         // 2. Change working directory
         std::env::set_current_dir(&new_project_root)?;
-        logger::info(format!(
-            "Changed working directory to: {:?}",
-            new_project_root
-        ));
+        log::info!("Changed working directory to: {:?}", new_project_root);
 
         // 3. Update project_root
         self.project_root = new_project_root;
@@ -339,19 +335,13 @@ impl App {
             let session_file = session_dir.join("session.toml");
             if session_file.exists() {
                 let _ = std::fs::remove_file(&session_file);
-                logger::info(format!(
-                    "Cleared existing session in: {:?}",
-                    new_project_root
-                ));
+                log::info!("Cleared existing session in: {:?}", new_project_root);
             }
         }
 
         // 3. Change working directory
         std::env::set_current_dir(&new_project_root)?;
-        logger::info(format!(
-            "Changed working directory to: {:?}",
-            new_project_root
-        ));
+        log::info!("Changed working directory to: {:?}", new_project_root);
 
         // 4. Update project_root
         self.project_root = new_project_root.clone();
@@ -423,10 +413,11 @@ impl App {
 
         // 3. Change working directory
         std::env::set_current_dir(&new_project_root)?;
-        logger::info(format!(
+        log::info!(
             "Moved session from {:?} to {:?}",
-            old_project_root, new_project_root
-        ));
+            old_project_root,
+            new_project_root
+        );
 
         // 4. Update project_root
         self.project_root = new_project_root;
@@ -609,7 +600,7 @@ impl App {
             Ok(terminal) => Ok(terminal),
             Err(e) => {
                 let error_msg = format!("Failed to create terminal: {}", e);
-                logger::error(&error_msg);
+                log::error!("{}", error_msg);
                 self.state.set_error(error_msg.clone());
                 anyhow::bail!(error_msg)
             }

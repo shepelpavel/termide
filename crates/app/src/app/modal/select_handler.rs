@@ -7,7 +7,7 @@ use anyhow::Result;
 use std::path::PathBuf;
 
 use super::super::App;
-use crate::state::{ActiveModal, PendingAction, UploadOperation};
+use crate::state::{ActiveModal, PendingAction};
 use crate::PanelExt;
 use termide_i18n as i18n;
 use termide_ui::path_utils;
@@ -31,7 +31,7 @@ impl App {
             match selected[0] {
                 0 => {
                     // Save and close
-                    termide_logger::info("Selected: Save and close editor");
+                    log::info!("Selected: Save and close editor");
                     if let Some(panel) = self.layout_manager.active_panel_mut() {
                         if let Some(editor) = panel.as_editor_mut() {
                             // Try to save
@@ -41,15 +41,13 @@ impl App {
 
                                 match editor.save() {
                                     Err(e) => {
-                                        termide_logger::error(format!("Save error: {}", e));
+                                        log::error!("Save error: {}", e);
                                         self.state.set_error(t.status_error_save(&e.to_string()));
                                         return Ok(());
                                     }
-                                    Ok(Some((operation, remote_path, temp_path))) => {
+                                    Ok(Some((temp_path, remote_path, vfs_manager))) => {
                                         // Remote file - start async upload with progress modal
-                                        termide_logger::info(
-                                            "Starting remote file upload before closing",
-                                        );
+                                        log::info!("Starting remote file upload before closing");
 
                                         let filename = remote_path
                                             .file_name()
@@ -62,18 +60,6 @@ impl App {
                                         self.state.active_modal =
                                             Some(ActiveModal::Progress(Box::new(modal)));
 
-                                        // Get active panel index (we know it's active since we just used it)
-                                        let panel_id = 0; // Active panel is always at index 0 in the active group
-
-                                        self.state.upload_operation = Some(UploadOperation {
-                                            operation,
-                                            remote_path,
-                                            temp_path,
-                                            editor_panel_id: panel_id,
-                                            started: std::time::Instant::now(),
-                                            close_after_upload: true, // Close editor after upload completes
-                                        });
-
                                         // Set uploading flag to show spinner in editor header
                                         if let Some(panel) = self.layout_manager.active_panel_mut()
                                         {
@@ -82,12 +68,39 @@ impl App {
                                             }
                                         }
 
+                                        // Create upload request via OperationManager
+                                        let request = termide_file_ops::OperationRequest::upload(
+                                            temp_path,
+                                            remote_path,
+                                        );
+
+                                        // Start upload via OperationManager
+                                        match self.state.start_operation_now(request, vfs_manager) {
+                                            Ok(_operation_id) => {
+                                                log::info!("Started save-before-close upload");
+                                            }
+                                            Err(e) => {
+                                                log::error!("Failed to start upload: {}", e);
+                                                self.state.close_modal();
+                                                self.state
+                                                    .set_error(format!("Upload failed: {}", e));
+                                                // Clear uploading flag
+                                                if let Some(panel) =
+                                                    self.layout_manager.active_panel_mut()
+                                                {
+                                                    if let Some(editor) = panel.as_editor_mut() {
+                                                        editor.set_uploading(false);
+                                                    }
+                                                }
+                                            }
+                                        }
+
                                         // Don't close panel yet - wait for upload to complete
                                         return Ok(());
                                     }
                                     Ok(None) => {
                                         // Local file - saved synchronously
-                                        termide_logger::info("File saved before closing");
+                                        log::info!("File saved before closing");
                                     }
                                 }
 
@@ -123,12 +136,12 @@ impl App {
                 }
                 1 => {
                     // Close without saving
-                    termide_logger::info("Selected: Close without saving");
+                    log::info!("Selected: Close without saving");
                     self.close_panel_at_index(0); // panel_index is obsolete
                 }
                 _ => {
                     // Cancel - do nothing
-                    termide_logger::info("Selected: Cancel closing");
+                    log::info!("Selected: Cancel closing");
                 }
             }
         }
@@ -158,13 +171,13 @@ impl App {
             match selected[0] {
                 0 => {
                     // Overwrite disk with current content
-                    termide_logger::info("Selected: Overwrite disk with current content");
+                    log::info!("Selected: Overwrite disk with current content");
                     if let Some(panel) = self.layout_manager.active_panel_mut() {
                         if let Some(editor) = panel.as_editor_mut() {
                             let t = i18n::t();
                             match editor.force_save() {
                                 Err(e) => {
-                                    termide_logger::error(format!("Force save error: {}", e));
+                                    log::error!("Force save error: {}", e);
                                     self.state.set_error(t.status_error_save(&e.to_string()));
                                     return Ok(());
                                 }
@@ -178,17 +191,17 @@ impl App {
                 }
                 1 => {
                     // Keep disk version (just close)
-                    termide_logger::info("Selected: Keep disk version, close editor");
+                    log::info!("Selected: Keep disk version, close editor");
                     self.close_panel_at_index(0);
                 }
                 2 => {
                     // Reload into editor (don't close)
-                    termide_logger::info("Selected: Reload file into editor");
+                    log::info!("Selected: Reload file into editor");
                     if let Some(panel) = self.layout_manager.active_panel_mut() {
                         if let Some(editor) = panel.as_editor_mut() {
                             let t = i18n::t();
                             if let Err(e) = editor.reload_from_disk() {
-                                termide_logger::error(format!("Reload error: {}", e));
+                                log::error!("Reload error: {}", e);
                                 self.state.set_error(t.status_error_reload(&e.to_string()));
                             } else {
                                 self.state.set_info(t.status_file_reloaded().to_string());
@@ -199,7 +212,7 @@ impl App {
                 }
                 _ => {
                     // Cancel - do nothing
-                    termide_logger::info("Selected: Cancel closing");
+                    log::info!("Selected: Cancel closing");
                 }
             }
         }
@@ -221,13 +234,13 @@ impl App {
             match selected[0] {
                 0 => {
                     // Overwrite disk with my changes
-                    termide_logger::info("Selected: Overwrite disk with local changes");
+                    log::info!("Selected: Overwrite disk with local changes");
                     if let Some(panel) = self.layout_manager.active_panel_mut() {
                         if let Some(editor) = panel.as_editor_mut() {
                             let t = i18n::t();
                             match editor.force_save() {
                                 Err(e) => {
-                                    termide_logger::error(format!("Force save error: {}", e));
+                                    log::error!("Force save error: {}", e);
                                     self.state.set_error(t.status_error_save(&e.to_string()));
                                     return Ok(());
                                 }
@@ -241,12 +254,12 @@ impl App {
                 }
                 1 => {
                     // Reload from disk (discard local changes)
-                    termide_logger::info("Selected: Reload from disk, discard local changes");
+                    log::info!("Selected: Reload from disk, discard local changes");
                     if let Some(panel) = self.layout_manager.active_panel_mut() {
                         if let Some(editor) = panel.as_editor_mut() {
                             let t = i18n::t();
                             if let Err(e) = editor.reload_from_disk() {
-                                termide_logger::error(format!("Reload error: {}", e));
+                                log::error!("Reload error: {}", e);
                                 self.state.set_error(t.status_error_reload(&e.to_string()));
                                 return Ok(());
                             }
@@ -256,7 +269,7 @@ impl App {
                 }
                 _ => {
                     // Cancel - do nothing
-                    termide_logger::info("Selected: Cancel closing");
+                    log::info!("Selected: Cancel closing");
                 }
             }
         }
@@ -292,10 +305,10 @@ impl App {
                 match selected {
                     1 => {
                         // Delete only the interrupted file
-                        termide_logger::info(format!(
+                        log::info!(
                             "Cancel cleanup: delete partial file {}",
                             partial_path.display()
-                        ));
+                        );
                         if partial_path.exists() {
                             if let Err(e) = std::fs::remove_file(&partial_path) {
                                 self.state.set_error(format!("Failed to delete: {}", e));
@@ -307,10 +320,7 @@ impl App {
                     2 => {
                         // Delete entire destination directory
                         if let Some(dest_dir) = all_dest_paths.first() {
-                            termide_logger::info(format!(
-                                "Cancel cleanup: delete all {}",
-                                dest_dir.display()
-                            ));
+                            log::info!("Cancel cleanup: delete all {}", dest_dir.display());
                             if dest_dir.exists() {
                                 if let Err(e) = std::fs::remove_dir_all(dest_dir) {
                                     self.state.set_error(format!("Failed to delete: {}", e));
@@ -322,7 +332,7 @@ impl App {
                     }
                     _ => {
                         // Keep all (0 or any other)
-                        termide_logger::info("Cancel cleanup: keep all");
+                        log::info!("Cancel cleanup: keep all");
                     }
                 }
             } else {
@@ -332,10 +342,7 @@ impl App {
                 match (selected, has_multiple) {
                     (0, _) => {
                         // Delete partial file only
-                        termide_logger::info(format!(
-                            "Cancel cleanup: delete partial {}",
-                            partial_path.display()
-                        ));
+                        log::info!("Cancel cleanup: delete partial {}", partial_path.display());
                         if partial_path.exists() {
                             if let Err(e) = std::fs::remove_file(&partial_path) {
                                 self.state.set_error(format!("Failed to delete: {}", e));
@@ -346,10 +353,10 @@ impl App {
                     }
                     (1, true) => {
                         // Delete all copied files
-                        termide_logger::info(format!(
+                        log::info!(
                             "Cancel cleanup: delete all {} items",
                             all_dest_paths.len() + 1
-                        ));
+                        );
                         let mut deleted = 0;
                         let mut errors = 0;
 
@@ -387,7 +394,7 @@ impl App {
                     }
                     _ => {
                         // Keep everything
-                        termide_logger::info("Cancel cleanup: keep everything");
+                        log::info!("Cancel cleanup: keep everything");
                     }
                 }
             }
@@ -471,7 +478,7 @@ impl App {
                 self.process_batch_operation(batch_op);
             } else {
                 let t = i18n::t();
-                termide_logger::info(format!("Operation '{}' skipped", item_name));
+                log::info!("Operation '{}' skipped", item_name);
                 self.state.set_info(t.status_operation_skipped(item_name));
             }
         }

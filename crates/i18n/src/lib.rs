@@ -494,10 +494,11 @@ pub fn init_with_language(lang: &str) {
 
     let translation: Box<dyn Translation> = runtime::RuntimeTranslation::new(&detected)
         .or_else(|e| {
-            termide_logger::warn(format!(
+            log::warn!(
                 "Failed to load translations for '{}': {}. Falling back to English",
-                detected, e
-            ));
+                detected,
+                e
+            );
             runtime::RuntimeTranslation::new("en")
         })
         .map(|rt| Box::new(rt) as Box<dyn Translation>)

@@ -2878,6 +2878,7 @@ dependencies = [
  "chrono",
  "crossterm 0.28.1",
  "dirs",
+ "log",
  "lsp-types",
  "open",
  "ratatui",
@@ -3104,6 +3105,7 @@ name = "termide-logger"
 version = "0.10.1"
 dependencies = [
  "chrono",
+ "log",
 ]
 
 [[package]]

@@ -107,27 +107,11 @@ impl App {
                                 }
                                 return Ok(()); // Don't close modal
                             } else {
-                                // User cancelled - signal background thread to cancel
-                                if let Some(ref copy_op) = self.state.local_copy_operation {
-                                    copy_op
-                                        .cancel_flag
-                                        .store(true, std::sync::atomic::Ordering::Relaxed);
-                                }
-                                if let Some(ref copy_op) = self.state.local_directory_copy_operation
-                                {
-                                    copy_op
-                                        .cancel_flag
-                                        .store(true, std::sync::atomic::Ordering::Relaxed);
-                                }
-                                if let Some(ref scan_op) = self.state.local_scan_operation {
-                                    scan_op
-                                        .cancel_flag
-                                        .store(true, std::sync::atomic::Ordering::Relaxed);
-                                }
+                                // User cancelled - cancel all running operations via OperationManager
+                                self.state.cancel_all_operations();
 
-                                // Close progress modal - the error handler will show the delete confirmation
+                                // Close progress modal - poll_operation_manager will handle cleanup
                                 self.state.close_modal();
-                                // Don't clear operations yet - check_local_*_copy_progress will handle them
                                 return Ok(());
                             }
                         }
@@ -303,27 +287,11 @@ impl App {
                                 }
                                 return Ok(()); // Don't close modal
                             } else {
-                                // User cancelled - signal background thread to cancel
-                                if let Some(ref copy_op) = self.state.local_copy_operation {
-                                    copy_op
-                                        .cancel_flag
-                                        .store(true, std::sync::atomic::Ordering::Relaxed);
-                                }
-                                if let Some(ref copy_op) = self.state.local_directory_copy_operation
-                                {
-                                    copy_op
-                                        .cancel_flag
-                                        .store(true, std::sync::atomic::Ordering::Relaxed);
-                                }
-                                if let Some(ref scan_op) = self.state.local_scan_operation {
-                                    scan_op
-                                        .cancel_flag
-                                        .store(true, std::sync::atomic::Ordering::Relaxed);
-                                }
+                                // User cancelled - cancel all running operations via OperationManager
+                                self.state.cancel_all_operations();
 
-                                // Close progress modal - the error handler will show the delete confirmation
+                                // Close progress modal - poll_operation_manager will handle cleanup
                                 self.state.close_modal();
-                                // Don't clear operations yet - check_local_*_copy_progress will handle them
                                 return Ok(());
                             }
                         }
@@ -543,7 +511,7 @@ impl App {
                 ModalResolution::SkipAll => FileOpsResolution::SkipAll,
                 ModalResolution::Rename | ModalResolution::RenameAll => {
                     // Rename is not supported by OperationManager yet, treat as Skip
-                    termide_logger::warn("Rename resolution not yet supported, skipping file");
+                    log::warn!("Rename resolution not yet supported, skipping file");
                     FileOpsResolution::Skip
                 }
             };
@@ -553,10 +521,10 @@ impl App {
                 .state
                 .resolve_operation_conflict(operation_id, file_ops_resolution)
             {
-                termide_logger::error(format!(
+                log::error!(
                     "Failed to send conflict resolution for operation {}",
                     operation_id
-                ));
+                );
             }
         }
         Ok(())

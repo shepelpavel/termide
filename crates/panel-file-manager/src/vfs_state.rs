@@ -251,10 +251,7 @@ impl VfsState {
 
     /// Start a connection to a remote path.
     fn start_connect(&mut self, path: VfsPath) -> VfsResult<()> {
-        termide_logger::debug(format!(
-            "VfsState: Starting connection to {}",
-            path.to_url_string()
-        ));
+        log::debug!("VfsState: Starting connection to {}", path.to_url_string());
         // Start async connection based on protocol
         let operation = match path.protocol {
             VfsProtocol::Sftp => {
@@ -297,10 +294,10 @@ impl VfsState {
     pub fn start_list_dir(&mut self) {
         // For remote paths, check if connected and start connection if needed
         if self.current_path.is_remote() && !self.manager.is_connected(&self.current_path) {
-            termide_logger::debug(format!(
+            log::debug!(
                 "VfsState: Not connected to {}, starting connection",
                 self.current_path.to_url_string()
-            ));
+            );
             self.connection_status = Some(format!(
                 "Connecting to {}...",
                 self.current_path.host.as_deref().unwrap_or("remote")
@@ -308,7 +305,7 @@ impl VfsState {
             self.connection_started = Some(Instant::now());
             // Start connection - tick() will call start_list_dir() again after connection completes
             if let Err(e) = self.start_connect(self.current_path.clone()) {
-                termide_logger::error(format!("VfsState: Failed to start connection: {}", e));
+                log::error!("VfsState: Failed to start connection: {}", e);
                 self.connection_status = None;
             }
             return;
@@ -330,17 +327,14 @@ impl VfsState {
             PendingVfsOperation::ListDir(op) => {
                 match op.try_recv() {
                     Some(Ok(entries)) => {
-                        termide_logger::debug(format!(
-                            "VfsState: ListDir completed with {} entries",
-                            entries.len()
-                        ));
+                        log::debug!("VfsState: ListDir completed with {} entries", entries.len());
                         // Clear connection status to stop spinner
                         self.connection_status = None;
                         // Operation completed
                         Some(Ok(entries))
                     }
                     Some(Err(e)) => {
-                        termide_logger::error(format!("VfsState: ListDir failed: {}", e));
+                        log::error!("VfsState: ListDir failed: {}", e);
 
                         // Clear connection status to stop spinner and status messages
                         self.connection_status = None;
@@ -364,7 +358,7 @@ impl VfsState {
             PendingVfsOperation::Connect(op) => {
                 match op.try_recv() {
                     Some(Ok(())) => {
-                        termide_logger::debug("VfsState: Connection succeeded".to_string());
+                        log::debug!("VfsState: Connection succeeded");
                         // Connection succeeded, start listing
                         self.connection_status = Some("Connected".to_string());
                         self.clear_connection_tracking();
@@ -372,21 +366,16 @@ impl VfsState {
                         // If current path is root ("/") or empty, navigate to home directory
                         let path_str = self.current_path.path.to_string_lossy();
                         let is_root = path_str == "/" || path_str.is_empty();
-                        termide_logger::debug(format!(
-                            "VfsState: Path is '{}', is_root={}",
-                            path_str, is_root
-                        ));
+                        log::debug!("VfsState: Path is '{}', is_root={}", path_str, is_root);
                         if is_root {
                             if let Some(home) = self.manager.get_home_dir(&self.current_path) {
-                                termide_logger::debug(format!(
+                                log::debug!(
                                     "VfsState: Navigating to home directory: {}",
                                     home.to_url_string()
-                                ));
+                                );
                                 self.current_path = home;
                             } else {
-                                termide_logger::debug(
-                                    "VfsState: get_home_dir returned None".to_string(),
-                                );
+                                log::debug!("VfsState: get_home_dir returned None");
                             }
                         }
 
@@ -397,7 +386,7 @@ impl VfsState {
                         // Treat authentication failure as a regular error
                         // Password modal not yet implemented
                         let e = VfsError::AuthenticationFailed(msg);
-                        termide_logger::error(format!("VfsState: Authentication failed: {}", e));
+                        log::error!("VfsState: Authentication failed: {}", e);
                         self.connection_status = None;
                         self.clear_connection_tracking();
                         // Restore previous path
@@ -407,7 +396,7 @@ impl VfsState {
                         Some(Err(e))
                     }
                     Some(Err(e)) => {
-                        termide_logger::error(format!("VfsState: Connection failed: {}", e));
+                        log::error!("VfsState: Connection failed: {}", e);
                         // Connection failed - clear status (error shown via modal)
                         self.connection_status = None;
                         self.clear_connection_tracking();
