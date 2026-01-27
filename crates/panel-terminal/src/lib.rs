@@ -82,6 +82,12 @@ pub struct Terminal {
     hovered_link: Option<(LinkType, Vec<HighlightSegment>)>,
     /// Whether Ctrl key is pressed (tracked for link highlighting)
     ctrl_pressed: bool,
+    /// Selection drag is active (left button held during selection).
+    selection_drag_active: bool,
+    /// Last mouse position in screen coordinates for auto-scroll.
+    last_mouse_position: Option<(u16, u16)>,
+    /// Panel bounds for auto-scroll calculations.
+    panel_bounds: Option<Rect>,
 }
 
 impl Terminal {
@@ -236,6 +242,9 @@ impl Terminal {
             cached_use_alt_screen: false,
             hovered_link: None,
             ctrl_pressed: false,
+            selection_drag_active: false,
+            last_mouse_position: None,
+            panel_bounds: None,
         })
     }
 
@@ -364,6 +373,9 @@ impl Terminal {
             cached_use_alt_screen: false,
             hovered_link: None,
             ctrl_pressed: false,
+            selection_drag_active: false,
+            last_mouse_position: None,
+            panel_bounds: None,
         })
     }
 
@@ -867,12 +879,12 @@ impl Terminal {
 
                 // Check if cell is in selection (optimized - skips if no selection)
                 if is_in_selection(row_idx, col_idx) {
-                    style = Style::default().fg(Color::Black).bg(Color::LightYellow);
+                    style = Style::default().fg(theme.bg).bg(theme.accented_fg);
                 }
 
-                // Check if cell is in hovered URL (Ctrl+hover) - use selection style
+                // Check if cell is in hovered URL (Ctrl+hover) - use warning color
                 if is_in_url(row_idx, col_idx) {
-                    style = Style::default().fg(Color::Black).bg(Color::LightYellow);
+                    style = Style::default().fg(theme.bg).bg(theme.warning);
                 }
 
                 // If this is cursor position and needs showing, use inverse colors
@@ -1143,11 +1155,11 @@ impl Panel for Terminal {
             return vec![];
         }
 
-        // Reset scroll and clear selection on input, cache application_cursor_keys - single lock
+        // Reset scroll on input, cache application_cursor_keys - single lock
+        // Note: selection is NOT cleared on keypress to allow copying from running apps
         let application_cursor_keys = {
             let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
             screen.reset_scroll();
-            screen.clear_selection();
             screen.application_cursor_keys
         };
 
@@ -1327,6 +1339,10 @@ impl Panel for Terminal {
             && mouse.row >= inner_y_min
             && mouse.row <= inner_y_max;
 
+        // Save panel bounds and mouse position for auto-scroll in tick()
+        self.panel_bounds = Some(panel_area);
+        self.last_mouse_position = Some((mouse.column, mouse.row));
+
         // Track Ctrl key state for URL highlighting
         let ctrl_pressed = mouse.modifiers.contains(KeyModifiers::CONTROL);
         self.ctrl_pressed = ctrl_pressed;
@@ -1456,39 +1472,50 @@ impl Panel for Terminal {
                 screen.selection_end = Some((abs_row, inner_col)); // Set immediately for visibility
                 drop(screen);
 
+                // Start selection drag tracking for auto-scroll
+                self.selection_drag_active = true;
+
                 // Also send click to PTY if mouse tracking is enabled
                 let _ = self.send_mouse_to_pty(&mouse, panel_area);
             }
             MouseEventKind::Drag(MouseButton::Left) => {
-                // Update selection end with absolute coordinates
                 let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
                 if screen.selection_start.is_some() {
+                    // Auto-scroll if mouse is above or below content area
+                    let max_scroll = screen.scrollback.len();
+                    if mouse.row < inner_y_min && screen.scroll_offset < max_scroll {
+                        // Mouse above panel - scroll up into history
+                        screen.scroll_view_up(1);
+                    } else if mouse.row > inner_y_max && screen.scroll_offset > 0 {
+                        // Mouse below panel - scroll down towards current
+                        screen.scroll_view_down(1);
+                    }
+
+                    // Update selection end with absolute coordinates (using clamped row)
                     let abs_row = screen.visual_to_absolute(inner_row);
                     screen.selection_end = Some((abs_row, inner_col));
                 }
             }
             MouseEventKind::Up(MouseButton::Left) => {
+                // End selection drag tracking
+                self.selection_drag_active = false;
+                self.last_mouse_position = None;
+
                 // Finalize selection
-                let (should_copy, is_single_click) = {
+                let is_single_click = {
                     let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
                     let abs_row = screen.visual_to_absolute(inner_row);
                     if let Some(start) = screen.selection_start {
                         screen.selection_end = Some((abs_row, inner_col));
-                        // Copy only if selection is non-empty (actual drag occurred)
-                        let is_drag = start != (abs_row, inner_col);
-                        (is_drag, !is_drag)
+                        // Single click = no drag (start == end)
+                        start == (abs_row, inner_col)
                     } else {
-                        (false, false)
+                        false
                     }
                 };
 
-                // Copy selected text to CLIPBOARD only if dragged
-                if should_copy {
-                    let _ = self.copy_selection_to_clipboard();
-                    // Keep selection visible after copy (don't clear)
-                }
-
                 // Clear selection on single click (no drag)
+                // Copy is done manually via Ctrl+Shift+C
                 if is_single_click {
                     let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
                     screen.clear_selection();
@@ -1518,6 +1545,56 @@ impl Panel for Terminal {
         } else {
             screen.scroll_view_down(lines);
         }
+        vec![]
+    }
+
+    fn tick(&mut self) -> Vec<PanelEvent> {
+        // Handle auto-scroll during selection drag
+        if !self.selection_drag_active {
+            return vec![];
+        }
+
+        let Some((_mouse_col, mouse_row)) = self.last_mouse_position else {
+            return vec![];
+        };
+
+        let Some(bounds) = self.panel_bounds else {
+            return vec![];
+        };
+
+        // Calculate inner area (without border)
+        let inner_y = bounds.y + 1;
+        let inner_height = bounds.height.saturating_sub(2);
+
+        let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
+
+        // Skip if no selection
+        if screen.selection_start.is_none() {
+            return vec![];
+        }
+
+        let max_scroll = screen.scrollback.len();
+
+        // Auto-scroll up (mouse above panel)
+        if mouse_row < inner_y && screen.scroll_offset < max_scroll {
+            screen.scroll_view_up(1);
+            // Extend selection to top visible line
+            let abs_row = screen.visual_to_absolute(0);
+            screen.selection_end = Some((abs_row, 0));
+            return vec![PanelEvent::NeedsRedraw];
+        }
+
+        // Auto-scroll down (mouse below panel)
+        if mouse_row >= inner_y + inner_height && screen.scroll_offset > 0 {
+            screen.scroll_view_down(1);
+            // Extend selection to bottom visible line
+            let last_row = inner_height.saturating_sub(1) as usize;
+            let abs_row = screen.visual_to_absolute(last_row);
+            let cols = screen.cols.saturating_sub(1);
+            screen.selection_end = Some((abs_row, cols));
+            return vec![PanelEvent::NeedsRedraw];
+        }
+
         vec![]
     }
 

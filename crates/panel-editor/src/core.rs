@@ -1336,6 +1336,149 @@ impl Editor {
         }
     }
 
+    /// Auto-scroll during mouse selection drag when mouse is outside the panel.
+    /// Called from tick() to provide continuous scrolling without requiring mouse move events.
+    /// Returns true if scrolled (needs redraw).
+    pub(crate) fn tick_auto_scroll(&mut self) -> bool {
+        // Check if selection drag is active
+        if !self.input.selection_drag_active || self.selection.is_none() {
+            return false;
+        }
+
+        let Some((_mouse_col, mouse_row)) = self.input.last_mouse_position else {
+            return false;
+        };
+
+        let Some((_content_x, content_y, content_width, content_height)) =
+            self.input.content_bounds
+        else {
+            return false;
+        };
+
+        // Check if mouse is outside content area (vertically)
+        let is_above = mouse_row < content_y;
+        let is_below = mouse_row >= content_y + content_height;
+
+        if !is_above && !is_below {
+            return false;
+        }
+
+        let mut scrolled = false;
+
+        if is_above {
+            // Auto-scroll up
+            if self.viewport.top_line > 0 || self.viewport.top_visual_row_offset > 0 {
+                self.scroll_visual_rows_up(1);
+                // Extend selection to first visible line
+                self.extend_selection_to_viewport_edge(true, content_width as usize);
+                scrolled = true;
+            }
+        } else if is_below {
+            // Auto-scroll down
+            self.scroll_visual_rows_down(1);
+            // Extend selection to last visible line
+            self.extend_selection_to_viewport_edge(false, content_width as usize);
+            scrolled = true;
+        }
+
+        // Ensure viewport follows cursor for visual updates
+        if scrolled {
+            self.scroll_follows_cursor = true;
+        }
+
+        scrolled
+    }
+
+    /// Extend selection to the edge of the viewport during auto-scroll.
+    /// When scrolling up, extends to the first visible line.
+    /// When scrolling down, extends to the last visible line.
+    fn extend_selection_to_viewport_edge(&mut self, to_top: bool, content_width: usize) {
+        if self.selection.is_none() {
+            return;
+        }
+
+        if to_top {
+            // Extend to first visible line
+            let first_visible_line = self.viewport.top_line;
+            let first_col = 0;
+            self.cursor = Cursor::at(first_visible_line, first_col);
+        } else {
+            // Extend to last visible line
+            // Calculate last visible line accounting for word wrap
+            let content_height = self.render_cache.content_height.max(1);
+            let last_visible_line = if self.config.word_wrap && content_width > 0 {
+                // In word wrap mode, calculate the buffer line at the bottom of viewport
+                self.calculate_last_visible_buffer_line(content_height)
+            } else {
+                // Without word wrap, it's straightforward
+                (self.viewport.top_line + content_height - 1)
+                    .min(self.buffer.line_count().saturating_sub(1))
+            };
+
+            let line_len = self.buffer.line_len_graphemes(last_visible_line);
+            self.cursor = Cursor::at(last_visible_line, line_len);
+        }
+
+        // Update selection active end
+        if let Some(ref mut selection) = self.selection {
+            selection.active = self.cursor;
+        }
+    }
+
+    /// Calculate the buffer line index at the bottom of the visible viewport.
+    /// Accounts for word wrap when enabled.
+    fn calculate_last_visible_buffer_line(&mut self, content_height: usize) -> usize {
+        let content_width = self.render_cache.content_width;
+        let use_smart_wrap = self.render_cache.use_smart_wrap;
+
+        if content_width == 0 || content_height == 0 {
+            return self.viewport.top_line;
+        }
+
+        let mut visual_rows_remaining = content_height;
+        let mut current_line = self.viewport.top_line;
+        let line_count = self.buffer.line_count();
+
+        // Start with remaining rows in the first visible line
+        let (first_line_visual_rows, _) = word_wrap::get_line_wrap_points_cached(
+            &mut self.render_cache,
+            &self.buffer,
+            current_line,
+            content_width,
+            use_smart_wrap,
+        );
+        let rows_in_first_line =
+            first_line_visual_rows.saturating_sub(self.viewport.top_visual_row_offset);
+
+        if rows_in_first_line >= visual_rows_remaining {
+            return current_line;
+        }
+
+        visual_rows_remaining -= rows_in_first_line;
+        current_line += 1;
+
+        // Continue through subsequent lines
+        while current_line < line_count && visual_rows_remaining > 0 {
+            let (line_visual_rows, _) = word_wrap::get_line_wrap_points_cached(
+                &mut self.render_cache,
+                &self.buffer,
+                current_line,
+                content_width,
+                use_smart_wrap,
+            );
+
+            if line_visual_rows >= visual_rows_remaining {
+                return current_line;
+            }
+
+            visual_rows_remaining -= line_visual_rows;
+            current_line += 1;
+        }
+
+        // Return last line if we've gone past the end
+        line_count.saturating_sub(1)
+    }
+
     /// Get the total count of virtual lines (real buffer lines + deletion marker lines + diagnostics + word wrap)
     /// This is used for viewport calculations to account for deletion markers, diagnostics, and word wrapping
     fn virtual_line_count(&mut self, config: &Config) -> usize {
@@ -2014,6 +2157,14 @@ impl Panel for Editor {
             self.scroll_visual_rows_down(lines);
         }
         self.scroll_follows_cursor = false;
+        vec![]
+    }
+
+    fn tick(&mut self) -> Vec<PanelEvent> {
+        // Handle auto-scroll during selection drag
+        if self.tick_auto_scroll() {
+            return vec![PanelEvent::NeedsRedraw];
+        }
         vec![]
     }
 

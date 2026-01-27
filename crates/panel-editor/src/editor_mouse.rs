@@ -135,15 +135,48 @@ impl Editor {
         let content_width = inner.width.saturating_sub(line_number_width);
         let content_height = inner.height;
 
-        if mouse.column < content_x || mouse.column >= content_x + content_width {
-            return vec![];
-        }
-        if mouse.row < content_y || mouse.row >= content_y + content_height {
+        // Save content bounds for auto-scroll in tick()
+        self.input.content_bounds = Some((content_x, content_y, content_width, content_height));
+
+        // Update last mouse position for auto-scroll
+        self.input.last_mouse_position = Some((mouse.column, mouse.row));
+
+        // Check if mouse is outside content area
+        let is_outside_x = mouse.column < content_x || mouse.column >= content_x + content_width;
+        let is_outside_y = mouse.row < content_y || mouse.row >= content_y + content_height;
+        let is_outside = is_outside_x || is_outside_y;
+
+        // For drag events during selection, allow extending beyond panel with clamping
+        let is_drag = matches!(mouse.kind, MouseEventKind::Drag(MouseButton::Left));
+        let has_selection = self.selection.is_some();
+
+        if is_outside && !(is_drag && has_selection) {
             return vec![];
         }
 
-        let rel_x = (mouse.column - content_x) as usize;
-        let rel_y = (mouse.row - content_y) as usize;
+        // Clamp coordinates to content area for out-of-bounds drag
+        let (clamped_col, clamped_row) = if is_outside && is_drag && has_selection {
+            // Auto-scroll if mouse is above or below content area
+            // Use visual row methods for correct word-wrap support
+            if mouse.row < content_y {
+                self.scroll_visual_rows_up(1);
+            } else if mouse.row >= content_y + content_height {
+                self.scroll_visual_rows_down(1);
+            }
+
+            let col = mouse
+                .column
+                .clamp(content_x, content_x + content_width.saturating_sub(1));
+            let row = mouse
+                .row
+                .clamp(content_y, content_y + content_height.saturating_sub(1));
+            (col, row)
+        } else {
+            (mouse.column, mouse.row)
+        };
+
+        let rel_x = (clamped_col - content_x) as usize;
+        let rel_y = (clamped_row - content_y) as usize;
 
         // Map visual row to buffer line, accounting for diagnostic virtual lines
         let (buffer_line, wrapped_offset, chunk_end, is_virtual_line) = if self.config.word_wrap {
@@ -290,6 +323,9 @@ impl Editor {
                 self.scroll_follows_cursor = true;
                 self.close_search();
 
+                // Start selection drag tracking for auto-scroll
+                self.input.selection_drag_active = true;
+
                 if self
                     .input
                     .click_tracker
@@ -328,6 +364,11 @@ impl Editor {
             }
             MouseEventKind::Up(MouseButton::Left) => {
                 self.scroll_follows_cursor = true;
+
+                // End selection drag tracking
+                self.input.selection_drag_active = false;
+                self.input.last_mouse_position = None;
+
                 if self.input.click_tracker.skip_next_up {
                     self.input.click_tracker.skip_next_up = false;
                     return vec![];

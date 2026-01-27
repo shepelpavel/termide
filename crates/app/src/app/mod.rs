@@ -267,26 +267,28 @@ impl App {
 
                     // Skip heavy operations during active scrolling
                     if !is_scrolling {
-                        // Check VFS connection status for FileManager panels and call tick() to process async operations
+                        // Call tick() on all panels to process periodic operations
+                        // (FileManager: VFS operations, Editor/Terminal: auto-scroll during selection drag)
                         // Collect events first, then process them (to avoid borrow issues)
-                        let mut all_fm_events = Vec::new();
+                        let mut all_panel_events = Vec::new();
                         for panel in self.layout_manager.iter_all_panels_mut() {
+                            // Call tick() on all panels
+                            let events = panel.tick();
+                            if !events.is_empty() {
+                                self.state.needs_redraw = true;
+                                all_panel_events.extend(events);
+                            }
+
+                            // FileManager-specific: check for pending operations for spinner animation
                             if let Some(fm) = panel.as_file_manager_mut() {
-                                // Call tick() to process VFS operations (connection results, directory listings)
-                                let events = fm.tick();
-                                if !events.is_empty() {
-                                    self.state.needs_redraw = true;
-                                    all_fm_events.extend(events);
-                                }
-                                // Also check for pending operations for spinner animation
                                 if fm.vfs_state().has_pending_operation() {
                                     self.state.needs_redraw = true;
                                 }
                             }
                         }
                         // Process collected events
-                        if !all_fm_events.is_empty() {
-                            let _ = self.process_panel_events(all_fm_events);
+                        if !all_panel_events.is_empty() {
+                            let _ = self.process_panel_events(all_panel_events);
                         }
 
                         // Check for modal requests from FileManager panels (e.g., VFS error modals)
