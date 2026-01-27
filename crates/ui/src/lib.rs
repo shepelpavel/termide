@@ -7,6 +7,7 @@ pub mod config;
 pub mod path_utils;
 pub mod scrollbar;
 pub mod selection_style;
+pub mod suggestion_input;
 pub mod system_monitor;
 pub mod textarea;
 pub mod viewport;
@@ -16,6 +17,7 @@ pub use scrollbar::ScrollBar;
 pub use selection_style::{
     button_style, cursor_style, item_style, item_style_colored, SelectionColors, SelectionState,
 };
+pub use suggestion_input::{DropdownState, SuggestionAction, SuggestionInput};
 pub use textarea::TextArea;
 pub use viewport::Viewport;
 

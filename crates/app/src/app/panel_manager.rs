@@ -128,12 +128,19 @@ impl App {
             }
         }
 
-        // Convert to SelectOptions
+        // Convert to SelectOptions (add trailing slash for directories)
         let mut options: Vec<_> = unique_paths
             .into_iter()
-            .map(|path_str| termide_modal::SelectOption {
-                value: path_str.clone(),
-                display: path_str,
+            .map(|path_str| {
+                let with_slash = if path_str.ends_with('/') {
+                    path_str
+                } else {
+                    format!("{}/", path_str)
+                };
+                termide_modal::SelectOption {
+                    value: with_slash.clone(),
+                    display: with_slash,
+                }
             })
             .collect();
 

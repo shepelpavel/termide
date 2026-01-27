@@ -21,6 +21,7 @@ use termide_config::constants::{
 };
 use termide_i18n as i18n;
 use termide_theme::Theme;
+use termide_ui::{SuggestionAction, SuggestionInput};
 
 use crate::{centered_rect_with_size, Modal, ModalResult, TextInputHandler};
 
@@ -49,15 +50,12 @@ enum FocusArea {
 pub struct BookmarkAddModal {
     path_input: TextInputHandler,
     description_input: TextInputHandler,
-    group_input: TextInputHandler,
-    existing_groups: Vec<String>,
-    show_group_dropdown: bool,
-    selected_group_index: usize,
-    saved_group_input: String, // For rollback on Escape
+    group_suggestion: SuggestionInput,
     focus: FocusArea,
     selected_button: usize, // 0 = Add, 1 = Cancel
     last_buttons_area: Option<Rect>,
     last_group_field_area: Option<Rect>,
+    last_group_dropdown_area: Option<Rect>,
 }
 
 impl BookmarkAddModal {
@@ -68,15 +66,12 @@ impl BookmarkAddModal {
         Self {
             path_input: TextInputHandler::with_default(path),
             description_input: TextInputHandler::new(),
-            group_input: TextInputHandler::new(),
-            existing_groups,
-            show_group_dropdown: false,
-            selected_group_index: 0,
-            saved_group_input: String::new(),
+            group_suggestion: SuggestionInput::new(existing_groups),
             focus: FocusArea::Path,
             selected_button: 0,
             last_buttons_area: None,
             last_group_field_area: None,
+            last_group_dropdown_area: None,
         }
     }
 
@@ -107,8 +102,9 @@ impl BookmarkAddModal {
         // Calculate height
         // Border(1) + Path(3) + Description(3) + Group(3) + [Dropdown] + Buttons(1) + Border(1)
         // Dropdown: items + 1 (bottom border only, top is shared with input)
-        let dropdown_height = if self.show_group_dropdown && !self.existing_groups.is_empty() {
-            self.existing_groups.len().min(5) as u16 + 1
+        let suggestions = self.group_suggestion.suggestions();
+        let dropdown_height = if self.group_suggestion.is_expanded() && !suggestions.is_empty() {
+            suggestions.len().min(5) as u16 + 1
         } else {
             0
         };
@@ -117,13 +113,12 @@ impl BookmarkAddModal {
         (width, height)
     }
 
-    /// Get currently focused input handler
+    /// Get currently focused input handler (only for Path and Description)
     fn current_input(&mut self) -> Option<&mut TextInputHandler> {
         match self.focus {
             FocusArea::Path => Some(&mut self.path_input),
             FocusArea::Description => Some(&mut self.description_input),
-            FocusArea::Group => Some(&mut self.group_input),
-            FocusArea::Buttons => None,
+            FocusArea::Group | FocusArea::Buttons => None,
         }
     }
 
@@ -137,7 +132,7 @@ impl BookmarkAddModal {
         };
         // Close dropdown when leaving group
         if self.focus != FocusArea::Group {
-            self.show_group_dropdown = false;
+            self.group_suggestion.collapse();
         }
     }
 
@@ -151,7 +146,7 @@ impl BookmarkAddModal {
         };
         // Close dropdown when leaving group
         if self.focus != FocusArea::Group {
-            self.show_group_dropdown = false;
+            self.group_suggestion.collapse();
         }
     }
 
@@ -214,7 +209,7 @@ impl BookmarkAddModal {
     /// Render the group input field with dropdown toggle indicator
     fn render_group_field(&self, buf: &mut Buffer, area: Rect, label: &str, theme: &Theme) {
         let is_focused = self.focus == FocusArea::Group;
-        let has_groups = !self.existing_groups.is_empty();
+        let has_groups = !self.group_suggestion.suggestions().is_empty();
 
         // Split into label and input
         let chunks = Layout::default()
@@ -237,7 +232,7 @@ impl BookmarkAddModal {
         // Calculate input area
         let input_area = chunks[1];
         let indicator = if has_groups {
-            if self.show_group_dropdown {
+            if self.group_suggestion.is_expanded() {
                 "▲"
             } else {
                 "▼"
@@ -253,7 +248,7 @@ impl BookmarkAddModal {
         };
 
         // Use different borders based on dropdown state
-        let borders = if self.show_group_dropdown && has_groups {
+        let borders = if self.group_suggestion.is_expanded() && has_groups {
             Borders::LEFT | Borders::TOP | Borders::RIGHT // No bottom border when dropdown shown
         } else {
             Borders::ALL
@@ -268,14 +263,15 @@ impl BookmarkAddModal {
         let text_width = input_inner.width.saturating_sub(indicator_width);
 
         // Render input content with cursor and selection
+        let input = self.group_suggestion.input();
         render_input_field(
             buf,
             input_inner.x,
             input_inner.y,
             text_width,
-            self.group_input.text(),
-            self.group_input.cursor_pos(),
-            self.group_input.selection_range(),
+            input.text(),
+            input.cursor_pos(),
+            input.selection_range(),
             is_focused,
             theme,
         );
@@ -307,8 +303,9 @@ impl Modal for BookmarkAddModal {
 
         // Calculate layout
         // Dropdown: items + 1 (bottom border only, top is shared with input)
-        let dropdown_height = if self.show_group_dropdown && !self.existing_groups.is_empty() {
-            self.existing_groups.len().min(5) as u16 + 1
+        let suggestions = self.group_suggestion.suggestions();
+        let dropdown_height = if self.group_suggestion.is_expanded() && !suggestions.is_empty() {
+            suggestions.len().min(5) as u16 + 1
         } else {
             0
         };
@@ -370,12 +367,15 @@ impl Modal for BookmarkAddModal {
                 .constraints([Constraint::Length(15), Constraint::Min(1)])
                 .split(chunks[chunk_idx]);
 
-            let items: Vec<ListItem> = self
-                .existing_groups
+            // Save dropdown area for mouse handling
+            self.last_group_dropdown_area = Some(dropdown_chunks[1]);
+
+            let selected_idx = self.group_suggestion.selected_index();
+            let items: Vec<ListItem> = suggestions
                 .iter()
                 .enumerate()
                 .map(|(idx, group)| {
-                    let (prefix, style) = if idx == self.selected_group_index {
+                    let (prefix, style) = if idx == selected_idx {
                         (
                             "▶ ",
                             Style::default()
@@ -402,6 +402,8 @@ impl Modal for BookmarkAddModal {
                 .style(Style::default().bg(theme.bg));
             list.render(dropdown_chunks[1], buf); // Render in right chunk (after label)
             chunk_idx += 1;
+        } else {
+            self.last_group_dropdown_area = None;
         }
 
         // Render buttons
@@ -430,10 +432,9 @@ impl Modal for BookmarkAddModal {
     fn handle_key(&mut self, key: KeyEvent) -> Result<Option<ModalResult<Self::Result>>> {
         // Escape to cancel
         if key.code == KeyCode::Esc {
-            if self.show_group_dropdown {
+            if self.group_suggestion.is_expanded() {
                 // Rollback: restore saved input
-                self.group_input = TextInputHandler::with_default(self.saved_group_input.clone());
-                self.show_group_dropdown = false;
+                self.group_suggestion.rollback();
                 return Ok(None);
             }
             return Ok(Some(ModalResult::Cancelled));
@@ -443,16 +444,10 @@ impl Modal for BookmarkAddModal {
         if key.code == KeyCode::Tab {
             // When focus is Group and groups exist: Tab toggles dropdown
             if self.focus == FocusArea::Group
-                && !self.existing_groups.is_empty()
+                && !self.group_suggestion.suggestions().is_empty()
                 && !key.modifiers.contains(KeyModifiers::SHIFT)
             {
-                if self.show_group_dropdown {
-                    self.show_group_dropdown = false;
-                } else {
-                    self.saved_group_input = self.group_input.text().to_string();
-                    self.show_group_dropdown = true;
-                    self.selected_group_index = 0;
-                }
+                self.group_suggestion.toggle();
                 return Ok(None);
             }
             // Otherwise: standard Tab navigation
@@ -494,69 +489,36 @@ impl Modal for BookmarkAddModal {
                 Ok(None)
             }
             FocusArea::Group => {
-                // Group field with dropdown support
-                if self.show_group_dropdown && !self.existing_groups.is_empty() {
-                    match key.code {
-                        KeyCode::Up => {
-                            if self.selected_group_index > 0 {
-                                self.selected_group_index -= 1;
-                            }
-                            // Immediately update input with selected value
-                            if let Some(group) = self.existing_groups.get(self.selected_group_index)
-                            {
-                                self.group_input = TextInputHandler::with_default(group.clone());
-                            }
-                        }
-                        KeyCode::Down => {
-                            if self.selected_group_index < self.existing_groups.len() - 1 {
-                                self.selected_group_index += 1;
-                            }
-                            // Immediately update input with selected value
-                            if let Some(group) = self.existing_groups.get(self.selected_group_index)
-                            {
-                                self.group_input = TextInputHandler::with_default(group.clone());
-                            }
-                        }
-                        KeyCode::Enter => {
-                            // Just close dropdown (value already in input)
-                            self.show_group_dropdown = false;
-                        }
-                        _ => {
-                            // Allow typing even with dropdown open
-                            match handle_input_key(&mut self.group_input, key) {
-                                InputKeyResult::TextModified => {
-                                    // Close dropdown when user types
-                                    self.show_group_dropdown = false;
-                                    return Ok(None);
-                                }
-                                InputKeyResult::Handled => return Ok(None),
-                                InputKeyResult::NotHandled => {}
-                            }
-                        }
-                    }
-                } else {
-                    // Try common input handling first
-                    match handle_input_key(&mut self.group_input, key) {
-                        InputKeyResult::Handled | InputKeyResult::TextModified => {
-                            return Ok(None);
-                        }
-                        InputKeyResult::NotHandled => {}
-                    }
+                // First try suggestion input handling (Up/Down when expanded, Enter when expanded)
+                match self.group_suggestion.handle_key(key) {
+                    SuggestionAction::Handled => return Ok(None),
+                    SuggestionAction::Confirmed => return Ok(None), // Just collapsed
+                    SuggestionAction::Cancelled => return Ok(None), // Already handled by Esc above
+                    SuggestionAction::TextModified => return Ok(None),
+                    SuggestionAction::NotHandled => {}
+                }
 
-                    // Modal-specific handling
-                    match key.code {
-                        KeyCode::Down => {
-                            // Down arrow moves to next focus (Buttons)
-                            self.next_focus();
-                        }
-                        KeyCode::Up => {
-                            self.prev_focus();
-                        }
-                        KeyCode::Enter => {
-                            self.next_focus();
-                        }
-                        _ => {}
+                // Try common input handling
+                match handle_input_key(self.group_suggestion.input_mut(), key) {
+                    InputKeyResult::Handled | InputKeyResult::TextModified => {
+                        return Ok(None);
                     }
+                    InputKeyResult::NotHandled => {}
+                }
+
+                // Modal-specific handling
+                match key.code {
+                    KeyCode::Down => {
+                        // Down arrow moves to next focus (Buttons)
+                        self.next_focus();
+                    }
+                    KeyCode::Up => {
+                        self.prev_focus();
+                    }
+                    KeyCode::Enter => {
+                        self.next_focus();
+                    }
+                    _ => {}
                 }
                 Ok(None)
             }
@@ -599,7 +561,7 @@ impl Modal for BookmarkAddModal {
                             };
 
                             let group = {
-                                let g = self.group_input.text();
+                                let g = self.group_suggestion.text();
                                 if g.is_empty() {
                                     None
                                 } else {
@@ -644,17 +606,28 @@ impl Modal for BookmarkAddModal {
                 && mouse.column < group_area.x + group_area.width
             {
                 // Click on group field - toggle dropdown if groups exist
-                if !self.existing_groups.is_empty() {
-                    self.focus = FocusArea::Group;
-                    if self.show_group_dropdown {
-                        self.show_group_dropdown = false;
-                    } else {
-                        self.saved_group_input = self.group_input.text().to_string();
-                        self.show_group_dropdown = true;
-                        self.selected_group_index = 0;
-                    }
-                } else {
-                    self.focus = FocusArea::Group;
+                self.focus = FocusArea::Group;
+                if !self.group_suggestion.suggestions().is_empty() {
+                    self.group_suggestion.toggle();
+                }
+                return Ok(None);
+            }
+        }
+
+        // Check if click is on group dropdown items
+        if let Some(dropdown_area) = self.last_group_dropdown_area {
+            if mouse.row >= dropdown_area.y
+                && mouse.row < dropdown_area.y + dropdown_area.height
+                && mouse.column >= dropdown_area.x
+                && mouse.column < dropdown_area.x + dropdown_area.width
+            {
+                // Calculate which item was clicked (account for border)
+                let relative_row = mouse.row.saturating_sub(dropdown_area.y);
+                let item_index = relative_row as usize;
+
+                let suggestions_len = self.group_suggestion.suggestions().len();
+                if item_index < suggestions_len {
+                    self.group_suggestion.select_and_confirm(item_index);
                 }
                 return Ok(None);
             }
@@ -707,7 +680,7 @@ impl Modal for BookmarkAddModal {
             };
 
             let group = {
-                let g = self.group_input.text();
+                let g = self.group_suggestion.text();
                 if g.is_empty() {
                     None
                 } else {
@@ -731,11 +704,20 @@ impl Modal for BookmarkAddModal {
     }
 
     fn handle_paste(&mut self, text: &str) -> bool {
-        if let Some(input) = self.current_input() {
-            input.paste(text);
-            true
-        } else {
-            false
+        match self.focus {
+            FocusArea::Path => {
+                self.path_input.paste(text);
+                true
+            }
+            FocusArea::Description => {
+                self.description_input.paste(text);
+                true
+            }
+            FocusArea::Group => {
+                self.group_suggestion.input_mut().paste(text);
+                true
+            }
+            FocusArea::Buttons => false,
         }
     }
 }

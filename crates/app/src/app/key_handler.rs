@@ -277,16 +277,17 @@ impl App {
         let unique_paths_count = options.len();
 
         // Filter out source directory for default selection
-        let default_dir = options
+        // Options already have trailing slash, so use value directly
+        let default_dest = options
             .iter()
-            .find(|opt| source_dir_str.as_ref() != Some(&opt.value))
-            .map(|opt| std::path::PathBuf::from(&opt.value))
-            .or_else(|| source_dir.clone())
-            .unwrap_or_else(|| std::path::PathBuf::from("/"));
+            .find(|opt| {
+                source_dir_str.as_ref().map(|s| format!("{}/", s)) != Some(opt.value.clone())
+            })
+            .map(|opt| opt.value.clone())
+            .or_else(|| source_dir.as_ref().map(|p| format!("{}/", p.display())))
+            .unwrap_or_else(|| "/".to_string());
 
-        *target_directory = Some(default_dir.clone());
-
-        let default_dest = format!("{}/", default_dir.display());
+        *target_directory = Some(std::path::PathBuf::from(default_dest.trim_end_matches('/')));
 
         // Prepare title and prompt
         let t = i18n::t();

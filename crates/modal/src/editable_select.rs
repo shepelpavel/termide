@@ -29,8 +29,9 @@ use termide_config::constants::{
 use termide_i18n as i18n;
 use termide_theme::Theme;
 use termide_ui::path_utils::truncate_right;
+use termide_ui::{SuggestionAction, SuggestionInput};
 
-use crate::{centered_rect_with_size, Modal, ModalResult, TextInputHandler};
+use crate::{centered_rect_with_size, Modal, ModalResult};
 
 /// Select option for editable select modal
 #[derive(Debug, Clone)]
@@ -39,15 +40,6 @@ pub struct SelectOption {
     pub value: String,
     /// Display text for the option
     pub display: String,
-}
-
-/// Dropdown state for the editable select
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DropdownState {
-    /// Collapsed - only input field with arrow ▼ visible
-    Collapsed,
-    /// Expanded - input field + options list visible
-    Expanded,
 }
 
 /// Focus area in the modal
@@ -62,16 +54,14 @@ enum FocusArea {
 pub struct EditableSelectModal {
     title: String,
     prompt: String,
-    input_handler: TextInputHandler,
-    options: Vec<SelectOption>,
-    selected_index: usize,
-    state: DropdownState,
-    saved_input: String,
+    suggestion_input: SuggestionInput,
+    options: Vec<SelectOption>, // Keep for display text mapping
     focus: FocusArea,
     selected_button: usize, // 0 = OK, 1 = Cancel
     // Areas for mouse handling
     last_modal_area: Option<Rect>,
     last_input_area: Option<Rect>,
+    last_dropdown_area: Option<Rect>,
     last_buttons_area: Option<Rect>,
 }
 
@@ -84,20 +74,19 @@ impl EditableSelectModal {
         options: Vec<SelectOption>,
     ) -> Self {
         let default = default_value.into();
-        let selected_index = 0;
+        // Extract values from options for SuggestionInput
+        let suggestion_values: Vec<String> = options.iter().map(|o| o.value.clone()).collect();
 
         Self {
             title: title.into(),
             prompt: prompt.into(),
-            input_handler: TextInputHandler::with_default(default.clone()),
+            suggestion_input: SuggestionInput::with_text(default, suggestion_values),
             options,
-            selected_index,
-            state: DropdownState::Collapsed, // Always start collapsed
-            saved_input: default,            // Save for rollback
             focus: FocusArea::Input,
             selected_button: 0, // OK button selected by default
             last_modal_area: None,
             last_input_area: None,
+            last_dropdown_area: None,
             last_buttons_area: None,
         }
     }
@@ -158,7 +147,7 @@ impl EditableSelectModal {
         } else {
             self.prompt.lines().count().max(1) as u16
         };
-        let list_height = if self.state == DropdownState::Expanded && !self.options.is_empty() {
+        let list_height = if self.suggestion_input.is_expanded() && !self.options.is_empty() {
             self.options.len().min(6) as u16 + 3 // Limit to 6 items + border + label
         } else {
             0
@@ -194,7 +183,7 @@ impl Modal for EditableSelectModal {
         };
 
         let has_prompt = prompt_lines > 0;
-        let has_list = self.state == DropdownState::Expanded && !self.options.is_empty();
+        let has_list = self.suggestion_input.is_expanded() && !self.options.is_empty();
         let list_height = if has_list {
             self.options.len().min(6) as u16 + 3
         } else {
@@ -241,13 +230,14 @@ impl Modal for EditableSelectModal {
         }
 
         // Render input field with arrow at right edge
-        let arrow_char = match self.state {
-            DropdownState::Collapsed => "▼",
-            DropdownState::Expanded => "▲",
+        let arrow_char = if self.suggestion_input.is_expanded() {
+            "▲"
+        } else {
+            "▼"
         };
 
         // Choose borders based on state: in Expanded, remove bottom border for visual unity
-        let input_borders = if self.state == DropdownState::Expanded && !self.options.is_empty() {
+        let input_borders = if self.suggestion_input.is_expanded() && !self.options.is_empty() {
             Borders::LEFT | Borders::TOP | Borders::RIGHT // No bottom border
         } else {
             Borders::ALL
@@ -267,14 +257,15 @@ impl Modal for EditableSelectModal {
         let text_width = input_inner.width.saturating_sub(arrow_width);
 
         // Render input content with cursor and selection
+        let input = self.suggestion_input.input();
         render_input_field(
             buf,
             input_inner.x,
             input_inner.y,
             text_width,
-            self.input_handler.text(),
-            self.input_handler.cursor_pos(),
-            self.input_handler.selection_range(),
+            input.text(),
+            input.cursor_pos(),
+            input.selection_range(),
             self.focus == FocusArea::Input,
             theme,
         );
@@ -291,19 +282,19 @@ impl Modal for EditableSelectModal {
         chunk_idx += 1;
 
         // Render options list only in Expanded state
-        if self.state == DropdownState::Expanded && !self.options.is_empty() {
+        if self.suggestion_input.is_expanded() && !self.options.is_empty() {
+            // Save dropdown area for mouse handling
+            self.last_dropdown_area = Some(chunks[chunk_idx]);
+
+            let selected_idx = self.suggestion_input.selected_index();
             let items: Vec<ListItem> = self
                 .options
                 .iter()
                 .enumerate()
                 .map(|(idx, option)| {
-                    let prefix = if idx == self.selected_index {
-                        "▶ "
-                    } else {
-                        "  "
-                    };
+                    let prefix = if idx == selected_idx { "▶ " } else { "  " };
 
-                    let style = if idx == self.selected_index {
+                    let style = if idx == selected_idx {
                         Style::default()
                             .fg(theme.fg)
                             .bg(theme.accented_fg)
@@ -334,6 +325,8 @@ impl Modal for EditableSelectModal {
 
             list.render(chunks[chunk_idx], buf);
             chunk_idx += 1;
+        } else {
+            self.last_dropdown_area = None;
         }
 
         // Render buttons
@@ -364,111 +357,50 @@ impl Modal for EditableSelectModal {
     fn handle_key(&mut self, key: KeyEvent) -> Result<Option<ModalResult<Self::Result>>> {
         // Escape handling depends on state
         if key.code == KeyCode::Esc {
-            match self.state {
-                DropdownState::Expanded => {
-                    // Collapse and rollback changes
-                    self.input_handler = TextInputHandler::with_default(self.saved_input.clone());
-                    self.state = DropdownState::Collapsed;
-                    self.focus = FocusArea::Input; // Return focus to input
-                    return Ok(None);
-                }
-                DropdownState::Collapsed => {
-                    // Cancel operation
-                    return Ok(Some(ModalResult::Cancelled));
-                }
+            if self.suggestion_input.is_expanded() {
+                // Collapse and rollback changes
+                self.suggestion_input.rollback();
+                self.focus = FocusArea::Input;
+                return Ok(None);
+            } else {
+                // Cancel operation
+                return Ok(Some(ModalResult::Cancelled));
             }
         }
 
         match self.focus {
             FocusArea::Input => {
-                // Try common input handling first (but not for navigation keys in dropdown mode)
-                let is_navigation_in_dropdown = self.state == DropdownState::Expanded
-                    && matches!(key.code, KeyCode::Up | KeyCode::Down);
+                // First try suggestion input handling (Tab, Up/Down when expanded, Enter when expanded)
+                match self.suggestion_input.handle_key(key) {
+                    SuggestionAction::Handled => return Ok(None),
+                    SuggestionAction::Confirmed => return Ok(None), // Just collapsed, don't confirm modal
+                    SuggestionAction::Cancelled => return Ok(None), // Already handled by Esc above
+                    SuggestionAction::TextModified => return Ok(None),
+                    SuggestionAction::NotHandled => {}
+                }
 
-                if !is_navigation_in_dropdown {
-                    match handle_input_key(&mut self.input_handler, key) {
-                        InputKeyResult::Handled | InputKeyResult::TextModified => {
-                            return Ok(None);
-                        }
-                        InputKeyResult::NotHandled => {}
+                // Try common input handling
+                match handle_input_key(self.suggestion_input.input_mut(), key) {
+                    InputKeyResult::Handled | InputKeyResult::TextModified => {
+                        return Ok(None);
                     }
+                    InputKeyResult::NotHandled => {}
                 }
 
                 // Modal-specific handling
                 match key.code {
-                    KeyCode::Tab => {
-                        // Toggle Collapsed <-> Expanded
-                        match self.state {
-                            DropdownState::Collapsed => {
-                                // Save current input for rollback
-                                self.saved_input = self.input_handler.text().to_string();
-                                self.state = DropdownState::Expanded;
-                            }
-                            DropdownState::Expanded => {
-                                // Collapse
-                                self.state = DropdownState::Collapsed;
-                            }
-                        }
-                        Ok(None)
-                    }
                     KeyCode::Down => {
-                        match self.state {
-                            DropdownState::Collapsed => {
-                                // Move focus to buttons
-                                self.focus = FocusArea::Buttons;
-                                Ok(None)
-                            }
-                            DropdownState::Expanded => {
-                                // Navigate in list
-                                if !self.options.is_empty()
-                                    && self.selected_index < self.options.len().saturating_sub(1)
-                                {
-                                    self.selected_index += 1;
-                                    // Update input with selected value
-                                    self.input_handler = TextInputHandler::with_default(
-                                        self.options[self.selected_index].value.clone(),
-                                    );
-                                }
-                                Ok(None)
-                            }
-                        }
-                    }
-                    KeyCode::Up => {
-                        // Only work in Expanded state for list navigation
-                        if self.state == DropdownState::Expanded
-                            && !self.options.is_empty()
-                            && self.selected_index > 0
-                        {
-                            self.selected_index -= 1;
-                            // Update input with selected value
-                            self.input_handler = TextInputHandler::with_default(
-                                self.options[self.selected_index].value.clone(),
-                            );
-                        }
+                        // Move focus to buttons (only when collapsed)
+                        self.focus = FocusArea::Buttons;
                         Ok(None)
                     }
                     KeyCode::Enter => {
-                        match self.state {
-                            DropdownState::Collapsed => {
-                                // Confirm current value
-                                if self.input_handler.is_empty() {
-                                    Ok(Some(ModalResult::Cancelled))
-                                } else {
-                                    Ok(Some(ModalResult::Confirmed(
-                                        self.input_handler.text().to_string(),
-                                    )))
-                                }
-                            }
-                            DropdownState::Expanded => {
-                                // Select from list and collapse
-                                if !self.options.is_empty() {
-                                    self.input_handler = TextInputHandler::with_default(
-                                        self.options[self.selected_index].value.clone(),
-                                    );
-                                    self.state = DropdownState::Collapsed;
-                                }
-                                Ok(None)
-                            }
+                        // Confirm current value (only when collapsed)
+                        let text = self.suggestion_input.text();
+                        if text.is_empty() {
+                            Ok(Some(ModalResult::Cancelled))
+                        } else {
+                            Ok(Some(ModalResult::Confirmed(text.to_string())))
                         }
                     }
                     _ => Ok(None),
@@ -476,7 +408,7 @@ impl Modal for EditableSelectModal {
             }
             FocusArea::Buttons => {
                 // Handle text input keys even when on buttons
-                match handle_input_key(&mut self.input_handler, key) {
+                match handle_input_key(self.suggestion_input.input_mut(), key) {
                     InputKeyResult::Handled | InputKeyResult::TextModified => {
                         // Switch back to input when typing
                         self.focus = FocusArea::Input;
@@ -505,12 +437,11 @@ impl Modal for EditableSelectModal {
                         // Execute selected button action
                         if self.selected_button == 0 {
                             // OK button
-                            if self.input_handler.is_empty() {
+                            let text = self.suggestion_input.text();
+                            if text.is_empty() {
                                 Ok(Some(ModalResult::Cancelled))
                             } else {
-                                Ok(Some(ModalResult::Confirmed(
-                                    self.input_handler.text().to_string(),
-                                )))
+                                Ok(Some(ModalResult::Confirmed(text.to_string())))
                             }
                         } else {
                             // Cancel button
@@ -548,19 +479,28 @@ impl Modal for EditableSelectModal {
                 let arrow_start = input_area.x + input_area.width.saturating_sub(3);
                 if mouse.column >= arrow_start {
                     // Toggle dropdown state
-                    match self.state {
-                        DropdownState::Collapsed => {
-                            // Save current input for rollback
-                            self.saved_input = self.input_handler.text().to_string();
-                            self.state = DropdownState::Expanded;
-                        }
-                        DropdownState::Expanded => {
-                            // Collapse
-                            self.state = DropdownState::Collapsed;
-                        }
-                    }
+                    self.suggestion_input.toggle();
                     return Ok(None);
                 }
+            }
+        }
+
+        // Check for click on dropdown items
+        if let Some(dropdown_area) = self.last_dropdown_area {
+            if mouse.row >= dropdown_area.y
+                && mouse.row < dropdown_area.y + dropdown_area.height
+                && mouse.column >= dropdown_area.x
+                && mouse.column < dropdown_area.x + dropdown_area.width
+            {
+                // Calculate which item was clicked (account for border)
+                let relative_row = mouse.row.saturating_sub(dropdown_area.y);
+                // First row is inside the list (no top border in this design)
+                let item_index = relative_row as usize;
+
+                if item_index < self.options.len() {
+                    self.suggestion_input.select_and_confirm(item_index);
+                }
+                return Ok(None);
             }
         }
 
@@ -592,12 +532,11 @@ impl Modal for EditableSelectModal {
                     self.focus = FocusArea::Buttons;
                     self.selected_button = 0;
                     // Execute OK action immediately
-                    if self.input_handler.is_empty() {
+                    let text = self.suggestion_input.text();
+                    if text.is_empty() {
                         return Ok(Some(ModalResult::Cancelled));
                     } else {
-                        return Ok(Some(ModalResult::Confirmed(
-                            self.input_handler.text().to_string(),
-                        )));
+                        return Ok(Some(ModalResult::Confirmed(text.to_string())));
                     }
                 } else if mouse.column >= cancel_start && mouse.column < cancel_end {
                     // Cancel button clicked
