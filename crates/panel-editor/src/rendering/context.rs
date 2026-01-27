@@ -53,7 +53,7 @@ impl RenderContext {
             search
                 .matches
                 .iter()
-                .map(|c| (c.line, c.column, search.query.len()))
+                .map(|c| (c.line, c.column, search.query.chars().count()))
                 .collect()
         } else {
             Vec::new()

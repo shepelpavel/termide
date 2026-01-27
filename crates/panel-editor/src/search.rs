@@ -4,6 +4,7 @@
 //! and performing find-and-replace operations.
 
 use anyhow::Result;
+use unicode_segmentation::UnicodeSegmentation;
 
 use termide_buffer::{Cursor, SearchState, Selection, TextBuffer};
 
@@ -35,16 +36,18 @@ pub fn perform_search(buffer: &TextBuffer, search: &mut SearchState) {
             };
 
             // Find all occurrences in line
-            let mut col = 0;
-            while let Some(pos) = search_text[col..].find(&query) {
-                let match_col = col + pos;
+            let mut byte_col = 0;
+            while let Some(byte_pos) = search_text[byte_col..].find(&query) {
+                let match_byte_col = byte_col + byte_pos;
+                // Convert byte offset to grapheme index for correct cursor positioning
+                let match_grapheme_col = search_text[..match_byte_col].graphemes(true).count();
                 search.matches.push(Cursor {
                     line: line_idx,
-                    column: match_col,
+                    column: match_grapheme_col,
                 });
                 // Advance past the first character of the match to handle multi-byte UTF-8
-                if let Some(first_char) = search_text[match_col..].chars().next() {
-                    col = match_col + first_char.len_utf8();
+                if let Some(first_char) = search_text[match_byte_col..].chars().next() {
+                    byte_col = match_byte_col + first_char.len_utf8();
                 } else {
                     break;
                 }
@@ -89,7 +92,7 @@ pub fn replace_at_position(
 
     let new_cursor = Cursor {
         line: match_cursor.line,
-        column: match_cursor.column + replace_with.len(),
+        column: match_cursor.column + replace_with.chars().count(),
     };
 
     Ok(ReplaceResult {

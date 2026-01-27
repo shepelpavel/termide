@@ -138,7 +138,11 @@ impl Editor {
                     (&search_state.replace_with, search_state.current_match)
                 {
                     if let Some(match_cursor) = search_state.matches.get(idx).cloned() {
-                        (match_cursor, replace_with.clone(), search_state.query.len())
+                        (
+                            match_cursor,
+                            replace_with.clone(),
+                            search_state.query.chars().count(),
+                        )
                     } else {
                         return Ok(());
                     }
@@ -170,7 +174,7 @@ impl Editor {
                     &mut search_state.matches,
                     &match_cursor,
                     query_len,
-                    replace_with.len(),
+                    replace_with.chars().count(),
                 );
 
                 // Update current match index
@@ -214,7 +218,7 @@ impl Editor {
         let count = search::replace_all_matches(
             &mut self.buffer,
             &search_state.matches,
-            search_state.query.len(),
+            search_state.query.chars().count(),
             replace_with,
         )?;
 
