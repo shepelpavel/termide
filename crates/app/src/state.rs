@@ -519,6 +519,10 @@ pub struct AppState {
     pub needs_redraw: bool,
     /// Last time spinner was updated (for throttling spinner animation)
     pub last_spinner_update: Option<std::time::Instant>,
+    /// Last time LSP loading spinner was redrawn (for throttling to 125ms/8 FPS)
+    pub last_lsp_loading_redraw: Option<std::time::Instant>,
+    /// Last time git operation spinner was updated (for throttling to 125ms/8 FPS)
+    pub last_git_spinner_update: Option<std::time::Instant>,
     /// LSP manager for language server integration
     pub lsp_manager: Option<LspManager>,
     /// All diagnostics from LSP servers, keyed by file path
@@ -601,6 +605,8 @@ impl AppState {
             last_session_save: None,
             needs_redraw: true, // Initial draw needed
             last_spinner_update: None,
+            last_lsp_loading_redraw: None,
+            last_git_spinner_update: None,
             lsp_manager,
             all_diagnostics: HashMap::new(),
             bookmarks,

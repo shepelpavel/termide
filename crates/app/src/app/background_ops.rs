@@ -141,25 +141,36 @@ impl App {
             }
             Err(TryRecvError::Empty) => {
                 // Operation still in progress
-                // Advance spinner frame for animation
-                self.state.ui.spinner_frame = self.state.ui.spinner_frame.wrapping_add(1);
+                // Throttle spinner animation to 125ms (8 FPS) to reduce CPU usage
+                const GIT_SPINNER_INTERVAL: std::time::Duration =
+                    std::time::Duration::from_millis(125);
+                let should_advance = self
+                    .state
+                    .last_git_spinner_update
+                    .is_none_or(|t| t.elapsed() >= GIT_SPINNER_INTERVAL);
 
-                // Notify all panels with updated spinner frame
-                let operation = Some(handle.operation.clone());
-                let spinner_frame = self.state.ui.spinner_frame;
-                for panel in self.layout_manager.iter_all_panels_mut() {
-                    panel.handle_command(PanelCommand::SetGitOperationInProgress {
-                        in_progress: true,
-                        operation: operation.clone(),
-                        spinner_frame,
-                    });
+                if should_advance {
+                    // Advance spinner frame for animation
+                    self.state.ui.spinner_frame = self.state.ui.spinner_frame.wrapping_add(1);
+                    self.state.last_git_spinner_update = Some(std::time::Instant::now());
+
+                    // Notify all panels with updated spinner frame
+                    let operation = Some(handle.operation.clone());
+                    let spinner_frame = self.state.ui.spinner_frame;
+                    for panel in self.layout_manager.iter_all_panels_mut() {
+                        panel.handle_command(PanelCommand::SetGitOperationInProgress {
+                            in_progress: true,
+                            operation: operation.clone(),
+                            spinner_frame,
+                        });
+                    }
+
+                    // InfoActionModal spinner updated by update_modal_spinners()
+                    self.state.needs_redraw = true;
                 }
-
-                // InfoActionModal spinner updated by update_modal_spinners()
 
                 // Put handle back
                 self.state.git_operation_handle = Some(handle);
-                self.state.needs_redraw = true;
             }
             Err(TryRecvError::Disconnected) => {
                 // Thread finished without sending (shouldn't happen)
@@ -249,8 +260,17 @@ impl App {
         }
 
         // Request periodic redraw for spinner animation while any editor is loading
+        // Throttle to 125ms (8 FPS) to reduce CPU usage
         if any_loading {
-            self.state.needs_redraw = true;
+            const LSP_SPINNER_INTERVAL: std::time::Duration = std::time::Duration::from_millis(125);
+            let should_redraw = self
+                .state
+                .last_lsp_loading_redraw
+                .is_none_or(|t| t.elapsed() >= LSP_SPINNER_INTERVAL);
+            if should_redraw {
+                self.state.last_lsp_loading_redraw = Some(std::time::Instant::now());
+                self.state.needs_redraw = true;
+            }
         }
 
         // Poll for diagnostics from LSP and dispatch to editors and diagnostics panel
