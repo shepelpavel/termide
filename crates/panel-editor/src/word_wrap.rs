@@ -147,6 +147,82 @@ pub fn calculate_visual_row_for_cursor(
     visual_row
 }
 
+/// Get which visual row within a single line the cursor is on (0-based).
+///
+/// This is used for scrolling within a very long line that wraps to more
+/// visual rows than the viewport height.
+///
+/// # Parameters
+/// - `buffer`: The text buffer
+/// - `line`: The buffer line index
+/// - `column`: The cursor column (grapheme index)
+/// - `content_width`: Width of content area for wrapping
+/// - `use_smart_wrap`: Whether to use smart wrapping
+///
+/// # Returns
+/// The 0-based visual row index within this line where the cursor is located.
+pub fn get_cursor_visual_row_in_line(
+    buffer: &TextBuffer,
+    line: usize,
+    column: usize,
+    content_width: usize,
+    use_smart_wrap: bool,
+) -> usize {
+    if content_width == 0 {
+        return 0;
+    }
+
+    if let Some(line_text) = buffer.line_cow(line) {
+        let line_text = line_text.trim_end_matches('\n');
+        let (_, wrap_points) = get_line_wrap_points(line_text, content_width, use_smart_wrap);
+
+        // Clamp column to line length
+        let line_len = line_text.graphemes(true).count();
+        let column_clamped = column.min(line_len);
+
+        // Find which visual row contains the cursor column
+        // Each wrap point marks the start of a new visual row
+        wrap_points
+            .iter()
+            .filter(|&&wp| wp <= column_clamped)
+            .count()
+    } else {
+        0
+    }
+}
+
+/// Get which visual row within a single line the cursor is on (cached version).
+///
+/// Uses the wrap cache to avoid recalculating wrap points.
+pub(crate) fn get_cursor_visual_row_in_line_cached(
+    cache: &mut RenderingCache,
+    buffer: &TextBuffer,
+    line: usize,
+    column: usize,
+    content_width: usize,
+    use_smart_wrap: bool,
+) -> usize {
+    if content_width == 0 {
+        return 0;
+    }
+
+    let (_, wrap_points) =
+        get_line_wrap_points_cached(cache, buffer, line, content_width, use_smart_wrap);
+
+    // Clamp column to line length
+    let line_len = buffer
+        .line(line)
+        .map(|s| s.trim_end_matches('\n').graphemes(true).count())
+        .unwrap_or(0);
+    let column_clamped = column.min(line_len);
+
+    // Find which visual row contains the cursor column
+    wrap_points
+        .iter()
+        .filter(|&&wp| wp <= column_clamped)
+        .count()
+}
+
 /// Calculate total number of visual rows in the entire buffer.
 ///
 /// This accounts for word wrapping - returns total visual rows across all lines.
@@ -466,6 +542,7 @@ use crate::state::rendering_cache::RenderingCache;
 ///
 /// Returns (visual_rows, wrap_points) for the given line.
 /// Uses cache lookup first, computes and caches if miss.
+/// Cache validation ensures data was computed with matching content_width and use_smart_wrap.
 pub(crate) fn get_line_wrap_points_cached(
     cache: &mut RenderingCache,
     buffer: &TextBuffer,
@@ -473,8 +550,8 @@ pub(crate) fn get_line_wrap_points_cached(
     content_width: usize,
     use_smart_wrap: bool,
 ) -> (usize, Vec<usize>) {
-    // Check if cache has valid data for this line
-    if let Some(cached) = cache.get_wrap_data(line) {
+    // Check if cache has valid data for this line with matching width settings
+    if let Some(cached) = cache.get_wrap_data(line, content_width, use_smart_wrap) {
         return (cached.visual_rows, cached.wrap_points.clone());
     }
 
@@ -487,8 +564,14 @@ pub(crate) fn get_line_wrap_points_cached(
     let (visual_rows, wrap_points) =
         get_line_wrap_points(&line_text, content_width, use_smart_wrap);
 
-    // Store in cache
-    cache.set_wrap_data(line, visual_rows, wrap_points.clone());
+    // Store in cache with width settings
+    cache.set_wrap_data(
+        line,
+        visual_rows,
+        wrap_points.clone(),
+        content_width,
+        use_smart_wrap,
+    );
 
     (visual_rows, wrap_points)
 }
@@ -497,6 +580,7 @@ pub(crate) fn get_line_wrap_points_cached(
 ///
 /// This is the cached version of `calculate_visual_row_for_cursor`.
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 pub(crate) fn calculate_visual_row_for_cursor_cached(
     cache: &mut RenderingCache,
     buffer: &TextBuffer,
@@ -820,4 +904,92 @@ fn get_visual_row_bounds(
     };
 
     (start, end)
+}
+
+/// Convert visual row to buffer position using cached wrap data.
+///
+/// This is the cached version of `visual_row_to_buffer_position_with_diagnostics`.
+/// Uses the wrap cache to avoid redundant calculations.
+///
+/// Parameters:
+/// - `cache`: The rendering cache for wrap data
+/// - `buffer`: The text buffer
+/// - `visual_row`: Visual row index (includes top_visual_row_offset if scrolled within a line)
+/// - `viewport_top`: First visible buffer line
+/// - `content_width`: Width for wrapping
+/// - `use_smart_wrap`: Whether to use smart wrapping
+/// - `diagnostics`: Diagnostic list for virtual lines
+///
+/// Returns (buffer_line, column_offset, chunk_end, is_virtual_line).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn visual_row_to_buffer_position_cached(
+    cache: &mut RenderingCache,
+    buffer: &TextBuffer,
+    visual_row: usize,
+    viewport_top: usize,
+    content_width: usize,
+    use_smart_wrap: bool,
+    diagnostics: &[Diagnostic],
+) -> (usize, usize, usize, bool) {
+    if content_width == 0 {
+        // No wrap - delegate to non-cached version
+        return visual_row_to_buffer_position_with_diagnostics(
+            buffer,
+            visual_row,
+            viewport_top,
+            content_width,
+            use_smart_wrap,
+            diagnostics,
+        );
+    }
+
+    // Group diagnostics by line
+    let diagnostics_by_line = count_diagnostic_rows_by_line(diagnostics, buffer, content_width);
+
+    let mut current_visual_row = 0;
+    let mut line_idx = viewport_top;
+
+    while line_idx < buffer.line_count() {
+        // Use cached wrap data
+        let (visual_rows, wrap_points) =
+            get_line_wrap_points_cached(cache, buffer, line_idx, content_width, use_smart_wrap);
+
+        let line_len = buffer
+            .line(line_idx)
+            .map(|s| {
+                use unicode_segmentation::UnicodeSegmentation;
+                s.trim_end_matches('\n').graphemes(true).count()
+            })
+            .unwrap_or(0);
+
+        // Check if target is within this line's visual rows
+        if visual_row < current_visual_row + visual_rows {
+            // Found the target line - determine exact position
+            let row_within_line = visual_row - current_visual_row;
+            let (start, end) = get_visual_row_bounds(row_within_line, &wrap_points, line_len);
+            return (line_idx, start, end, false);
+        }
+        current_visual_row += visual_rows;
+
+        // Check diagnostic virtual rows after this line
+        let diag_row_count = diagnostics_by_line.get(&line_idx).copied().unwrap_or(0);
+        if diag_row_count > 0 && visual_row < current_visual_row + diag_row_count {
+            // Target is a diagnostic virtual line
+            return (line_idx, 0, line_len, true);
+        }
+        current_visual_row += diag_row_count;
+
+        line_idx += 1;
+    }
+
+    // If we've exhausted all lines, return the last line
+    let last_line = buffer.line_count().saturating_sub(1);
+    let last_line_len = buffer
+        .line(last_line)
+        .map(|s| {
+            use unicode_segmentation::UnicodeSegmentation;
+            s.trim_end_matches('\n').graphemes(true).count()
+        })
+        .unwrap_or(0);
+    (last_line, 0, last_line_len, false)
 }

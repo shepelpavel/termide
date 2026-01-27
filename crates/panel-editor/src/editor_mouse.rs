@@ -53,8 +53,8 @@ impl Editor {
                     popup.scroll_up(3);
                     return vec![];
                 }
-                // No popup - scroll editor
-                self.viewport.scroll_up(3);
+                // No popup - scroll editor by visual rows (accounts for word wrap)
+                self.scroll_visual_rows_up(3);
                 self.scroll_follows_cursor = false;
                 return vec![];
             }
@@ -68,9 +68,8 @@ impl Editor {
                     popup.scroll_down(3);
                     return vec![];
                 }
-                // No popup - scroll editor
-                self.viewport
-                    .scroll_down(3, self.render_cache.virtual_line_count);
+                // No popup - scroll editor by visual rows (accounts for word wrap)
+                self.scroll_visual_rows_down(3);
                 self.scroll_follows_cursor = false;
                 return vec![];
             }
@@ -148,14 +147,21 @@ impl Editor {
 
         // Map visual row to buffer line, accounting for diagnostic virtual lines
         let (buffer_line, wrapped_offset, chunk_end, is_virtual_line) = if self.config.word_wrap {
-            // In word wrap mode, use specialized function that accounts for both
-            // line wrapping and diagnostic virtual lines
-            word_wrap::visual_row_to_buffer_position_with_diagnostics(
+            // In word wrap mode, use cached function that accounts for both
+            // line wrapping and diagnostic virtual lines.
+            // Account for top_visual_row_offset: when scrolled within a wrapped line,
+            // rel_y=0 corresponds to visual row top_visual_row_offset of top_line.
+            let effective_visual_row = rel_y + self.viewport.top_visual_row_offset;
+            // Use cached content_width to ensure consistency with wrap cache
+            let cached_width = self.render_cache.content_width;
+            let use_smart_wrap = self.render_cache.use_smart_wrap;
+            word_wrap::visual_row_to_buffer_position_cached(
+                &mut self.render_cache,
                 &self.buffer,
-                rel_y,
+                effective_visual_row,
                 self.viewport.top_line,
-                content_width as usize,
-                self.render_cache.use_smart_wrap,
+                cached_width,
+                use_smart_wrap,
                 &self.lsp.diagnostics,
             )
         } else {
@@ -312,8 +318,13 @@ impl Editor {
                 if let Some(ref mut selection) = self.selection {
                     selection.active = self.cursor;
                 }
-                self.viewport
-                    .ensure_cursor_visible(&self.cursor, self.render_cache.virtual_line_count);
+                // Use word wrap aware scrolling when word wrap is enabled
+                if self.config.word_wrap && self.render_cache.content_width > 0 {
+                    self.ensure_cursor_visible_word_wrap(self.render_cache.content_height);
+                } else {
+                    self.viewport
+                        .ensure_cursor_visible(&self.cursor, self.render_cache.virtual_line_count);
+                }
             }
             MouseEventKind::Up(MouseButton::Left) => {
                 self.scroll_follows_cursor = true;

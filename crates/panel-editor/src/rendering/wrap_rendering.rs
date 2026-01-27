@@ -56,6 +56,9 @@ pub fn render_content_word_wrap<H: LineHighlighter>(
     let mut visual_row = 0;
     let mut line_idx = viewport.top_line;
 
+    // Track how many visual rows to skip for the first line (for within-line scrolling)
+    let mut skip_visual_rows = viewport.top_visual_row_offset;
+
     while visual_row < content_height && line_idx < buffer.line_count() {
         let is_cursor_line = line_idx == cursor.line;
         let style = if is_cursor_line {
@@ -70,28 +73,34 @@ pub fn render_content_word_wrap<H: LineHighlighter>(
             let line_len = graphemes.len();
 
             let mut grapheme_offset = 0;
-            let mut is_first_visual_row = true;
+            let mut is_first_visual_row = skip_visual_rows == 0;
 
             // Special handling for empty lines
             if line_len == 0 {
-                render_empty_line(
-                    buf,
-                    area,
-                    visual_row,
-                    line_idx,
-                    is_cursor_line,
-                    git_diff_cache,
-                    show_git_diff,
-                    theme,
-                    line_number_width,
-                    content_width,
-                    style,
-                    cursor,
-                    render_context,
-                );
-                visual_row += 1;
+                // Empty lines have only one visual row - skip if needed
+                if skip_visual_rows > 0 {
+                    skip_visual_rows -= 1;
+                } else {
+                    render_empty_line(
+                        buf,
+                        area,
+                        visual_row,
+                        line_idx,
+                        is_cursor_line,
+                        git_diff_cache,
+                        show_git_diff,
+                        theme,
+                        line_number_width,
+                        content_width,
+                        style,
+                        cursor,
+                        render_context,
+                    );
+                    visual_row += 1;
+                }
             } else {
                 // Handle non-empty lines with wrapping
+                // Calculate wrap points on the fly for each visual row
                 while grapheme_offset < line_len && visual_row < content_height {
                     let chunk_end = if use_smart_wrap {
                         calculate_wrap_point(&graphemes, grapheme_offset, content_width, line_len)
@@ -99,6 +108,14 @@ pub fn render_content_word_wrap<H: LineHighlighter>(
                         // Simple wrap: calculate based on display width
                         calculate_simple_wrap_point(&graphemes, grapheme_offset, content_width)
                     };
+
+                    // Skip visual rows if we have an offset (for within-line scrolling)
+                    if skip_visual_rows > 0 {
+                        skip_visual_rows -= 1;
+                        grapheme_offset = chunk_end;
+                        is_first_visual_row = false;
+                        continue;
+                    }
 
                     render_visual_line(
                         buf,

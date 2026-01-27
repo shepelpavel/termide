@@ -963,21 +963,24 @@ impl Editor {
         let (content_width, content_height) =
             rendering::calculate_content_dimensions(area.width, area.height);
 
-        self.render_cache.content_width = if self.config.word_wrap {
+        let effective_width = if self.config.word_wrap {
             content_width
         } else {
             0
         };
-        self.render_cache.use_smart_wrap = false;
-
-        self.viewport.resize(content_width, content_height);
-
         let use_smart_wrap = if self.config.word_wrap && content_width > 0 {
             self.should_use_smart_wrap(config)
         } else {
             false
         };
-        self.render_cache.use_smart_wrap = use_smart_wrap;
+
+        // Update wrap settings BEFORE building cumulative cache
+        // This ensures cache is invalidated if width changed
+        self.render_cache
+            .update_wrap_settings(effective_width, use_smart_wrap);
+        self.render_cache.content_height = content_height;
+
+        self.viewport.resize(content_width, content_height);
 
         let virtual_lines_total = self.virtual_line_count(config);
         self.render_cache.virtual_line_count = virtual_lines_total;
@@ -1090,72 +1093,246 @@ impl Editor {
     /// Ensure cursor is visible when word wrap is enabled.
     /// This is more complex than the standard ensure_cursor_visible because we need
     /// to work with visual rows, not physical lines.
+    ///
+    /// Optimized to avoid O(n) iteration through lines by using direct calculations.
     fn ensure_cursor_visible_word_wrap(&mut self, content_height: usize) {
         if content_height == 0 || self.render_cache.content_width == 0 {
             return;
         }
 
-        // First, handle the case where cursor is above viewport (physical line check)
-        if self.cursor.line < self.viewport.top_line {
-            self.viewport.top_line = self.cursor.line;
-        }
-
-        // Calculate the visual row of the cursor relative to viewport.top_line
-        // Use cached version to avoid O(n) recalculation on every keystroke
         let content_width = self.render_cache.content_width;
         let use_smart_wrap = self.render_cache.use_smart_wrap;
-        let word_wrap = self.config.word_wrap;
 
-        let cursor_visual_row = word_wrap::calculate_visual_row_for_cursor_cached(
+        // Get cursor's visual row within its own line (uses cache for O(1) after first call)
+        let cursor_visual_row_in_line = word_wrap::get_cursor_visual_row_in_line_cached(
             &mut self.render_cache,
             &self.buffer,
             self.cursor.line,
             self.cursor.column,
-            self.viewport.top_line,
             content_width,
-            word_wrap,
             use_smart_wrap,
         );
 
-        // If cursor is below the visible area, scroll down
-        if cursor_visual_row >= content_height {
-            // We need to increase top_line until cursor fits in view
-            // Iterate: increase top_line and recalculate cursor_visual_row
-            while self.viewport.top_line < self.cursor.line {
-                self.viewport.top_line += 1;
-
-                let new_visual_row = word_wrap::calculate_visual_row_for_cursor_cached(
-                    &mut self.render_cache,
-                    &self.buffer,
-                    self.cursor.line,
-                    self.cursor.column,
-                    self.viewport.top_line,
-                    content_width,
-                    word_wrap,
-                    use_smart_wrap,
-                );
-
-                // Stop when cursor is at the bottom of viewport
-                if new_visual_row < content_height {
-                    break;
-                }
-            }
-
-            // Edge case: cursor line itself is longer than viewport height
-            // In this case, ensure the visual row containing cursor is visible
-            if self.viewport.top_line == self.cursor.line {
-                // The cursor is on a line that starts at top_line
-                // But the cursor column might be on a wrapped visual row
-                // We've already done what we can - the line is at the top
-            }
+        // Handle cursor above viewport (physical line check)
+        if self.cursor.line < self.viewport.top_line {
+            self.viewport.top_line = self.cursor.line;
+            self.viewport.top_visual_row_offset = cursor_visual_row_in_line;
+            return;
         }
 
-        // Also handle horizontal scroll for non-word-wrap scenarios
-        // (word wrap shouldn't need horizontal scroll, but just in case)
-        if self.cursor.column < self.viewport.left_column {
-            self.viewport.left_column = self.cursor.column;
-        } else if self.cursor.column >= self.viewport.right_column() {
-            self.viewport.left_column = self.cursor.column.saturating_sub(self.viewport.width - 1);
+        // If cursor is on the same line as top_line, check if cursor is above visible area
+        if self.cursor.line == self.viewport.top_line {
+            if cursor_visual_row_in_line < self.viewport.top_visual_row_offset {
+                // Cursor is above visible area - scroll up within line
+                self.viewport.top_visual_row_offset = cursor_visual_row_in_line;
+                return;
+            }
+
+            // Check if cursor is below visible area (within same line)
+            let visible_row = cursor_visual_row_in_line - self.viewport.top_visual_row_offset;
+            if visible_row >= content_height {
+                // Position cursor at bottom of viewport
+                self.viewport.top_visual_row_offset =
+                    cursor_visual_row_in_line.saturating_sub(content_height - 1);
+            }
+            return;
+        }
+
+        // Cursor is on a different line than top_line (cursor.line > top_line)
+        // Calculate visual distance from top of viewport to cursor
+
+        // Visual rows from top_line (after offset) to end of top_line
+        let (top_line_visual_rows, _) = word_wrap::get_line_wrap_points_cached(
+            &mut self.render_cache,
+            &self.buffer,
+            self.viewport.top_line,
+            content_width,
+            use_smart_wrap,
+        );
+        let rows_remaining_in_top_line =
+            top_line_visual_rows.saturating_sub(self.viewport.top_visual_row_offset);
+
+        // Visual rows for lines between top_line and cursor_line (exclusive)
+        // Use cumulative cache for O(1) lookup when available
+        let visual_rows_between = if self.render_cache.is_cumulative_valid()
+            && self.cursor.line > 0
+            && self.viewport.top_line + 1 < self.cursor.line
+        {
+            // cumulative[cursor_line - 1] - cumulative[top_line] gives us
+            // sum of visual rows for lines (top_line + 1)..(cursor_line)
+            let start_cumulative = self
+                .render_cache
+                .get_cumulative_visual_rows(self.viewport.top_line)
+                .unwrap_or(0);
+            let end_cumulative = self
+                .render_cache
+                .get_cumulative_visual_rows(self.cursor.line - 1)
+                .unwrap_or(0);
+            end_cumulative.saturating_sub(start_cumulative)
+        } else if self.viewport.top_line + 1 < self.cursor.line {
+            // Fallback to O(n) loop if cumulative cache is not valid
+            let mut rows = 0;
+            for line in (self.viewport.top_line + 1)..self.cursor.line {
+                let (line_visual_rows, _) = word_wrap::get_line_wrap_points_cached(
+                    &mut self.render_cache,
+                    &self.buffer,
+                    line,
+                    content_width,
+                    use_smart_wrap,
+                );
+                rows += line_visual_rows;
+            }
+            rows
+        } else {
+            0
+        };
+
+        // Total visual rows from viewport top to cursor position
+        let cursor_visual_pos =
+            rows_remaining_in_top_line + visual_rows_between + cursor_visual_row_in_line;
+
+        // If cursor is visible, no scrolling needed
+        if cursor_visual_pos < content_height {
+            return;
+        }
+
+        // Cursor is below visible area - need to scroll down
+        // Calculate target: place cursor at bottom of viewport
+        let scroll_needed = cursor_visual_pos - (content_height - 1);
+
+        // Apply scroll directly by computing final position
+        self.apply_visual_scroll_down(scroll_needed, content_width, use_smart_wrap);
+    }
+
+    /// Apply scroll down by a given number of visual rows.
+    /// Updates top_line and top_visual_row_offset directly.
+    fn apply_visual_scroll_down(
+        &mut self,
+        mut remaining: usize,
+        content_width: usize,
+        use_smart_wrap: bool,
+    ) {
+        while remaining > 0 && self.viewport.top_line < self.buffer.line_count() {
+            let (line_visual_rows, _) = word_wrap::get_line_wrap_points_cached(
+                &mut self.render_cache,
+                &self.buffer,
+                self.viewport.top_line,
+                content_width,
+                use_smart_wrap,
+            );
+
+            let rows_available =
+                line_visual_rows.saturating_sub(self.viewport.top_visual_row_offset);
+
+            if remaining < rows_available {
+                // Scroll within current line
+                self.viewport.top_visual_row_offset += remaining;
+                return;
+            }
+
+            // Move to next line
+            remaining -= rows_available;
+            self.viewport.top_line += 1;
+            self.viewport.top_visual_row_offset = 0;
+        }
+
+        // Clamp to valid range
+        if self.viewport.top_line >= self.buffer.line_count() {
+            self.viewport.top_line = self.buffer.line_count().saturating_sub(1);
+            self.viewport.top_visual_row_offset = 0;
+        }
+    }
+
+    /// Scroll up by visual rows (accounting for word wrap).
+    /// Used for mouse scroll and other visual-based navigation.
+    pub(crate) fn scroll_visual_rows_up(&mut self, count: usize) {
+        // Use viewport.width as fallback when render_cache.content_width is not yet set
+        // This handles the case when mouse events are processed before first render
+        let content_width = if self.render_cache.content_width > 0 {
+            self.render_cache.content_width
+        } else {
+            self.viewport.width
+        };
+
+        if !self.config.word_wrap || content_width == 0 {
+            // Fallback to buffer line scrolling
+            self.viewport.scroll_up(count);
+            return;
+        }
+
+        let use_smart_wrap = self.render_cache.use_smart_wrap;
+
+        // Ensure cache is valid for current width settings
+        self.render_cache
+            .update_wrap_settings(content_width, use_smart_wrap);
+
+        for _ in 0..count {
+            if self.viewport.top_visual_row_offset > 0 {
+                // Scroll within current line
+                self.viewport.top_visual_row_offset -= 1;
+            } else if self.viewport.top_line > 0 {
+                // Move to previous line's last visual row
+                self.viewport.top_line -= 1;
+                let (visual_rows, _) = word_wrap::get_line_wrap_points_cached(
+                    &mut self.render_cache,
+                    &self.buffer,
+                    self.viewport.top_line,
+                    content_width,
+                    use_smart_wrap,
+                );
+                self.viewport.top_visual_row_offset = visual_rows.saturating_sub(1);
+            } else {
+                // Already at top
+                break;
+            }
+        }
+    }
+
+    /// Scroll down by visual rows (accounting for word wrap).
+    /// Used for mouse scroll and other visual-based navigation.
+    pub(crate) fn scroll_visual_rows_down(&mut self, count: usize) {
+        // Use viewport.width as fallback when render_cache.content_width is not yet set
+        // This handles the case when mouse events are processed before first render
+        let content_width = if self.render_cache.content_width > 0 {
+            self.render_cache.content_width
+        } else {
+            self.viewport.width
+        };
+
+        if !self.config.word_wrap || content_width == 0 {
+            // Fallback to buffer line scrolling
+            self.viewport
+                .scroll_down(count, self.render_cache.virtual_line_count);
+            return;
+        }
+
+        let use_smart_wrap = self.render_cache.use_smart_wrap;
+        let line_count = self.buffer.line_count();
+
+        // Ensure cache is valid for current width settings
+        self.render_cache
+            .update_wrap_settings(content_width, use_smart_wrap);
+
+        for _ in 0..count {
+            let (visual_rows, _) = word_wrap::get_line_wrap_points_cached(
+                &mut self.render_cache,
+                &self.buffer,
+                self.viewport.top_line,
+                content_width,
+                use_smart_wrap,
+            );
+
+            if self.viewport.top_visual_row_offset + 1 < visual_rows {
+                // Scroll within current line
+                self.viewport.top_visual_row_offset += 1;
+            } else if self.viewport.top_line + 1 < line_count {
+                // Move to next line
+                self.viewport.top_line += 1;
+                self.viewport.top_visual_row_offset = 0;
+            } else {
+                // Already at bottom
+                break;
+            }
         }
     }
 
@@ -1224,25 +1401,24 @@ impl Editor {
         let (content_width, content_height) =
             rendering::calculate_content_dimensions(area.width, area.height);
 
-        // Cache content width for visual line navigation
-        self.render_cache.content_width = if self.config.word_wrap {
+        let effective_width = if self.config.word_wrap {
             content_width
         } else {
             0 // Set to 0 when word wrap is disabled to trigger fallback behavior
         };
-
-        // Initially set smart wrap to false (will be updated later if word wrap is enabled)
-        self.render_cache.use_smart_wrap = false;
-
-        self.viewport.resize(content_width, content_height);
-
-        // Determine smart wrap setting early (needed for ensure_cursor_visible_word_wrap)
         let use_smart_wrap = if self.config.word_wrap && content_width > 0 {
             self.should_use_smart_wrap(config)
         } else {
             false
         };
-        self.render_cache.use_smart_wrap = use_smart_wrap;
+
+        // Update wrap settings BEFORE building cumulative cache
+        // This ensures cache is invalidated if width changed
+        self.render_cache
+            .update_wrap_settings(effective_width, use_smart_wrap);
+        self.render_cache.content_height = content_height;
+
+        self.viewport.resize(content_width, content_height);
 
         // Compute and cache virtual line count for viewport calculations
         let virtual_lines_total = self.virtual_line_count(config);
@@ -1822,8 +1998,8 @@ impl Panel for Editor {
                 popup.scroll_up(lines);
                 return vec![];
             }
-            // No popup - scroll editor
-            self.viewport.scroll_up(lines);
+            // No popup - scroll editor by visual rows (accounts for word wrap)
+            self.scroll_visual_rows_up(lines);
         } else {
             // Scroll down - check popups first
             if let Some(ref mut popup) = self.lsp.completion_popup {
@@ -1834,9 +2010,8 @@ impl Panel for Editor {
                 popup.scroll_down(lines);
                 return vec![];
             }
-            // No popup - scroll editor
-            self.viewport
-                .scroll_down(lines, self.render_cache.virtual_line_count);
+            // No popup - scroll editor by visual rows (accounts for word wrap)
+            self.scroll_visual_rows_down(lines);
         }
         self.scroll_follows_cursor = false;
         vec![]

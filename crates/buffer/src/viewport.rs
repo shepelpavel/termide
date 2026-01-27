@@ -9,6 +9,10 @@ use super::Cursor;
 pub struct Viewport {
     /// First visible line (0-based)
     pub top_line: usize,
+    /// Visual row offset within top_line for word wrap scrolling
+    /// When a single line wraps to more visual rows than viewport height,
+    /// this tracks how many visual rows to skip from the start of top_line
+    pub top_visual_row_offset: usize,
     /// Number of visible lines
     pub height: usize,
     /// Horizontal scroll (left column)
@@ -22,6 +26,7 @@ impl Viewport {
     pub fn new(width: usize, height: usize) -> Self {
         Self {
             top_line: 0,
+            top_visual_row_offset: 0,
             height,
             left_column: 0,
             width,
@@ -68,10 +73,12 @@ impl Viewport {
         if cursor.line < self.top_line {
             // Cursor above viewport - scroll up
             self.top_line = cursor.line;
+            self.top_visual_row_offset = 0; // Reset offset when changing line
             changed = true;
         } else if cursor.line >= self.bottom_line() {
             // Cursor below viewport - scroll down
             self.top_line = cursor.line.saturating_sub(self.height - 1);
+            self.top_visual_row_offset = 0; // Reset offset when changing line
             changed = true;
         }
 
@@ -79,6 +86,7 @@ impl Viewport {
         let max_top = total_lines.saturating_sub(self.height);
         if self.top_line > max_top {
             self.top_line = max_top;
+            self.top_visual_row_offset = 0; // Reset offset when changing line
             changed = true;
         }
 
@@ -100,6 +108,7 @@ impl Viewport {
     pub fn scroll_up(&mut self, lines: usize) -> bool {
         if self.top_line > 0 {
             self.top_line = self.top_line.saturating_sub(lines);
+            self.top_visual_row_offset = 0; // Reset offset when changing line
             true
         } else {
             false
@@ -111,6 +120,7 @@ impl Viewport {
         let max_top = total_lines.saturating_sub(self.height);
         if self.top_line < max_top {
             self.top_line = (self.top_line + lines).min(max_top);
+            self.top_visual_row_offset = 0; // Reset offset when changing line
             true
         } else {
             false
@@ -135,8 +145,9 @@ impl Viewport {
 
     /// Scroll to document start
     pub fn scroll_to_top(&mut self) -> bool {
-        if self.top_line != 0 {
+        if self.top_line != 0 || self.top_visual_row_offset != 0 {
             self.top_line = 0;
+            self.top_visual_row_offset = 0;
             true
         } else {
             false
@@ -148,6 +159,7 @@ impl Viewport {
         let max_top = total_lines.saturating_sub(self.height);
         if self.top_line != max_top {
             self.top_line = max_top;
+            self.top_visual_row_offset = 0; // Reset offset when changing line
             true
         } else {
             false
@@ -162,6 +174,7 @@ impl Viewport {
 
         if self.top_line != new_top {
             self.top_line = new_top;
+            self.top_visual_row_offset = 0; // Reset offset when changing line
             true
         } else {
             false
