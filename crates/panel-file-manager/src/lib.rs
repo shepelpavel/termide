@@ -762,6 +762,14 @@ impl FileManager {
 
     /// Internal method to load directory with optional selection preservation
     fn load_directory_inner(&mut self, preserve_selection: bool) -> Result<()> {
+        // Sync VFS path with current_path for local paths
+        // This ensures vfs.display_path() stays in sync with self.current_path
+        // after navigation operations (enter, go parent, go home, etc.)
+        if !self.vfs.is_remote() {
+            self.vfs
+                .set_path(termide_vfs::VfsPath::local(self.current_path.clone()));
+        }
+
         // Save current file name and index to restore position
         // Use previous_dir_name if navigating up, otherwise use current selection
         let current_name = self
