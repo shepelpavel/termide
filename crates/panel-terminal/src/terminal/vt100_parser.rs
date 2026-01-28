@@ -98,12 +98,42 @@ impl Perform for VtPerformer {
 
     fn execute(&mut self, byte: u8) {
         match byte {
-            b'\n' => self.pending_ops.push(ScreenOp::Newline),
-            b'\r' => self.pending_ops.push(ScreenOp::CarriageReturn),
-            b'\x08' => self.pending_ops.push(ScreenOp::Backspace),
-            b'\t' => self.pending_ops.push(ScreenOp::Tab),
+            b'\n' | b'\r' | b'\x08' | b'\t' => {
+                // Check if we're in sync_output mode
+                // If not, apply immediately to prevent race condition with render
+                let sync_output = self.screen.read().map(|s| s.sync_output).unwrap_or(false);
+
+                if sync_output {
+                    // During sync output, batch operations for efficiency
+                    match byte {
+                        b'\n' => self.pending_ops.push(ScreenOp::Newline),
+                        b'\r' => self.pending_ops.push(ScreenOp::CarriageReturn),
+                        b'\x08' => self.pending_ops.push(ScreenOp::Backspace),
+                        b'\t' => self.pending_ops.push(ScreenOp::Tab),
+                        _ => {}
+                    }
+                } else {
+                    // Outside sync output, apply immediately to keep cursor position accurate
+                    // First flush any pending ops
+                    self.flush();
+                    // Then apply this operation
+                    // NOTE: Don't set dirty=true here! CR/LF/BS/TAB are cursor movement,
+                    // not content changes. Setting dirty here causes render to show
+                    // intermediate states between sync blocks (duplicate prompts bug).
+                    if let Ok(mut screen) = self.screen.write() {
+                        match byte {
+                            b'\n' => screen.newline(),
+                            b'\r' => screen.carriage_return(),
+                            b'\x08' => screen.backspace(),
+                            b'\t' => screen.tab(),
+                            _ => {}
+                        }
+                        // dirty is NOT set - cursor position change without content change
+                    }
+                }
+            }
             b'\x07' => {
-                // Bell character - forward to parent terminal (no screen lock needed)
+                // Bell character - just forward to parent terminal
                 print!("\x07");
                 let _ = std::io::stdout().flush();
             }

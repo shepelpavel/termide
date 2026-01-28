@@ -663,21 +663,30 @@ impl Terminal {
             }
         }
 
-        // Invalidate cache when sync_output batch ends (transition from true to false)
-        // This flag is set atomically in the CSI handler when processing 2026 'l'
-        // IMPORTANT: Only invalidate if a new batch hasn't started yet (!sync_output)
-        // This prevents a race condition where:
-        //   1. Batch 1 ends: sync_output=false, sync_output_ended=true
-        //   2. Batch 2 starts immediately: sync_output=true
-        //   3. We read both flags simultaneously: sync_output=true, sync_output_ended=true
-        //   4. Without this check, we'd invalidate cache then fail to return it,
-        //      causing partial batch 2 content to render
+        // Handle sync_output batch end (transition from true to false)
+        // IMPORTANT: Don't invalidate cache immediately when sync ends!
+        // Between sync blocks, the terminal may be in an intermediate state
+        // (e.g., after scroll but before new content is drawn).
+        // Instead, return cached content until new dirty content arrives.
+        // This prevents rendering artifacts like duplicate prompts.
         if sync_output_ended && !sync_output {
-            self.cached_lines = None;
-            // Clear the flag under write lock
+            // Clear the flag but DON'T invalidate cache yet
             if let Ok(mut screen) = self.screen.write() {
                 screen.sync_output_ended = false;
             }
+            // If we have cached content and screen is not dirty, return cache
+            // This prevents showing intermediate state between sync blocks
+            if !is_dirty {
+                if let Some(ref cached) = self.cached_lines {
+                    return (
+                        Arc::clone(cached),
+                        self.cached_cursor,
+                        self.cached_cursor_shown,
+                    );
+                }
+            }
+            // Only invalidate cache when there's actual new content (dirty=true)
+            self.cached_lines = None;
         }
 
         // Return cached if:

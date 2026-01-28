@@ -314,10 +314,11 @@ impl TerminalScreen {
         }
     }
 
-    /// Newline (respects scroll region)
+    /// Line Feed - move cursor down (respects scroll region)
+    /// NOTE: LF does NOT reset column position - only CR does that
     pub fn newline(&mut self) {
         self.wrap_pending = false;
-        self.cursor.1 = 0;
+        // Do NOT reset cursor.1 here - LF only moves down, CR resets column
         if self.cursor.0 >= self.scroll_bottom {
             // At or below scroll region bottom - scroll
             self.scroll_up();
