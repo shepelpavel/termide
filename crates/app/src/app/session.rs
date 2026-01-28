@@ -34,8 +34,10 @@ impl App {
         let session_dir = termide_session::Session::get_session_dir(&self.project_root)?;
 
         // Get terminal dimensions for creating Terminal panels
+        // Height: subtract menu (1) + status bar (1) + panel border (1) = 3
         let term_height = self.state.terminal.height.saturating_sub(3);
-        let term_width = self.state.terminal.width.saturating_sub(2);
+        // Width: full terminal width (vertical layout doesn't reduce width)
+        let term_width = self.state.terminal.width;
 
         // Restore layout from session
         self.layout_manager = LayoutManager::from_session(
@@ -45,6 +47,11 @@ impl App {
             term_width,
             self.state.editor_config(),
         )?;
+
+        // Adapt panel widths to current terminal size
+        self.layout_manager
+            .redistribute_widths_proportionally(term_width);
+
         log::info!("Session loaded");
 
         // Initialize LSP for all restored editors
