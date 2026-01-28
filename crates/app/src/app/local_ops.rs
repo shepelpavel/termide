@@ -383,10 +383,12 @@ impl App {
         use crate::state::ActiveModal;
 
         // Don't start new operation if background copy/download/scan is already in progress
+        // Also check OperationManager to prevent duplicate remote downloads
         if self.state.local_copy_operation.is_some()
             || self.state.local_directory_copy_operation.is_some()
             || self.state.local_scan_operation.is_some()
             || self.state.batch_download_operation.is_some()
+            || self.state.has_pending_operations()
         {
             return;
         }
