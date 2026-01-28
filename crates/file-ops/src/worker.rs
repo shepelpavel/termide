@@ -1479,10 +1479,7 @@ impl UploadWorker {
                     total_bytes,
                     files_completed: 0,
                     total_files: 1,
-                    current_item: source
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .map(String::from),
+                    current_item: dest.file_name().map(|n| n.to_string_lossy().to_string()),
                     speed_bps: current_speed,
                     eta_seconds,
                     individual_file_bytes: bytes_transferred,

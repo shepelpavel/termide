@@ -54,7 +54,7 @@ impl App {
                                             .map(|n| n.to_string_lossy().to_string())
                                             .unwrap_or_else(|| "file".to_string());
                                         let modal = termide_modal::ProgressModal::indeterminate(
-                                            "Uploading File",
+                                            "Upload",
                                             format!("Uploading {}...", filename),
                                         );
                                         self.state.active_modal =

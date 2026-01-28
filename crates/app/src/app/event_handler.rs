@@ -558,7 +558,7 @@ impl App {
 
         // Show progress modal
         let modal = termide_modal::ProgressModal::indeterminate(
-            "Downloading File",
+            "Download",
             format!("Downloading {}...", filename),
         );
         self.state.active_modal = Some(crate::state::ActiveModal::Progress(Box::new(modal)));

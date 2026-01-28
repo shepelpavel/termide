@@ -114,7 +114,7 @@ impl App {
             .unwrap_or_else(|| "file".to_string());
 
         let modal = termide_modal::ProgressModal::indeterminate(
-            "Uploading File",
+            "Upload",
             format!("Uploading {}...", filename),
         );
         self.state.active_modal = Some(crate::state::ActiveModal::Progress(Box::new(modal)));

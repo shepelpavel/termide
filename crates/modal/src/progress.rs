@@ -584,16 +584,16 @@ impl Modal for ProgressModal {
             // Delete layout: padding + source + progress bar + empty + files + empty + buttons + padding = 8 + 2 borders
             10
         } else if self.show_buttons {
-            if self.total == 0 {
-                7
+            if self.total == 0 && self.total_file_bytes == 0 {
+                7 // Plain indeterminate with buttons
             } else {
-                9
-            } // Indeterminate: 7, Determinate: 9
-        } else if self.total == 0 {
-            5
+                9 // Determinate or indeterminate with byte progress
+            }
+        } else if self.total == 0 && self.total_file_bytes == 0 {
+            5 // Plain indeterminate without buttons
         } else {
-            7
-        }; // Indeterminate: 5, Determinate: 7
+            7 // Determinate or indeterminate with byte progress
+        };
 
         let modal_area = centered_rect_with_size(modal_width, modal_height, area);
 
@@ -873,11 +873,74 @@ impl Modal for ProgressModal {
             buttons_para.render(chunks[10], buf);
 
             self.button_areas = vec![chunks[10], chunks[10]];
+        } else if self.total == 0 && self.total_file_bytes > 0 {
+            // Single file transfer mode (upload/download) - show byte progress bar
+            let padded_inner = Rect {
+                x: inner.x + 1,
+                y: inner.y,
+                width: inner.width.saturating_sub(2),
+                height: inner.height,
+            };
+
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Length(1), // Empty padding
+                    Constraint::Length(1), // Current item (filename/message)
+                    Constraint::Length(1), // Progress bar
+                    Constraint::Length(1), // Byte info + speed
+                    Constraint::Length(1), // Empty padding
+                ])
+                .split(padded_inner);
+
+            // Render current item (e.g., "Uploading source.txt...")
+            if let Some(ref item) = self.current_item {
+                let max_item_width = padded_inner.width as usize;
+                let item_text = truncate_left(item, max_item_width);
+                let text = format!("{} {}", self.get_spinner_char(), item_text);
+                let para = Paragraph::new(text).style(Style::default().fg(theme.fg));
+                para.render(chunks[1], buf);
+            }
+
+            // Render byte progress bar
+            let bar_width = padded_inner.width as usize;
+            let percentage = if self.total_file_bytes > 0 {
+                (self.current_file_bytes as f64 / self.total_file_bytes as f64).min(1.0)
+            } else {
+                0.0
+            };
+            let filled_count = (percentage * (bar_width as f64 - 4.0)) as usize;
+            let empty_count = bar_width.saturating_sub(4).saturating_sub(filled_count);
+            let progress_bar_text = format!(
+                "[ {}{} ]",
+                "█".repeat(filled_count),
+                " ".repeat(empty_count)
+            );
+            let bar_para =
+                Paragraph::new(progress_bar_text).style(Style::default().fg(theme.accented_fg));
+            bar_para.render(chunks[2], buf);
+
+            // Render byte info + speed
+            let byte_info = format!(
+                "{} / {}",
+                format_bytes(self.current_file_bytes),
+                format_bytes(self.total_file_bytes)
+            );
+            let speed_info = if self.transfer_speed_bps > 0.0 {
+                format!("  |  {}", format_speed(self.transfer_speed_bps))
+            } else {
+                String::new()
+            };
+            let info_text = format!("{}{}", byte_info, speed_info);
+            let info_para = Paragraph::new(info_text)
+                .alignment(Alignment::Center)
+                .style(Style::default().fg(theme.fg));
+            info_para.render(chunks[3], buf);
         } else {
             // Original layout (existing code)
             // Split into sections - different layouts for indeterminate vs determinate mode
             let chunks = if self.total == 0 {
-                // Indeterminate mode - no progress bar, compact layout
+                // Plain indeterminate mode - no progress bar, compact layout
                 if self.show_buttons {
                     Layout::default()
                         .direction(Direction::Vertical)
@@ -931,7 +994,7 @@ impl Modal for ProgressModal {
             };
 
             if self.total == 0 {
-                // Indeterminate mode - show spinner with current item
+                // Plain indeterminate mode - show spinner with current item
                 let text = if let Some(ref item) = self.current_item {
                     let max_item_width = modal_width as usize - 4; // Reserve space for spinner
                     let item_text = truncate_left(item, max_item_width);
