@@ -148,7 +148,7 @@ impl EditableSelectModal {
             self.prompt.lines().count().max(1) as u16
         };
         let list_height = if self.suggestion_input.is_expanded() && !self.options.is_empty() {
-            self.options.len().min(6) as u16 + 3 // Limit to 6 items + border + label
+            self.options.len().min(6) as u16 + 1 // Limit to 6 items + bottom border
         } else {
             0
         };
@@ -185,7 +185,7 @@ impl Modal for EditableSelectModal {
         let has_prompt = prompt_lines > 0;
         let has_list = self.suggestion_input.is_expanded() && !self.options.is_empty();
         let list_height = if has_list {
-            self.options.len().min(6) as u16 + 3
+            self.options.len().min(6) as u16 + 1
         } else {
             0
         };
