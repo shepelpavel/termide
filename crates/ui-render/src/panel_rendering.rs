@@ -9,7 +9,7 @@ use ratatui::{
     text::Span,
     widgets::{Block, Borders, Widget},
 };
-use unicode_width::UnicodeWidthStr;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 /// Braille spinner characters used for loading indicators.
 const SPINNER_CHARS: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -104,17 +104,17 @@ fn smart_truncate_title(title: &str, max_width: usize) -> String {
     } else if available_for_main > 0 {
         // Very narrow, just take what we can from the end
         let main_chars: Vec<char> = main_text.chars().collect();
-        let mut result = String::new();
+        let mut chars_rev = Vec::new();
         let mut width = 0;
         for ch in main_chars.iter().rev() {
-            let ch_width = ch.to_string().width();
+            let ch_width = ch.width().unwrap_or(0);
             if width + ch_width > available_for_main {
                 break;
             }
-            result.insert(0, *ch);
+            chars_rev.push(*ch);
             width += ch_width;
         }
-        result
+        chars_rev.iter().rev().collect()
     } else {
         String::new()
     };

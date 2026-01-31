@@ -572,6 +572,27 @@ pub(crate) fn get_line_wrap_points_cached(
     (visual_rows, wrap_points)
 }
 
+/// Get visual row count for a line, using cache if available.
+///
+/// This avoids the Vec<usize> clone that `get_line_wrap_points_cached` requires,
+/// making it more efficient when only the row count is needed (e.g., scrolling calculations).
+pub(crate) fn get_visual_rows_cached(
+    cache: &mut RenderingCache,
+    buffer: &TextBuffer,
+    line: usize,
+    content_width: usize,
+    use_smart_wrap: bool,
+) -> usize {
+    if let Some(cached) = cache.get_wrap_data(line, content_width, use_smart_wrap) {
+        return cached.visual_rows;
+    }
+
+    // Cache miss — compute and cache, return only visual_rows
+    let (visual_rows, _) =
+        get_line_wrap_points_cached(cache, buffer, line, content_width, use_smart_wrap);
+    visual_rows
+}
+
 /// Get the grapheme count for a line, using cache if available.
 ///
 /// This avoids repeated `graphemes(true).count()` calls by returning
@@ -589,7 +610,7 @@ pub(crate) fn get_line_grapheme_count_cached(
         .is_none()
     {
         // Populate cache
-        get_line_wrap_points_cached(cache, buffer, line, content_width, use_smart_wrap);
+        get_visual_rows_cached(cache, buffer, line, content_width, use_smart_wrap);
     }
 
     cache

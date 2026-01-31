@@ -20,6 +20,13 @@ use crate::types::{
 /// Default FTP port.
 const DEFAULT_PORT: u16 = 21;
 
+/// Acquire FTP stream mutex lock, converting poison error to VfsError.
+fn lock_ftp(stream: &Arc<Mutex<FtpStream>>) -> VfsResult<std::sync::MutexGuard<'_, FtpStream>> {
+    stream.lock().map_err(|_| VfsError::RemoteError {
+        message: "Failed to acquire FTP stream lock".to_string(),
+    })
+}
+
 /// FTP filesystem provider.
 pub struct FtpProvider {
     /// FTP host.
@@ -212,9 +219,7 @@ impl VfsProvider for FtpProvider {
 
         thread::spawn(move || {
             let result = (|| -> VfsResult<Vec<VfsEntry>> {
-                let mut ftp = stream.lock().map_err(|_| VfsError::RemoteError {
-                    message: "Failed to acquire FTP stream lock".to_string(),
-                })?;
+                let mut ftp = lock_ftp(&stream)?;
 
                 // Change to directory
                 ftp.cwd(&remote_path).map_err(|_| VfsError::NotFound {
@@ -256,9 +261,7 @@ impl VfsProvider for FtpProvider {
 
         thread::spawn(move || {
             let result = (|| -> VfsResult<()> {
-                let mut ftp = stream.lock().map_err(|_| VfsError::RemoteError {
-                    message: "Failed to acquire FTP stream lock".to_string(),
-                })?;
+                let mut ftp = lock_ftp(&stream)?;
 
                 ftp.mkdir(&remote_path).map_err(|e| VfsError::RemoteError {
                     message: format!("Failed to create directory: {}", e),
@@ -293,9 +296,7 @@ impl VfsProvider for FtpProvider {
 
         thread::spawn(move || {
             let result = (|| -> VfsResult<bool> {
-                let mut ftp = stream.lock().map_err(|_| VfsError::RemoteError {
-                    message: "Failed to acquire FTP stream lock".to_string(),
-                })?;
+                let mut ftp = lock_ftp(&stream)?;
 
                 // Try to get size - if it works, file exists
                 if ftp.size(&remote_path).is_ok() {
@@ -335,9 +336,7 @@ impl VfsProvider for FtpProvider {
 
         thread::spawn(move || {
             let result = (|| -> VfsResult<VfsMetadata> {
-                let mut ftp = stream.lock().map_err(|_| VfsError::RemoteError {
-                    message: "Failed to acquire FTP stream lock".to_string(),
-                })?;
+                let mut ftp = lock_ftp(&stream)?;
 
                 // Try to get file size first
                 if let Ok(size) = ftp.size(&remote_path) {
@@ -393,9 +392,7 @@ impl VfsProvider for FtpProvider {
 
         thread::spawn(move || {
             let result = (|| -> VfsResult<Vec<u8>> {
-                let mut ftp = stream.lock().map_err(|_| VfsError::RemoteError {
-                    message: "Failed to acquire FTP stream lock".to_string(),
-                })?;
+                let mut ftp = lock_ftp(&stream)?;
 
                 let mut data = Vec::new();
                 let mut reader =
@@ -430,9 +427,7 @@ impl VfsProvider for FtpProvider {
 
         thread::spawn(move || {
             let result = (|| -> VfsResult<()> {
-                let mut ftp = stream.lock().map_err(|_| VfsError::RemoteError {
-                    message: "Failed to acquire FTP stream lock".to_string(),
-                })?;
+                let mut ftp = lock_ftp(&stream)?;
 
                 let mut reader = std::io::Cursor::new(data);
                 ftp.put_file(&remote_path, &mut reader)
@@ -463,9 +458,7 @@ impl VfsProvider for FtpProvider {
 
         thread::spawn(move || {
             let result = (|| -> VfsResult<()> {
-                let mut ftp = stream.lock().map_err(|_| VfsError::RemoteError {
-                    message: "Failed to acquire FTP stream lock".to_string(),
-                })?;
+                let mut ftp = lock_ftp(&stream)?;
 
                 // Try to delete as file first
                 if ftp.rm(&remote_path).is_ok() {
@@ -510,9 +503,7 @@ impl VfsProvider for FtpProvider {
 
         thread::spawn(move || {
             let result = (|| -> VfsResult<()> {
-                let mut ftp = stream.lock().map_err(|_| VfsError::RemoteError {
-                    message: "Failed to acquire FTP stream lock".to_string(),
-                })?;
+                let mut ftp = lock_ftp(&stream)?;
 
                 ftp.rename(&from_path, &to_path)
                     .map_err(|e| VfsError::RemoteError {
@@ -552,9 +543,7 @@ impl VfsProvider for FtpProvider {
 
         thread::spawn(move || {
             let result = (|| -> VfsResult<PathBuf> {
-                let mut ftp = stream.lock().map_err(|_| VfsError::RemoteError {
-                    message: "Failed to acquire FTP stream lock".to_string(),
-                })?;
+                let mut ftp = lock_ftp(&stream)?;
 
                 let mut data = Vec::new();
                 let mut reader =
@@ -596,9 +585,7 @@ impl VfsProvider for FtpProvider {
                 // Read local file
                 let data = std::fs::read(&local_path).map_err(VfsError::Io)?;
 
-                let mut ftp = stream.lock().map_err(|_| VfsError::RemoteError {
-                    message: "Failed to acquire FTP stream lock".to_string(),
-                })?;
+                let mut ftp = lock_ftp(&stream)?;
 
                 let mut reader = std::io::Cursor::new(data);
                 ftp.put_file(&remote_path, &mut reader)

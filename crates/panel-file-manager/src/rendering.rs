@@ -144,10 +144,10 @@ impl FileManager {
                 let padding = &PAD[..padding_len.min(PAD.len())];
 
                 // Format size (or spaces for directories and ".."), right-aligned
-                let size_str = if let Some(size) = entry.size {
-                    format!("{:>10}", utils::format_size(size))
+                let size_str: std::borrow::Cow<'static, str> = if let Some(size) = entry.size {
+                    format!("{:>10}", utils::format_size(size)).into()
                 } else {
-                    "          ".to_string()
+                    std::borrow::Cow::Borrowed("          ")
                 };
 
                 // Format time

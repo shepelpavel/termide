@@ -87,9 +87,14 @@ fn render_snapshot_card(
     let header_left = format!("{}{}", pause_icon, type_label);
     let padding = content_width.saturating_sub(header_left.chars().count() + percent.len());
 
+    // Static buffers for padding and progress bar (avoids per-frame allocation)
+    const SPACES: &str = "                                                                                                                                                                                                        ";
+    const FILLED: &str = "████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████";
+    const EMPTY: &str = "░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░";
+
     let header_line = Line::from(vec![
         Span::styled(&header_left, Style::default().fg(fg_color)),
-        Span::raw(" ".repeat(padding)),
+        Span::raw(&SPACES[..padding.min(SPACES.len())]),
         Span::styled(&percent, Style::default().fg(accent_color)),
     ]);
     buf.set_line(inner.x, inner.y, &header_line, inner.width);
@@ -99,18 +104,18 @@ fn render_snapshot_card(
     let percent_val = op.progress.percent() as usize;
     let filled = (bar_width * percent_val) / 100;
     let empty = bar_width.saturating_sub(filled);
-    let bar = format!("{}{}", "\u{2588}".repeat(filled), "\u{2591}".repeat(empty)); // █░
+    let filled_part = &FILLED[..filled.min(FILLED.len() / 3) * 3]; // █ is 3 bytes
+    let empty_part = &EMPTY[..empty.min(EMPTY.len() / 3) * 3]; // ░ is 3 bytes
     let bar_color = if op.is_paused {
         accent_color
     } else {
         Color::Green
     };
-    buf.set_line(
-        inner.x,
-        inner.y + 1,
-        &Line::from(Span::styled(bar, Style::default().fg(bar_color))),
-        inner.width,
-    );
+    let bar_line = Line::from(vec![
+        Span::styled(filled_part, Style::default().fg(bar_color)),
+        Span::styled(empty_part, Style::default().fg(bar_color)),
+    ]);
+    buf.set_line(inner.x, inner.y + 1, &bar_line, inner.width);
 
     // Line 3: Source path (truncate left)
     let source = truncate_left(&op.source, content_width);

@@ -126,7 +126,7 @@ pub fn truncate_left(s: &str, max_width: usize) -> String {
     let available = max_width.saturating_sub(ellipsis_width);
 
     // Take characters from the right until we reach available width
-    let mut result = String::new();
+    let mut chars_rev = Vec::new();
     let mut width = 0;
 
     for c in s.chars().rev() {
@@ -134,9 +134,14 @@ pub fn truncate_left(s: &str, max_width: usize) -> String {
         if width + char_width > available {
             break;
         }
-        result.insert(0, c);
+        chars_rev.push(c);
         width += char_width;
     }
 
-    format!("{}{}", ellipsis, result)
+    let mut result = String::with_capacity(ellipsis.len() + chars_rev.len() * 4);
+    result.push_str(ellipsis);
+    for &c in chars_rev.iter().rev() {
+        result.push(c);
+    }
+    result
 }

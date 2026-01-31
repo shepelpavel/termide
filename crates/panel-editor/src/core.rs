@@ -1144,7 +1144,7 @@ impl Editor {
         // Calculate visual distance from top of viewport to cursor
 
         // Visual rows from top_line (after offset) to end of top_line
-        let (top_line_visual_rows, _) = word_wrap::get_line_wrap_points_cached(
+        let top_line_visual_rows = word_wrap::get_visual_rows_cached(
             &mut self.render_cache,
             &self.buffer,
             self.viewport.top_line,
@@ -1203,7 +1203,7 @@ impl Editor {
             // Fallback to O(n) loop if cumulative cache is not valid
             let mut rows = 0;
             for line in (self.viewport.top_line + 1)..self.cursor.line {
-                let (line_visual_rows, _) = word_wrap::get_line_wrap_points_cached(
+                let line_visual_rows = word_wrap::get_visual_rows_cached(
                     &mut self.render_cache,
                     &self.buffer,
                     line,
@@ -1246,7 +1246,7 @@ impl Editor {
         use_smart_wrap: bool,
     ) {
         while remaining > 0 && self.viewport.top_line < self.buffer.line_count() {
-            let (line_visual_rows, _) = word_wrap::get_line_wrap_points_cached(
+            let line_visual_rows = word_wrap::get_visual_rows_cached(
                 &mut self.render_cache,
                 &self.buffer,
                 self.viewport.top_line,
@@ -1306,7 +1306,7 @@ impl Editor {
             } else if self.viewport.top_line > 0 {
                 // Move to previous line's last visual row
                 self.viewport.top_line -= 1;
-                let (visual_rows, _) = word_wrap::get_line_wrap_points_cached(
+                let visual_rows = word_wrap::get_visual_rows_cached(
                     &mut self.render_cache,
                     &self.buffer,
                     self.viewport.top_line,
@@ -1347,7 +1347,7 @@ impl Editor {
             .update_wrap_settings(content_width, use_smart_wrap);
 
         for _ in 0..count {
-            let (visual_rows, _) = word_wrap::get_line_wrap_points_cached(
+            let visual_rows = word_wrap::get_visual_rows_cached(
                 &mut self.render_cache,
                 &self.buffer,
                 self.viewport.top_line,
@@ -1473,7 +1473,7 @@ impl Editor {
         let line_count = self.buffer.line_count();
 
         // Start with remaining rows in the first visible line
-        let (first_line_visual_rows, _) = word_wrap::get_line_wrap_points_cached(
+        let first_line_visual_rows = word_wrap::get_visual_rows_cached(
             &mut self.render_cache,
             &self.buffer,
             current_line,
@@ -1492,7 +1492,7 @@ impl Editor {
 
         // Continue through subsequent lines
         while current_line < line_count && visual_rows_remaining > 0 {
-            let (line_visual_rows, _) = word_wrap::get_line_wrap_points_cached(
+            let line_visual_rows = word_wrap::get_visual_rows_cached(
                 &mut self.render_cache,
                 &self.buffer,
                 current_line,

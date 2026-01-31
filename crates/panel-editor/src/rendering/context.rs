@@ -13,7 +13,6 @@ use termide_buffer::{Cursor, SearchState, Selection, TextBuffer};
 /// Contains all derived state needed for efficient rendering without
 /// repeatedly querying the editor during the render loop.
 #[derive(Debug)]
-#[allow(dead_code)] // Used in Phase 4.2+
 pub struct RenderContext {
     /// Map of (line, column) -> match_index for O(1) search highlight lookups.
     pub search_match_map: HashMap<(usize, usize), usize>,

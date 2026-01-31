@@ -23,6 +23,13 @@ use crate::types::{
 /// Default connection timeout in seconds.
 const DEFAULT_TIMEOUT_SECS: u64 = 60;
 
+/// Acquire SFTP mutex lock, converting poison error to VfsError.
+fn lock_sftp(sftp: &Arc<Mutex<Sftp>>) -> VfsResult<std::sync::MutexGuard<'_, Sftp>> {
+    sftp.lock().map_err(|_| VfsError::RemoteError {
+        message: "Failed to acquire SFTP lock".to_string(),
+    })
+}
+
 /// Create directory and all parent directories on remote SFTP.
 /// Returns error if directory cannot be created.
 fn sftp_mkdir_recursive(sftp: &Sftp, path: &Path) -> VfsResult<()> {
@@ -410,9 +417,7 @@ impl SftpProvider {
 
         // Lock briefly for readdir, then release
         let entries = {
-            let sftp_guard = sftp.lock().map_err(|_| VfsError::RemoteError {
-                message: "Failed to acquire SFTP lock".to_string(),
-            })?;
+            let sftp_guard = lock_sftp(sftp)?;
             sftp_guard
                 .readdir(remote_path)
                 .map_err(|e| VfsError::Sftp(format!("readdir failed: {}", e)))?
@@ -498,9 +503,7 @@ impl SftpProvider {
 
         // List remote directory (brief lock)
         let entries = {
-            let sftp_guard = sftp.lock().map_err(|_| VfsError::RemoteError {
-                message: "Failed to acquire SFTP lock".to_string(),
-            })?;
+            let sftp_guard = lock_sftp(sftp)?;
             sftp_guard
                 .readdir(remote_path)
                 .map_err(|e| VfsError::Sftp(format!("readdir failed: {}", e)))?
@@ -581,9 +584,7 @@ impl SftpProvider {
                         }
 
                         // Acquire lock, open file, seek to current position
-                        let sftp_guard = sftp.lock().map_err(|_| VfsError::RemoteError {
-                            message: "Failed to acquire SFTP lock".to_string(),
-                        })?;
+                        let sftp_guard = lock_sftp(sftp)?;
                         let mut remote_file = sftp_guard.open(&entry_path).map_err(|e| {
                             VfsError::Sftp(format!("open remote file failed: {}", e))
                         })?;
@@ -725,9 +726,7 @@ impl SftpProvider {
             remote_path.display()
         );
         {
-            let sftp_guard = sftp.lock().map_err(|_| VfsError::RemoteError {
-                message: "Failed to acquire SFTP lock".to_string(),
-            })?;
+            let sftp_guard = lock_sftp(sftp)?;
             sftp_mkdir_recursive(&sftp_guard, remote_path)?;
         }
         log::debug!("Remote directory verified: {}", remote_path.display());
@@ -815,9 +814,7 @@ impl SftpProvider {
                     }
 
                     // Acquire lock
-                    let sftp_guard = sftp.lock().map_err(|_| VfsError::RemoteError {
-                        message: "Failed to acquire SFTP lock".to_string(),
-                    })?;
+                    let sftp_guard = lock_sftp(sftp)?;
 
                     // Pre-check parent on first open
                     if current_file_bytes == 0 {
@@ -1129,9 +1126,7 @@ impl VfsProvider for SftpProvider {
 
         thread::spawn(move || {
             let result = (|| -> VfsResult<Vec<VfsEntry>> {
-                let sftp = sftp.lock().map_err(|_| VfsError::RemoteError {
-                    message: "Failed to acquire SFTP lock".to_string(),
-                })?;
+                let sftp = lock_sftp(&sftp)?;
 
                 let mut entries = Vec::new();
                 let dir = sftp
@@ -1185,9 +1180,7 @@ impl VfsProvider for SftpProvider {
 
         thread::spawn(move || {
             let result = (|| -> VfsResult<()> {
-                let sftp = sftp.lock().map_err(|_| VfsError::RemoteError {
-                    message: "Failed to acquire SFTP lock".to_string(),
-                })?;
+                let sftp = lock_sftp(&sftp)?;
 
                 sftp.mkdir(&remote_path, 0o755)
                     .map_err(|e| VfsError::Sftp(format!("mkdir failed: {}", e)))?;
@@ -1217,9 +1210,7 @@ impl VfsProvider for SftpProvider {
 
         thread::spawn(move || {
             let result = (|| -> VfsResult<()> {
-                let sftp = sftp.lock().map_err(|_| VfsError::RemoteError {
-                    message: "Failed to acquire SFTP lock".to_string(),
-                })?;
+                let sftp = lock_sftp(&sftp)?;
 
                 let mut current = PathBuf::new();
                 for component in remote_path.components() {
@@ -1258,9 +1249,7 @@ impl VfsProvider for SftpProvider {
 
         thread::spawn(move || {
             let result = (|| -> VfsResult<bool> {
-                let sftp = sftp.lock().map_err(|_| VfsError::RemoteError {
-                    message: "Failed to acquire SFTP lock".to_string(),
-                })?;
+                let sftp = lock_sftp(&sftp)?;
 
                 Ok(sftp.stat(&remote_path).is_ok())
             })();
@@ -1286,9 +1275,7 @@ impl VfsProvider for SftpProvider {
 
         thread::spawn(move || {
             let result = (|| -> VfsResult<VfsMetadata> {
-                let sftp = sftp.lock().map_err(|_| VfsError::RemoteError {
-                    message: "Failed to acquire SFTP lock".to_string(),
-                })?;
+                let sftp = lock_sftp(&sftp)?;
 
                 let stat = sftp
                     .stat(&remote_path)
@@ -1318,9 +1305,7 @@ impl VfsProvider for SftpProvider {
 
         thread::spawn(move || {
             let result = (|| -> VfsResult<Vec<u8>> {
-                let sftp = sftp.lock().map_err(|_| VfsError::RemoteError {
-                    message: "Failed to acquire SFTP lock".to_string(),
-                })?;
+                let sftp = lock_sftp(&sftp)?;
 
                 let mut file = sftp
                     .open(&remote_path)
@@ -1354,9 +1339,7 @@ impl VfsProvider for SftpProvider {
 
         thread::spawn(move || {
             let result = (|| -> VfsResult<()> {
-                let sftp = sftp.lock().map_err(|_| VfsError::RemoteError {
-                    message: "Failed to acquire SFTP lock".to_string(),
-                })?;
+                let sftp = lock_sftp(&sftp)?;
 
                 let mut file = sftp
                     .create(&remote_path)
@@ -1426,9 +1409,7 @@ impl VfsProvider for SftpProvider {
             }
 
             let result = (|| -> VfsResult<()> {
-                let sftp = sftp.lock().map_err(|_| VfsError::RemoteError {
-                    message: "Failed to acquire SFTP lock".to_string(),
-                })?;
+                let sftp = lock_sftp(&sftp)?;
 
                 delete_recursive_inner(&sftp, &remote_path, 0)
             })();
@@ -1458,9 +1439,7 @@ impl VfsProvider for SftpProvider {
 
         thread::spawn(move || {
             let result = (|| -> VfsResult<()> {
-                let sftp = sftp.lock().map_err(|_| VfsError::RemoteError {
-                    message: "Failed to acquire SFTP lock".to_string(),
-                })?;
+                let sftp = lock_sftp(&sftp)?;
 
                 sftp.rename(&from_path, &to_path, None)
                     .map_err(|e| VfsError::Sftp(format!("rename failed: {}", e)))?;
@@ -1494,9 +1473,7 @@ impl VfsProvider for SftpProvider {
 
         thread::spawn(move || {
             let result = (|| -> VfsResult<()> {
-                let sftp = sftp.lock().map_err(|_| VfsError::RemoteError {
-                    message: "Failed to acquire SFTP lock".to_string(),
-                })?;
+                let sftp = lock_sftp(&sftp)?;
 
                 // Read source file
                 let mut src_file = sftp
@@ -1540,9 +1517,7 @@ impl VfsProvider for SftpProvider {
             let result = (|| -> VfsResult<PathBuf> {
                 // Stat with brief lock to check if directory or file
                 let stat = {
-                    let sftp_guard = sftp.lock().map_err(|_| VfsError::RemoteError {
-                        message: "Failed to acquire SFTP lock".to_string(),
-                    })?;
+                    let sftp_guard = lock_sftp(&sftp)?;
                     sftp_guard
                         .stat(&remote_path)
                         .map_err(|e| VfsError::Sftp(format!("stat failed: {}", e)))?
@@ -1553,9 +1528,7 @@ impl VfsProvider for SftpProvider {
                     Self::download_directory_recursive(&sftp, &remote_path, &local_path)?;
                 } else {
                     // Read remote file (brief lock for single file)
-                    let sftp_guard = sftp.lock().map_err(|_| VfsError::RemoteError {
-                        message: "Failed to acquire SFTP lock".to_string(),
-                    })?;
+                    let sftp_guard = lock_sftp(&sftp)?;
                     let mut remote_file = sftp_guard
                         .open(&remote_path)
                         .map_err(|e| VfsError::Sftp(format!("open remote failed: {}", e)))?;
@@ -1597,9 +1570,7 @@ impl VfsProvider for SftpProvider {
                 // Read local file
                 let contents = std::fs::read(&local_path).map_err(VfsError::Io)?;
 
-                let sftp = sftp.lock().map_err(|_| VfsError::RemoteError {
-                    message: "Failed to acquire SFTP lock".to_string(),
-                })?;
+                let sftp = lock_sftp(&sftp)?;
 
                 // Write to remote file
                 let mut remote_file = sftp
@@ -1702,9 +1673,7 @@ impl VfsProvider for SftpProvider {
 
                     // Ensure parent directories exist (brief lock)
                     {
-                        let sftp_guard = sftp.lock().map_err(|_| VfsError::RemoteError {
-                            message: "Failed to acquire SFTP lock".to_string(),
-                        })?;
+                        let sftp_guard = lock_sftp(&sftp)?;
                         if let Some(parent) = remote_path.parent() {
                             sftp_mkdir_recursive(&sftp_guard, parent)?;
                         }
@@ -1729,9 +1698,7 @@ impl VfsProvider for SftpProvider {
                         }
 
                         // Acquire lock and open/reopen remote file
-                        let sftp_guard = sftp.lock().map_err(|_| VfsError::RemoteError {
-                            message: "Failed to acquire SFTP lock".to_string(),
-                        })?;
+                        let sftp_guard = lock_sftp(&sftp)?;
 
                         let mut remote_file = if bytes_uploaded == 0 {
                             sftp_guard.create(&remote_path).map_err(|e| {
@@ -1837,9 +1804,7 @@ impl VfsProvider for SftpProvider {
             let result = (|| -> VfsResult<PathBuf> {
                 // Stat with brief lock to check if directory or file
                 let stat = {
-                    let sftp_guard = sftp.lock().map_err(|_| VfsError::RemoteError {
-                        message: "Failed to acquire SFTP lock".to_string(),
-                    })?;
+                    let sftp_guard = lock_sftp(&sftp)?;
                     sftp_guard
                         .stat(&remote_path)
                         .map_err(|e| VfsError::Sftp(format!("stat failed: {}", e)))?
@@ -1921,9 +1886,7 @@ impl VfsProvider for SftpProvider {
                         }
 
                         // Acquire lock and open/reopen remote file
-                        let sftp_guard = sftp.lock().map_err(|_| VfsError::RemoteError {
-                            message: "Failed to acquire SFTP lock".to_string(),
-                        })?;
+                        let sftp_guard = lock_sftp(&sftp)?;
                         let mut remote_file = sftp_guard
                             .open(&remote_path)
                             .map_err(|e| VfsError::Sftp(format!("open remote failed: {}", e)))?;
