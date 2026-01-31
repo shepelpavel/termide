@@ -193,8 +193,8 @@ impl App {
                             }
 
                             // Handle close editor after upload (for "save and close" flow)
-                            if self.state.close_editor_after_upload {
-                                self.state.close_editor_after_upload = false;
+                            if self.state.close_editor_after_upload.is_some() {
+                                self.state.close_editor_after_upload = None;
                                 // Clear uploading flag on editor
                                 if let Some(panel) = self.layout_manager.active_panel_mut() {
                                     if let Some(editor) = panel.as_editor_mut() {
@@ -254,8 +254,8 @@ impl App {
 
                             // Clear editor upload flags on failure
                             self.state.skip_refresh_after_upload = false;
-                            if self.state.close_editor_after_upload {
-                                self.state.close_editor_after_upload = false;
+                            if self.state.close_editor_after_upload.is_some() {
+                                self.state.close_editor_after_upload = None;
                                 // Clear uploading flag on editor
                                 if let Some(panel) = self.layout_manager.active_panel_mut() {
                                     if let Some(editor) = panel.as_editor_mut() {
@@ -291,8 +291,8 @@ impl App {
 
                             // Clear editor upload flags on cancel
                             self.state.skip_refresh_after_upload = false;
-                            if self.state.close_editor_after_upload {
-                                self.state.close_editor_after_upload = false;
+                            if self.state.close_editor_after_upload.is_some() {
+                                self.state.close_editor_after_upload = None;
                                 // Clear uploading flag on editor
                                 if let Some(panel) = self.layout_manager.active_panel_mut() {
                                     if let Some(editor) = panel.as_editor_mut() {

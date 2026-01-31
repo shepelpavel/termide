@@ -329,6 +329,16 @@ pub enum PanelEvent {
         /// Direction to navigate
         direction: VimPanelDirection,
     },
+
+    // === Operations panel ===
+    /// Toggle pause/resume for a file operation
+    ToggleOperationPause(termide_file_ops::OperationId),
+
+    /// Cancel a file operation
+    CancelOperation(termide_file_ops::OperationId),
+
+    /// Open or focus the operations panel
+    OpenOperationsPanel,
 }
 
 /// Direction for Vim panel navigation (Ctrl+w h/j/k/l).
@@ -364,12 +374,6 @@ pub enum ConfirmAction {
 
     /// Quit application
     QuitApplication,
-
-    /// Overwrite existing file
-    OverwriteFile {
-        source: PathBuf,
-        destination: PathBuf,
-    },
 }
 
 /// Input dialog actions.

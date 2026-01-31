@@ -3,24 +3,71 @@
 //! Uses the `ssh2` crate for SSH/SFTP connectivity.
 
 use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::net::{TcpStream, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use ssh2::{Session, Sftp};
+use ssh2::{OpenFlags, OpenType, Session, Sftp};
 
 use crate::error::{VfsError, VfsResult};
 use crate::traits::{DiskSpace, VfsProvider};
 use crate::types::{
-    AuthMethod, ConnectOptions, ConnectionState, DownloadProgress, VfsDownloadOperation, VfsEntry,
-    VfsFileType, VfsMetadata, VfsOperation, VfsPath, VfsProtocol, VfsUploadOperation,
+    AuthMethod, ConnectOptions, ConnectionState, DownloadProgress, UploadProgress,
+    VfsDownloadOperation, VfsEntry, VfsFileType, VfsMetadata, VfsOperation, VfsPath, VfsProtocol,
+    VfsUploadOperation,
 };
 
 /// Default connection timeout in seconds.
 const DEFAULT_TIMEOUT_SECS: u64 = 60;
+
+/// Create directory and all parent directories on remote SFTP.
+/// Returns error if directory cannot be created.
+fn sftp_mkdir_recursive(sftp: &Sftp, path: &Path) -> VfsResult<()> {
+    let mut current = PathBuf::new();
+    for component in path.components() {
+        current.push(component);
+
+        // Skip root directory
+        if current.as_os_str() == "/" {
+            continue;
+        }
+
+        // Try to create directory - ignore "already exists" errors
+        match sftp.mkdir(&current, 0o755) {
+            Ok(()) => {
+                log::debug!("Created remote directory: {}", current.display());
+            }
+            Err(e) => {
+                // SFTP error code 4 (SSH_FX_FAILURE) usually means directory exists
+                // SFTP error code 11 (SSH_FX_DIR_NOT_EMPTY) also means it exists
+                // Check if directory exists by trying to stat it
+                match sftp.stat(&current) {
+                    Ok(stat) => {
+                        if stat.is_dir() {
+                            log::trace!("Remote directory already exists: {}", current.display());
+                        } else {
+                            return Err(VfsError::Sftp(format!(
+                                "Path '{}' exists but is not a directory",
+                                current.display()
+                            )));
+                        }
+                    }
+                    Err(_) => {
+                        return Err(VfsError::Sftp(format!(
+                            "Failed to create remote directory '{}': {}",
+                            current.display(),
+                            e
+                        )));
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
 
 /// Inner connection state, protected by mutex for thread-safe updates.
 struct SftpInner {
@@ -123,15 +170,6 @@ impl SftpProvider {
             .lock()
             .ok()
             .and_then(|guard| guard.sftp.as_ref().map(Arc::clone))
-    }
-
-    /// Get a clone of the session handle.
-    #[allow(dead_code)]
-    fn get_session(&self) -> Option<Arc<Mutex<Session>>> {
-        self.inner
-            .lock()
-            .ok()
-            .and_then(|guard| guard.session.as_ref().map(Arc::clone))
     }
 
     /// Get the cached home directory.
@@ -339,7 +377,7 @@ impl SftpProvider {
 
     /// Download directory recursively (internal helper, called within thread)
     fn download_directory_recursive(
-        sftp: &std::sync::MutexGuard<'_, ssh2::Sftp>,
+        sftp: &Arc<Mutex<Sftp>>,
         remote_path: &Path,
         local_path: &Path,
     ) -> VfsResult<()> {
@@ -357,19 +395,28 @@ impl SftpProvider {
         )
     }
 
-    /// Count files in remote directory recursively
+    /// Count files in remote directory recursively.
+    /// Takes `Arc<Mutex<Sftp>>` and locks briefly per readdir call to avoid
+    /// holding the lock for the entire recursive traversal.
     fn count_remote_files(
-        sftp: &std::sync::MutexGuard<'_, ssh2::Sftp>,
+        sftp: &Arc<Mutex<Sftp>>,
         remote_path: &Path,
         cancel_flag: &Arc<AtomicBool>,
+        tx_progress: Option<&mpsc::Sender<DownloadProgress>>,
     ) -> VfsResult<(usize, u64)> {
         if cancel_flag.load(Ordering::Relaxed) {
             return Err(VfsError::Cancelled);
         }
 
-        let entries = sftp
-            .readdir(remote_path)
-            .map_err(|e| VfsError::Sftp(format!("readdir failed: {}", e)))?;
+        // Lock briefly for readdir, then release
+        let entries = {
+            let sftp_guard = sftp.lock().map_err(|_| VfsError::RemoteError {
+                message: "Failed to acquire SFTP lock".to_string(),
+            })?;
+            sftp_guard
+                .readdir(remote_path)
+                .map_err(|e| VfsError::Sftp(format!("readdir failed: {}", e)))?
+        };
 
         let mut file_count = 0;
         let mut total_bytes = 0u64;
@@ -387,12 +434,27 @@ impl SftpProvider {
 
                 if stat.is_dir() {
                     let (sub_count, sub_bytes) =
-                        Self::count_remote_files(sftp, &entry_path, cancel_flag)?;
+                        Self::count_remote_files(sftp, &entry_path, cancel_flag, tx_progress)?;
                     file_count += sub_count;
                     total_bytes += sub_bytes;
                 } else {
                     file_count += 1;
                     total_bytes += stat.size.unwrap_or(0);
+                }
+
+                // Send scanning progress periodically
+                if let Some(tx) = tx_progress {
+                    if file_count % 10 == 0 {
+                        let _ = tx.send(DownloadProgress {
+                            bytes_downloaded: 0,
+                            total_bytes,
+                            current_file: Some(remote_path.to_string_lossy().into_owned()),
+                            files_downloaded: 0,
+                            total_files: file_count,
+                            current_file_bytes: 0,
+                            current_file_total: 0,
+                        });
+                    }
                 }
             }
         }
@@ -400,10 +462,14 @@ impl SftpProvider {
         Ok((file_count, total_bytes))
     }
 
-    /// Download directory recursively with progress and pause/cancel support
+    /// Download directory recursively with progress and pause/cancel support.
+    ///
+    /// Takes `Arc<Mutex<Sftp>>` instead of `&MutexGuard` so the lock can be
+    /// released between files and during pause waits — allowing other SFTP
+    /// operations (e.g. listing directories) to proceed on the same connection.
     #[allow(clippy::too_many_arguments)]
     fn download_directory_recursive_with_progress(
-        sftp: &std::sync::MutexGuard<'_, ssh2::Sftp>,
+        sftp: &Arc<Mutex<Sftp>>,
         remote_path: &Path,
         local_path: &Path,
         pause_flag: &Arc<AtomicBool>,
@@ -419,7 +485,7 @@ impl SftpProvider {
             return Err(VfsError::Cancelled);
         }
 
-        // Wait while paused
+        // Wait while paused (no SFTP lock held)
         while pause_flag.load(Ordering::Relaxed) {
             if cancel_flag.load(Ordering::Relaxed) {
                 return Err(VfsError::Cancelled);
@@ -430,10 +496,15 @@ impl SftpProvider {
         // Create local directory
         std::fs::create_dir_all(local_path).map_err(VfsError::Io)?;
 
-        // List remote directory
-        let entries = sftp
-            .readdir(remote_path)
-            .map_err(|e| VfsError::Sftp(format!("readdir failed: {}", e)))?;
+        // List remote directory (brief lock)
+        let entries = {
+            let sftp_guard = sftp.lock().map_err(|_| VfsError::RemoteError {
+                message: "Failed to acquire SFTP lock".to_string(),
+            })?;
+            sftp_guard
+                .readdir(remote_path)
+                .map_err(|e| VfsError::Sftp(format!("readdir failed: {}", e)))?
+        };
 
         for (entry_path, stat) in entries {
             // Check cancel
@@ -441,7 +512,7 @@ impl SftpProvider {
                 return Err(VfsError::Cancelled);
             }
 
-            // Wait while paused
+            // Wait while paused (no SFTP lock held — between files)
             while pause_flag.load(Ordering::Relaxed) {
                 if cancel_flag.load(Ordering::Relaxed) {
                     return Err(VfsError::Cancelled);
@@ -487,11 +558,6 @@ impl SftpProvider {
                         });
                     }
 
-                    // Download file with chunked reading
-                    let mut remote_file = sftp
-                        .open(&entry_path)
-                        .map_err(|e| VfsError::Sftp(format!("open remote file failed: {}", e)))?;
-
                     // Create local file for writing
                     let mut local_file =
                         std::fs::File::create(&local_entry).map_err(VfsError::Io)?;
@@ -500,13 +566,13 @@ impl SftpProvider {
                     let mut buffer = vec![0u8; CHUNK_SIZE];
                     let mut current_file_bytes = 0u64;
 
+                    // Outer loop: handles pause/resume by releasing and
+                    // re-acquiring the SFTP lock (reopening the file with seek).
                     loop {
-                        // Check cancel
+                        // Pause/cancel check without SFTP lock
                         if cancel_flag.load(Ordering::Relaxed) {
                             return Err(VfsError::Cancelled);
                         }
-
-                        // Wait while paused
                         while pause_flag.load(Ordering::Relaxed) {
                             if cancel_flag.load(Ordering::Relaxed) {
                                 return Err(VfsError::Cancelled);
@@ -514,27 +580,59 @@ impl SftpProvider {
                             std::thread::sleep(Duration::from_millis(100));
                         }
 
-                        let bytes_read = remote_file.read(&mut buffer).map_err(VfsError::Io)?;
-                        if bytes_read == 0 {
-                            break;
+                        // Acquire lock, open file, seek to current position
+                        let sftp_guard = sftp.lock().map_err(|_| VfsError::RemoteError {
+                            message: "Failed to acquire SFTP lock".to_string(),
+                        })?;
+                        let mut remote_file = sftp_guard.open(&entry_path).map_err(|e| {
+                            VfsError::Sftp(format!("open remote file failed: {}", e))
+                        })?;
+                        if current_file_bytes > 0 {
+                            use std::io::Seek;
+                            remote_file
+                                .seek(std::io::SeekFrom::Start(current_file_bytes))
+                                .map_err(VfsError::Io)?;
                         }
 
-                        local_file
-                            .write_all(&buffer[..bytes_read])
-                            .map_err(VfsError::Io)?;
-                        current_file_bytes += bytes_read as u64;
+                        // Inner loop: read chunks while lock is held
+                        let mut eof = false;
+                        loop {
+                            if cancel_flag.load(Ordering::Relaxed) {
+                                return Err(VfsError::Cancelled);
+                            }
+                            // If paused, break inner loop to release lock
+                            if pause_flag.load(Ordering::Relaxed) {
+                                break;
+                            }
 
-                        // Send progress update
-                        if let Some(tx) = tx_progress {
-                            let _ = tx.send(DownloadProgress {
-                                bytes_downloaded: *bytes_downloaded + current_file_bytes,
-                                total_bytes,
-                                current_file: Some(name_str.to_string()),
-                                files_downloaded: *files_downloaded,
-                                total_files,
-                                current_file_bytes,
-                                current_file_total: file_size,
-                            });
+                            let bytes_read = remote_file.read(&mut buffer).map_err(VfsError::Io)?;
+                            if bytes_read == 0 {
+                                eof = true;
+                                break;
+                            }
+
+                            local_file
+                                .write_all(&buffer[..bytes_read])
+                                .map_err(VfsError::Io)?;
+                            current_file_bytes += bytes_read as u64;
+
+                            // Send progress update
+                            if let Some(tx) = tx_progress {
+                                let _ = tx.send(DownloadProgress {
+                                    bytes_downloaded: *bytes_downloaded + current_file_bytes,
+                                    total_bytes,
+                                    current_file: Some(name_str.to_string()),
+                                    files_downloaded: *files_downloaded,
+                                    total_files,
+                                    current_file_bytes,
+                                    current_file_total: file_size,
+                                });
+                            }
+                        }
+                        // sftp_guard + remote_file dropped here — lock released
+
+                        if eof {
+                            break;
                         }
                     }
 
@@ -553,6 +651,284 @@ impl SftpProvider {
                             current_file_total: 0,
                         });
                     }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Count files and total bytes in local directory recursively.
+    fn count_local_files(path: &Path, cancel_flag: &Arc<AtomicBool>) -> VfsResult<(usize, u64)> {
+        if cancel_flag.load(Ordering::Relaxed) {
+            return Err(VfsError::Cancelled);
+        }
+
+        let mut file_count = 0;
+        let mut total_bytes = 0u64;
+
+        for entry in std::fs::read_dir(path).map_err(VfsError::Io)? {
+            if cancel_flag.load(Ordering::Relaxed) {
+                return Err(VfsError::Cancelled);
+            }
+
+            let entry = entry.map_err(VfsError::Io)?;
+            let metadata = entry.metadata().map_err(VfsError::Io)?;
+
+            if metadata.is_dir() {
+                let (sub_count, sub_bytes) = Self::count_local_files(&entry.path(), cancel_flag)?;
+                file_count += sub_count;
+                total_bytes += sub_bytes;
+            } else {
+                file_count += 1;
+                total_bytes += metadata.len();
+            }
+        }
+
+        Ok((file_count, total_bytes))
+    }
+
+    /// Upload directory recursively with progress and pause/cancel support.
+    ///
+    /// Takes `Arc<Mutex<Sftp>>` instead of `&MutexGuard` so the lock can be
+    /// released between files and during pause waits — allowing other SFTP
+    /// operations (e.g. listing directories) to proceed on the same connection.
+    #[allow(clippy::too_many_arguments)]
+    fn upload_directory_recursive_with_progress(
+        sftp: &Arc<Mutex<Sftp>>,
+        local_path: &Path,
+        remote_path: &Path,
+        pause_flag: &Arc<AtomicBool>,
+        cancel_flag: &Arc<AtomicBool>,
+        tx_progress: Option<&mpsc::Sender<UploadProgress>>,
+        files_uploaded: &mut usize,
+        bytes_uploaded: &mut u64,
+        total_files: usize,
+        total_bytes: u64,
+    ) -> VfsResult<()> {
+        // Check cancel
+        if cancel_flag.load(Ordering::Relaxed) {
+            return Err(VfsError::Cancelled);
+        }
+
+        // Wait while paused (no SFTP lock held)
+        while pause_flag.load(Ordering::Relaxed) {
+            if cancel_flag.load(Ordering::Relaxed) {
+                return Err(VfsError::Cancelled);
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+
+        // Create remote directory (brief lock)
+        log::debug!(
+            "Creating remote directory structure for: {}",
+            remote_path.display()
+        );
+        {
+            let sftp_guard = sftp.lock().map_err(|_| VfsError::RemoteError {
+                message: "Failed to acquire SFTP lock".to_string(),
+            })?;
+            sftp_mkdir_recursive(&sftp_guard, remote_path)?;
+        }
+        log::debug!("Remote directory verified: {}", remote_path.display());
+
+        // List local directory
+        let entries: Vec<_> = std::fs::read_dir(local_path)
+            .map_err(VfsError::Io)?
+            .collect();
+
+        for entry in entries {
+            // Check cancel
+            if cancel_flag.load(Ordering::Relaxed) {
+                return Err(VfsError::Cancelled);
+            }
+
+            // Wait while paused (no SFTP lock held — between files)
+            while pause_flag.load(Ordering::Relaxed) {
+                if cancel_flag.load(Ordering::Relaxed) {
+                    return Err(VfsError::Cancelled);
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+
+            let entry = entry.map_err(VfsError::Io)?;
+            let metadata = entry.metadata().map_err(VfsError::Io)?;
+            let file_name = entry.file_name();
+            let remote_entry = remote_path.join(&file_name);
+
+            if metadata.is_dir() {
+                // Recurse into subdirectory
+                Self::upload_directory_recursive_with_progress(
+                    sftp,
+                    &entry.path(),
+                    &remote_entry,
+                    pause_flag,
+                    cancel_flag,
+                    tx_progress,
+                    files_uploaded,
+                    bytes_uploaded,
+                    total_files,
+                    total_bytes,
+                )?;
+            } else {
+                let file_size = metadata.len();
+                let name_str = file_name.to_string_lossy();
+
+                // Send progress update before uploading
+                if let Some(tx) = tx_progress {
+                    let _ = tx.send(UploadProgress {
+                        bytes_uploaded: *bytes_uploaded,
+                        total_bytes,
+                        current_file: Some(name_str.to_string()),
+                        files_uploaded: *files_uploaded,
+                        total_files,
+                        current_file_bytes: 0,
+                        current_file_total: file_size,
+                    });
+                }
+
+                // Open local file for reading
+                let mut local_file = std::fs::File::open(entry.path()).map_err(VfsError::Io)?;
+
+                log::debug!(
+                    "Creating remote file: {} (parent: {})",
+                    remote_entry.display(),
+                    remote_path.display()
+                );
+
+                const CHUNK_SIZE: usize = 64 * 1024; // 64KB chunks
+                let mut buffer = vec![0u8; CHUNK_SIZE];
+                let mut current_file_bytes = 0u64;
+
+                // Outer loop: handles pause/resume by releasing and
+                // re-acquiring the SFTP lock (reopening the file with seek).
+                loop {
+                    // Pause/cancel check without SFTP lock
+                    if cancel_flag.load(Ordering::Relaxed) {
+                        return Err(VfsError::Cancelled);
+                    }
+                    while pause_flag.load(Ordering::Relaxed) {
+                        if cancel_flag.load(Ordering::Relaxed) {
+                            return Err(VfsError::Cancelled);
+                        }
+                        std::thread::sleep(Duration::from_millis(100));
+                    }
+
+                    // Acquire lock
+                    let sftp_guard = sftp.lock().map_err(|_| VfsError::RemoteError {
+                        message: "Failed to acquire SFTP lock".to_string(),
+                    })?;
+
+                    // Pre-check parent on first open
+                    if current_file_bytes == 0 {
+                        match sftp_guard.stat(remote_path) {
+                            Ok(stat) => {
+                                if !stat.is_dir() {
+                                    return Err(VfsError::Sftp(format!(
+                                        "Parent path '{}' is not a directory",
+                                        remote_path.display()
+                                    )));
+                                }
+                            }
+                            Err(e) => {
+                                return Err(VfsError::Sftp(format!(
+                                    "Parent directory '{}' does not exist: {}",
+                                    remote_path.display(),
+                                    e
+                                )));
+                            }
+                        }
+                    }
+
+                    // Open/reopen remote file
+                    let mut remote_file = if current_file_bytes == 0 {
+                        sftp_guard.create(&remote_entry).map_err(|e| {
+                            VfsError::Sftp(format!(
+                                "create remote file '{}' failed (parent dir: {}): {}",
+                                remote_entry.display(),
+                                remote_path.display(),
+                                e
+                            ))
+                        })?
+                    } else {
+                        // Reopen for writing without truncation
+                        let file = sftp_guard
+                            .open_mode(&remote_entry, OpenFlags::WRITE, 0o644, OpenType::File)
+                            .map_err(|e| {
+                                VfsError::Sftp(format!(
+                                    "reopen remote file '{}' failed: {}",
+                                    remote_entry.display(),
+                                    e
+                                ))
+                            })?;
+                        file
+                    };
+                    if current_file_bytes > 0 {
+                        use std::io::Seek;
+                        remote_file
+                            .seek(std::io::SeekFrom::Start(current_file_bytes))
+                            .map_err(VfsError::Io)?;
+                        local_file
+                            .seek(std::io::SeekFrom::Start(current_file_bytes))
+                            .map_err(VfsError::Io)?;
+                    }
+
+                    // Inner loop: write chunks while lock is held
+                    let mut eof = false;
+                    loop {
+                        if cancel_flag.load(Ordering::Relaxed) {
+                            return Err(VfsError::Cancelled);
+                        }
+                        // If paused, break inner loop to release lock
+                        if pause_flag.load(Ordering::Relaxed) {
+                            break;
+                        }
+
+                        let bytes_read = local_file.read(&mut buffer).map_err(VfsError::Io)?;
+                        if bytes_read == 0 {
+                            eof = true;
+                            break;
+                        }
+
+                        remote_file
+                            .write_all(&buffer[..bytes_read])
+                            .map_err(VfsError::Io)?;
+                        current_file_bytes += bytes_read as u64;
+
+                        // Send progress update
+                        if let Some(tx) = tx_progress {
+                            let _ = tx.send(UploadProgress {
+                                bytes_uploaded: *bytes_uploaded + current_file_bytes,
+                                total_bytes,
+                                current_file: Some(name_str.to_string()),
+                                files_uploaded: *files_uploaded,
+                                total_files,
+                                current_file_bytes,
+                                current_file_total: file_size,
+                            });
+                        }
+                    }
+                    // sftp_guard + remote_file dropped here — lock released
+
+                    if eof {
+                        break;
+                    }
+                }
+
+                *files_uploaded += 1;
+                *bytes_uploaded += current_file_bytes;
+
+                // Send progress update after uploading
+                if let Some(tx) = tx_progress {
+                    let _ = tx.send(UploadProgress {
+                        bytes_uploaded: *bytes_uploaded,
+                        total_bytes,
+                        current_file: None,
+                        files_uploaded: *files_uploaded,
+                        total_files,
+                        current_file_bytes: 0,
+                        current_file_total: 0,
+                    });
                 }
             }
         }
@@ -621,15 +997,25 @@ impl VfsProvider for SftpProvider {
                     ));
                 }
 
-                // Connect TCP
+                // Connect TCP (resolve hostname via DNS)
                 let addr = format!("{}:{}", host, port);
-                let tcp = TcpStream::connect_timeout(
-                    &addr.parse().map_err(|e| {
-                        VfsError::ConnectionFailed(format!("Invalid address: {}", e))
-                    })?,
-                    Duration::from_secs(timeout_secs),
-                )
-                .map_err(|e| VfsError::ConnectionFailed(format!("TCP connect failed: {}", e)))?;
+                let socket_addr = addr
+                    .to_socket_addrs()
+                    .map_err(|e| {
+                        VfsError::ConnectionFailed(format!("DNS resolution failed: {}", e))
+                    })?
+                    .next()
+                    .ok_or_else(|| {
+                        VfsError::ConnectionFailed(format!(
+                            "DNS resolution returned no addresses for {}",
+                            host
+                        ))
+                    })?;
+                let tcp =
+                    TcpStream::connect_timeout(&socket_addr, Duration::from_secs(timeout_secs))
+                        .map_err(|e| {
+                            VfsError::ConnectionFailed(format!("TCP connect failed: {}", e))
+                        })?;
 
                 // Check cancellation after TCP connect
                 if cancelled.load(Ordering::SeqCst) {
@@ -988,44 +1374,8 @@ impl VfsProvider for SftpProvider {
     }
 
     fn delete(&self, path: &VfsPath) -> VfsOperation<()> {
-        let sftp = match self.get_sftp() {
-            Some(s) => s,
-            None => return VfsOperation::error(VfsError::NotConnected),
-        };
-
-        let remote_path = match Self::to_remote_path(path) {
-            Ok(p) => p,
-            Err(e) => return VfsOperation::error(e),
-        };
-
-        let (tx, rx) = mpsc::channel();
-
-        thread::spawn(move || {
-            let result = (|| -> VfsResult<()> {
-                let sftp = sftp.lock().map_err(|_| VfsError::RemoteError {
-                    message: "Failed to acquire SFTP lock".to_string(),
-                })?;
-
-                // Check if it's a directory
-                let stat = sftp
-                    .stat(&remote_path)
-                    .map_err(|e| VfsError::Sftp(format!("stat failed: {}", e)))?;
-
-                if stat.is_dir() {
-                    sftp.rmdir(&remote_path)
-                        .map_err(|e| VfsError::Sftp(format!("rmdir failed: {}", e)))?;
-                } else {
-                    sftp.unlink(&remote_path)
-                        .map_err(|e| VfsError::Sftp(format!("unlink failed: {}", e)))?;
-                }
-
-                Ok(())
-            })();
-
-            let _ = tx.send(result);
-        });
-
-        VfsOperation::new(rx)
+        // Use delete_recursive which handles both files and non-empty directories
+        self.delete_recursive(path)
     }
 
     fn delete_recursive(&self, path: &VfsPath) -> VfsOperation<()> {
@@ -1188,21 +1538,25 @@ impl VfsProvider for SftpProvider {
 
         thread::spawn(move || {
             let result = (|| -> VfsResult<PathBuf> {
-                let sftp = sftp.lock().map_err(|_| VfsError::RemoteError {
-                    message: "Failed to acquire SFTP lock".to_string(),
-                })?;
-
-                // Check if it's a directory or file
-                let stat = sftp
-                    .stat(&remote_path)
-                    .map_err(|e| VfsError::Sftp(format!("stat failed: {}", e)))?;
+                // Stat with brief lock to check if directory or file
+                let stat = {
+                    let sftp_guard = sftp.lock().map_err(|_| VfsError::RemoteError {
+                        message: "Failed to acquire SFTP lock".to_string(),
+                    })?;
+                    sftp_guard
+                        .stat(&remote_path)
+                        .map_err(|e| VfsError::Sftp(format!("stat failed: {}", e)))?
+                };
 
                 if stat.is_dir() {
-                    // Recursive directory download
+                    // Recursive directory download (lock managed internally)
                     Self::download_directory_recursive(&sftp, &remote_path, &local_path)?;
                 } else {
-                    // Read remote file
-                    let mut remote_file = sftp
+                    // Read remote file (brief lock for single file)
+                    let sftp_guard = sftp.lock().map_err(|_| VfsError::RemoteError {
+                        message: "Failed to acquire SFTP lock".to_string(),
+                    })?;
+                    let mut remote_file = sftp_guard
                         .open(&remote_path)
                         .map_err(|e| VfsError::Sftp(format!("open remote failed: {}", e)))?;
 
@@ -1264,7 +1618,6 @@ impl VfsProvider for SftpProvider {
     }
 
     fn upload_with_progress(&self, local: &Path, remote: &VfsPath) -> VfsUploadOperation {
-        use crate::types::UploadProgress;
         use std::io::Read;
 
         let sftp = match self.get_sftp() {
@@ -1292,55 +1645,162 @@ impl VfsProvider for SftpProvider {
                     return Err(VfsError::Cancelled);
                 }
 
-                // Get file size
+                // Get metadata to check if it's a directory
                 let metadata = std::fs::metadata(&local_path).map_err(VfsError::Io)?;
-                let total_bytes = metadata.len();
 
-                // Open local file for reading
-                let mut local_file = std::fs::File::open(&local_path).map_err(VfsError::Io)?;
+                if metadata.is_dir() {
+                    // Directory upload: count files first for progress
+                    let (total_files, total_bytes) =
+                        Self::count_local_files(&local_path, &cancel_flag_clone)?;
 
-                let sftp = sftp.lock().map_err(|_| VfsError::RemoteError {
-                    message: "Failed to acquire SFTP lock".to_string(),
-                })?;
+                    // Send initial progress
+                    let _ = tx_progress.send(UploadProgress {
+                        bytes_uploaded: 0,
+                        total_bytes,
+                        current_file: None,
+                        files_uploaded: 0,
+                        total_files,
+                        current_file_bytes: 0,
+                        current_file_total: 0,
+                    });
 
-                // Create remote file
-                let mut remote_file = sftp
-                    .create(&remote_path)
-                    .map_err(|e| VfsError::Sftp(format!("create remote failed: {}", e)))?;
+                    // Recursive directory upload (lock managed internally per-file)
+                    let mut files_uploaded = 0;
+                    let mut bytes_uploaded = 0u64;
+                    Self::upload_directory_recursive_with_progress(
+                        &sftp,
+                        &local_path,
+                        &remote_path,
+                        &pause_flag_clone,
+                        &cancel_flag_clone,
+                        Some(&tx_progress),
+                        &mut files_uploaded,
+                        &mut bytes_uploaded,
+                        total_files,
+                        total_bytes,
+                    )?;
+                } else {
+                    // Single file upload with pause-aware lock management
+                    let total_bytes = metadata.len();
+                    let file_name = local_path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string());
 
-                // Write in chunks with progress reporting
-                const CHUNK_SIZE: usize = 64 * 1024; // 64KB chunks
-                let mut buffer = vec![0u8; CHUNK_SIZE];
-                let mut bytes_uploaded: u64 = 0;
+                    // Send initial progress
+                    let _ = tx_progress.send(UploadProgress {
+                        bytes_uploaded: 0,
+                        total_bytes,
+                        current_file: file_name.clone(),
+                        files_uploaded: 0,
+                        total_files: 1,
+                        current_file_bytes: 0,
+                        current_file_total: total_bytes,
+                    });
 
-                loop {
-                    // Check cancel
-                    if cancel_flag_clone.load(Ordering::Relaxed) {
-                        return Err(VfsError::Cancelled);
+                    // Open local file for reading
+                    let mut local_file = std::fs::File::open(&local_path).map_err(VfsError::Io)?;
+
+                    // Ensure parent directories exist (brief lock)
+                    {
+                        let sftp_guard = sftp.lock().map_err(|_| VfsError::RemoteError {
+                            message: "Failed to acquire SFTP lock".to_string(),
+                        })?;
+                        if let Some(parent) = remote_path.parent() {
+                            sftp_mkdir_recursive(&sftp_guard, parent)?;
+                        }
                     }
 
-                    // Wait while paused
-                    while pause_flag_clone.load(Ordering::Relaxed) {
+                    const CHUNK_SIZE: usize = 64 * 1024; // 64KB chunks
+                    let mut buffer = vec![0u8; CHUNK_SIZE];
+                    let mut bytes_uploaded: u64 = 0;
+
+                    // Outer loop: handles pause/resume by releasing and
+                    // re-acquiring the lock (reopening the file with seek).
+                    loop {
+                        // Pause/cancel check without SFTP lock
                         if cancel_flag_clone.load(Ordering::Relaxed) {
                             return Err(VfsError::Cancelled);
                         }
-                        std::thread::sleep(Duration::from_millis(100));
+                        while pause_flag_clone.load(Ordering::Relaxed) {
+                            if cancel_flag_clone.load(Ordering::Relaxed) {
+                                return Err(VfsError::Cancelled);
+                            }
+                            std::thread::sleep(Duration::from_millis(100));
+                        }
+
+                        // Acquire lock and open/reopen remote file
+                        let sftp_guard = sftp.lock().map_err(|_| VfsError::RemoteError {
+                            message: "Failed to acquire SFTP lock".to_string(),
+                        })?;
+
+                        let mut remote_file = if bytes_uploaded == 0 {
+                            sftp_guard.create(&remote_path).map_err(|e| {
+                                VfsError::Sftp(format!("create remote failed: {}", e))
+                            })?
+                        } else {
+                            sftp_guard
+                                .open_mode(&remote_path, OpenFlags::WRITE, 0o644, OpenType::File)
+                                .map_err(|e| {
+                                    VfsError::Sftp(format!("reopen remote file failed: {}", e))
+                                })?
+                        };
+                        if bytes_uploaded > 0 {
+                            use std::io::Seek;
+                            remote_file
+                                .seek(std::io::SeekFrom::Start(bytes_uploaded))
+                                .map_err(VfsError::Io)?;
+                            local_file
+                                .seek(std::io::SeekFrom::Start(bytes_uploaded))
+                                .map_err(VfsError::Io)?;
+                        }
+
+                        // Inner loop: write chunks while lock is held
+                        let mut eof = false;
+                        loop {
+                            if cancel_flag_clone.load(Ordering::Relaxed) {
+                                return Err(VfsError::Cancelled);
+                            }
+                            if pause_flag_clone.load(Ordering::Relaxed) {
+                                break; // Release lock, outer loop waits
+                            }
+
+                            let bytes_read = local_file.read(&mut buffer).map_err(VfsError::Io)?;
+                            if bytes_read == 0 {
+                                eof = true;
+                                break;
+                            }
+
+                            remote_file
+                                .write_all(&buffer[..bytes_read])
+                                .map_err(VfsError::Io)?;
+                            bytes_uploaded += bytes_read as u64;
+
+                            let _ = tx_progress.send(UploadProgress {
+                                bytes_uploaded,
+                                total_bytes,
+                                current_file: file_name.clone(),
+                                files_uploaded: 0,
+                                total_files: 1,
+                                current_file_bytes: bytes_uploaded,
+                                current_file_total: total_bytes,
+                            });
+                        }
+                        // sftp_guard + remote_file dropped — lock released
+
+                        if eof {
+                            break;
+                        }
                     }
 
-                    let bytes_read = local_file.read(&mut buffer).map_err(VfsError::Io)?;
-                    if bytes_read == 0 {
-                        break;
-                    }
-
-                    remote_file
-                        .write_all(&buffer[..bytes_read])
-                        .map_err(VfsError::Io)?;
-                    bytes_uploaded += bytes_read as u64;
-
-                    // Send progress update
+                    // Send final progress
                     let _ = tx_progress.send(UploadProgress {
                         bytes_uploaded,
                         total_bytes,
+                        current_file: None,
+                        files_uploaded: 1,
+                        total_files: 1,
+                        current_file_bytes: bytes_uploaded,
+                        current_file_total: total_bytes,
                     });
                 }
 
@@ -1375,19 +1835,24 @@ impl VfsProvider for SftpProvider {
 
         thread::spawn(move || {
             let result = (|| -> VfsResult<PathBuf> {
-                let sftp = sftp.lock().map_err(|_| VfsError::RemoteError {
-                    message: "Failed to acquire SFTP lock".to_string(),
-                })?;
-
-                // Check if it's a directory or file
-                let stat = sftp
-                    .stat(&remote_path)
-                    .map_err(|e| VfsError::Sftp(format!("stat failed: {}", e)))?;
+                // Stat with brief lock to check if directory or file
+                let stat = {
+                    let sftp_guard = sftp.lock().map_err(|_| VfsError::RemoteError {
+                        message: "Failed to acquire SFTP lock".to_string(),
+                    })?;
+                    sftp_guard
+                        .stat(&remote_path)
+                        .map_err(|e| VfsError::Sftp(format!("stat failed: {}", e)))?
+                };
 
                 if stat.is_dir() {
-                    // Count files first for progress
-                    let (total_files, total_bytes) =
-                        Self::count_remote_files(&sftp, &remote_path, &cancel_flag_clone)?;
+                    // Count files with scanning progress
+                    let (total_files, total_bytes) = Self::count_remote_files(
+                        &sftp,
+                        &remote_path,
+                        &cancel_flag_clone,
+                        Some(&tx_progress),
+                    )?;
 
                     // Send initial progress
                     let _ = tx_progress.send(DownloadProgress {
@@ -1400,7 +1865,7 @@ impl VfsProvider for SftpProvider {
                         current_file_total: 0,
                     });
 
-                    // Recursive directory download with progress
+                    // Recursive directory download (lock managed internally per-file)
                     let mut files_downloaded = 0;
                     let mut bytes_downloaded = 0u64;
                     Self::download_directory_recursive_with_progress(
@@ -1416,7 +1881,7 @@ impl VfsProvider for SftpProvider {
                         total_bytes,
                     )?;
                 } else {
-                    // Single file download with chunked progress
+                    // Single file download with pause-aware lock management
                     let file_size = stat.size.unwrap_or(0);
                     let file_name = remote_path
                         .file_name()
@@ -1433,27 +1898,21 @@ impl VfsProvider for SftpProvider {
                         current_file_total: file_size,
                     });
 
-                    // Open remote file
-                    let mut remote_file = sftp
-                        .open(&remote_path)
-                        .map_err(|e| VfsError::Sftp(format!("open remote failed: {}", e)))?;
-
                     // Create local file
                     let mut local_file =
                         std::fs::File::create(&local_path).map_err(VfsError::Io)?;
 
-                    // Chunked download with progress
                     const CHUNK_SIZE: usize = 64 * 1024; // 64KB chunks
                     let mut buffer = vec![0u8; CHUNK_SIZE];
                     let mut bytes_downloaded = 0u64;
 
+                    // Outer loop: handles pause/resume by releasing and
+                    // re-acquiring the lock (reopening the file with seek).
                     loop {
-                        // Check cancel
+                        // Pause/cancel check without SFTP lock
                         if cancel_flag_clone.load(Ordering::Relaxed) {
                             return Err(VfsError::Cancelled);
                         }
-
-                        // Wait while paused
                         while pause_flag_clone.load(Ordering::Relaxed) {
                             if cancel_flag_clone.load(Ordering::Relaxed) {
                                 return Err(VfsError::Cancelled);
@@ -1461,26 +1920,56 @@ impl VfsProvider for SftpProvider {
                             std::thread::sleep(Duration::from_millis(100));
                         }
 
-                        let bytes_read = remote_file.read(&mut buffer).map_err(VfsError::Io)?;
-                        if bytes_read == 0 {
-                            break;
+                        // Acquire lock and open/reopen remote file
+                        let sftp_guard = sftp.lock().map_err(|_| VfsError::RemoteError {
+                            message: "Failed to acquire SFTP lock".to_string(),
+                        })?;
+                        let mut remote_file = sftp_guard
+                            .open(&remote_path)
+                            .map_err(|e| VfsError::Sftp(format!("open remote failed: {}", e)))?;
+                        if bytes_downloaded > 0 {
+                            use std::io::Seek;
+                            remote_file
+                                .seek(std::io::SeekFrom::Start(bytes_downloaded))
+                                .map_err(VfsError::Io)?;
                         }
 
-                        local_file
-                            .write_all(&buffer[..bytes_read])
-                            .map_err(VfsError::Io)?;
-                        bytes_downloaded += bytes_read as u64;
+                        // Inner loop: read chunks while lock is held
+                        let mut eof = false;
+                        loop {
+                            if cancel_flag_clone.load(Ordering::Relaxed) {
+                                return Err(VfsError::Cancelled);
+                            }
+                            if pause_flag_clone.load(Ordering::Relaxed) {
+                                break; // Release lock, outer loop waits
+                            }
 
-                        // Send progress update
-                        let _ = tx_progress.send(DownloadProgress {
-                            bytes_downloaded,
-                            total_bytes: file_size,
-                            current_file: file_name.clone(),
-                            files_downloaded: 0,
-                            total_files: 1,
-                            current_file_bytes: bytes_downloaded,
-                            current_file_total: file_size,
-                        });
+                            let bytes_read = remote_file.read(&mut buffer).map_err(VfsError::Io)?;
+                            if bytes_read == 0 {
+                                eof = true;
+                                break;
+                            }
+
+                            local_file
+                                .write_all(&buffer[..bytes_read])
+                                .map_err(VfsError::Io)?;
+                            bytes_downloaded += bytes_read as u64;
+
+                            let _ = tx_progress.send(DownloadProgress {
+                                bytes_downloaded,
+                                total_bytes: file_size,
+                                current_file: file_name.clone(),
+                                files_downloaded: 0,
+                                total_files: 1,
+                                current_file_bytes: bytes_downloaded,
+                                current_file_total: file_size,
+                            });
+                        }
+                        // sftp_guard + remote_file dropped — lock released
+
+                        if eof {
+                            break;
+                        }
                     }
 
                     // Send final progress

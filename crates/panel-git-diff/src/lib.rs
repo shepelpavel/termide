@@ -11,7 +11,7 @@ use ratatui::{buffer::Buffer, layout::Rect, style::Style};
 use unicode_width::UnicodeWidthStr;
 
 use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up, Config};
-use termide_core::{Panel, PanelEvent, RenderContext, SessionPanel, ThemeColors};
+use termide_core::{Panel, PanelEvent, RenderContext, SessionPanel, ThemeColors, WidthPreference};
 use termide_git::{self as git};
 use termide_theme::Theme;
 use termide_ui::ScrollBar;
@@ -765,6 +765,10 @@ impl GitDiffPanel {
 impl Panel for GitDiffPanel {
     fn name(&self) -> &'static str {
         "git_diff"
+    }
+
+    fn width_preference(&self) -> WidthPreference {
+        WidthPreference::PreferWide
     }
 
     fn title(&self) -> String {

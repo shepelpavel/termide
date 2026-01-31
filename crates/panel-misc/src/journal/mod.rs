@@ -12,7 +12,7 @@ use crossterm::event::{KeyCode, KeyEvent, MouseEvent, MouseEventKind};
 use ratatui::{buffer::Buffer, layout::Rect};
 use std::any::Any;
 
-use termide_core::{Panel, PanelEvent, RenderContext};
+use termide_core::{Panel, PanelEvent, RenderContext, WidthPreference};
 use termide_highlight::LineHighlighter;
 use termide_logger::LogLevel;
 use termide_panel_editor::{config::EditorConfig, Editor};
@@ -110,6 +110,10 @@ impl Panel for JournalPanel {
         "journal"
     }
 
+    fn width_preference(&self) -> WidthPreference {
+        WidthPreference::PreferWide
+    }
+
     fn title(&self) -> String {
         termide_i18n::t().panel_journal().to_string()
     }
@@ -162,14 +166,23 @@ impl Panel for JournalPanel {
         vec![]
     }
 
+    fn tick(&mut self) -> Vec<PanelEvent> {
+        if self.auto_scroll && termide_logger::entry_count() > self.last_synced_count {
+            vec![PanelEvent::NeedsRedraw]
+        } else {
+            vec![]
+        }
+    }
+
     fn handle_mouse(&mut self, mouse: MouseEvent, area: Rect) -> Vec<PanelEvent> {
-        // Check for scroll events that affect auto-scroll
+        // Delegate to editor first so viewport updates before we check position
+        let _ = self.editor.handle_mouse(mouse, area);
+
         match mouse.kind {
             MouseEventKind::ScrollUp => {
                 self.auto_scroll = false;
             }
             MouseEventKind::ScrollDown => {
-                // Check if scrolling to end
                 let content_height = area.height as usize;
                 if self.is_at_end(content_height) {
                     self.auto_scroll = true;
@@ -178,26 +191,23 @@ impl Panel for JournalPanel {
             _ => {}
         }
 
-        // Delegate to editor
-        let _ = self.editor.handle_mouse(mouse, area);
         vec![]
     }
 
     fn handle_scroll(&mut self, delta: i32, area: Rect) -> Vec<PanelEvent> {
-        // Handle auto-scroll logic
+        // Delegate to editor first so viewport updates before we check position
+        let events = self.editor.handle_scroll(delta, area);
+
         if delta < 0 {
-            // Scrolling up disables auto-scroll
             self.auto_scroll = false;
         } else {
-            // Check if scrolling to end
             let content_height = area.height as usize;
             if self.is_at_end(content_height) {
                 self.auto_scroll = true;
             }
         }
 
-        // Delegate to editor's handle_scroll
-        self.editor.handle_scroll(delta, area)
+        events
     }
 
     fn to_session(&self, _session_dir: &std::path::Path) -> Option<termide_core::SessionPanel> {

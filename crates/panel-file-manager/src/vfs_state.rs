@@ -230,17 +230,19 @@ impl VfsState {
     }
 
     /// Navigate to parent directory.
+    /// Returns the current directory name (for cursor restoration) if navigation occurred,
+    /// or None if already at root.
     pub fn navigate_up(&mut self) -> Option<String> {
+        // Check if we can go up
+        let parent = self.current_path.parent()?;
+
         // Save current directory name for cursor restoration
         let current_name = self
             .current_path
             .file_name()
             .map(|n| n.to_string_lossy().to_string());
 
-        if let Some(parent) = self.current_path.parent() {
-            self.current_path = parent;
-        }
-
+        self.current_path = parent;
         current_name
     }
 
@@ -553,40 +555,6 @@ impl Drop for VfsState {
             log::debug!("VfsState dropped: disconnected from {}", key);
         }
     }
-}
-
-/// Convert VfsEntry to FileEntry-compatible data.
-#[allow(dead_code)]
-pub fn vfs_entry_to_file_entry(entry: &VfsEntry) -> VfsEntryInfo {
-    VfsEntryInfo {
-        name: entry.name.clone(),
-        is_dir: entry.is_dir(),
-        is_symlink: entry.is_symlink(),
-        is_executable: entry
-            .metadata
-            .permissions
-            .map(|p| p & 0o111 != 0)
-            .unwrap_or(false),
-        is_readonly: entry.metadata.readonly,
-        size: if entry.is_file() {
-            Some(entry.metadata.size)
-        } else {
-            None
-        },
-        modified: entry.metadata.modified,
-    }
-}
-
-/// Simplified file entry info from VFS.
-#[allow(dead_code)]
-pub struct VfsEntryInfo {
-    pub name: String,
-    pub is_dir: bool,
-    pub is_symlink: bool,
-    pub is_executable: bool,
-    pub is_readonly: bool,
-    pub size: Option<u64>,
-    pub modified: Option<std::time::SystemTime>,
 }
 
 #[cfg(test)]

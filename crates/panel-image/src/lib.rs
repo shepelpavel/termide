@@ -19,6 +19,7 @@ use ratatui_image::{picker::Picker, protocol::StatefulProtocol, StatefulImage};
 
 use termide_core::{
     CommandResult, Config, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel, Theme,
+    WidthPreference,
 };
 
 /// Image panel for displaying images using terminal graphics protocols.
@@ -108,6 +109,10 @@ impl ImagePanel {
 impl Panel for ImagePanel {
     fn name(&self) -> &'static str {
         "image"
+    }
+
+    fn width_preference(&self) -> WidthPreference {
+        WidthPreference::PreferWide
     }
 
     fn title(&self) -> String {

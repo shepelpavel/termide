@@ -14,7 +14,7 @@ pub use event::{
     ConfirmAction, ConflictResolution, Event, EventHandler, GitOperationType, InputAction,
     PanelEvent, SelectAction, SplitDirection, VimPanelDirection,
 };
-pub use panel::{Panel, PanelConfig, RenderContext, SessionPanel, ThemeColors};
+pub use panel::{Panel, PanelConfig, RenderContext, SessionPanel, ThemeColors, WidthPreference};
 pub use terminal_caps::{get_terminal_caps, init_terminal_caps, ColorDepth, TerminalCaps};
 
 // Re-export theme and config for convenience

@@ -1,0 +1,478 @@
+//! Remote file upload worker.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc;
+use std::time::Instant;
+
+use termide_vfs::{VfsManager, VfsPath};
+
+use super::OperationWorker;
+use crate::retry::{is_retryable_error, RetryPolicy, RetryState};
+use crate::types::{
+    OperationControl, OperationError, OperationPhase, OperationProgress, OperationResult,
+};
+/// Worker for uploading files from local to remote.
+///
+/// Supports both single and multiple file uploads. For single file:
+/// use `sources` with one element. For batch: use multiple sources.
+pub struct UploadWorker {
+    /// VFS manager for remote operations.
+    vfs_manager: std::sync::Arc<VfsManager>,
+    /// Local source paths.
+    sources: Vec<PathBuf>,
+    /// Remote destination base path (directory for batch, file for single).
+    dest_base: VfsPath,
+    /// Whether to delete sources after upload (move).
+    is_move: bool,
+    /// Retry policy for network errors.
+    retry_policy: RetryPolicy,
+}
+
+impl UploadWorker {
+    /// Create a new upload worker.
+    pub fn new(
+        vfs_manager: std::sync::Arc<VfsManager>,
+        sources: Vec<PathBuf>,
+        dest_base: VfsPath,
+        is_move: bool,
+    ) -> Self {
+        Self {
+            vfs_manager,
+            sources,
+            dest_base,
+            is_move,
+            retry_policy: RetryPolicy::network(),
+        }
+    }
+
+    /// Create a new upload worker with custom retry policy.
+    pub fn with_retry_policy(
+        vfs_manager: std::sync::Arc<VfsManager>,
+        sources: Vec<PathBuf>,
+        dest_base: VfsPath,
+        is_move: bool,
+        retry_policy: RetryPolicy,
+    ) -> Self {
+        Self {
+            vfs_manager,
+            sources,
+            dest_base,
+            is_move,
+            retry_policy,
+        }
+    }
+
+    /// Scan local directory to count files and total size with progress reporting.
+    #[allow(clippy::only_used_in_recursion)]
+    fn scan_local_directory(
+        &self,
+        path: &Path,
+        control: &OperationControl,
+        progress_tx: &mpsc::Sender<OperationProgress>,
+        accumulated_files: &mut usize,
+        accumulated_bytes: &mut u64,
+    ) -> Result<(), OperationError> {
+        control.check_cancelled()?;
+
+        for entry in fs::read_dir(path)? {
+            control.check_cancelled()?;
+            let entry = entry?;
+            let metadata = fs::symlink_metadata(entry.path())?;
+
+            if metadata.is_dir() && !metadata.is_symlink() {
+                self.scan_local_directory(
+                    &entry.path(),
+                    control,
+                    progress_tx,
+                    accumulated_files,
+                    accumulated_bytes,
+                )?;
+            } else {
+                *accumulated_files += 1;
+                if !metadata.is_symlink() {
+                    *accumulated_bytes += metadata.len();
+                }
+
+                // Throttle: send progress every 50 files
+                if (*accumulated_files).is_multiple_of(50) {
+                    let _ = progress_tx.send(OperationProgress::scanning_details(
+                        *accumulated_files,
+                        *accumulated_bytes,
+                        Some(path.to_string_lossy().into_owned()),
+                    ));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Check if any source is a directory
+    fn has_directories(&self) -> bool {
+        self.sources.iter().any(|s| s.is_dir())
+    }
+}
+
+impl OperationWorker for UploadWorker {
+    fn execute(
+        &mut self,
+        control: &OperationControl,
+        progress_tx: &mpsc::Sender<OperationProgress>,
+    ) -> OperationResult {
+        // Phase 1: Scan local directories if any
+        let has_dirs = self.has_directories();
+        let mut total_files: usize = 0;
+        let mut total_bytes: u64 = 0;
+
+        if has_dirs {
+            let _ = progress_tx.send(OperationProgress::scanning());
+
+            for source in &self.sources {
+                if control.is_cancelled() {
+                    return OperationResult::Cancelled;
+                }
+
+                if source.is_dir() {
+                    match self.scan_local_directory(
+                        source,
+                        control,
+                        progress_tx,
+                        &mut total_files,
+                        &mut total_bytes,
+                    ) {
+                        Ok(()) => {}
+                        Err(OperationError::Cancelled) => return OperationResult::Cancelled,
+                        Err(e) => return OperationResult::Failed(e.to_string()),
+                    }
+                } else if let Ok(metadata) = fs::metadata(source) {
+                    total_files += 1;
+                    total_bytes += metadata.len();
+                }
+            }
+
+            // Send final scanning progress
+            let _ = progress_tx.send(OperationProgress::scanning_details(
+                total_files,
+                total_bytes,
+                None,
+            ));
+        } else {
+            // No directories - calculate totals directly
+            total_files = self.sources.len();
+            total_bytes = self
+                .sources
+                .iter()
+                .filter_map(|p| fs::metadata(p).ok().map(|m| m.len()))
+                .sum();
+        }
+
+        // Single file case: simpler path
+        if self.sources.len() == 1 && !self.sources[0].is_dir() {
+            return self.execute_single_file(control, progress_tx);
+        }
+
+        // Phase 2: Multiple files/directories batch mode
+        let mut files_completed = 0;
+        let mut files_skipped = 0;
+        let mut failed_files: Vec<String> = Vec::new();
+        let mut bytes_transferred = 0u64;
+
+        // For single source, dest_base already includes the destination name
+        // For multiple sources, dest_base is the target directory and we need to join file names
+        let single_source = self.sources.len() == 1;
+
+        for (idx, source) in self.sources.clone().iter().enumerate() {
+            if control.is_cancelled() {
+                return OperationResult::Cancelled;
+            }
+
+            // Build destination path
+            let file_name = source
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("file");
+            let dest_path = if single_source {
+                // For single source, dest_base is the full destination path
+                self.dest_base.clone()
+            } else {
+                // For multiple sources, join file name to dest_base directory
+                self.dest_base.join(file_name)
+            };
+            let file_size = fs::metadata(source).map(|m| m.len()).unwrap_or(0);
+
+            // Report progress before starting this file
+            let _ = progress_tx.send(OperationProgress {
+                phase: OperationPhase::Transferring,
+                bytes_transferred,
+                total_bytes,
+                files_completed,
+                total_files,
+                current_item: Some(format!("{} ({}/{})", file_name, idx + 1, total_files)),
+                speed_bps: 0.0,
+                eta_seconds: None,
+                individual_file_bytes: 0,
+                individual_file_total: file_size,
+            });
+
+            // Upload this file with retry
+            let result = self.upload_single_with_retry(
+                source,
+                &dest_path,
+                control,
+                progress_tx,
+                |sub_progress| {
+                    // Combine outer batch progress with VFS-level file progress.
+                    // For directory sources: files_completed=0 (outer) + sub_progress.files_completed (VFS tracks inner files).
+                    // For file sources: files_completed=N (outer) + sub_progress.files_completed=0 (single file in progress).
+                    let combined_files = files_completed + sub_progress.files_completed;
+                    let combined_bytes = bytes_transferred + sub_progress.bytes_transferred;
+
+                    // Send aggregated progress
+                    let _ = progress_tx.send(OperationProgress {
+                        phase: OperationPhase::Transferring,
+                        bytes_transferred: combined_bytes,
+                        total_bytes,
+                        files_completed: combined_files,
+                        total_files,
+                        current_item: sub_progress.current_item.clone().or_else(|| {
+                            Some(format!("{} ({}/{})", file_name, idx + 1, total_files))
+                        }),
+                        speed_bps: sub_progress.speed_bps,
+                        eta_seconds: if sub_progress.speed_bps > 0.0 {
+                            let remaining = total_bytes.saturating_sub(combined_bytes);
+                            Some((remaining as f64 / sub_progress.speed_bps) as u64)
+                        } else {
+                            None
+                        },
+                        individual_file_bytes: sub_progress.individual_file_bytes,
+                        individual_file_total: sub_progress.individual_file_total,
+                    });
+                },
+            );
+
+            match result {
+                OperationResult::Success | OperationResult::SuccessWithPath(_) => {
+                    files_completed += 1;
+                    bytes_transferred += file_size;
+
+                    // If move, delete source
+                    if self.is_move {
+                        if let Err(e) = fs::remove_file(source) {
+                            // Log but don't fail the batch
+                            failed_files
+                                .push(format!("{}: failed to delete source: {}", file_name, e));
+                        }
+                    }
+                }
+                OperationResult::Cancelled => {
+                    return OperationResult::Cancelled;
+                }
+                OperationResult::PartialSuccess { skipped, .. } => {
+                    files_completed += 1;
+                    files_skipped += skipped;
+                    bytes_transferred += file_size;
+                }
+                OperationResult::Failed(err) => {
+                    failed_files.push(format!("{}: {}", file_name, err));
+                }
+            }
+        }
+
+        // Final progress
+        let _ = progress_tx.send(OperationProgress::completed(
+            total_bytes,
+            files_completed,
+            total_files,
+        ));
+
+        if failed_files.is_empty() {
+            OperationResult::Success
+        } else if files_completed > 0 {
+            OperationResult::PartialSuccess {
+                completed: files_completed,
+                skipped: files_skipped,
+                failed: failed_files.len(),
+                failed_files,
+            }
+        } else {
+            OperationResult::Failed(failed_files.join("; "))
+        }
+    }
+}
+
+impl UploadWorker {
+    /// Execute upload for a single file (optimized path).
+    fn execute_single_file(
+        &self,
+        control: &OperationControl,
+        progress_tx: &mpsc::Sender<OperationProgress>,
+    ) -> OperationResult {
+        let source = &self.sources[0];
+        let dest_path = if self.sources.len() == 1 {
+            // For single file, dest_base could be full path or directory
+            // Check if it looks like a directory by trying to use the filename
+            self.dest_base.clone()
+        } else {
+            let file_name = source
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("file");
+            self.dest_base.join(file_name)
+        };
+
+        let result =
+            self.upload_single_with_retry(source, &dest_path, control, progress_tx, |progress| {
+                let _ = progress_tx.send(progress);
+            });
+
+        // Handle move cleanup for single file
+        if self.is_move && result.is_success() {
+            if let Err(e) = fs::remove_file(source) {
+                return OperationResult::Failed(format!(
+                    "Upload succeeded but failed to delete source: {}",
+                    e
+                ));
+            }
+        }
+
+        result
+    }
+
+    /// Upload a single file with retry logic.
+    fn upload_single_with_retry<F>(
+        &self,
+        source: &Path,
+        dest: &VfsPath,
+        control: &OperationControl,
+        _progress_tx: &mpsc::Sender<OperationProgress>,
+        on_progress: F,
+    ) -> OperationResult
+    where
+        F: Fn(OperationProgress),
+    {
+        let mut retry_state = RetryState::new(self.retry_policy.clone());
+
+        loop {
+            if control.is_cancelled() {
+                return OperationResult::Cancelled;
+            }
+
+            // Wait for retry delay if this is a retry attempt
+            if retry_state.attempt() > 0 {
+                let delay = retry_state.next_delay();
+                std::thread::sleep(delay);
+            }
+
+            let result = self.execute_upload_attempt(source, dest, control, &on_progress);
+
+            match &result {
+                OperationResult::Failed(error_msg) => {
+                    if is_retryable_error(error_msg) && retry_state.record_failure(error_msg) {
+                        continue; // Retry
+                    }
+                    return result;
+                }
+                _ => return result,
+            }
+        }
+    }
+
+    /// Execute a single upload attempt.
+    fn execute_upload_attempt<F>(
+        &self,
+        source: &Path,
+        dest: &VfsPath,
+        control: &OperationControl,
+        on_progress: &F,
+    ) -> OperationResult
+    where
+        F: Fn(OperationProgress),
+    {
+        // Use VFS upload_with_progress
+        let operation = self.vfs_manager.upload_with_progress(source, dest);
+
+        // Speed/ETA tracking
+        let start_time = Instant::now();
+        let mut last_bytes = 0u64;
+        let mut last_time = start_time;
+        let mut current_speed = 0.0f64;
+
+        loop {
+            // Check for cancellation
+            if control.is_cancelled() {
+                operation.cancel();
+                return OperationResult::Cancelled;
+            }
+
+            // Handle pause
+            if control.is_paused() {
+                operation.set_paused(true);
+            } else {
+                operation.set_paused(false);
+            }
+
+            // Check for completion
+            if let Some(result) = operation.try_recv() {
+                return match result {
+                    Ok(()) => OperationResult::Success,
+                    Err(e) => {
+                        if matches!(e, termide_vfs::VfsError::Cancelled) {
+                            OperationResult::Cancelled
+                        } else {
+                            OperationResult::Failed(e.to_string())
+                        }
+                    }
+                };
+            }
+
+            // Forward progress with speed/ETA calculation
+            if let Some(progress) = operation.drain_progress() {
+                let now = Instant::now();
+                let bytes_transferred = progress.bytes_uploaded;
+                let total_bytes = progress.total_bytes;
+
+                // Calculate speed using delta over interval (smoother than total average)
+                let elapsed_since_last = now.duration_since(last_time).as_secs_f64();
+                if elapsed_since_last >= 0.2 {
+                    // Update speed every 200ms
+                    let delta_bytes = bytes_transferred.saturating_sub(last_bytes);
+                    if elapsed_since_last > 0.0 {
+                        // Smooth speed using exponential moving average
+                        let instant_speed = delta_bytes as f64 / elapsed_since_last;
+                        current_speed = if current_speed > 0.0 {
+                            current_speed * 0.7 + instant_speed * 0.3
+                        } else {
+                            instant_speed
+                        };
+                    }
+                    last_bytes = bytes_transferred;
+                    last_time = now;
+                }
+
+                // Calculate ETA
+                let eta_seconds = if current_speed > 0.0 && total_bytes > bytes_transferred {
+                    let remaining_bytes = total_bytes - bytes_transferred;
+                    Some((remaining_bytes as f64 / current_speed) as u64)
+                } else {
+                    None
+                };
+
+                on_progress(OperationProgress {
+                    phase: OperationPhase::Transferring,
+                    bytes_transferred,
+                    total_bytes,
+                    files_completed: progress.files_uploaded,
+                    total_files: progress.total_files,
+                    current_item: progress.current_file.clone(),
+                    speed_bps: current_speed,
+                    eta_seconds,
+                    individual_file_bytes: progress.current_file_bytes,
+                    individual_file_total: progress.current_file_total,
+                });
+            }
+
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    }
+}

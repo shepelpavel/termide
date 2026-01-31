@@ -14,14 +14,6 @@ mod vfs_state;
 pub use file_info::FileInfo;
 pub use vfs_state::VfsState;
 
-// Re-export operations for app layer
-pub use operations::{
-    copy_directory_with_progress, copy_file_with_progress, delete_paths_async, scan_directory,
-    scan_directory_async, CopyOperation, CopyProgress, DeleteOperation, DeleteProgress,
-    DirectoryCopyOperation, DirectoryCopyProgress, DirectoryScanResult, ScanOperation,
-    ScanProgress,
-};
-
 use anyhow::Result;
 use crossterm::event::KeyEvent;
 use ratatui::{buffer::Buffer, layout::Rect, prelude::Widget, widgets::Paragraph};
@@ -770,6 +762,17 @@ impl FileManager {
                 .set_path(termide_vfs::VfsPath::local(self.current_path.clone()));
         }
 
+        // For remote paths, don't clear entries - keep showing current content while loading
+        // update_entries_from_vfs() will replace them atomically when async operation completes
+        if self.vfs.is_remote() {
+            log::debug!("load_directory_inner: Starting async list for remote path (keeping current entries)");
+            // Invalidate cache and start async directory listing
+            // Entries will be populated by update_entries_from_vfs() when VFS operation completes
+            self.vfs.invalidate_cache();
+            self.vfs.start_list_dir();
+            return Ok(());
+        }
+
         // Save current file name and index to restore position
         // Use previous_dir_name if navigating up, otherwise use current selection
         let current_name = self
@@ -803,9 +806,7 @@ impl FileManager {
         if !preserve_selection {
             self.git_status_cache = None;
         }
-        if self.vfs.is_local() {
-            self.git_status_receiver = Some(get_git_status_async(self.current_path.clone()));
-        }
+        self.git_status_receiver = Some(get_git_status_async(self.current_path.clone()));
 
         // Add parent directory if not at root
         if self.current_path.parent().is_some() {
@@ -821,15 +822,8 @@ impl FileManager {
             });
         }
 
-        // Read directory contents
-        // For remote paths, start async listing - entries come from VFS via update_entries_from_vfs()
-        if self.vfs.is_remote() {
-            log::debug!("load_directory_inner: Starting async list for remote path");
-            // Invalidate cache and start async directory listing
-            // Entries will be populated by update_entries_from_vfs() when VFS operation completes
-            self.vfs.invalidate_cache();
-            self.vfs.start_list_dir();
-        } else if let Ok(read_dir) = fs::read_dir(&self.current_path) {
+        // Read directory contents (local paths only - remote handled above)
+        if let Ok(read_dir) = fs::read_dir(&self.current_path) {
             for entry in read_dir.flatten() {
                 if let Ok(metadata) = entry.metadata() {
                     let name = entry.file_name().to_string_lossy().to_string();
@@ -1692,12 +1686,12 @@ impl FileManager {
                 }
             }
             FmCommand::GoParent => {
-                if let Some(dir_name) = self.current_path.file_name() {
-                    self.navigation
-                        .save_for_going_up(dir_name.to_string_lossy().to_string());
-                }
-                if let Some(parent) = self.current_path.parent() {
-                    self.current_path = parent.to_path_buf();
+                // Use VfsState for navigation (works for both local and remote paths)
+                // navigate_up returns None if already at root - don't refresh in that case
+                if let Some(dir_name) = self.vfs.navigate_up() {
+                    self.navigation.save_for_going_up(dir_name);
+                    // Sync local path with VfsState
+                    self.current_path = self.vfs.path_buf();
                     let _ = self.load_directory();
                 }
             }
@@ -1773,21 +1767,46 @@ impl FileManager {
                 self.modal_request = Some((action, ActiveModal::Input(Box::new(modal))));
             }
             FmCommand::DeleteFiles => {
-                let paths = self.get_selected_paths();
-                if !paths.is_empty() {
-                    let t = termide_i18n::t();
-                    let title = if paths.len() == 1 {
-                        let file_name = path_utils::get_file_name_str(&paths[0]);
-                        t.modal_delete_single_title(file_name)
-                    } else {
-                        t.modal_delete_multiple_title(paths.len())
-                    };
-                    let modal = ConfirmModal::new(&title, "");
-                    let action = PendingAction::DeletePath {
-                        panel_index: 0,
-                        paths,
-                    };
-                    self.modal_request = Some((action, ActiveModal::Confirm(Box::new(modal))));
+                if self.is_remote() {
+                    // Remote delete - use VfsPath
+                    let vfs_paths = self.get_selected_vfs_paths();
+                    if !vfs_paths.is_empty() {
+                        let t = termide_i18n::t();
+                        let title = if vfs_paths.len() == 1 {
+                            let file_name = vfs_paths[0]
+                                .file_name()
+                                .map(|n| n.to_string_lossy().to_string())
+                                .unwrap_or_else(|| "file".to_string());
+                            t.modal_delete_single_title(&file_name)
+                        } else {
+                            t.modal_delete_multiple_title(vfs_paths.len())
+                        };
+                        let modal = ConfirmModal::new(&title, "");
+                        let action = PendingAction::DeleteRemotePath {
+                            panel_index: 0,
+                            paths: vfs_paths,
+                            vfs_manager: self.vfs_manager_arc(),
+                        };
+                        self.modal_request = Some((action, ActiveModal::Confirm(Box::new(modal))));
+                    }
+                } else {
+                    // Local delete - use PathBuf
+                    let paths = self.get_selected_paths();
+                    if !paths.is_empty() {
+                        let t = termide_i18n::t();
+                        let title = if paths.len() == 1 {
+                            let file_name = path_utils::get_file_name_str(&paths[0]);
+                            t.modal_delete_single_title(file_name)
+                        } else {
+                            t.modal_delete_multiple_title(paths.len())
+                        };
+                        let modal = ConfirmModal::new(&title, "");
+                        let action = PendingAction::DeletePath {
+                            panel_index: 0,
+                            paths,
+                        };
+                        self.modal_request = Some((action, ActiveModal::Confirm(Box::new(modal))));
+                    }
                 }
             }
             FmCommand::CopyFiles => {

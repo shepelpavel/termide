@@ -2,12 +2,13 @@
 
 use anyhow::Result;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use super::super::App;
-use crate::state::ActiveModal;
+use crate::state::OperationType;
 use termide_file_ops::{OperationPath, OperationRequest};
-use termide_modal::ProgressModal;
 use termide_ui::path_utils;
+use termide_vfs::{VfsManager, VfsPath};
 
 impl App {
     /// Handle deletion of files/directories
@@ -28,6 +29,8 @@ impl App {
 
                 log::info!("Starting async delete of {}", source_display);
 
+                let paths_count = paths.len();
+
                 // Create delete operation request
                 let sources: Vec<OperationPath> =
                     paths.into_iter().map(OperationPath::Local).collect();
@@ -37,15 +40,71 @@ impl App {
                 let vfs_manager = std::sync::Arc::new(termide_vfs::VfsManager::new());
 
                 // Start delete operation via OperationManager
-                match self.state.start_operation_now(request, vfs_manager) {
-                    Ok(_operation_id) => {
-                        // Show progress modal
-                        let modal = ProgressModal::new_delete_progress(0, source_display);
-                        self.state.active_modal = Some(ActiveModal::Progress(Box::new(modal)));
-                    }
+                match self.start_tracked_operation(
+                    request,
+                    vfs_manager,
+                    OperationType::Delete,
+                    source_display,
+                    String::new(),
+                    paths_count,
+                    0,
+                ) {
+                    Ok(_operation_id) => {}
                     Err(e) => {
                         log::error!("Failed to start delete operation: {}", e);
-                        self.state.set_error(format!("Delete failed: {}", e));
+                        self.state
+                            .set_error(termide_i18n::t().status_delete_failed(&e.to_string()));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Handle deletion of remote files/directories
+    pub(in crate::app) fn handle_delete_remote_path(
+        &mut self,
+        _panel_index: usize, // obsolete with LayoutManager
+        paths: Vec<VfsPath>,
+        vfs_manager: Arc<VfsManager>,
+        value: Box<dyn std::any::Any>,
+    ) -> Result<()> {
+        if let Some(confirmed) = value.downcast_ref::<bool>() {
+            if *confirmed && !paths.is_empty() {
+                // Build source display string
+                let source_display = if paths.len() == 1 {
+                    paths[0]
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_else(|| "file".to_string())
+                } else {
+                    format!("{} items", paths.len())
+                };
+
+                log::info!("Starting async remote delete of {}", source_display);
+
+                let paths_count = paths.len();
+
+                // Create delete operation request with VFS paths
+                let sources: Vec<OperationPath> =
+                    paths.into_iter().map(OperationPath::Remote).collect();
+                let request = OperationRequest::delete(sources);
+
+                // Start delete operation via OperationManager with tracking
+                match self.start_tracked_operation(
+                    request,
+                    vfs_manager,
+                    OperationType::Delete,
+                    source_display,
+                    String::new(),
+                    paths_count,
+                    0,
+                ) {
+                    Ok(_operation_id) => {}
+                    Err(e) => {
+                        log::error!("Failed to start remote delete operation: {}", e);
+                        self.state
+                            .set_error(termide_i18n::t().status_delete_failed(&e.to_string()));
                     }
                 }
             }

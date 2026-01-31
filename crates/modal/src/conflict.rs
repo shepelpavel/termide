@@ -85,20 +85,22 @@ impl ConflictModal {
             .and_then(|n| n.to_str())
             .unwrap_or("?")
             .to_string();
-        let is_directory = destination.is_dir();
+        // Check both source and destination: for remote paths (VFS URLs
+        // stored as PathBuf), is_dir() always returns false, but the source
+        // is a local path where is_dir() works correctly.
+        let is_directory = source.is_dir() || destination.is_dir();
 
         // Build title with counter if there are multiple conflicts
-        let title = if total_conflicts > 1 {
-            let base = if is_directory {
-                "Directory Conflict"
-            } else {
-                "File Conflict"
-            };
-            format!("{} ({}/{})", base, current_conflict, total_conflicts)
-        } else if is_directory {
-            "Directory Conflict".to_string()
+        let t = termide_i18n::t();
+        let base = if is_directory {
+            t.conflict_directory_title()
         } else {
-            "File Conflict".to_string()
+            t.conflict_file_title()
+        };
+        let title = if total_conflicts > 1 {
+            format!("{} ({}/{})", base, current_conflict, total_conflicts)
+        } else {
+            base.to_string()
         };
 
         Self {
@@ -111,22 +113,6 @@ impl ConflictModal {
             total_conflicts,
             selected: 0,
             button_areas: Vec::new(),
-        }
-    }
-
-    #[allow(dead_code)]
-    fn get_button_labels(&self) -> Vec<&str> {
-        if self.remaining_items == 0 {
-            vec!["Overwrite", "Skip", "Rename"]
-        } else {
-            vec![
-                "Overwrite",
-                "Skip",
-                "Rename",
-                "Overwrite All",
-                "Skip All",
-                "Rename All",
-            ]
         }
     }
 
@@ -197,12 +183,13 @@ impl Modal for ConflictModal {
         };
 
         // Conflict message
+        let t = termide_i18n::t();
         let item_type = if self.is_directory {
-            "Directory"
+            t.file_type_directory()
         } else {
-            "File"
+            t.file_type_file()
         };
-        let message = format!("{} '{}' already exists.", item_type, self.dest_name);
+        let message = t.conflict_already_exists(item_type, &self.dest_name);
         let prompt = Paragraph::new(message)
             .alignment(Alignment::Center)
             .style(Style::default().fg(theme.fg));
@@ -210,17 +197,21 @@ impl Modal for ConflictModal {
 
         // Render buttons
         let has_remaining = self.remaining_items > 0;
-        let labels = if has_remaining {
+        let labels: Vec<&str> = if has_remaining {
             vec![
-                "Overwrite",
-                "Skip",
-                "Rename",
-                "Overwrite All",
-                "Skip All",
-                "Rename All",
+                t.conflict_overwrite(),
+                t.conflict_skip(),
+                t.conflict_rename(),
+                t.conflict_overwrite_all(),
+                t.conflict_skip_all(),
+                t.conflict_rename_all(),
             ]
         } else {
-            vec!["Overwrite", "Skip", "Rename"]
+            vec![
+                t.conflict_overwrite(),
+                t.conflict_skip(),
+                t.conflict_rename(),
+            ]
         };
 
         self.button_areas.clear();

@@ -17,7 +17,7 @@ use ratatui::{
 use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up};
 use unicode_width::UnicodeWidthStr;
 
-use termide_core::{Panel, PanelEvent, RenderContext, ThemeColors};
+use termide_core::{Panel, PanelEvent, RenderContext, ThemeColors, WidthPreference};
 use termide_theme::Theme;
 use termide_ui::path_utils::truncate_right;
 use termide_ui::ScrollBar;
@@ -336,6 +336,10 @@ impl DiagnosticsPanel {
 impl Panel for DiagnosticsPanel {
     fn name(&self) -> &'static str {
         "diagnostics"
+    }
+
+    fn width_preference(&self) -> WidthPreference {
+        WidthPreference::PreferNarrow
     }
 
     fn title(&self) -> String {

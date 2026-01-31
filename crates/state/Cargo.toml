@@ -11,3 +11,4 @@ description = "State types and data structures for termide"
 chrono.workspace = true
 termide-config = { path = "../config" }
 termide-file-ops = { path = "../file-ops" }
+termide-vfs = { path = "../vfs" }

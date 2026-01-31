@@ -18,7 +18,7 @@ fn get_visual_row_bounds(
     } else if visual_row - 1 < wrap_points.len() {
         wrap_points[visual_row - 1]
     } else {
-        0
+        line_len
     };
 
     let end = if visual_row < wrap_points.len() {

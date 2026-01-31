@@ -10,12 +10,6 @@ use termide_buffer::TextBuffer;
 use termide_git::{load_original_async, GitDiffAsyncResult, GitDiffCache, LineStatus};
 use termide_theme::Theme;
 
-/// Git line status information for rendering
-pub struct GitLineInfo {
-    pub status_color: Color,
-    pub status_marker: char,
-}
-
 /// LSP diagnostic marker information for gutter
 pub struct LspMarkerInfo {
     pub marker: char,
@@ -243,88 +237,36 @@ pub fn get_lsp_marker(
     }
 }
 
-/// Get git line information for rendering (DEPRECATED - use get_line_number_color + get_lsp_marker).
+/// Build virtual lines visible in the viewport.
 ///
-/// If a diagnostic severity is provided and is ERROR or WARNING,
-/// it takes priority over the git status marker.
-#[deprecated(note = "Use get_line_number_color() and get_lsp_marker() separately")]
-pub fn get_git_line_info(
-    line_idx: usize,
-    git_diff_cache: &Option<GitDiffCache>,
-    show_git_diff: bool,
-    diagnostic_severity: Option<lsp_types::DiagnosticSeverity>,
-    theme: &Theme,
-) -> GitLineInfo {
-    // Diagnostic markers take priority over git markers
-    if let Some(severity) = diagnostic_severity {
-        use lsp_types::DiagnosticSeverity;
-        let (status_color, status_marker) = match severity {
-            DiagnosticSeverity::ERROR => (theme.error, '●'),
-            DiagnosticSeverity::WARNING => (theme.warning, '▲'),
-            DiagnosticSeverity::INFORMATION => (theme.accented_fg, 'ℹ'),
-            DiagnosticSeverity::HINT => (theme.accented_fg, '○'),
-            _ => (theme.accented_fg, '○'),
-        };
-        return GitLineInfo {
-            status_color,
-            status_marker,
-        };
-    }
-
-    if !show_git_diff {
-        return GitLineInfo {
-            status_color: theme.disabled,
-            status_marker: ' ',
-        };
-    }
-
-    git_diff_cache
-        .as_ref()
-        .map(|cache| {
-            let status = cache.get_line_status(line_idx);
-
-            // Status marker and color
-            let (status_color, status_marker) = match status {
-                LineStatus::Added => (theme.success, '+'),
-                LineStatus::Modified => (theme.warning, '~'),
-                LineStatus::Unchanged => (theme.disabled, ' '),
-                LineStatus::DeletedAfter => (theme.disabled, ' '),
-            };
-
-            GitLineInfo {
-                status_color,
-                status_marker,
-            }
-        })
-        .unwrap_or(GitLineInfo {
-            status_color: theme.disabled,
-            status_marker: ' ',
-        })
-}
-
-/// Build list of virtual lines (real buffer lines + deletion markers + diagnostics).
-///
-/// Returns a Vec mapping visual row index to VirtualLine.
-/// Diagnostic virtual lines are inserted after each real line that has diagnostics.
-/// Long diagnostic messages are wrapped across multiple virtual lines.
+/// Only processes buffer lines starting from `viewport_top_line` and collects
+/// at most `max_lines` virtual lines, avoiding O(N) iteration over the entire buffer.
 ///
 /// # Parameters
+/// - `viewport_top_line`: First buffer line visible in the viewport
+/// - `max_lines`: Maximum number of virtual lines to collect (typically content_height)
 /// - `content_width`: Available width for content (used for diagnostic wrapping)
-pub fn build_virtual_lines(
+pub fn build_virtual_lines_for_viewport(
     buffer: &TextBuffer,
     git_diff_cache: &Option<GitDiffCache>,
     show_git_diff: bool,
     diagnostics: &[lsp_types::Diagnostic],
+    viewport_top_line: usize,
+    max_lines: usize,
     content_width: usize,
 ) -> Vec<VirtualLine> {
-    let mut virtual_lines = Vec::new();
+    let mut virtual_lines = Vec::with_capacity(max_lines);
     let buffer_line_count = buffer.line_count();
 
     // Group diagnostics by line
     let diagnostics_by_line = group_diagnostics_by_line(diagnostics, buffer);
 
-    // Build virtual lines
-    for line_idx in 0..buffer_line_count {
+    // Start from viewport_top_line instead of 0
+    for line_idx in viewport_top_line..buffer_line_count {
+        if virtual_lines.len() >= max_lines {
+            break;
+        }
+
         // Add real line first
         virtual_lines.push(VirtualLine::Real(line_idx));
 
@@ -544,20 +486,15 @@ pub fn get_virtual_line_at_row(
     visual_row: usize,
     content_width: usize,
 ) -> Option<VirtualLine> {
-    let virtual_lines = build_virtual_lines(
+    let virtual_lines = build_virtual_lines_for_viewport(
         buffer,
         git_diff_cache,
         show_git_diff,
         diagnostics,
+        viewport_top_line,
+        visual_row + 1,
         content_width,
     );
 
-    // Find index of first virtual line for viewport.top_line
-    let start_virtual_idx = virtual_lines
-        .iter()
-        .position(|vline| matches!(vline, VirtualLine::Real(idx) if *idx >= viewport_top_line))
-        .unwrap_or(virtual_lines.len());
-
-    let target_idx = start_virtual_idx + visual_row;
-    virtual_lines.into_iter().nth(target_idx)
+    virtual_lines.into_iter().nth(visual_row)
 }

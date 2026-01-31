@@ -3,7 +3,7 @@
 use anyhow::{anyhow, Result};
 
 use termide_config::Config;
-use termide_core::Panel;
+use termide_core::{Panel, WidthPreference};
 
 use crate::PanelGroup;
 
@@ -35,17 +35,16 @@ impl LayoutManager {
             return;
         }
 
-        let active_group_idx = self.focus;
         let num_groups_after_split = self.panel_groups.len() + 1;
         let new_width_if_split = available_width / num_groups_after_split as u16;
 
         if new_width_if_split < config.general.auto_stack_threshold {
-            // Auto-stacking: add to current group vertically
-            if let Some(active_group) = self.panel_groups.get_mut(active_group_idx) {
-                active_group.add_panel(panel);
-                active_group.set_expanded(active_group.len() - 1);
-                self.focus = active_group_idx;
-            }
+            // Auto-stacking: pick group by width preference
+            let target_group_idx = self.find_preferred_group(&*panel);
+            let group = &mut self.panel_groups[target_group_idx];
+            group.add_panel(panel);
+            group.set_expanded(group.len() - 1);
+            self.focus = target_group_idx;
         } else {
             // Create new group horizontally
             let new_group = PanelGroup::new(panel);
@@ -92,6 +91,27 @@ impl LayoutManager {
             return group.panels_mut().get_mut(panel_idx);
         }
         None
+    }
+
+    /// Find the best group for a panel based on its width preference.
+    fn find_preferred_group(&self, panel: &dyn Panel) -> usize {
+        match panel.width_preference() {
+            WidthPreference::NoPreference => self.focus,
+            WidthPreference::PreferNarrow => self
+                .panel_groups
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, g)| g.width.unwrap_or(u16::MAX))
+                .map(|(idx, _)| idx)
+                .unwrap_or(self.focus),
+            WidthPreference::PreferWide => self
+                .panel_groups
+                .iter()
+                .enumerate()
+                .max_by_key(|(_, g)| g.width.unwrap_or(0))
+                .map(|(idx, _)| idx)
+                .unwrap_or(self.focus),
+        }
     }
 
     /// Toggle panel stacking/unstacking with smart direction choice.

@@ -23,6 +23,7 @@ use termide_config::{
 };
 use termide_core::{
     CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel, ThemeColors,
+    WidthPreference,
 };
 use termide_git::{self as git, RepoManager, StagedFile, UnstagedFile};
 use termide_modal::ActiveModal;
@@ -592,6 +593,10 @@ impl GitStatusPanel {
 impl Panel for GitStatusPanel {
     fn name(&self) -> &'static str {
         "git_status"
+    }
+
+    fn width_preference(&self) -> WidthPreference {
+        WidthPreference::PreferNarrow
     }
 
     fn title(&self) -> String {

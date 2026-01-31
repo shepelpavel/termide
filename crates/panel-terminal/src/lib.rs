@@ -37,6 +37,7 @@ use vte::Parser;
 use termide_config::{matches_binding_or_default, Config, TerminalKeybindings};
 use termide_core::{
     get_terminal_caps, CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel,
+    WidthPreference,
 };
 use termide_theme::Theme;
 use termide_ui::ScrollBar;
@@ -1011,6 +1012,10 @@ impl Terminal {
 impl Panel for Terminal {
     fn name(&self) -> &'static str {
         "terminal"
+    }
+
+    fn width_preference(&self) -> WidthPreference {
+        WidthPreference::PreferWide
     }
 
     fn title(&self) -> String {

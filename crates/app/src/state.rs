@@ -10,7 +10,6 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{mpsc, Arc};
 
-use termide_config::constants::DEFAULT_MAIN_PANEL_WIDTH;
 use termide_config::{BookmarksConfig, Config};
 use termide_file_ops::{
     BackgroundOperationSummary, OperationEvent, OperationManager, OperationRequest,
@@ -19,7 +18,7 @@ use termide_lsp::{LspConfig, LspManager, LspServerConfig};
 use termide_panel_editor::EditorConfig;
 use termide_system_monitor::SystemMonitor;
 use termide_theme::Theme;
-use termide_vfs::{VfsManager, VfsOperation, VfsPath};
+use termide_vfs::{VfsManager, VfsPath};
 use termide_watcher::UnifiedWatcher;
 
 // Import core traits
@@ -27,8 +26,9 @@ use termide_app_core::{ModalManager, StateManager};
 
 // Re-export pure types from state crate
 pub use termide_state::{
-    BatchOperation, BatchOperationType, ConflictMode, DirSizeResult, LayoutInfo, LayoutMode,
-    PendingAction, RenamePattern, SubmenuState, TerminalState, UiState,
+    ActiveOperation, BatchOperation, BatchOperationType, ConflictMode, DirSizeResult, LayoutInfo,
+    LayoutMode, OperationProgress, OperationType, PendingAction, RenamePattern, SpeedTracker,
+    SubmenuState, TerminalState, UiState,
 };
 
 // Re-export ActiveModal from modal crate
@@ -95,134 +95,28 @@ impl std::fmt::Debug for ScriptOperationHandle {
     }
 }
 
-/// State for async download operation of remote files
-pub struct DownloadOperation {
-    /// VFS operation handle for the download
-    pub operation: VfsOperation<PathBuf>,
+/// Pending editor download — tracks a download operation that should open an editor on completion.
+/// Used when opening remote files: the download runs via OperationManager, and on completion
+/// the editor is opened with the downloaded temp file.
+pub struct PendingEditorDownload {
+    /// OperationManager operation ID for the download
+    pub operation_id: termide_file_ops::OperationId,
     /// Remote path being downloaded
     pub remote_path: VfsPath,
     /// Local temp path where file is being downloaded
     pub temp_path: PathBuf,
     /// Editor config for opening the file
-    pub config: EditorConfig,
+    pub config: termide_panel_editor::EditorConfig,
     /// VFS manager reference for opening the editor
     pub vfs_manager: Arc<VfsManager>,
-    /// When the download started (for timeout)
-    pub started: std::time::Instant,
 }
 
-impl std::fmt::Debug for DownloadOperation {
+impl std::fmt::Debug for PendingEditorDownload {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DownloadOperation")
+        f.debug_struct("PendingEditorDownload")
+            .field("operation_id", &self.operation_id)
             .field("remote_path", &self.remote_path.to_url_string())
             .field("temp_path", &self.temp_path)
-            .field("started", &self.started)
-            .finish_non_exhaustive()
-    }
-}
-
-/// State for async upload operation of remote files
-pub struct UploadOperation {
-    /// VFS operation handle for the upload
-    pub operation: VfsOperation<()>,
-    /// Remote path being uploaded to
-    pub remote_path: VfsPath,
-    /// Local temp path being uploaded from
-    pub temp_path: PathBuf,
-    /// Which editor panel triggered this upload (for updating after completion)
-    pub editor_panel_id: usize,
-    /// When the upload started (for timeout)
-    pub started: std::time::Instant,
-    /// Whether to close editor panel after successful upload
-    pub close_after_upload: bool,
-}
-
-impl std::fmt::Debug for UploadOperation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("UploadOperation")
-            .field("remote_path", &self.remote_path.to_url_string())
-            .field("temp_path", &self.temp_path)
-            .field("editor_panel_id", &self.editor_panel_id)
-            .field("started", &self.started)
-            .finish_non_exhaustive()
-    }
-}
-
-/// State for async batch copy/move download operation (remote→local) with progress and pause/cancel.
-///
-/// DEPRECATED: Use `OperationManager` with `DownloadWorker` instead.
-/// This type is kept for backward compatibility during migration.
-#[deprecated(note = "Use OperationManager with DownloadWorker instead")]
-#[allow(deprecated)]
-pub struct BatchDownloadOperation {
-    /// VFS download operation handle with progress and pause/cancel
-    pub operation: termide_vfs::VfsDownloadOperation,
-    /// Local destination path where file is being downloaded to
-    pub dest_path: PathBuf,
-    /// When the download started (for timeout)
-    pub started: std::time::Instant,
-    /// Whether this is a move operation (delete source after download)
-    pub is_move: bool,
-    /// VFS source path for deletion after move (only set if is_move)
-    pub vfs_source: Option<termide_vfs::VfsPath>,
-    /// VFS manager for deletion (only set if is_move)
-    pub vfs_manager: Option<std::sync::Arc<termide_vfs::VfsManager>>,
-    /// Last known total files for this item (for cumulative tracking)
-    pub last_total_files: usize,
-    /// Last known total bytes for this item (for cumulative tracking)
-    pub last_total_bytes: u64,
-}
-
-#[allow(deprecated)]
-impl std::fmt::Debug for BatchDownloadOperation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("BatchDownloadOperation")
-            .field("dest_path", &self.dest_path)
-            .field("started", &self.started)
-            .field("is_move", &self.is_move)
-            .finish_non_exhaustive()
-    }
-}
-
-/// State for async batch upload operation (local→remote) with progress.
-///
-/// DEPRECATED: Use `OperationManager` with `UploadWorker` and `PendingBatchUpload` instead.
-/// This type is kept for backward compatibility during migration.
-#[deprecated(note = "Use OperationManager with UploadWorker instead")]
-#[allow(deprecated)]
-pub struct BatchUploadOperation {
-    /// VFS upload operation handle with progress
-    pub operation: termide_vfs::VfsUploadOperation,
-    /// Local source path being uploaded
-    pub source_path: PathBuf,
-    /// Remote destination URL
-    pub dest_url: String,
-    /// Total bytes to upload for current file
-    pub total_bytes: u64,
-    /// When the upload started (for timeout)
-    pub started: std::time::Instant,
-    /// Whether this is a move operation (delete source after upload)
-    pub is_move: bool,
-    /// All source files to upload
-    pub all_sources: Vec<PathBuf>,
-    /// Remote destination base URL (directory)
-    pub dest_base_url: String,
-    /// Current file index in the batch
-    pub current_index: usize,
-    /// VFS manager for the upload
-    pub vfs_manager: std::sync::Arc<termide_vfs::VfsManager>,
-}
-
-#[allow(deprecated)]
-impl std::fmt::Debug for BatchUploadOperation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("BatchUploadOperation")
-            .field("source_path", &self.source_path)
-            .field("dest_url", &self.dest_url)
-            .field("total_bytes", &self.total_bytes)
-            .field("is_move", &self.is_move)
-            .field("current_index", &self.current_index)
-            .field("total_files", &self.all_sources.len())
             .finish_non_exhaustive()
     }
 }
@@ -276,182 +170,6 @@ impl std::fmt::Debug for PendingBatchUpload {
     }
 }
 
-/// State for async local file copy operation with progress.
-///
-/// DEPRECATED: Use `OperationManager` with `LocalCopyWorker` instead.
-/// This type is kept for backward compatibility during migration.
-#[deprecated(note = "Use OperationManager with LocalCopyWorker instead")]
-#[allow(deprecated)]
-pub struct LocalCopyOperation {
-    /// Completion receiver
-    pub completion: mpsc::Receiver<anyhow::Result<PathBuf>>,
-    /// Progress receiver
-    pub progress: mpsc::Receiver<termide_panel_file_manager::CopyProgress>,
-    /// Source path (needed for Move to delete after copy)
-    pub source_path: PathBuf,
-    /// Destination path
-    pub dest_path: PathBuf,
-    /// Whether this is a move operation (delete source after copy)
-    pub is_move: bool,
-    /// Pause flag (shared with background thread)
-    pub pause_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    /// Cancel flag (shared with background thread)
-    pub cancel_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
-}
-
-#[allow(deprecated)]
-impl std::fmt::Debug for LocalCopyOperation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("LocalCopyOperation")
-            .field("source_path", &self.source_path)
-            .field("dest_path", &self.dest_path)
-            .field("is_move", &self.is_move)
-            .field(
-                "pause_flag",
-                &self.pause_flag.load(std::sync::atomic::Ordering::Relaxed),
-            )
-            .field(
-                "cancel_flag",
-                &self.cancel_flag.load(std::sync::atomic::Ordering::Relaxed),
-            )
-            .finish_non_exhaustive()
-    }
-}
-
-/// State for async local directory copy operation with progress.
-///
-/// DEPRECATED: Use `OperationManager` with `LocalCopyWorker` instead.
-/// LocalCopyWorker handles both files and directories with built-in scanning.
-#[deprecated(note = "Use OperationManager with LocalCopyWorker instead")]
-#[allow(deprecated)]
-pub struct LocalDirectoryCopyOperation {
-    /// Completion receiver
-    pub completion: mpsc::Receiver<anyhow::Result<PathBuf>>,
-    /// Progress receiver
-    pub progress: mpsc::Receiver<termide_panel_file_manager::DirectoryCopyProgress>,
-    /// Source path (needed for Move to delete after copy)
-    pub source_path: PathBuf,
-    /// Destination path
-    pub dest_path: PathBuf,
-    /// Whether this is a move operation (delete source after copy)
-    pub is_move: bool,
-    /// Pause flag (shared with background thread)
-    pub pause_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    /// Cancel flag (shared with background thread)
-    pub cancel_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    /// Current file being copied (updated from progress, used for partial cleanup on cancel)
-    pub current_file: Option<PathBuf>,
-}
-
-#[allow(deprecated)]
-impl std::fmt::Debug for LocalDirectoryCopyOperation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("LocalDirectoryCopyOperation")
-            .field("source_path", &self.source_path)
-            .field("dest_path", &self.dest_path)
-            .field("is_move", &self.is_move)
-            .field(
-                "pause_flag",
-                &self.pause_flag.load(std::sync::atomic::Ordering::Relaxed),
-            )
-            .field(
-                "cancel_flag",
-                &self.cancel_flag.load(std::sync::atomic::Ordering::Relaxed),
-            )
-            .finish_non_exhaustive()
-    }
-}
-
-/// State for async directory scan operation before copy.
-///
-/// DEPRECATED: Use `OperationManager` with `LocalCopyWorker` instead.
-/// LocalCopyWorker performs scanning internally as part of the copy operation.
-#[deprecated(note = "Use OperationManager with LocalCopyWorker instead")]
-#[allow(deprecated)]
-pub struct LocalScanOperation {
-    /// Completion receiver (returns DirectoryScanResult)
-    pub completion: mpsc::Receiver<anyhow::Result<termide_panel_file_manager::DirectoryScanResult>>,
-    /// Progress receiver
-    pub progress: mpsc::Receiver<termide_panel_file_manager::ScanProgress>,
-    /// Source path being scanned
-    pub source_path: PathBuf,
-    /// Destination path for copy after scan
-    pub dest_path: PathBuf,
-    /// Cancel flag (shared with background thread)
-    pub cancel_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    /// Reference to the batch operation to continue after scan
-    pub batch_operation: Option<Box<BatchOperation>>,
-}
-
-#[allow(deprecated)]
-impl std::fmt::Debug for LocalScanOperation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("LocalScanOperation")
-            .field("source_path", &self.source_path)
-            .field("dest_path", &self.dest_path)
-            .field(
-                "cancel_flag",
-                &self.cancel_flag.load(std::sync::atomic::Ordering::Relaxed),
-            )
-            .finish_non_exhaustive()
-    }
-}
-
-/// State for async delete operation with progress.
-///
-/// DEPRECATED: Use `OperationManager` with `LocalDeleteWorker` instead.
-/// This type is kept for backward compatibility during migration.
-#[deprecated(note = "Use OperationManager with LocalDeleteWorker instead")]
-#[allow(deprecated)]
-pub struct LocalDeleteOperation {
-    /// Completion receiver
-    pub completion: mpsc::Receiver<anyhow::Result<()>>,
-    /// Progress receiver
-    pub progress: mpsc::Receiver<termide_panel_file_manager::DeleteProgress>,
-    /// Cancel flag (shared with background thread)
-    pub cancel_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
-}
-
-#[allow(deprecated)]
-impl std::fmt::Debug for LocalDeleteOperation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("LocalDeleteOperation")
-            .field(
-                "cancel_flag",
-                &self.cancel_flag.load(std::sync::atomic::Ordering::Relaxed),
-            )
-            .finish_non_exhaustive()
-    }
-}
-
-/// State for async VFS upload operation (local→remote file copy)
-pub struct VfsUploadState {
-    /// VFS operation handle for the upload (with progress)
-    pub operation: termide_vfs::VfsUploadOperation,
-    /// Local source path being uploaded
-    pub source_path: PathBuf,
-    /// Remote destination URL
-    pub dest_url: String,
-    /// Total bytes to upload
-    pub total_bytes: u64,
-    /// Whether this is a move operation (delete source after upload)
-    pub is_move: bool,
-    /// When the upload started (for timeout)
-    pub started: std::time::Instant,
-}
-
-impl std::fmt::Debug for VfsUploadState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("VfsUploadState")
-            .field("source_path", &self.source_path)
-            .field("dest_url", &self.dest_url)
-            .field("total_bytes", &self.total_bytes)
-            .field("is_move", &self.is_move)
-            .field("started", &self.started)
-            .finish_non_exhaustive()
-    }
-}
-
 /// Global application state
 #[derive(Debug)]
 pub struct AppState {
@@ -475,36 +193,15 @@ pub struct AppState {
     pub git_operation_handle: Option<GitOperationHandle>,
     /// Handle for background script operation (.report. scripts)
     pub script_operation_handle: Option<ScriptOperationHandle>,
-    /// Handle for async remote file download operation
-    pub download_operation: Option<DownloadOperation>,
-    /// Handle for async remote file upload operation
-    pub upload_operation: Option<UploadOperation>,
-    /// Handle for async batch copy download operation (remote→local)
-    #[allow(deprecated)]
-    pub batch_download_operation: Option<BatchDownloadOperation>,
-    /// Handle for async local file copy operation with progress
-    #[allow(deprecated)]
-    pub local_copy_operation: Option<LocalCopyOperation>,
-    /// Handle for async local directory copy operation with progress
-    #[allow(deprecated)]
-    pub local_directory_copy_operation: Option<LocalDirectoryCopyOperation>,
-    /// Handle for async directory scan operation before copy
-    #[allow(deprecated)]
-    pub local_scan_operation: Option<LocalScanOperation>,
-    /// Handle for async delete operation with progress
-    #[allow(deprecated)]
-    pub local_delete_operation: Option<LocalDeleteOperation>,
-    /// Handle for async VFS upload operation (local→remote single file)
-    pub vfs_upload_state: Option<VfsUploadState>,
-    /// Handle for async batch upload operation (local→remote multiple files)
-    #[allow(deprecated)]
-    pub batch_upload_operation: Option<BatchUploadOperation>,
+    /// Pending editor download via OperationManager (replaces download_operation for editor opens)
+    pub pending_editor_download: Option<PendingEditorDownload>,
     /// Pending batch upload state (for OperationManager-based uploads)
     pub pending_batch_upload: Option<PendingBatchUpload>,
     /// Pending remote delete for move operations (delete source after download)
     pub pending_remote_delete: Option<PendingRemoteDelete>,
-    /// Close editor after current upload completes (for "save and close" flow)
-    pub close_editor_after_upload: bool,
+    /// Close editor after current upload completes (for "save and close" flow).
+    /// Stores the file path of the editor to close (to find the correct panel).
+    pub close_editor_after_upload: Option<PathBuf>,
     /// Skip file manager refresh after upload (for editor saves - file already exists)
     pub skip_refresh_after_upload: bool,
     /// Unified watcher for filesystem and git changes
@@ -537,10 +234,25 @@ pub struct AppState {
     /// This is the new centralized system that will eventually replace the individual
     /// operation handles (local_copy_operation, batch_download_operation, etc.).
     pub operation_manager: Option<OperationManager>,
+    /// Active operation ID for pause/resume from progress modal.
+    pub active_operation_id: Option<termide_file_ops::OperationId>,
+    /// Last known pause state for active operation (to detect changes).
+    pub last_operation_paused: bool,
     /// Timestamp of last mouse scroll event (for throttling heavy operations during scrolling)
     pub last_mouse_scroll: Option<std::time::Instant>,
     /// Flag for batching scroll renders (set on scroll, consumed on tick)
     pub pending_scroll_render: bool,
+    /// Active file operations tracked in Operations panel (keyed by OperationId).
+    /// This provides UI state for displaying operation progress in the Operations panel.
+    pub active_operations: HashMap<termide_file_ops::OperationId, ActiveOperation>,
+    /// Synthetic OperationId for current batch operation (to show in Operations panel).
+    /// Maps the real OperationManager operation IDs to this batch entry.
+    pub batch_tracking_id: Option<termide_file_ops::OperationId>,
+    /// OperationManager ID of the currently running sub-operation within a batch.
+    /// Used to bridge pause/cancel from the batch UI to the actual worker.
+    pub batch_sub_operation_id: Option<termide_file_ops::OperationId>,
+    /// Counter for generating synthetic batch operation IDs.
+    batch_id_counter: u64,
 }
 
 impl Default for AppState {
@@ -565,7 +277,6 @@ impl AppState {
         let layout_info = LayoutInfo {
             mode: LayoutMode::Single,
             main_panels_count: 1,
-            main_panel_width: DEFAULT_MAIN_PANEL_WIDTH,
         };
 
         // Create LSP manager if enabled
@@ -590,18 +301,10 @@ impl AppState {
             dir_size_receiver: None,
             git_operation_handle: None,
             script_operation_handle: None,
-            download_operation: None,
-            upload_operation: None,
-            batch_download_operation: None,
-            local_copy_operation: None,
-            local_directory_copy_operation: None,
-            local_scan_operation: None,
-            local_delete_operation: None,
-            vfs_upload_state: None,
-            batch_upload_operation: None,
+            pending_editor_download: None,
             pending_batch_upload: None,
             pending_remote_delete: None,
-            close_editor_after_upload: false,
+            close_editor_after_upload: None,
             skip_refresh_after_upload: false,
             watcher: None,
             theme,
@@ -617,8 +320,14 @@ impl AppState {
             all_diagnostics: HashMap::new(),
             bookmarks,
             operation_manager: None, // Will be initialized when VfsManager is available
+            active_operation_id: None,
+            last_operation_paused: false,
             last_mouse_scroll: None,
             pending_scroll_render: false,
+            active_operations: HashMap::new(),
+            batch_tracking_id: None,
+            batch_sub_operation_id: None,
+            batch_id_counter: u64::MAX / 2,
         }
     }
 
@@ -818,6 +527,14 @@ impl AppState {
         self.ui.status_message = None;
     }
 
+    /// Emit terminal bell if enabled in config
+    pub fn bell(&self) {
+        if self.config.general.bell_on_operation_complete {
+            print!("\x07");
+            let _ = std::io::Write::flush(&mut std::io::stdout());
+        }
+    }
+
     /// Create EditorConfig with settings from global config
     pub fn editor_config(&self) -> EditorConfig {
         let mut config = EditorConfig::default();
@@ -905,10 +622,12 @@ impl AppState {
         request: OperationRequest,
         vfs_manager: Arc<VfsManager>,
     ) -> Result<termide_file_ops::OperationId, termide_file_ops::OperationError> {
-        self.init_operation_manager(vfs_manager);
-        self.operation_manager_mut()
-            .expect("operation_manager just initialized")
-            .queue_operation(request)
+        self.init_operation_manager(vfs_manager.clone());
+        let mgr = self
+            .operation_manager_mut()
+            .expect("operation_manager just initialized");
+        mgr.set_vfs_manager(vfs_manager);
+        mgr.queue_operation(request)
     }
 
     /// Start a file operation immediately (bypassing the queue).
@@ -918,10 +637,12 @@ impl AppState {
         request: OperationRequest,
         vfs_manager: Arc<VfsManager>,
     ) -> Result<termide_file_ops::OperationId, termide_file_ops::OperationError> {
-        self.init_operation_manager(vfs_manager);
-        self.operation_manager_mut()
-            .expect("operation_manager just initialized")
-            .start_now(request)
+        self.init_operation_manager(vfs_manager.clone());
+        let mgr = self
+            .operation_manager_mut()
+            .expect("operation_manager just initialized");
+        mgr.set_vfs_manager(vfs_manager);
+        mgr.start_now(request)
     }
 
     /// Poll operation manager for events. Returns empty vec if not initialized.
@@ -945,6 +666,30 @@ impl AppState {
         }
     }
 
+    /// Pause the active operation.
+    pub fn pause_active_operation(&mut self) {
+        if let Some(id) = self.active_operation_id {
+            log::debug!("Pausing operation {}", id);
+            if let Some(manager) = self.operation_manager_mut() {
+                manager.pause(id);
+            }
+        } else {
+            log::debug!("No active operation to pause");
+        }
+    }
+
+    /// Resume the active operation.
+    pub fn resume_active_operation(&mut self) {
+        if let Some(id) = self.active_operation_id {
+            log::debug!("Resuming operation {}", id);
+            if let Some(manager) = self.operation_manager_mut() {
+                manager.resume(id);
+            }
+        } else {
+            log::debug!("No active operation to resume");
+        }
+    }
+
     /// Get summary of background operations for status bar display.
     pub fn background_operations_summary(&self) -> Option<BackgroundOperationSummary> {
         self.operation_manager()
@@ -961,6 +706,98 @@ impl AppState {
         self.operation_manager_mut()
             .map(|m| m.resolve_conflict(operation_id, resolution))
             .unwrap_or(false)
+    }
+
+    // ========================================================================
+    // Active Operations Panel Methods
+    // ========================================================================
+
+    /// Start tracking a new operation in the Operations panel.
+    pub fn track_operation(
+        &mut self,
+        id: termide_file_ops::OperationId,
+        op_type: OperationType,
+        source: String,
+        dest: String,
+        total_files: usize,
+        total_bytes: u64,
+    ) {
+        let op = ActiveOperation::new(id, op_type, source, dest, total_files, total_bytes);
+        self.active_operations.insert(id, op);
+    }
+
+    /// Get operations list sorted by start time (newest first).
+    pub fn operations_list(&self) -> Vec<&ActiveOperation> {
+        let mut ops: Vec<_> = self.active_operations.values().collect();
+        ops.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+        ops
+    }
+
+    /// Find index of operation by ID in the sorted list.
+    pub fn operation_index(&self, id: termide_file_ops::OperationId) -> Option<usize> {
+        self.operations_list().iter().position(|op| op.id == id)
+    }
+
+    /// Check if there are any active operations being tracked.
+    pub fn has_active_operations(&self) -> bool {
+        !self.active_operations.is_empty()
+    }
+
+    /// Remove an operation from tracking (e.g., when completed/cancelled).
+    pub fn untrack_operation(&mut self, id: termide_file_ops::OperationId) {
+        self.active_operations.remove(&id);
+    }
+
+    /// Start tracking a batch operation.
+    /// Returns synthetic OperationId for the batch.
+    pub fn start_batch_tracking(
+        &mut self,
+        op_type: OperationType,
+        source: String,
+        dest: String,
+        total_files: usize,
+        total_bytes: u64,
+    ) -> termide_file_ops::OperationId {
+        // Generate synthetic ID
+        self.batch_id_counter += 1;
+        let batch_id = termide_file_ops::OperationId::new(self.batch_id_counter);
+
+        // Create tracked operation
+        self.track_operation(batch_id, op_type, source, dest, total_files, total_bytes);
+        self.batch_tracking_id = Some(batch_id);
+
+        batch_id
+    }
+
+    /// Finish batch tracking - remove the batch operation from active_operations.
+    pub fn finish_batch_tracking(&mut self) {
+        if let Some(batch_id) = self.batch_tracking_id.take() {
+            self.active_operations.remove(&batch_id);
+        }
+        self.batch_sub_operation_id = None;
+    }
+
+    /// Update batch tracked operation file-level progress.
+    /// Only updates file counts; byte-level progress is managed by poll_operation_manager.
+    pub fn update_batch_progress(&mut self, files_completed: usize, total_files: usize) {
+        if let Some(batch_id) = self.batch_tracking_id {
+            if let Some(op) = self.active_operations.get_mut(&batch_id) {
+                op.progress.files_completed = files_completed;
+                op.progress.total_files = total_files;
+            }
+        }
+    }
+
+    /// Set batch tracked operation pause state.
+    pub fn set_batch_paused(&mut self, paused: bool) {
+        if let Some(batch_id) = self.batch_tracking_id {
+            if let Some(op) = self.active_operations.get_mut(&batch_id) {
+                op.is_paused = paused;
+                if paused {
+                    op.speed_tracker.reset();
+                }
+            }
+        }
     }
 }
 

@@ -70,6 +70,10 @@ pub trait Translation: Send + Sync {
     fn panel_welcome(&self) -> &str;
     fn panel_help(&self) -> &str;
     fn panel_journal(&self) -> &str;
+    fn panel_operations(&self) -> &str;
+
+    // Operations panel
+    fn no_active_operations(&self) -> &str;
 
     // Editor
     fn editor_close_unsaved(&self) -> &str;
@@ -327,6 +331,7 @@ pub trait Translation: Send + Sync {
     fn tools_git_log(&self) -> &str;
     fn tools_journal(&self) -> &str;
     fn tools_diagnostics(&self) -> &str;
+    fn tools_operations(&self) -> &str;
 
     // Options submenu
     fn options_help(&self) -> &str;
@@ -477,6 +482,67 @@ pub trait Translation: Send + Sync {
     fn file_type_directory(&self) -> &str;
     fn file_type_file(&self) -> &str;
     fn file_type_symlink(&self) -> &str;
+
+    // Progress modal
+    fn progress_scanning(&self) -> &str;
+    fn progress_delete_title(&self) -> &str;
+    fn progress_copy_title(&self) -> &str;
+    fn progress_move_title(&self) -> &str;
+    fn progress_resume(&self) -> &str;
+    fn progress_suspend(&self) -> &str;
+    fn progress_pause(&self) -> &str;
+    fn progress_abort(&self) -> &str;
+    fn progress_counting_files(&self) -> &str;
+    fn progress_files_count(&self, current: usize, total: usize) -> String;
+    fn progress_files_size(&self, count: &str, size: &str) -> String;
+    fn progress_data_count(&self, current: &str, total: &str) -> String;
+    fn progress_speed_eta(&self, speed: &str, eta: &str) -> String;
+    fn progress_speed(&self, speed: &str) -> String;
+
+    // Conflict modal
+    fn conflict_directory_title(&self) -> &str;
+    fn conflict_file_title(&self) -> &str;
+    fn conflict_overwrite(&self) -> &str;
+    fn conflict_skip(&self) -> &str;
+    fn conflict_rename(&self) -> &str;
+    fn conflict_overwrite_all(&self) -> &str;
+    fn conflict_skip_all(&self) -> &str;
+    fn conflict_rename_all(&self) -> &str;
+    fn conflict_already_exists(&self, item_type: &str, name: &str) -> String;
+
+    // Operation cancellation
+    fn operation_cancelled_title(&self) -> &str;
+    fn cleanup_delete(&self) -> &str;
+    fn cleanup_keep(&self) -> &str;
+    fn cleanup_delete_partial(&self) -> &str;
+    fn cleanup_delete_all(&self) -> &str;
+    fn cleanup_keep_all(&self) -> &str;
+    fn cleanup_delete_copied(&self) -> &str;
+    fn cleanup_keep_copied(&self) -> &str;
+
+    // Status messages
+    fn status_delete_cancelled(&self) -> &str;
+    fn status_download_cancelled(&self) -> &str;
+    fn status_upload_cancelled(&self) -> &str;
+    fn status_operation_cancelled(&self) -> &str;
+    fn status_scan_cancelled(&self) -> &str;
+    fn status_config_saved(&self) -> &str;
+    fn status_delete_failed(&self, error: &str) -> String;
+
+    // Operation type labels (for operation cards)
+    fn op_type_copy_upload(&self) -> &str;
+    fn op_type_copy_download(&self) -> &str;
+    fn op_type_move_upload(&self) -> &str;
+    fn op_type_move_download(&self) -> &str;
+    fn op_type_rename(&self) -> &str;
+    fn op_type_scanning(&self) -> &str;
+    fn op_found_count(&self, count: usize) -> String;
+    fn op_files_progress(&self, current: usize, total: usize) -> String;
+    fn op_data_progress(&self, current: &str, total: &str) -> String;
+    fn op_speed_rate(&self, speed: &str) -> String;
+
+    // Modal titles
+    fn modal_error_title(&self) -> &str;
 }
 
 /// Initialize translation system.

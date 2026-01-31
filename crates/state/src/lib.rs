@@ -5,7 +5,9 @@
 
 use chrono::{DateTime, Local};
 use std::path::PathBuf;
-use std::time::SystemTime;
+use std::sync::Arc;
+use std::time::{Instant, SystemTime};
+use termide_vfs::{VfsManager, VfsPath};
 
 /// Message about background directory size calculation result
 #[derive(Debug)]
@@ -47,9 +49,6 @@ pub struct LayoutInfo {
     pub mode: LayoutMode,
     /// Number of main panels
     pub main_panels_count: usize,
-    /// Width of one main panel
-    #[allow(dead_code)]
-    pub main_panel_width: u16,
 }
 
 impl LayoutInfo {
@@ -62,17 +61,13 @@ impl LayoutInfo {
             Self {
                 mode: LayoutMode::Single,
                 main_panels_count: 1,
-                main_panel_width: width,
             }
         } else {
             // Multi-panel mode
             let main_panels_count = (width / MIN_MAIN_PANEL_WIDTH).max(1) as usize;
-            let main_panel_width = width / main_panels_count as u16;
-
             Self {
                 mode: LayoutMode::MultiPanel,
                 main_panels_count,
-                main_panel_width,
             }
         }
     }
@@ -516,6 +511,12 @@ pub enum PendingAction {
         panel_index: usize,
         paths: Vec<PathBuf>,
     },
+    /// Delete remote files/directories (one or multiple)
+    DeleteRemotePath {
+        panel_index: usize,
+        paths: Vec<VfsPath>,
+        vfs_manager: Arc<VfsManager>,
+    },
     /// Copy files/directories (one or multiple)
     CopyPath {
         panel_index: usize,
@@ -541,13 +542,6 @@ pub enum PendingAction {
     CloseEditorExternal { panel_index: usize },
     /// Close editor with conflict (local changes + external changes)
     CloseEditorConflict { panel_index: usize },
-    /// File overwrite decision when copying/moving
-    OverwriteDecision {
-        panel_index: usize,
-        source: PathBuf,
-        destination: PathBuf,
-        is_move: bool, // true for move, false for copy
-    },
     /// Batch file operation (copy/move)
     BatchFileOperation { operation: BatchOperation },
     /// Continue batch operation after conflict resolution
@@ -631,6 +625,189 @@ pub enum PendingAction {
         /// The operation ID waiting for resolution
         operation_id: termide_file_ops::OperationId,
     },
+}
+
+// ============================================================================
+// Operations Panel Types
+// ============================================================================
+
+/// Type of file operation (for display in Operations panel)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OperationType {
+    /// Local copy
+    Copy,
+    /// Local move
+    Move,
+    /// Rename (move within the same directory)
+    Rename,
+    /// Copy from local to remote (upload)
+    CopyUpload,
+    /// Copy from remote to local (download)
+    CopyDownload,
+    /// Move from local to remote (upload + delete source)
+    MoveUpload,
+    /// Move from remote to local (download + delete source)
+    MoveDownload,
+    /// Delete file(s)
+    Delete,
+}
+
+impl OperationType {
+    /// Returns true if this operation involves data transfer (not delete/rename)
+    pub fn has_data_progress(&self) -> bool {
+        !matches!(self, Self::Delete | Self::Rename)
+    }
+}
+
+/// Progress information for an active operation
+#[derive(Debug, Clone, Default)]
+pub struct OperationProgress {
+    /// Number of files completed
+    pub files_completed: usize,
+    /// Total number of files
+    pub total_files: usize,
+    /// Bytes transferred so far
+    pub bytes_transferred: u64,
+    /// Total bytes to transfer
+    pub total_bytes: u64,
+}
+
+impl OperationProgress {
+    /// Create new empty progress
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Calculate completion percentage (0-100)
+    pub fn percent(&self) -> u8 {
+        if self.total_bytes > 0 {
+            ((self.bytes_transferred * 100) / self.total_bytes) as u8
+        } else if self.total_files > 0 {
+            ((self.files_completed * 100) / self.total_files) as u8
+        } else {
+            0
+        }
+    }
+}
+
+/// Tracker for calculating transfer speed
+#[derive(Debug)]
+pub struct SpeedTracker {
+    /// Last known bytes transferred
+    last_bytes: u64,
+    /// Last update time
+    last_time: Instant,
+    /// Current speed in bytes per second
+    current_speed: f64,
+}
+
+impl Default for SpeedTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SpeedTracker {
+    /// Create new speed tracker
+    pub fn new() -> Self {
+        Self {
+            last_bytes: 0,
+            last_time: Instant::now(),
+            current_speed: 0.0,
+        }
+    }
+
+    /// Update speed calculation with new bytes transferred
+    pub fn update(&mut self, bytes_transferred: u64) {
+        let now = Instant::now();
+        let elapsed = now.duration_since(self.last_time).as_secs_f64();
+
+        // Update speed every 0.5 seconds for smoother display
+        if elapsed >= 0.5 {
+            let bytes_delta = bytes_transferred.saturating_sub(self.last_bytes);
+            let instant_speed = bytes_delta as f64 / elapsed;
+
+            // Exponential moving average for smoother values
+            if self.current_speed > 0.0 {
+                self.current_speed = 0.3 * instant_speed + 0.7 * self.current_speed;
+            } else {
+                self.current_speed = instant_speed;
+            }
+
+            self.last_bytes = bytes_transferred;
+            self.last_time = now;
+        }
+    }
+
+    /// Get current speed in bytes per second
+    pub fn speed(&self) -> f64 {
+        self.current_speed
+    }
+
+    /// Reset speed tracker (e.g., when operation is paused)
+    pub fn reset(&mut self) {
+        self.current_speed = 0.0;
+        self.last_bytes = 0;
+        self.last_time = Instant::now();
+    }
+}
+
+/// An active file operation being tracked in the Operations panel
+#[derive(Debug)]
+pub struct ActiveOperation {
+    /// Unique operation ID
+    pub id: termide_file_ops::OperationId,
+    /// Type of operation
+    pub op_type: OperationType,
+    /// Source path/URL display string
+    pub source: String,
+    /// Destination path/URL display string
+    pub dest: String,
+    /// Current progress
+    pub progress: OperationProgress,
+    /// Whether operation is paused
+    pub is_paused: bool,
+    /// When the operation started
+    pub started_at: Instant,
+    /// Speed tracker for calculating transfer rate
+    pub speed_tracker: SpeedTracker,
+    /// (Batch only) Cumulative bytes from already-completed individual files.
+    pub batch_bytes_offset: u64,
+    /// (Batch only) Current individual file's total size (for offset shift on completion).
+    pub batch_current_file_total: u64,
+    /// Whether the operation is currently in scanning phase (e.g., counting files before delete).
+    pub is_scanning: bool,
+}
+
+impl ActiveOperation {
+    /// Create new active operation
+    pub fn new(
+        id: termide_file_ops::OperationId,
+        op_type: OperationType,
+        source: String,
+        dest: String,
+        total_files: usize,
+        total_bytes: u64,
+    ) -> Self {
+        Self {
+            id,
+            op_type,
+            source,
+            dest,
+            progress: OperationProgress {
+                files_completed: 0,
+                total_files,
+                bytes_transferred: 0,
+                total_bytes,
+            },
+            is_paused: false,
+            started_at: Instant::now(),
+            speed_tracker: SpeedTracker::new(),
+            batch_bytes_offset: 0,
+            batch_current_file_total: 0,
+            is_scanning: false,
+        }
+    }
 }
 
 #[cfg(test)]

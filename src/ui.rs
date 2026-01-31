@@ -6,7 +6,6 @@ use ratatui::{
 };
 use std::any::Any;
 
-use termide_app::state::ActiveModal;
 use termide_app::AppState;
 use termide_layout::LayoutManager;
 use termide_panel_editor::Editor;
@@ -22,7 +21,6 @@ use termide_ui_render::{
     OPTIONS_MENU_INDEX, SCRIPTS_MENU_INDEX, SESSIONS_MENU_INDEX, WINDOWS_MENU_INDEX,
 };
 
-use termide_modal::Modal;
 use termide_ui_render::{StatusBar, StatusBarParams};
 
 /// Render dropdown submenus and modal windows
@@ -210,29 +208,7 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
     // Render active modal window if it's open
     if let Some(modal) = state.get_active_modal_mut() {
         let area = frame.area();
-        match modal {
-            ActiveModal::Commit(m) => m.render(area, frame.buffer_mut(), theme),
-            ActiveModal::Confirm(m) => m.render(area, frame.buffer_mut(), theme),
-            ActiveModal::Choice(m) => m.render(area, frame.buffer_mut(), theme),
-            ActiveModal::Input(m) => m.render(area, frame.buffer_mut(), theme),
-            ActiveModal::Select(m) => m.render(area, frame.buffer_mut(), theme),
-            ActiveModal::Overwrite(m) => m.render(area, frame.buffer_mut(), theme),
-            ActiveModal::Conflict(m) => m.render(area, frame.buffer_mut(), theme),
-            ActiveModal::Info(m) => m.render(area, frame.buffer_mut(), theme),
-            ActiveModal::InfoAction(m) => m.render(area, frame.buffer_mut(), theme),
-            ActiveModal::RenamePattern(m) => m.render(area, frame.buffer_mut(), theme),
-            ActiveModal::EditableSelect(m) => m.render(area, frame.buffer_mut(), theme),
-            ActiveModal::Search(m) => m.render(area, frame.buffer_mut(), theme),
-            ActiveModal::Replace(m) => m.render(area, frame.buffer_mut(), theme),
-            ActiveModal::Sessions(m) => m.render(area, frame.buffer_mut(), theme),
-            ActiveModal::FileSearch(m) => m.render(area, frame.buffer_mut(), theme),
-            ActiveModal::ContentSearch(m) => m.render(area, frame.buffer_mut(), theme),
-            ActiveModal::DirectoryPicker(m) => m.render(area, frame.buffer_mut(), theme),
-            ActiveModal::SaveAs(m) => m.render(area, frame.buffer_mut(), theme),
-            ActiveModal::DirectorySwitcher(m) => m.render(area, frame.buffer_mut(), theme),
-            ActiveModal::BookmarkAdd(m) => m.render(area, frame.buffer_mut(), theme),
-            ActiveModal::Progress(m) => m.render(area, frame.buffer_mut(), theme),
-        }
+        modal.render(area, frame.buffer_mut(), theme);
     }
 }
 

@@ -42,6 +42,7 @@ pub mod defaults {
     pub const EXTENDED_VIEW_WIDTH: usize = 50;
     pub const MIN_LOG_LEVEL: &str = "info";
     pub const RESOURCE_MONITOR_INTERVAL: u64 = 1000;
+    pub const BELL_ON_OPERATION_COMPLETE: bool = true;
     // LSP defaults
     pub const LSP_ENABLED: bool = true;
     pub const LSP_AUTO_COMPLETION: bool = true;

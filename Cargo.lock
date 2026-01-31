@@ -2908,6 +2908,7 @@ dependencies = [
  "termide-panel-git-status",
  "termide-panel-image",
  "termide-panel-misc",
+ "termide-panel-operations",
  "termide-panel-terminal",
  "termide-session",
  "termide-state",
@@ -3014,6 +3015,7 @@ dependencies = [
  "crossterm 0.28.1",
  "ratatui",
  "termide-config",
+ "termide-file-ops",
  "termide-session",
  "termide-theme",
  "termide-vfs",
@@ -3306,6 +3308,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "termide-panel-operations"
+version = "0.10.1"
+dependencies = [
+ "anyhow",
+ "crossterm 0.28.1",
+ "ratatui",
+ "termide-config",
+ "termide-core",
+ "termide-file-ops",
+ "termide-i18n",
+ "termide-state",
+ "termide-theme",
+ "termide-ui",
+]
+
+[[package]]
 name = "termide-panel-terminal"
 version = "0.10.1"
 dependencies = [
@@ -3349,6 +3367,7 @@ dependencies = [
  "chrono",
  "termide-config",
  "termide-file-ops",
+ "termide-vfs",
 ]
 
 [[package]]

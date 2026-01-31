@@ -182,10 +182,7 @@ pub fn get_cursor_visual_row_in_line(
 
         // Find which visual row contains the cursor column
         // Each wrap point marks the start of a new visual row
-        wrap_points
-            .iter()
-            .filter(|&&wp| wp <= column_clamped)
-            .count()
+        wrap_points.partition_point(|&wp| wp <= column_clamped)
     } else {
         0
     }
@@ -209,18 +206,13 @@ pub(crate) fn get_cursor_visual_row_in_line_cached(
     let (_, wrap_points) =
         get_line_wrap_points_cached(cache, buffer, line, content_width, use_smart_wrap);
 
-    // Clamp column to line length
-    let line_len = buffer
-        .line(line)
-        .map(|s| s.trim_end_matches('\n').graphemes(true).count())
-        .unwrap_or(0);
+    // Clamp column to line length (using cached grapheme count)
+    let line_len =
+        get_line_grapheme_count_cached(cache, buffer, line, content_width, use_smart_wrap);
     let column_clamped = column.min(line_len);
 
     // Find which visual row contains the cursor column
-    wrap_points
-        .iter()
-        .filter(|&&wp| wp <= column_clamped)
-        .count()
+    wrap_points.partition_point(|&wp| wp <= column_clamped)
 }
 
 /// Calculate total number of visual rows in the entire buffer.
@@ -490,16 +482,18 @@ fn count_diagnostic_rows_by_line(
     use crate::git;
     use std::collections::HashSet;
 
-    let mut result: HashMap<usize, usize> = HashMap::new();
-    let mut seen: HashSet<(usize, String)> = HashSet::new();
+    let mut result: HashMap<usize, usize> = HashMap::with_capacity(diagnostics.len());
+    let mut seen: HashSet<(usize, u64)> = HashSet::with_capacity(diagnostics.len());
 
     for diag in diagnostics {
         let line = diag.range.start.line as usize;
-        let key = (line, diag.message.clone());
-        if seen.contains(&key) {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        diag.message.hash(&mut hasher);
+        let key = (line, hasher.finish());
+        if !seen.insert(key) {
             continue;
         }
-        seen.insert(key);
 
         // Calculate diagnostic info similar to git::group_diagnostics_by_line
         let start_col = diag.range.start.character as usize;
@@ -556,19 +550,21 @@ pub(crate) fn get_line_wrap_points_cached(
     }
 
     // Cache miss - compute wrap points
-    let line_text = buffer
-        .line(line)
-        .map(|s| s.trim_end_matches('\n').to_string())
-        .unwrap_or_default();
+    let line_cow = buffer.line_cow(line);
+    let line_text = line_cow
+        .as_deref()
+        .map(|s| s.trim_end_matches('\n'))
+        .unwrap_or("");
 
-    let (visual_rows, wrap_points) =
-        get_line_wrap_points(&line_text, content_width, use_smart_wrap);
+    let grapheme_count = line_text.graphemes(true).count();
+    let (visual_rows, wrap_points) = get_line_wrap_points(line_text, content_width, use_smart_wrap);
 
     // Store in cache with width settings
     cache.set_wrap_data(
         line,
         visual_rows,
         wrap_points.clone(),
+        grapheme_count,
         content_width,
         use_smart_wrap,
     );
@@ -576,60 +572,30 @@ pub(crate) fn get_line_wrap_points_cached(
     (visual_rows, wrap_points)
 }
 
-/// Calculate visual row for cursor position, using cache for wrap point lookups.
+/// Get the grapheme count for a line, using cache if available.
 ///
-/// This is the cached version of `calculate_visual_row_for_cursor`.
-#[allow(clippy::too_many_arguments)]
-#[allow(dead_code)]
-pub(crate) fn calculate_visual_row_for_cursor_cached(
+/// This avoids repeated `graphemes(true).count()` calls by returning
+/// the count stored in the wrap cache.
+pub(crate) fn get_line_grapheme_count_cached(
     cache: &mut RenderingCache,
     buffer: &TextBuffer,
-    cursor_line: usize,
-    cursor_col: usize,
-    viewport_top: usize,
+    line: usize,
     content_width: usize,
-    word_wrap_enabled: bool,
     use_smart_wrap: bool,
 ) -> usize {
-    if content_width == 0 || !word_wrap_enabled {
-        // No word wrap - visual row is just buffer line offset from top
-        return cursor_line.saturating_sub(viewport_top);
+    // Ensure wrap data is cached (populates grapheme_count)
+    if cache
+        .get_wrap_data(line, content_width, use_smart_wrap)
+        .is_none()
+    {
+        // Populate cache
+        get_line_wrap_points_cached(cache, buffer, line, content_width, use_smart_wrap);
     }
 
-    let mut visual_row = 0;
-
-    // Count visual rows from viewport top to cursor line using cached wrap data
-    for line_idx in viewport_top..cursor_line {
-        if line_idx >= buffer.line_count() {
-            break;
-        }
-        let (line_visual_rows, _) =
-            get_line_wrap_points_cached(cache, buffer, line_idx, content_width, use_smart_wrap);
-        visual_row += line_visual_rows;
-    }
-
-    // Add visual row within cursor's line
-    if cursor_line < buffer.line_count() {
-        let (_, wrap_points) =
-            get_line_wrap_points_cached(cache, buffer, cursor_line, content_width, use_smart_wrap);
-
-        let line_len = buffer
-            .line(cursor_line)
-            .map(|s| {
-                use unicode_segmentation::UnicodeSegmentation;
-                s.trim_end_matches('\n').graphemes(true).count()
-            })
-            .unwrap_or(0);
-        let cursor_col_clamped = cursor_col.min(line_len);
-
-        let row_within_line = wrap_points
-            .iter()
-            .filter(|&&wp| wp <= cursor_col_clamped)
-            .count();
-        visual_row += row_within_line;
-    }
-
-    visual_row
+    cache
+        .get_wrap_data(line, content_width, use_smart_wrap)
+        .map(|c| c.grapheme_count)
+        .unwrap_or(0)
 }
 
 /// Calculate total visual rows in buffer using cumulative cache.
@@ -692,16 +658,12 @@ pub(crate) fn move_up_cached(
     let (_, wrap_points) =
         get_line_wrap_points_cached(cache, buffer, cursor_line, content_width, use_smart_wrap);
 
-    let line_text = buffer
-        .line(cursor_line)
-        .map(|s| s.to_string())
-        .unwrap_or_default();
-    let line_text = line_text.trim_end_matches('\n');
-    let line_len = line_text.graphemes(true).count();
+    let line_len =
+        get_line_grapheme_count_cached(cache, buffer, cursor_line, content_width, use_smart_wrap);
     let cursor_col = cursor_col.min(line_len);
 
     // Find which visual row within this line the cursor is on
-    let current_visual_row = wrap_points.iter().filter(|&&wp| wp <= cursor_col).count();
+    let current_visual_row = wrap_points.partition_point(|&wp| wp <= cursor_col);
 
     // Get bounds for current visual row
     let (visual_row_start, _) = get_visual_row_bounds(current_visual_row, &wrap_points, line_len);
@@ -721,17 +683,20 @@ pub(crate) fn move_up_cached(
         let (prev_visual_rows, prev_wrap_points) =
             get_line_wrap_points_cached(cache, buffer, prev_line, content_width, use_smart_wrap);
 
-        let prev_line_len = buffer
-            .line(prev_line)
-            .map(|s| s.trim_end_matches('\n').graphemes(true).count())
-            .unwrap_or(0);
+        let prev_line_len =
+            get_line_grapheme_count_cached(cache, buffer, prev_line, content_width, use_smart_wrap);
 
         // Target the last visual row of previous line
         let target_visual_row = prev_visual_rows.saturating_sub(1);
         let (prev_start, prev_end) =
             get_visual_row_bounds(target_visual_row, &prev_wrap_points, prev_line_len);
 
-        let new_col = (prev_start + visual_offset).min(prev_end.saturating_sub(1).max(prev_start));
+        let max_col = if prev_end == prev_line_len {
+            prev_end
+        } else {
+            prev_end.saturating_sub(1)
+        };
+        let new_col = (prev_start + visual_offset).min(max_col.max(prev_start));
         Some((prev_line, new_col))
     } else {
         None // At top of buffer
@@ -771,16 +736,12 @@ pub(crate) fn move_down_cached(
     let (total_visual_rows, wrap_points) =
         get_line_wrap_points_cached(cache, buffer, cursor_line, content_width, use_smart_wrap);
 
-    let line_text = buffer
-        .line(cursor_line)
-        .map(|s| s.to_string())
-        .unwrap_or_default();
-    let line_text = line_text.trim_end_matches('\n');
-    let line_len = line_text.graphemes(true).count();
+    let line_len =
+        get_line_grapheme_count_cached(cache, buffer, cursor_line, content_width, use_smart_wrap);
     let cursor_col = cursor_col.min(line_len);
 
     // Find which visual row within this line the cursor is on
-    let current_visual_row = wrap_points.iter().filter(|&&wp| wp <= cursor_col).count();
+    let current_visual_row = wrap_points.partition_point(|&wp| wp <= cursor_col);
 
     // Get bounds for current visual row
     let (visual_row_start, _) = get_visual_row_bounds(current_visual_row, &wrap_points, line_len);
@@ -792,7 +753,14 @@ pub(crate) fn move_down_cached(
         // Move down within same physical line
         let (next_start, next_end) =
             get_visual_row_bounds(current_visual_row + 1, &wrap_points, line_len);
-        let new_col = (next_start + visual_offset).min(next_end.saturating_sub(1).max(next_start));
+        // On the last visual row (end == line_len), cursor can be after the last char.
+        // On intermediate rows, the char at the wrap point belongs to the next row.
+        let max_col = if next_end == line_len {
+            next_end
+        } else {
+            next_end.saturating_sub(1)
+        };
+        let new_col = (next_start + visual_offset).min(max_col.max(next_start));
         Some((cursor_line, new_col))
     } else if cursor_line + 1 < line_count {
         // Move to next physical line
@@ -800,15 +768,18 @@ pub(crate) fn move_down_cached(
         let (_, next_wrap_points) =
             get_line_wrap_points_cached(cache, buffer, next_line, content_width, use_smart_wrap);
 
-        let next_line_len = buffer
-            .line(next_line)
-            .map(|s| s.trim_end_matches('\n').graphemes(true).count())
-            .unwrap_or(0);
+        let next_line_len =
+            get_line_grapheme_count_cached(cache, buffer, next_line, content_width, use_smart_wrap);
 
         // Target the first visual row of next line
         let (next_start, next_end) = get_visual_row_bounds(0, &next_wrap_points, next_line_len);
 
-        let new_col = (next_start + visual_offset).min(next_end.saturating_sub(1).max(next_start));
+        let max_col = if next_end == next_line_len {
+            next_end
+        } else {
+            next_end.saturating_sub(1)
+        };
+        let new_col = (next_start + visual_offset).min(max_col.max(next_start));
         Some((next_line, new_col))
     } else {
         None // At bottom of buffer
@@ -954,13 +925,8 @@ pub(crate) fn visual_row_to_buffer_position_cached(
         let (visual_rows, wrap_points) =
             get_line_wrap_points_cached(cache, buffer, line_idx, content_width, use_smart_wrap);
 
-        let line_len = buffer
-            .line(line_idx)
-            .map(|s| {
-                use unicode_segmentation::UnicodeSegmentation;
-                s.trim_end_matches('\n').graphemes(true).count()
-            })
-            .unwrap_or(0);
+        let line_len =
+            get_line_grapheme_count_cached(cache, buffer, line_idx, content_width, use_smart_wrap);
 
         // Check if target is within this line's visual rows
         if visual_row < current_visual_row + visual_rows {
@@ -984,12 +950,7 @@ pub(crate) fn visual_row_to_buffer_position_cached(
 
     // If we've exhausted all lines, return the last line
     let last_line = buffer.line_count().saturating_sub(1);
-    let last_line_len = buffer
-        .line(last_line)
-        .map(|s| {
-            use unicode_segmentation::UnicodeSegmentation;
-            s.trim_end_matches('\n').graphemes(true).count()
-        })
-        .unwrap_or(0);
+    let last_line_len =
+        get_line_grapheme_count_cached(cache, buffer, last_line, content_width, use_smart_wrap);
     (last_line, 0, last_line_len, false)
 }

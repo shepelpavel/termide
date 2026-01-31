@@ -234,6 +234,19 @@ impl App {
             } => {
                 self.event_open_git_diff(repo_path, commit_hash)?;
             }
+
+            // === Operations panel ===
+            PanelEvent::ToggleOperationPause(op_id) => {
+                self.event_toggle_operation_pause(op_id);
+            }
+
+            PanelEvent::CancelOperation(op_id) => {
+                self.event_cancel_operation(op_id);
+            }
+
+            PanelEvent::OpenOperationsPanel => {
+                self.open_operations_panel()?;
+            }
         }
         Ok(())
     }
@@ -256,13 +269,18 @@ impl App {
 
     /// Handle bracketed paste event - paste text directly to active panel
     pub fn handle_paste_event(&mut self, text: String) -> Result<()> {
+        self.paste_text_to_active_panel(&text)
+    }
+
+    /// Paste text into the active editor or terminal panel.
+    fn paste_text_to_active_panel(&mut self, text: &str) -> Result<()> {
         if let Some(panel) = self.layout_manager.active_panel_mut() {
             if let Some(editor) = panel.as_editor_mut() {
-                if let Err(e) = editor.paste_text(&text) {
+                if let Err(e) = editor.paste_text(text) {
                     log::error!("Paste to editor failed: {}", e);
                 }
             } else if let Some(terminal) = panel.as_terminal_mut() {
-                if let Err(e) = terminal.paste_text(&text) {
+                if let Err(e) = terminal.paste_text(text) {
                     log::error!("Paste to terminal failed: {}", e);
                 }
             }
@@ -553,27 +571,48 @@ impl App {
             .unwrap_or(0);
         let temp_path = temp_dir.join(format!("{}_{}", timestamp, filename));
 
-        // Start async download - DON'T call .recv()!
-        let operation = vfs_manager.download(&vfs_path, &temp_path);
+        // Create download request via OperationManager
+        let request =
+            termide_file_ops::OperationRequest::download(vfs_path.clone(), temp_path.clone());
 
-        // Show progress modal
-        let modal = termide_modal::ProgressModal::indeterminate(
-            "Download",
-            format!("Downloading {}...", filename),
-        );
-        self.state.active_modal = Some(crate::state::ActiveModal::Progress(Box::new(modal)));
+        // Start download via OperationManager (no modal)
+        match self.state.start_operation_now(request, vfs_manager.clone()) {
+            Ok(operation_id) => {
+                // Track the operation in the operations panel
+                self.state.track_operation(
+                    operation_id,
+                    crate::state::OperationType::CopyDownload,
+                    vfs_path.to_url_string(),
+                    temp_path.display().to_string(),
+                    1,
+                    0,
+                );
 
-        // Store operation for polling
-        self.state.download_operation = Some(crate::state::DownloadOperation {
-            operation,
-            remote_path: vfs_path,
-            temp_path,
-            config: self.state.editor_config(),
-            vfs_manager,
-            started: std::time::Instant::now(),
-        });
+                // Store pending editor download metadata for post-processing
+                self.state.pending_editor_download = Some(crate::state::PendingEditorDownload {
+                    operation_id,
+                    remote_path: vfs_path,
+                    temp_path,
+                    config: self.state.editor_config(),
+                    vfs_manager,
+                });
 
-        log::info!("Started downloading remote file '{}'", filename);
+                // Open operations panel to show progress
+                self.open_operations_panel()?;
+
+                log::info!(
+                    "Started downloading remote file '{}' (op {})",
+                    filename,
+                    operation_id
+                );
+            }
+            Err(e) => {
+                let error_msg = format!("Failed to start download: {}", e);
+                log::error!("{}", error_msg);
+                self.state.set_error(error_msg);
+            }
+        }
+
         Ok(())
     }
 
@@ -864,10 +903,6 @@ impl App {
                 PendingAction::CloseEditorWithSave { panel_index: 0 }
             }
             termide_core::ConfirmAction::QuitApplication => PendingAction::QuitApplication,
-            termide_core::ConfirmAction::OverwriteFile { .. } => {
-                // This case is handled by the conflict modal, not confirm
-                return;
-            }
         };
 
         // Create confirmation modal
@@ -1083,6 +1118,172 @@ impl App {
         self.add_panel(Box::new(panel));
         self.auto_save_session();
 
+        Ok(())
+    }
+
+    // ========================================================================
+    // Operations Panel Methods
+    // ========================================================================
+
+    /// Start a tracked operation with auto-opening of Operations panel.
+    /// This wraps start_operation_now and adds tracking + panel opening.
+    #[allow(clippy::too_many_arguments)]
+    pub fn start_tracked_operation(
+        &mut self,
+        request: termide_file_ops::OperationRequest,
+        vfs_manager: std::sync::Arc<termide_vfs::VfsManager>,
+        op_type: crate::state::OperationType,
+        source: String,
+        dest: String,
+        total_files: usize,
+        total_bytes: u64,
+    ) -> anyhow::Result<termide_file_ops::OperationId> {
+        // Start the operation
+        let operation_id = self.state.start_operation_now(request, vfs_manager)?;
+
+        // Track the operation
+        self.state.track_operation(
+            operation_id,
+            op_type,
+            source,
+            dest,
+            total_files,
+            total_bytes,
+        );
+
+        // Open the operations panel with focus on the new operation
+        let _ = self.open_operations_panel_with_focus(operation_id);
+
+        Ok(operation_id)
+    }
+
+    /// Update operations panel data before rendering.
+    /// Called from render loop to sync panel with active_operations.
+    pub fn update_operations_panel(&mut self) {
+        // Find operations panel and update its data
+        for group in &mut self.layout_manager.panel_groups {
+            for panel in group.panels_mut() {
+                if let Some(ops_panel) = panel
+                    .as_any_mut()
+                    .downcast_mut::<termide_panel_operations::OperationsPanel>()
+                {
+                    let ops_list = self.state.operations_list();
+                    ops_panel.update_operations(&ops_list);
+                    return;
+                }
+            }
+        }
+    }
+
+    // ========================================================================
+    // Operations Panel Event Handlers
+    // ========================================================================
+
+    /// Handle ToggleOperationPause event - pause or resume an operation
+    fn event_toggle_operation_pause(&mut self, op_id: termide_file_ops::OperationId) {
+        // Check if operation is paused
+        let is_paused = self
+            .state
+            .active_operations
+            .get(&op_id)
+            .map(|op| op.is_paused)
+            .unwrap_or(false);
+
+        // Resolve batch tracking ID to actual OperationManager sub-operation ID
+        let real_id = if self.state.batch_tracking_id == Some(op_id) {
+            self.state.batch_sub_operation_id.unwrap_or(op_id)
+        } else {
+            op_id
+        };
+
+        if let Some(manager) = self.state.operation_manager_mut() {
+            if is_paused {
+                manager.resume(real_id);
+                log::debug!("Resumed operation {}", real_id);
+            } else {
+                manager.pause(real_id);
+                log::debug!("Paused operation {}", real_id);
+            }
+        }
+
+        // Update batch tracking paused state
+        self.state.set_batch_paused(!is_paused);
+        self.state.needs_redraw = true;
+    }
+
+    /// Handle CancelOperation event - cancel an operation
+    fn event_cancel_operation(&mut self, op_id: termide_file_ops::OperationId) {
+        // Resolve batch tracking ID to actual OperationManager sub-operation ID
+        let real_id = if self.state.batch_tracking_id == Some(op_id) {
+            self.state.batch_sub_operation_id.unwrap_or(op_id)
+        } else {
+            op_id
+        };
+
+        if let Some(manager) = self.state.operation_manager_mut() {
+            manager.cancel(real_id);
+            log::debug!("Cancelled operation {}", real_id);
+        }
+        self.state.needs_redraw = true;
+    }
+
+    /// Open or focus the Operations panel
+    pub(super) fn open_operations_panel(&mut self) -> Result<()> {
+        use termide_panel_operations::OperationsPanel;
+
+        // Check if operations panel already exists
+        for (group_idx, group) in self.layout_manager.panel_groups.iter().enumerate() {
+            for (panel_idx, panel) in group.panels().iter().enumerate() {
+                if panel.name() == "operations" {
+                    // Panel exists, focus it
+                    self.layout_manager.set_focus(group_idx);
+                    if let Some(group) = self.layout_manager.get_group_mut(group_idx) {
+                        group.set_expanded(panel_idx);
+                    }
+                    return Ok(());
+                }
+            }
+        }
+
+        // Create new operations panel
+        let panel = OperationsPanel::new();
+        self.add_panel(Box::new(panel));
+        self.auto_save_session();
+        Ok(())
+    }
+
+    /// Open operations panel and focus on specific operation
+    pub(super) fn open_operations_panel_with_focus(
+        &mut self,
+        op_id: termide_file_ops::OperationId,
+    ) -> Result<()> {
+        self.open_operations_panel()?;
+
+        // Find and focus the operations panel, then select the operation
+        for (group_idx, group) in self.layout_manager.panel_groups.iter_mut().enumerate() {
+            for (panel_idx, panel) in group.panels_mut().iter_mut().enumerate() {
+                if let Some(ops_panel) = panel
+                    .as_any_mut()
+                    .downcast_mut::<termide_panel_operations::OperationsPanel>()
+                {
+                    // Update operations snapshot
+                    let ops_list = self.state.operations_list();
+                    ops_panel.update_operations(&ops_list);
+
+                    // Focus on the specific operation
+                    if let Some(index) = self.state.operation_index(op_id) {
+                        ops_panel.set_selected(index);
+                    }
+
+                    // Ensure panel is focused
+                    self.layout_manager.set_focus(group_idx);
+                    if let Some(g) = self.layout_manager.get_group_mut(group_idx) {
+                        g.set_expanded(panel_idx);
+                    }
+                    return Ok(());
+                }
+            }
+        }
         Ok(())
     }
 }

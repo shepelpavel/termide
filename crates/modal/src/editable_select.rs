@@ -287,10 +287,18 @@ impl Modal for EditableSelectModal {
             self.last_dropdown_area = Some(chunks[chunk_idx]);
 
             let selected_idx = self.suggestion_input.selected_index();
+            let viewport = self.suggestion_input.viewport();
+            let scroll_offset = viewport.offset;
+            let max_visible = self.suggestion_input.max_visible();
+
+            // Only render items within the visible viewport range
+            let visible_end = (scroll_offset + max_visible).min(self.options.len());
             let items: Vec<ListItem> = self
                 .options
                 .iter()
                 .enumerate()
+                .skip(scroll_offset)
+                .take(visible_end - scroll_offset)
                 .map(|(idx, option)| {
                     let prefix = if idx == selected_idx { "▶ " } else { "  " };
 
@@ -492,10 +500,12 @@ impl Modal for EditableSelectModal {
                 && mouse.column >= dropdown_area.x
                 && mouse.column < dropdown_area.x + dropdown_area.width
             {
-                // Calculate which item was clicked (account for border)
+                // Calculate which item was clicked (account for border and scroll offset)
                 let relative_row = mouse.row.saturating_sub(dropdown_area.y);
                 // First row is inside the list (no top border in this design)
-                let item_index = relative_row as usize;
+                // Add scroll offset to get the actual item index
+                let scroll_offset = self.suggestion_input.viewport().offset;
+                let item_index = scroll_offset + relative_row as usize;
 
                 if item_index < self.options.len() {
                     self.suggestion_input.select_and_confirm(item_index);

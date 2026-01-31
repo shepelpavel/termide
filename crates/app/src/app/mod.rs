@@ -330,35 +330,11 @@ impl App {
                         // Check background script operation result (.report. scripts)
                         self.check_script_operation_result();
 
-                        // Check download operation result (remote file download)
-                        self.check_download_operation_result();
-
-                        // Check upload operation result (remote file upload from editor)
-                        self.check_upload_operation_result();
-
-                        // Check batch upload operation result (local→remote batch copy)
-                        self.check_batch_upload_result();
-
-                        // Check batch download operation result (remote→local batch copy)
-                        self.check_batch_download_result();
-
                         // Poll unified operation manager for events (new system)
                         self.poll_operation_manager();
 
-                        // Check local file copy progress (chunked copy with progress)
-                        self.check_local_copy_progress();
-
-                        // Check local directory copy progress (background directory copy)
-                        self.check_local_directory_copy_progress();
-
-                        // Check local directory scan progress (async scan before copy)
-                        self.check_local_scan_progress();
-
                         // Check pending local batch operation (start after modal rendered)
                         self.check_pending_batch_operation();
-
-                        // Check local delete operation progress
-                        self.check_delete_progress();
                     }
 
                     // Sync pause state between BatchOperation and ProgressModal (bidirectional)

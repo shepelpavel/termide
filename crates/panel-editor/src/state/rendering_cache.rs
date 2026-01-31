@@ -6,6 +6,7 @@ use ratatui::style::Color;
 use termide_config::Config;
 use termide_highlight::{global_highlighter, HighlightCache};
 use termide_theme::Theme;
+use unicode_segmentation::UnicodeSegmentation;
 
 /// Cached wrap data for a single line.
 #[derive(Clone, Debug)]
@@ -14,6 +15,8 @@ pub struct CachedWrapData {
     pub visual_rows: usize,
     /// Grapheme indices where each new visual line starts.
     pub wrap_points: Vec<usize>,
+    /// Total number of grapheme clusters in the line.
+    pub grapheme_count: usize,
     /// Content width used to compute this wrap data.
     pub computed_width: usize,
     /// Smart wrap setting used to compute this wrap data.
@@ -114,6 +117,7 @@ impl RenderingCache {
         line: usize,
         visual_rows: usize,
         wrap_points: Vec<usize>,
+        grapheme_count: usize,
         content_width: usize,
         use_smart_wrap: bool,
     ) {
@@ -132,6 +136,7 @@ impl RenderingCache {
             CachedWrapData {
                 visual_rows,
                 wrap_points,
+                grapheme_count,
                 computed_width: content_width,
                 computed_smart_wrap: use_smart_wrap,
             },
@@ -229,6 +234,7 @@ impl RenderingCache {
                 cached.visual_rows
             } else if let Some(line_text) = buffer.line(line_idx) {
                 let line_text = line_text.trim_end_matches('\n');
+                let grapheme_count = line_text.graphemes(true).count();
                 let (visual_rows, wrap_points) = crate::word_wrap::get_line_wrap_points(
                     line_text,
                     content_width,
@@ -239,6 +245,7 @@ impl RenderingCache {
                     CachedWrapData {
                         visual_rows,
                         wrap_points,
+                        grapheme_count,
                         computed_width: content_width,
                         computed_smart_wrap: use_smart_wrap,
                     },

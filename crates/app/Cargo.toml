@@ -57,6 +57,7 @@ termide-panel-git-log = { path = "../panel-git-log" }
 termide-panel-git-diff = { path = "../panel-git-diff" }
 termide-panel-diagnostics = { path = "../panel-diagnostics" }
 termide-panel-misc = { path = "../panel-misc" }
+termide-panel-operations = { path = "../panel-operations" }
 
 [dev-dependencies]
 tempfile.workspace = true

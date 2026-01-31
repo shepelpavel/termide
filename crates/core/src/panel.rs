@@ -131,6 +131,17 @@ impl From<&Theme> for ThemeColors {
     }
 }
 
+/// Panel width preference for auto-stacking into existing groups.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WidthPreference {
+    /// Prefer the narrowest existing group (sidebar-like panels).
+    PreferNarrow,
+    /// Prefer the widest existing group (content panels).
+    PreferWide,
+    /// No preference — use current (focused) group.
+    NoPreference,
+}
+
 /// Trait for all termide panels.
 ///
 /// Panels communicate with the application through `PanelEvent`s
@@ -278,5 +289,10 @@ pub trait Panel: Any {
     /// Check if this is a Help panel.
     fn is_help_panel(&self) -> bool {
         false
+    }
+
+    /// Width preference for auto-stacking into existing groups.
+    fn width_preference(&self) -> WidthPreference {
+        WidthPreference::NoPreference
     }
 }

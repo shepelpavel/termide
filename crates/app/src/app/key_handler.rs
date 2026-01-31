@@ -150,7 +150,8 @@ impl App {
             self.hotkey_processor = termide_app_event::DefaultHotkeyProcessor::from_config(
                 &new_config.general.keybindings,
             );
-            self.state.set_info("Config saved and applied".to_string());
+            self.state
+                .set_info(termide_i18n::t().status_config_saved().to_string());
         }
 
         // Handle modal window request from panel (legacy, still used)
@@ -172,6 +173,7 @@ impl App {
             PendingAction::CreateFile { panel_index, .. }
             | PendingAction::CreateDirectory { panel_index, .. }
             | PendingAction::DeletePath { panel_index, .. }
+            | PendingAction::DeleteRemotePath { panel_index, .. }
             | PendingAction::CopyPath { panel_index, .. }
             | PendingAction::MovePath { panel_index, .. }
             | PendingAction::SaveFileAs { panel_index, .. }
@@ -179,7 +181,6 @@ impl App {
             | PendingAction::CloseEditorWithSave { panel_index }
             | PendingAction::CloseEditorExternal { panel_index }
             | PendingAction::CloseEditorConflict { panel_index }
-            | PendingAction::OverwriteDecision { panel_index, .. }
             | PendingAction::FileSearch { panel_index }
             | PendingAction::ContentSearch { panel_index }
             | PendingAction::GoToPath { panel_index, .. } => {

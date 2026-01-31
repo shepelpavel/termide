@@ -73,6 +73,10 @@ pub struct GeneralSettings {
     #[serde(default = "default_vim_mode")]
     pub vim_mode: bool,
 
+    /// Play bell sound when a file operation completes (enabled by default)
+    #[serde(default = "default_bell_on_operation_complete")]
+    pub bell_on_operation_complete: bool,
+
     /// Global keyboard shortcuts
     #[serde(default)]
     pub keybindings: GlobalKeybindings,
@@ -235,6 +239,10 @@ fn default_session_retention_days() -> u32 {
     defaults::SESSION_RETENTION_DAYS
 }
 
+fn default_bell_on_operation_complete() -> bool {
+    defaults::BELL_ON_OPERATION_COMPLETE
+}
+
 fn default_tab_size() -> usize {
     defaults::TAB_SIZE
 }
@@ -385,6 +393,7 @@ impl From<LegacyConfig> for Config {
                 min_panel_width: default_min_panel_width(),
                 session_retention_days: legacy.session_retention_days,
                 vim_mode: default_vim_mode(),
+                bell_on_operation_complete: default_bell_on_operation_complete(),
                 keybindings: GlobalKeybindings::default(),
             },
             editor: EditorSettings {
@@ -423,6 +432,7 @@ impl Default for GeneralSettings {
             min_panel_width: default_min_panel_width(),
             session_retention_days: default_session_retention_days(),
             vim_mode: default_vim_mode(),
+            bell_on_operation_complete: default_bell_on_operation_complete(),
             keybindings: GlobalKeybindings::default(),
         }
     }

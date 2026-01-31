@@ -124,13 +124,19 @@ impl VfsPath {
     }
 
     /// Get the parent path.
+    /// Returns None if already at root.
     pub fn parent(&self) -> Option<VfsPath> {
-        self.path.parent().map(|p| VfsPath {
+        let parent = self.path.parent()?;
+        // For root path "/" parent() returns Some("") - treat as no parent
+        if parent.as_os_str().is_empty() || parent == self.path {
+            return None;
+        }
+        Some(VfsPath {
             protocol: self.protocol,
             host: self.host.clone(),
             port: self.port,
             username: self.username.clone(),
-            path: p.to_path_buf(),
+            path: parent.to_path_buf(),
         })
     }
 
@@ -173,6 +179,7 @@ impl VfsPath {
 
     /// Get a connection key for caching providers.
     /// This uniquely identifies a connection (protocol + host + port + user).
+    /// Uses effective_port() to normalize keys (e.g., sftp://host and sftp://host:22 are the same).
     pub fn connection_key(&self) -> String {
         if self.is_local() {
             "local".to_string()
@@ -182,7 +189,7 @@ impl VfsPath {
                 self.protocol.scheme(),
                 self.username.as_deref().unwrap_or(""),
                 self.host.as_deref().unwrap_or(""),
-                self.port.unwrap_or(0)
+                self.effective_port().unwrap_or(0)
             )
         }
     }
@@ -438,10 +445,20 @@ impl<T> VfsOperation<T> {
 /// Progress information for upload operations.
 #[derive(Debug, Clone)]
 pub struct UploadProgress {
-    /// Bytes uploaded so far.
+    /// Total bytes uploaded so far (across all files).
     pub bytes_uploaded: u64,
-    /// Total bytes to upload.
+    /// Total bytes to upload (all files).
     pub total_bytes: u64,
+    /// Current file being uploaded (for directory uploads).
+    pub current_file: Option<String>,
+    /// Files uploaded so far (for directory uploads).
+    pub files_uploaded: usize,
+    /// Total files to upload (for directory uploads).
+    pub total_files: usize,
+    /// Bytes uploaded for the current file.
+    pub current_file_bytes: u64,
+    /// Total bytes of the current file.
+    pub current_file_total: u64,
 }
 
 /// Handle to an async upload operation with progress reporting and pause/cancel.

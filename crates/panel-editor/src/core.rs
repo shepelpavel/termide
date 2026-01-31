@@ -7,7 +7,9 @@ use std::sync::Arc;
 
 use termide_buffer::{Cursor, Selection, TextBuffer, Viewport};
 use termide_config::Config;
-use termide_core::{CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel};
+use termide_core::{
+    CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel, WidthPreference,
+};
 use termide_git::GitDiffCache;
 use termide_i18n::t;
 use termide_modal::{ActiveModal, ReplaceModal, SaveAsModal, SearchModal};
@@ -1152,6 +1154,34 @@ impl Editor {
         let rows_remaining_in_top_line =
             top_line_visual_rows.saturating_sub(self.viewport.top_visual_row_offset);
 
+        // Count diagnostic virtual rows between viewport top and cursor line
+        // These take up visual space but aren't accounted for by wrap row counts
+        let diagnostic_rows_between = {
+            let mut diag_rows = 0;
+            // Count diagnostic rows for top_line through cursor_line - 1
+            // (diagnostics render AFTER their associated line)
+            for diag in &self.lsp.diagnostics {
+                let diag_line = diag.range.start.line as usize;
+                if diag_line >= self.viewport.top_line && diag_line < self.cursor.line {
+                    let start_col = diag.range.start.character as usize;
+                    let end_col = diag.range.end.character as usize;
+                    let underline_len = end_col.saturating_sub(start_col).max(1);
+                    let code = diag.code.as_ref().map(|c| match c {
+                        lsp_types::NumberOrString::Number(n) => n.to_string(),
+                        lsp_types::NumberOrString::String(s) => s.clone(),
+                    });
+                    diag_rows += git::calculate_diagnostic_rows(
+                        start_col,
+                        underline_len,
+                        code.as_deref(),
+                        &diag.message,
+                        content_width,
+                    );
+                }
+            }
+            diag_rows
+        };
+
         // Visual rows for lines between top_line and cursor_line (exclusive)
         // Use cumulative cache for O(1) lookup when available
         let visual_rows_between = if self.render_cache.is_cumulative_valid()
@@ -1188,8 +1218,11 @@ impl Editor {
         };
 
         // Total visual rows from viewport top to cursor position
-        let cursor_visual_pos =
-            rows_remaining_in_top_line + visual_rows_between + cursor_visual_row_in_line;
+        // Include diagnostic virtual rows that appear between viewport top and cursor
+        let cursor_visual_pos = rows_remaining_in_top_line
+            + visual_rows_between
+            + diagnostic_rows_between
+            + cursor_visual_row_in_line;
 
         // If cursor is visible, no scrolling needed
         if cursor_visual_pos < content_height {
@@ -1511,7 +1544,6 @@ impl Editor {
                 0
             };
 
-            // Note: diagnostic virtual lines not yet supported in word wrap mode
             return total_visual_rows + deletion_markers;
         }
 
@@ -1618,7 +1650,7 @@ impl Editor {
 
         // Render completion popup if active
         if let Some(ref popup) = self.lsp.completion_popup {
-            use unicode_width::UnicodeWidthStr;
+            use unicode_width::UnicodeWidthChar;
 
             // Only render if cursor is in visible area
             if self.cursor.line >= self.viewport.top_line
@@ -1636,7 +1668,7 @@ impl Editor {
                     .map(|line| {
                         line.chars()
                             .take(self.cursor.column)
-                            .map(|c| c.to_string().width())
+                            .map(|c| c.width().unwrap_or(0))
                             .sum()
                     })
                     .unwrap_or(0);
@@ -1932,8 +1964,12 @@ impl Panel for Editor {
         "editor"
     }
 
+    fn width_preference(&self) -> WidthPreference {
+        WidthPreference::PreferWide
+    }
+
     fn title(&self) -> String {
-        const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+        use termide_config::constants::spinner_frame;
 
         let modified = if self.buffer.is_modified() { "*" } else { "" };
 
@@ -1961,26 +1997,14 @@ impl Panel for Editor {
 
         // Upload spinner (takes priority over LSP spinner)
         let upload_indicator = if self.file_state.uploading {
-            let frame_idx = (std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis()
-                / 100) as usize
-                % SPINNER_FRAMES.len();
-            format!("{} ", SPINNER_FRAMES[frame_idx])
+            format!("{} ", spinner_frame())
         } else {
             String::new()
         };
 
         // LSP loading spinner (only if not uploading)
         let lsp_indicator = if !self.file_state.uploading && self.lsp.server_loading {
-            let frame_idx = (std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis()
-                / 100) as usize
-                % SPINNER_FRAMES.len();
-            format!("{} ", SPINNER_FRAMES[frame_idx])
+            format!("{} ", spinner_frame())
         } else {
             String::new()
         };
@@ -2022,8 +2046,6 @@ impl Panel for Editor {
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
-        // Update cached theme and config from render context
-        // Note: We'll need to convert from PanelConfig/ThemeColors to our internal types
         // Use cached theme and config (updated by app layer before rendering)
         let theme = self.render_cache.theme;
         let config = self.render_cache.config.clone();
@@ -2165,6 +2187,12 @@ impl Panel for Editor {
         if self.tick_auto_scroll() {
             return vec![PanelEvent::NeedsRedraw];
         }
+
+        // Keep redrawing while spinner is animating (upload or LSP loading)
+        if self.file_state.uploading || self.lsp.server_loading {
+            return vec![PanelEvent::NeedsRedraw];
+        }
+
         vec![]
     }
 

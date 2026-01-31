@@ -1,0 +1,357 @@
+//! Operations Panel for termide.
+//!
+//! Provides a panel for displaying and managing active file operations
+//! (copy, move, upload, download, delete) with progress tracking.
+
+#![allow(clippy::too_many_arguments)]
+
+pub mod rendering;
+
+use std::any::Any;
+use std::path::Path;
+use std::time::Instant;
+
+use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
+use ratatui::{buffer::Buffer, layout::Rect, widgets::Widget};
+
+use termide_config::Config;
+use termide_core::{
+    CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel, ThemeColors,
+    WidthPreference,
+};
+use termide_file_ops::OperationId;
+use termide_state::{ActiveOperation, OperationProgress, OperationType};
+use termide_theme::Theme;
+
+pub use rendering::format_bytes;
+
+/// Height of a single operation card (including border)
+pub const CARD_HEIGHT: u16 = 9;
+
+/// Lightweight snapshot of an operation for rendering.
+/// Copied from ActiveOperation to avoid borrowing issues.
+#[derive(Debug, Clone)]
+pub struct OperationSnapshot {
+    pub id: OperationId,
+    pub op_type: OperationType,
+    pub source: String,
+    pub dest: String,
+    pub progress: OperationProgress,
+    pub is_paused: bool,
+    pub is_scanning: bool,
+    pub started_at: Instant,
+    pub speed: f64, // bytes per second
+}
+
+impl OperationSnapshot {
+    /// Create a snapshot from an ActiveOperation reference.
+    pub fn from_active(op: &ActiveOperation) -> Self {
+        Self {
+            id: op.id,
+            op_type: op.op_type,
+            source: op.source.clone(),
+            dest: op.dest.clone(),
+            progress: op.progress.clone(),
+            is_paused: op.is_paused,
+            is_scanning: op.is_scanning,
+            started_at: op.started_at,
+            speed: op.speed_tracker.speed(),
+        }
+    }
+}
+
+/// Operations Panel - shows active file operations
+pub struct OperationsPanel {
+    /// Currently selected operation index
+    selected_index: usize,
+    /// Scroll offset for long operation lists
+    scroll_offset: usize,
+    /// Cached theme colors for rendering
+    cached_theme: ThemeColors,
+    /// Cached vim_mode setting
+    vim_mode: bool,
+    /// Last rendered area (for mouse handling)
+    last_area: Rect,
+    /// Card areas for mouse click detection (operation_index, area)
+    card_areas: Vec<(usize, Rect)>,
+    /// Snapshot of operations for rendering (updated before each render)
+    operations: Vec<OperationSnapshot>,
+}
+
+impl OperationsPanel {
+    /// Create a new Operations panel
+    pub fn new() -> Self {
+        Self {
+            selected_index: 0,
+            scroll_offset: 0,
+            cached_theme: ThemeColors::default(),
+            vim_mode: false,
+            last_area: Rect::default(),
+            card_areas: Vec::new(),
+            operations: Vec::new(),
+        }
+    }
+
+    /// Update operations snapshot from active operations.
+    /// Should be called before rendering.
+    pub fn update_operations(&mut self, operations: &[&ActiveOperation]) {
+        self.operations = operations
+            .iter()
+            .map(|op| OperationSnapshot::from_active(op))
+            .collect();
+
+        // Ensure selected index is valid
+        if !self.operations.is_empty() && self.selected_index >= self.operations.len() {
+            self.selected_index = self.operations.len() - 1;
+        }
+    }
+
+    /// Get the operations count.
+    pub fn operations_count(&self) -> usize {
+        self.operations.len()
+    }
+
+    /// Get the currently selected operation ID.
+    pub fn selected_operation_id(&self) -> Option<OperationId> {
+        self.operations.get(self.selected_index).map(|op| op.id)
+    }
+
+    /// Get operations snapshot for rendering.
+    pub fn operations(&self) -> &[OperationSnapshot] {
+        &self.operations
+    }
+
+    /// Get currently selected operation index
+    pub fn selected_index(&self) -> usize {
+        self.selected_index
+    }
+
+    /// Set selected operation index
+    pub fn set_selected(&mut self, index: usize) {
+        self.selected_index = index;
+    }
+
+    /// Select next operation
+    pub fn select_next(&mut self, total: usize) {
+        if total > 0 && self.selected_index < total - 1 {
+            self.selected_index += 1;
+            self.ensure_cursor_visible(total);
+        }
+    }
+
+    /// Select previous operation
+    pub fn select_prev(&mut self) {
+        if self.selected_index > 0 {
+            self.selected_index -= 1;
+            self.ensure_cursor_visible_up();
+        }
+    }
+
+    /// Select first operation
+    pub fn select_first(&mut self) {
+        self.selected_index = 0;
+        self.scroll_offset = 0;
+    }
+
+    /// Select last operation
+    pub fn select_last(&mut self, total: usize) {
+        if total > 0 {
+            self.selected_index = total - 1;
+            self.ensure_cursor_visible(total);
+        }
+    }
+
+    /// Ensure cursor is visible after moving down
+    fn ensure_cursor_visible(&mut self, total: usize) {
+        // Calculate viewport height in terms of cards
+        let viewport_height = self.last_area.height.saturating_sub(2); // minus borders
+        let visible_cards = (viewport_height / CARD_HEIGHT) as usize;
+
+        if visible_cards == 0 {
+            return;
+        }
+
+        // Adjust scroll if cursor is below visible area
+        if self.selected_index >= self.scroll_offset + visible_cards {
+            self.scroll_offset = self.selected_index.saturating_sub(visible_cards) + 1;
+        }
+
+        // Clamp scroll offset to valid range
+        let max_scroll = total.saturating_sub(visible_cards);
+        self.scroll_offset = self.scroll_offset.min(max_scroll);
+    }
+
+    /// Ensure cursor is visible after moving up
+    fn ensure_cursor_visible_up(&mut self) {
+        if self.selected_index < self.scroll_offset {
+            self.scroll_offset = self.selected_index;
+        }
+    }
+
+    /// Focus on specific operation by ID
+    pub fn focus_operation(&mut self, id: OperationId, operations: &[&ActiveOperation]) {
+        if let Some(index) = operations.iter().position(|op| op.id == id) {
+            self.selected_index = index;
+            self.ensure_cursor_visible(operations.len());
+        }
+    }
+}
+
+impl Default for OperationsPanel {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Panel for OperationsPanel {
+    fn name(&self) -> &'static str {
+        "operations"
+    }
+
+    fn width_preference(&self) -> WidthPreference {
+        WidthPreference::PreferNarrow
+    }
+
+    fn title(&self) -> String {
+        let t = termide_i18n::t();
+        t.panel_operations().to_string()
+    }
+
+    fn prepare_render(&mut self, theme: &Theme, config: &Config) {
+        self.cached_theme = ThemeColors::from(theme);
+        self.vim_mode = config.general.vim_mode;
+    }
+
+    fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
+        self.last_area = area;
+
+        if self.operations.is_empty() {
+            self.render_empty(area, buf, ctx);
+            return;
+        }
+
+        // Render operations using the custom rendering function
+        let card_areas = rendering::render_operations_panel_snapshots(
+            &self.operations,
+            self.selected_index,
+            self.scroll_offset,
+            area,
+            buf,
+            ctx.is_focused,
+            ctx.theme.fg,
+            ctx.theme.border_focused,
+            ctx.theme.disabled,
+        );
+
+        self.card_areas = card_areas;
+    }
+
+    fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
+        let total = self.operations.len();
+        let mut events = vec![];
+
+        match key.code {
+            // Navigation
+            KeyCode::Up | KeyCode::Char('k') if self.vim_mode || key.code == KeyCode::Up => {
+                self.select_prev();
+                events.push(PanelEvent::NeedsRedraw);
+            }
+            KeyCode::Down | KeyCode::Char('j') if self.vim_mode || key.code == KeyCode::Down => {
+                self.select_next(total);
+                events.push(PanelEvent::NeedsRedraw);
+            }
+            KeyCode::Home | KeyCode::Char('g') if self.vim_mode || key.code == KeyCode::Home => {
+                self.select_first();
+                events.push(PanelEvent::NeedsRedraw);
+            }
+            KeyCode::End | KeyCode::Char('G') if self.vim_mode || key.code == KeyCode::End => {
+                self.select_last(total);
+                events.push(PanelEvent::NeedsRedraw);
+            }
+
+            // Pause/Resume (Space)
+            KeyCode::Char(' ') => {
+                if let Some(op_id) = self.selected_operation_id() {
+                    events.push(PanelEvent::ToggleOperationPause(op_id));
+                }
+            }
+
+            // Cancel operation (Delete/Backspace)
+            KeyCode::Delete | KeyCode::Backspace => {
+                if let Some(op_id) = self.selected_operation_id() {
+                    events.push(PanelEvent::CancelOperation(op_id));
+                }
+            }
+
+            _ => {}
+        }
+
+        events
+    }
+
+    fn handle_mouse(&mut self, event: MouseEvent, _panel_area: Rect) -> Vec<PanelEvent> {
+        let col = event.column;
+        let row = event.row;
+
+        match event.kind {
+            MouseEventKind::ScrollUp => {
+                self.select_prev();
+            }
+            MouseEventKind::ScrollDown => {
+                // Need total count, handled by app
+            }
+            MouseEventKind::Down(MouseButton::Left) => {
+                // Check which card was clicked
+                for (idx, card_area) in &self.card_areas {
+                    if col >= card_area.x
+                        && col < card_area.x + card_area.width
+                        && row >= card_area.y
+                        && row < card_area.y + card_area.height
+                    {
+                        self.selected_index = *idx;
+                        break;
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        vec![]
+    }
+
+    fn handle_command(&mut self, cmd: PanelCommand<'_>) -> CommandResult {
+        let _ = cmd;
+        CommandResult::None
+    }
+
+    fn to_session(&self, _session_dir: &Path) -> Option<SessionPanel> {
+        // Operations panel is transient, don't persist to session
+        None
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+impl OperationsPanel {
+    /// Render empty state (no operations)
+    fn render_empty(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
+        use ratatui::{style::Style, text::Line, widgets::Paragraph};
+
+        let t = termide_i18n::t();
+        let text = Paragraph::new(Line::from(t.no_active_operations()))
+            .style(Style::default().fg(ctx.theme.disabled))
+            .alignment(ratatui::layout::Alignment::Center);
+        text.render(area, buf);
+    }
+
+    /// Store card areas for mouse click detection
+    pub fn set_card_areas(&mut self, areas: Vec<(usize, Rect)>) {
+        self.card_areas = areas;
+    }
+}

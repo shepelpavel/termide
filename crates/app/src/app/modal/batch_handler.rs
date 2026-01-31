@@ -17,6 +17,37 @@ use termide_modal::ConflictModal;
 use termide_ui::path_utils;
 use termide_vfs::VfsPath;
 
+/// Calculate total size of all sources (files and directories recursively).
+fn scan_sources_total_bytes(sources: &[PathBuf]) -> u64 {
+    fn dir_size(path: &Path) -> u64 {
+        let mut total = 0u64;
+        if let Ok(entries) = std::fs::read_dir(path) {
+            for entry in entries.flatten() {
+                let meta = match entry.metadata() {
+                    Ok(m) => m,
+                    Err(_) => continue,
+                };
+                if meta.is_dir() {
+                    total += dir_size(&entry.path());
+                } else {
+                    total += meta.len();
+                }
+            }
+        }
+        total
+    }
+
+    let mut total = 0u64;
+    for source in sources {
+        match std::fs::metadata(source) {
+            Ok(meta) if meta.is_dir() => total += dir_size(source),
+            Ok(meta) => total += meta.len(),
+            Err(_) => {}
+        }
+    }
+    total
+}
+
 /// Format VfsPath for display in progress modal
 fn format_vfs_path_for_display(vfs_path: &VfsPath, file_path: &Path) -> String {
     if vfs_path.is_local() {
@@ -54,6 +85,44 @@ fn format_vfs_path_for_display(vfs_path: &VfsPath, file_path: &Path) -> String {
 }
 
 impl App {
+    /// Start a sub-operation within a batch and store continuation state.
+    ///
+    /// On success, stores the operation ID and sets pending action for continuation.
+    /// On failure, logs the error, increments error count, advances to next file,
+    /// and still stores the pending action for continuation.
+    fn start_batch_sub_operation(
+        &mut self,
+        request: termide_file_ops::OperationRequest,
+        vfs_manager: std::sync::Arc<termide_vfs::VfsManager>,
+        mut operation: BatchOperation,
+    ) {
+        match self.state.start_operation_now(request, vfs_manager) {
+            Ok(op_id) => {
+                self.state.batch_sub_operation_id = Some(op_id);
+                self.state.pending_action =
+                    Some(PendingAction::ContinueBatchOperation { operation });
+            }
+            Err(e) => {
+                log::error!("Failed to start operation: {}", e);
+                operation.increment_error();
+                operation.advance();
+                self.state.pending_action =
+                    Some(PendingAction::ContinueBatchOperation { operation });
+            }
+        }
+    }
+
+    /// Build a VfsPath using connection info from another VfsPath but with a different path.
+    fn vfs_path_with_connection(base: &VfsPath, path: PathBuf) -> VfsPath {
+        VfsPath {
+            protocol: base.protocol,
+            host: base.host.clone(),
+            port: base.port,
+            username: base.username.clone(),
+            path,
+        }
+    }
+
     /// Common method for handling file operations (Copy/Move)
     fn handle_file_operation(
         &mut self,
@@ -83,6 +152,31 @@ impl App {
 
         // Check if destination is a remote VFS URL (e.g., sftp://user@host/path)
         if termide_vfs::is_vfs_url(&dest_str) {
+            // Check if the ACTIVE panel (source) is remote — that means same-server copy.
+            // Use active panel, not find_remote_file_manager_info() which searches ALL panels
+            // and would incorrectly match the destination panel for local→remote uploads.
+            let active_is_remote = self
+                .layout_manager
+                .active_panel()
+                .and_then(|p| {
+                    p.as_any()
+                        .downcast_ref::<termide_panel_file_manager::FileManager>()
+                })
+                .map(|fm| fm.is_remote())
+                .unwrap_or(false);
+
+            if active_is_remote {
+                if let Some((vfs_manager, vfs_current_path)) = self.find_remote_file_manager_info()
+                {
+                    return self.start_remote_to_remote_operation(
+                        operation_type,
+                        sources,
+                        &dest_str,
+                        vfs_manager,
+                        vfs_current_path,
+                    );
+                }
+            }
             // Local-to-remote upload
             return self.start_upload_operation(operation_type, sources, &dest_str);
         }
@@ -129,7 +223,7 @@ impl App {
         sources: Vec<PathBuf>,
         remote_url: &str,
     ) -> Result<()> {
-        use termide_modal::ProgressModal;
+        use crate::state::OperationType;
 
         if sources.is_empty() {
             return Ok(());
@@ -145,8 +239,23 @@ impl App {
             }
         };
 
-        // Get VFS manager from an existing remote panel or create a new one
-        let vfs_manager = self.get_or_create_vfs_manager(&remote_path);
+        // Find the destination panel that is connected to this remote
+        let (vfs_manager, connected_path) = match self.find_connected_vfs_manager(&remote_path) {
+            Some(result) => result,
+            None => {
+                log::error!(
+                    "No active connection to remote host: {}",
+                    remote_path.connection_key()
+                );
+                self.state
+                    .set_error("No active connection to remote host".to_string());
+                return Ok(());
+            }
+        };
+
+        // Normalize remote_path to use connection info from the connected panel
+        // (user URL may omit username/port that were resolved from SSH config)
+        let remote_path = Self::vfs_path_with_connection(&connected_path, remote_path.path);
 
         let is_move = operation_type == BatchOperationType::Move;
         let total_files = sources.len();
@@ -158,26 +267,33 @@ impl App {
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "file".to_string());
 
-        // Determine final remote destination path
-        let final_remote = remote_path.join(&source_name);
-
-        // Show progress modal with source/destination
-        let title = match operation_type {
-            BatchOperationType::Copy => "Upload",
-            BatchOperationType::Move => "Upload (Move)",
-        };
-        let modal = ProgressModal::new_copy_progress(
-            title,
-            total_files,
-            source.display().to_string(),
-            final_remote.to_url_string(),
-            true, // Support pause via OperationManager
+        // Determine final remote destination path using VFS stat
+        let (final_remote, dest_exists) = self.resolve_remote_dest(
+            &remote_path,
+            &source_name,
+            remote_url,
+            sources.len() > 1,
+            &vfs_manager,
         );
-        self.state.active_modal = Some(ActiveModal::Progress(Box::new(modal)));
+
+        if dest_exists {
+            // Show conflict modal
+            let remaining = sources.len().saturating_sub(1);
+            let modal = ConflictModal::new(
+                &source,
+                &PathBuf::from(final_remote.to_url_string()),
+                remaining,
+            );
+            self.state.pending_action = Some(PendingAction::ContinueBatchOperation {
+                operation: BatchOperation::new(operation_type, sources, PathBuf::from(remote_url)),
+            });
+            self.state.active_modal = Some(ActiveModal::Conflict(Box::new(modal)));
+            return Ok(());
+        }
 
         // Create upload operation request
         use termide_file_ops::OperationRequest;
-        let request = OperationRequest::upload(source.clone(), final_remote);
+        let request = OperationRequest::upload(source.clone(), final_remote.clone());
 
         // Store batch upload state for continuation
         self.state.pending_batch_upload = Some(crate::state::PendingBatchUpload {
@@ -189,15 +305,30 @@ impl App {
             current_source: source.clone(),
         });
 
-        // Start upload via OperationManager
-        match self.state.start_operation_now(request, vfs_manager) {
-            Ok(_operation_id) => {
-                // Operation started, will be polled in poll_operation_manager
+        // Determine operation type for display
+        let op_type = if is_move {
+            OperationType::MoveUpload
+        } else {
+            OperationType::CopyUpload
+        };
+
+        // Start tracked upload operation (opens Operations panel)
+        match self.start_tracked_operation(
+            request,
+            vfs_manager,
+            op_type,
+            source.display().to_string(),
+            final_remote.to_url_string(),
+            total_files,
+            0, // bytes will be updated during progress
+        ) {
+            Ok(operation_id) => {
+                // Store operation ID for pause/resume
+                self.state.active_operation_id = Some(operation_id);
             }
             Err(e) => {
                 log::error!("Failed to start upload operation: {}", e);
                 self.state.pending_batch_upload = None;
-                self.state.close_modal();
                 self.state.set_error(format!("Upload failed: {}", e));
             }
         }
@@ -205,12 +336,184 @@ impl App {
         Ok(())
     }
 
-    /// Get VFS manager from an existing remote FM panel or create a new one
-    fn get_or_create_vfs_manager(
+    /// Start a remote-to-remote copy/move on the same server.
+    ///
+    /// Sources are server-side absolute paths (from `get_selected_paths()` where
+    /// `current_path` is `/`). The destination is a VFS URL like `sftp://user@host/path/`.
+    /// We construct proper VFS paths for both source and destination and use
+    /// `CrossProtocolWorker::RemoteToRemote` which downloads to temp then uploads.
+    fn start_remote_to_remote_operation(
+        &mut self,
+        operation_type: BatchOperationType,
+        sources: Vec<PathBuf>,
+        remote_url: &str,
+        vfs_manager: std::sync::Arc<termide_vfs::VfsManager>,
+        vfs_current_path: termide_vfs::VfsPath,
+    ) -> Result<()> {
+        use crate::state::OperationType;
+
+        if sources.is_empty() {
+            return Ok(());
+        }
+
+        let parsed_dest = match termide_vfs::parse_vfs_url(remote_url) {
+            Ok(path) => path,
+            Err(e) => {
+                log::error!("Invalid remote URL '{}': {}", remote_url, e);
+                self.state.set_error(format!("Invalid remote URL: {}", e));
+                return Ok(());
+            }
+        };
+
+        // Normalize destination to use connection info from the connected panel
+        // (user URL may omit username/port that were resolved from SSH config)
+        let remote_dest = Self::vfs_path_with_connection(&vfs_current_path, parsed_dest.path);
+
+        let is_move = operation_type == BatchOperationType::Move;
+        let total_files = sources.len();
+
+        // Build VFS source path from the server-side PathBuf
+        let source = &sources[0];
+        let source_name = source
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let vfs_source = vfs_current_path.join(&source_name);
+
+        // Resolve destination using VFS stat
+        let (vfs_dest, dest_exists) = self.resolve_remote_dest(
+            &remote_dest,
+            &source_name,
+            remote_url,
+            sources.len() > 1,
+            &vfs_manager,
+        );
+
+        if dest_exists {
+            // Show conflict modal
+            let remaining = sources.len().saturating_sub(1);
+            let modal =
+                ConflictModal::new(source, &PathBuf::from(vfs_dest.to_url_string()), remaining);
+            self.state.pending_action = Some(PendingAction::ContinueBatchOperation {
+                operation: BatchOperation::new(operation_type, sources, PathBuf::from(remote_url)),
+            });
+            self.state.active_modal = Some(ActiveModal::Conflict(Box::new(modal)));
+            return Ok(());
+        }
+
+        // Create remote-to-remote copy/move request
+        use termide_file_ops::{OperationPath, OperationRequest};
+        let request = if is_move {
+            OperationRequest::r#move(
+                vec![OperationPath::Remote(vfs_source.clone())],
+                OperationPath::Remote(vfs_dest.clone()),
+            )
+        } else {
+            OperationRequest::copy(
+                vec![OperationPath::Remote(vfs_source.clone())],
+                OperationPath::Remote(vfs_dest.clone()),
+            )
+        };
+
+        let op_type = if is_move {
+            OperationType::Move
+        } else {
+            OperationType::Copy
+        };
+
+        match self.start_tracked_operation(
+            request,
+            vfs_manager,
+            op_type,
+            vfs_source.to_url_string(),
+            vfs_dest.to_url_string(),
+            total_files,
+            0,
+        ) {
+            Ok(operation_id) => {
+                self.state.active_operation_id = Some(operation_id);
+            }
+            Err(e) => {
+                log::error!("Failed to start remote copy operation: {}", e);
+                self.state.set_error(format!("Remote copy failed: {}", e));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Resolve remote destination path using VFS stat.
+    ///
+    /// Logic (mirrors local `resolve_batch_destination_path`):
+    /// 1. If URL ends with '/' or multiple sources — treat as directory, append filename
+    /// 2. Otherwise, stat the path on server:
+    ///    - If it's a directory — append filename (copy INTO directory)
+    ///    - If it exists as a file — conflict (return dest path + exists=true)
+    ///    - If doesn't exist — use as-is (rename)
+    fn resolve_remote_dest(
+        &self,
+        remote_dest: &VfsPath,
+        source_name: &str,
+        remote_url: &str,
+        is_multi_source: bool,
+        vfs_manager: &std::sync::Arc<termide_vfs::VfsManager>,
+    ) -> (VfsPath, bool) {
+        log::debug!(
+            "resolve_remote_dest: dest={}, source_name={}, url={}, multi={}",
+            remote_dest.to_url_string(),
+            source_name,
+            remote_url,
+            is_multi_source,
+        );
+
+        // Multiple sources or trailing slash — always directory
+        if is_multi_source || remote_url.ends_with('/') {
+            let final_path = remote_dest.join(source_name);
+            let exists = vfs_manager.exists(&final_path).recv().unwrap_or(false);
+            log::debug!(
+                "resolve_remote_dest: trailing slash/multi → final={}, exists={}",
+                final_path.to_url_string(),
+                exists,
+            );
+            return (final_path, exists);
+        }
+
+        // Single source, no trailing slash — check what dest is on server
+        match vfs_manager.metadata(remote_dest).recv() {
+            Ok(meta) if meta.file_type.is_dir() => {
+                // Dest is an existing directory — copy INTO it
+                let final_path = remote_dest.join(source_name);
+                let exists = vfs_manager.exists(&final_path).recv().unwrap_or(false);
+                log::debug!(
+                    "resolve_remote_dest: dest is dir → final={}, exists={}",
+                    final_path.to_url_string(),
+                    exists,
+                );
+                (final_path, exists)
+            }
+            Ok(_) => {
+                // Dest exists and is a file — conflict (overwrite)
+                log::debug!("resolve_remote_dest: dest is file → conflict");
+                (remote_dest.clone(), true)
+            }
+            Err(e) => {
+                // Dest doesn't exist — use as-is (rename)
+                log::debug!("resolve_remote_dest: dest not found ({}) → rename", e);
+                (remote_dest.clone(), false)
+            }
+        }
+    }
+
+    /// Find VFS manager from an existing connected FileManager panel.
+    /// Returns None if no panel is connected to the target remote.
+    /// Also returns the panel's VfsPath for connection info normalization.
+    fn find_connected_vfs_manager(
         &self,
         remote_path: &termide_vfs::VfsPath,
-    ) -> std::sync::Arc<termide_vfs::VfsManager> {
-        // Try to find an existing FM panel connected to the same host
+    ) -> Option<(
+        std::sync::Arc<termide_vfs::VfsManager>,
+        termide_vfs::VfsPath,
+    )> {
         for group in &self.layout_manager.panel_groups {
             for panel in group.panels() {
                 if let Some(fm) = panel
@@ -221,15 +524,13 @@ impl App {
                         let fm_path = fm.vfs_state().current_path();
                         // Check if same connection (protocol + host + username)
                         if fm_path.connection_key() == remote_path.connection_key() {
-                            return fm.vfs_state().manager_arc();
+                            return Some((fm.vfs_state().manager_arc(), fm_path.clone()));
                         }
                     }
                 }
             }
         }
-
-        // No existing connection found - create a new manager
-        std::sync::Arc::new(termide_vfs::VfsManager::new())
+        None
     }
 
     /// Handle file copying
@@ -279,188 +580,96 @@ impl App {
                 ConflictResolution::Overwrite => {
                     // Overwrite this file - execute operation directly
                     if let Some(source) = operation.current_source().cloned() {
-                        let final_dest = path_utils::resolve_batch_destination_path(
-                            &source,
-                            &operation.destination,
-                            operation.sources.len() == 1,
-                        );
+                        let dest_str_ow = operation.destination.to_string_lossy().to_string();
+                        let is_remote_dest_ow = termide_vfs::is_vfs_url(&dest_str_ow);
+                        let item_name_ow = path_utils::get_file_name_string(&source);
 
-                        // Execute operation
-                        if let Some(panel) = self.layout_manager.active_panel_mut() {
-                            if let Some(fm) = panel.as_file_manager_mut() {
-                                // Show progress modal for the operation
-                                use termide_modal::ProgressModal;
-                                let title = match operation.operation_type {
-                                    BatchOperationType::Copy => "Copy",
-                                    BatchOperationType::Move => "Move",
-                                };
-                                let source_display = source.display().to_string();
-                                let dest_display = final_dest.display().to_string();
-                                let modal = ProgressModal::new_copy_progress(
-                                    title,
-                                    operation.total_count(),
-                                    source_display,
-                                    dest_display,
-                                    true,
-                                );
-                                self.state.active_modal =
-                                    Some(ActiveModal::Progress(Box::new(modal)));
-
-                                // Check if source is remote - use OperationManager download
-                                if fm.is_remote() {
-                                    use termide_file_ops::OperationRequest;
-
-                                    // For remote-to-local copy/move, use VFS download via OperationManager
-                                    let source_name = source
-                                        .file_name()
-                                        .map(|n| n.to_string_lossy().to_string())
-                                        .unwrap_or_default();
-                                    let vfs_source =
-                                        fm.vfs_state().current_path().join(&source_name);
-                                    let vfs_manager = fm.vfs_state().manager_arc();
-
-                                    let is_move =
-                                        operation.operation_type == BatchOperationType::Move;
-
-                                    // Create download request
-                                    let request =
-                                        OperationRequest::download(vfs_source.clone(), final_dest);
-
-                                    // Store VFS info for move operation (delete source after download)
-                                    if is_move {
-                                        self.state.pending_remote_delete =
-                                            Some(PendingRemoteDelete {
-                                                vfs_source,
-                                                vfs_manager: vfs_manager.clone(),
-                                            });
-                                    }
-
-                                    match self.state.start_operation_now(request, vfs_manager) {
-                                        Ok(_operation_id) => {
-                                            self.state.pending_action =
-                                                Some(PendingAction::ContinueBatchOperation {
-                                                    operation,
-                                                });
-                                        }
-                                        Err(e) => {
-                                            log::error!(
-                                                "Failed to start download operation: {}",
-                                                e
-                                            );
-                                            operation.increment_error();
-                                            operation.advance();
-                                            self.state.pending_action =
-                                                Some(PendingAction::ContinueBatchOperation {
-                                                    operation,
-                                                });
-                                        }
-                                    }
-                                    return Ok(());
-                                }
-
-                                // Local file - use OperationManager for async copy
-                                if source.is_file() {
-                                    use termide_file_ops::{OperationPath, OperationRequest};
-
-                                    let is_move =
-                                        operation.operation_type == BatchOperationType::Move;
-                                    let request = if is_move {
-                                        OperationRequest::r#move(
-                                            vec![OperationPath::Local(source.clone())],
-                                            OperationPath::Local(final_dest.clone()),
-                                        )
-                                    } else {
-                                        OperationRequest::copy(
-                                            vec![OperationPath::Local(source.clone())],
-                                            OperationPath::Local(final_dest.clone()),
-                                        )
-                                    };
-
-                                    let vfs_manager =
-                                        std::sync::Arc::new(termide_vfs::VfsManager::new());
-
-                                    match self.state.start_operation_now(request, vfs_manager) {
-                                        Ok(_operation_id) => {
-                                            self.state.pending_action =
-                                                Some(PendingAction::ContinueBatchOperation {
-                                                    operation,
-                                                });
-                                        }
-                                        Err(e) => {
-                                            log::error!("Failed to start copy operation: {}", e);
-                                            operation.increment_error();
-                                            operation.advance();
-                                            self.state.pending_action =
-                                                Some(PendingAction::ContinueBatchOperation {
-                                                    operation,
-                                                });
-                                        }
-                                    }
-                                    return Ok(());
-                                }
-
-                                // Local directory - use OperationManager (handles scan + copy)
-                                if source.is_dir() {
-                                    use termide_file_ops::{OperationPath, OperationRequest};
-
-                                    let is_move =
-                                        operation.operation_type == BatchOperationType::Move;
-                                    let request = if is_move {
-                                        OperationRequest::r#move(
-                                            vec![OperationPath::Local(source.clone())],
-                                            OperationPath::Local(final_dest.clone()),
-                                        )
-                                    } else {
-                                        OperationRequest::copy(
-                                            vec![OperationPath::Local(source.clone())],
-                                            OperationPath::Local(final_dest.clone()),
-                                        )
-                                    };
-
-                                    let vfs_manager =
-                                        std::sync::Arc::new(termide_vfs::VfsManager::new());
-
-                                    match self.state.start_operation_now(request, vfs_manager) {
-                                        Ok(_operation_id) => {
-                                            self.state.pending_action =
-                                                Some(PendingAction::ContinueBatchOperation {
-                                                    operation,
-                                                });
-                                        }
-                                        Err(e) => {
-                                            log::error!(
-                                                "Failed to start directory copy operation: {}",
-                                                e
-                                            );
-                                            operation.increment_error();
-                                            operation.advance();
-                                            self.state.pending_action =
-                                                Some(PendingAction::ContinueBatchOperation {
-                                                    operation,
-                                                });
-                                        }
-                                    }
-                                    return Ok(());
-                                }
-
-                                // Unknown source type - skip with error
-                                log::error!("Unsupported source type: {}", source.display());
-                                operation.increment_error();
-                            }
-                        }
-                    }
-
-                    // Re-show progress modal BEFORE advancing (check with current index)
-                    // (conflict modal was shown and closed, now we need progress modal back)
-                    if operation.total_count() > 1 {
-                        use termide_modal::ProgressModal;
-                        let title = match operation.operation_type {
-                            BatchOperationType::Copy => "Copying Files",
-                            BatchOperationType::Move => "Moving Files",
+                        let final_dest = if is_remote_dest_ow {
+                            let base = termide_vfs::parse_vfs_url(&dest_str_ow)
+                                .map(|p| p.path)
+                                .unwrap_or_else(|_| operation.destination.clone());
+                            base.join(&item_name_ow)
+                        } else {
+                            path_utils::resolve_batch_destination_path(
+                                &source,
+                                &operation.destination,
+                                operation.sources.len() == 1,
+                            )
                         };
-                        let modal =
-                            ProgressModal::new_with_controls(title, operation.total_count(), true);
-                        self.state.active_modal = Some(ActiveModal::Progress(Box::new(modal)));
+
+                        // Execute operation - search all panels for remote file manager
+                        if let Some((vfs_manager, vfs_current_path)) =
+                            self.find_remote_file_manager_info()
+                        {
+                            use termide_file_ops::{OperationPath, OperationRequest};
+
+                            let source_name = source
+                                .file_name()
+                                .map(|n| n.to_string_lossy().to_string())
+                                .unwrap_or_default();
+                            let vfs_source = vfs_current_path.join(&source_name);
+
+                            let is_move = operation.operation_type == BatchOperationType::Move;
+
+                            let request = if is_remote_dest_ow {
+                                let vfs_dest =
+                                    Self::vfs_path_with_connection(&vfs_current_path, final_dest);
+                                if is_move {
+                                    OperationRequest::r#move(
+                                        vec![OperationPath::Remote(vfs_source.clone())],
+                                        OperationPath::Remote(vfs_dest),
+                                    )
+                                } else {
+                                    OperationRequest::copy(
+                                        vec![OperationPath::Remote(vfs_source.clone())],
+                                        OperationPath::Remote(vfs_dest),
+                                    )
+                                }
+                            } else {
+                                let r = OperationRequest::download(vfs_source.clone(), final_dest);
+                                if is_move {
+                                    self.state.pending_remote_delete = Some(PendingRemoteDelete {
+                                        vfs_source,
+                                        vfs_manager: vfs_manager.clone(),
+                                    });
+                                }
+                                r
+                            };
+
+                            self.start_batch_sub_operation(request, vfs_manager, operation);
+                            return Ok(());
+                        }
+
+                        // Local file or directory - use OperationManager for async copy
+                        if source.is_file() || source.is_dir() {
+                            use termide_file_ops::{
+                                ConflictMode as FileOpsConflictMode, OperationPath,
+                                OperationRequest,
+                            };
+
+                            let is_move = operation.operation_type == BatchOperationType::Move;
+                            let request = if is_move {
+                                OperationRequest::r#move(
+                                    vec![OperationPath::Local(source.clone())],
+                                    OperationPath::Local(final_dest.clone()),
+                                )
+                            } else {
+                                OperationRequest::copy(
+                                    vec![OperationPath::Local(source.clone())],
+                                    OperationPath::Local(final_dest.clone()),
+                                )
+                            }
+                            .with_conflict_mode(FileOpsConflictMode::OverwriteAll);
+
+                            let vfs_manager = std::sync::Arc::new(termide_vfs::VfsManager::new());
+
+                            self.start_batch_sub_operation(request, vfs_manager, operation);
+                            return Ok(());
+                        }
+
+                        // Unknown source type - skip with error
+                        log::error!("Unsupported source type: {}", source.display());
+                        operation.increment_error();
                     }
 
                     // Move to next file
@@ -473,19 +682,6 @@ impl App {
                 ConflictResolution::Skip => {
                     // Skip this file
                     operation.increment_skipped();
-
-                    // Re-show progress modal BEFORE advancing (check with current index)
-                    if operation.total_count() > 1 {
-                        use termide_modal::ProgressModal;
-                        let title = match operation.operation_type {
-                            BatchOperationType::Copy => "Copying Files",
-                            BatchOperationType::Move => "Moving Files",
-                        };
-                        let modal =
-                            ProgressModal::new_with_controls(title, operation.total_count(), true);
-                        self.state.active_modal = Some(ActiveModal::Progress(Box::new(modal)));
-                    }
-
                     operation.advance();
 
                     // Store and return to allow UI update
@@ -496,18 +692,6 @@ impl App {
                     // Set "overwrite all" mode
                     operation.set_conflict_mode(ConflictMode::OverwriteAll);
 
-                    // Re-show progress modal BEFORE processing (check with current index)
-                    if operation.total_count() > 1 {
-                        use termide_modal::ProgressModal;
-                        let title = match operation.operation_type {
-                            BatchOperationType::Copy => "Copying Files",
-                            BatchOperationType::Move => "Moving Files",
-                        };
-                        let modal =
-                            ProgressModal::new_with_controls(title, operation.total_count(), true);
-                        self.state.active_modal = Some(ActiveModal::Progress(Box::new(modal)));
-                    }
-
                     // Store and return to allow UI update
                     self.state.pending_action =
                         Some(PendingAction::ContinueBatchOperation { operation });
@@ -516,19 +700,6 @@ impl App {
                     // Set "skip all" mode
                     operation.set_conflict_mode(ConflictMode::SkipAll);
                     operation.increment_skipped();
-
-                    // Re-show progress modal BEFORE advancing (check with current index)
-                    if operation.total_count() > 1 {
-                        use termide_modal::ProgressModal;
-                        let title = match operation.operation_type {
-                            BatchOperationType::Copy => "Copying Files",
-                            BatchOperationType::Move => "Moving Files",
-                        };
-                        let modal =
-                            ProgressModal::new_with_controls(title, operation.total_count(), true);
-                        self.state.active_modal = Some(ActiveModal::Progress(Box::new(modal)));
-                    }
-
                     operation.advance();
 
                     // Store and return to allow UI update
@@ -597,6 +768,32 @@ impl App {
         Ok(())
     }
 
+    /// Find a remote file manager panel (searches all panels, not just active).
+    /// Returns (vfs_manager, vfs_current_path) if found.
+    fn find_remote_file_manager_info(
+        &self,
+    ) -> Option<(
+        std::sync::Arc<termide_vfs::VfsManager>,
+        termide_vfs::VfsPath,
+    )> {
+        for group in &self.layout_manager.panel_groups {
+            for panel in group.panels() {
+                if let Some(fm) = panel
+                    .as_any()
+                    .downcast_ref::<termide_panel_file_manager::FileManager>()
+                {
+                    if fm.is_remote() {
+                        return Some((
+                            fm.vfs_state().manager_arc(),
+                            fm.vfs_state().current_path().clone(),
+                        ));
+                    }
+                }
+            }
+        }
+        None
+    }
+
     /// Handle batch file operation (copy/move)
     pub(in crate::app) fn process_batch_operation(&mut self, mut operation: BatchOperation) {
         // Show progress modal for:
@@ -605,17 +802,10 @@ impl App {
         // 3. Single directory operations (recursive copy/move can take time), OR
         // 4. Single file > 1MB (large file transfer needs progress feedback)
 
-        // Check if this is a remote operation by examining active panel
-        let is_remote_operation = {
-            if let Some(panel) = self.layout_manager.active_panel_mut() {
-                panel
-                    .as_file_manager_mut()
-                    .map(|fm| fm.is_remote())
-                    .unwrap_or(false)
-            } else {
-                false
-            }
-        };
+        // Check if this is a remote operation by searching all panels
+        // (active panel may be the operations panel after batch tracking setup)
+        let remote_info = self.find_remote_file_manager_info();
+        let is_remote_operation = remote_info.is_some();
 
         // Check if source is a directory or large file (>1MB)
         let needs_progress = operation
@@ -628,36 +818,24 @@ impl App {
             .unwrap_or(false);
 
         // Show enhanced progress modal when starting operation
-        // Only create modal if not already shown (check that no progress modal is active)
+        // Only create if not already shown (no progress modal and no batch tracking active)
         let should_show_modal = operation.current_index == 0
             && (operation.total_count() > 1 || is_remote_operation || needs_progress)
-            && !matches!(self.state.active_modal, Some(ActiveModal::Progress(_)));
+            && !matches!(self.state.active_modal, Some(ActiveModal::Progress(_)))
+            && self.state.batch_tracking_id.is_none();
 
         if should_show_modal {
-            use termide_modal::ProgressModal;
+            use crate::state::OperationType;
 
             // Close any existing modal (e.g., destination selection) before showing progress
             self.state.close_modal();
 
-            let title = match operation.operation_type {
-                BatchOperationType::Copy => "Copy",
-                BatchOperationType::Move => "Move",
-            };
-
-            // Get source and destination paths for display
-            let source_display = if let Some(panel) = self.layout_manager.active_panel_mut() {
-                if let Some(fm) = panel.as_file_manager_mut() {
-                    let vfs_path = fm.vfs_state().current_path();
-                    if let Some(source_file) = operation.current_source() {
-                        format_vfs_path_for_display(vfs_path, source_file)
-                    } else {
-                        String::new()
-                    }
+            // Get source display for tracking
+            let source_display = if let Some((_, ref vfs_path)) = remote_info {
+                if let Some(source_file) = operation.current_source() {
+                    format_vfs_path_for_display(vfs_path, source_file)
                 } else {
-                    operation
-                        .current_source()
-                        .map(|p| p.display().to_string())
-                        .unwrap_or_default()
+                    String::new()
                 }
             } else {
                 operation
@@ -668,16 +846,33 @@ impl App {
 
             let dest_display = operation.destination.display().to_string();
 
-            let modal = ProgressModal::new_copy_progress(
-                title,
-                operation.total_count(),
+            let op_type = match (operation.operation_type, is_remote_operation) {
+                (BatchOperationType::Copy, true) => OperationType::CopyDownload,
+                (BatchOperationType::Move, true) => OperationType::MoveDownload,
+                (BatchOperationType::Copy, false) => OperationType::Copy,
+                (BatchOperationType::Move, false) => OperationType::Move,
+            };
+
+            // Pre-scan all sources to get total bytes for progress display
+            let total_bytes = if !is_remote_operation {
+                scan_sources_total_bytes(&operation.sources)
+            } else {
+                0 // Remote sources: byte progress comes from individual operations
+            };
+
+            // Start batch tracking in Operations panel
+            let batch_id = self.state.start_batch_tracking(
+                op_type,
                 source_display,
                 dest_display,
-                true, // pause_enabled
+                operation.total_count(),
+                total_bytes,
             );
-            self.state.active_modal = Some(ActiveModal::Progress(Box::new(modal)));
 
-            // Store operation as pending action to allow UI to render modal
+            // Open Operations panel with focus on the new batch operation
+            let _ = self.open_operations_panel_with_focus(batch_id);
+
+            // Store operation as pending action to allow UI to render panel
             // before starting actual file operations
             self.state.pending_action = Some(PendingAction::ContinueBatchOperation { operation });
             return;
@@ -692,10 +887,16 @@ impl App {
 
         // Check if operation is complete
         if operation.is_complete() {
-            // Close progress modal if open
+            // Close progress modal if open (legacy)
             if matches!(self.state.active_modal, Some(ActiveModal::Progress(_))) {
                 self.state.close_modal();
             }
+
+            // Finish batch tracking in Operations panel
+            self.state.finish_batch_tracking();
+
+            // Bell signal on completion
+            self.state.bell();
 
             // Show final results
             self.show_batch_results(&operation);
@@ -735,7 +936,12 @@ impl App {
 
         let item_name = path_utils::get_file_name_string(&source);
 
-        // Determine target path (considering rename pattern if set)
+        let dest_str = operation.destination.to_string_lossy().to_string();
+        let is_remote_dest = termide_vfs::is_vfs_url(&dest_str);
+
+        // Determine target path (considering rename pattern if set).
+        // For remote URLs, PathBuf::is_dir() returns false, so standard
+        // resolve functions don't work; compute the path component directly.
         let final_dest = if operation.rename_pattern.is_some() {
             // Apply rename pattern
             let counter = operation.get_and_increment_rename_counter();
@@ -746,7 +952,20 @@ impl App {
             let pattern = operation.rename_pattern.as_ref().unwrap();
             let new_name = pattern.apply(&item_name, counter, created, modified);
 
-            path_utils::resolve_rename_destination_path(&operation.destination, &new_name)
+            if is_remote_dest {
+                let base = termide_vfs::parse_vfs_url(&dest_str)
+                    .map(|p| p.path)
+                    .unwrap_or_else(|_| operation.destination.clone());
+                base.join(&new_name)
+            } else {
+                path_utils::resolve_rename_destination_path(&operation.destination, &new_name)
+            }
+        } else if is_remote_dest {
+            // Remote destination: parse URL path and join filename
+            let base = termide_vfs::parse_vfs_url(&dest_str)
+                .map(|p| p.path)
+                .unwrap_or_else(|_| operation.destination.clone());
+            base.join(&item_name)
         } else {
             // Standard logic without renaming
             path_utils::resolve_batch_destination_path(
@@ -756,31 +975,11 @@ impl App {
             )
         };
 
-        // Update progress modal with current file paths
-        if let Some(ActiveModal::Progress(ref mut modal)) = self.state.active_modal {
-            // Get source display path
-            let source_display = if let Some(panel) = self.layout_manager.active_panel_mut() {
-                if let Some(fm) = panel.as_file_manager_mut() {
-                    let vfs_path = fm.vfs_state().current_path();
-                    format_vfs_path_for_display(vfs_path, &source)
-                } else {
-                    item_name.clone()
-                }
-            } else {
-                item_name.clone()
-            };
-
-            let dest_file = final_dest
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
-            let dest_display = operation.destination.join(dest_file).display().to_string();
-
-            modal.update_progress_with_paths(
-                operation.current_index + 1, // 1-based for display
-                source_display,
-                dest_display,
-            );
+        // Update batch tracking file-level progress in Operations panel
+        if self.state.batch_tracking_id.is_some() {
+            self.state
+                .update_batch_progress(operation.current_index, operation.total_count());
+            self.state.needs_redraw = true;
         }
 
         // Check conflict
@@ -814,129 +1013,81 @@ impl App {
             }
         }
 
-        // Execute operation
-        if let Some(panel) = self.layout_manager.active_panel_mut() {
-            if let Some(fm) = panel.as_file_manager_mut() {
-                // Check if source is remote - use OperationManager download
-                if fm.is_remote() {
-                    use termide_file_ops::OperationRequest;
+        // Execute operation - check remote first using all-panels search
+        if let Some((vfs_manager, vfs_current_path)) = self.find_remote_file_manager_info() {
+            use termide_file_ops::{OperationPath, OperationRequest};
 
-                    // For remote-to-local copy/move, use VFS download via OperationManager
-                    let source_name = source
-                        .file_name()
-                        .map(|n| n.to_string_lossy().to_string())
-                        .unwrap_or_default();
-                    let vfs_source = fm.vfs_state().current_path().join(&source_name);
-                    let vfs_manager = fm.vfs_state().manager_arc();
+            let source_name = source
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let vfs_source = vfs_current_path.join(&source_name);
 
-                    let is_move = operation.operation_type == BatchOperationType::Move;
+            let is_move = operation.operation_type == BatchOperationType::Move;
 
-                    // Create download request
-                    let request = OperationRequest::download(vfs_source.clone(), final_dest);
-
-                    // Store VFS info for move operation (delete source after download)
-                    if is_move {
-                        self.state.pending_remote_delete = Some(PendingRemoteDelete {
-                            vfs_source,
-                            vfs_manager: vfs_manager.clone(),
-                        });
-                    }
-
-                    match self.state.start_operation_now(request, vfs_manager) {
-                        Ok(_operation_id) => {
-                            self.state.pending_action =
-                                Some(PendingAction::ContinueBatchOperation { operation });
-                        }
-                        Err(e) => {
-                            log::error!("Failed to start download operation: {}", e);
-                            operation.increment_error();
-                            operation.advance();
-                            self.state.pending_action =
-                                Some(PendingAction::ContinueBatchOperation { operation });
-                        }
-                    }
-                    return;
+            let request = if is_remote_dest {
+                let vfs_dest = Self::vfs_path_with_connection(&vfs_current_path, final_dest);
+                if is_move {
+                    OperationRequest::r#move(
+                        vec![OperationPath::Remote(vfs_source.clone())],
+                        OperationPath::Remote(vfs_dest),
+                    )
+                } else {
+                    OperationRequest::copy(
+                        vec![OperationPath::Remote(vfs_source.clone())],
+                        OperationPath::Remote(vfs_dest),
+                    )
                 }
-
-                // Local file - use OperationManager for async copy with progress
-                // Applies to both Copy and Move (move may need copy+delete for cross-filesystem)
-                if source.is_file() {
-                    use termide_file_ops::{OperationPath, OperationRequest};
-
-                    let is_move = operation.operation_type == BatchOperationType::Move;
-                    let request = if is_move {
-                        OperationRequest::r#move(
-                            vec![OperationPath::Local(source.clone())],
-                            OperationPath::Local(final_dest.clone()),
-                        )
-                    } else {
-                        OperationRequest::copy(
-                            vec![OperationPath::Local(source.clone())],
-                            OperationPath::Local(final_dest.clone()),
-                        )
-                    };
-
-                    // Get or create VFS manager for operation manager
-                    let vfs_manager = std::sync::Arc::new(termide_vfs::VfsManager::new());
-
-                    // Start operation immediately via OperationManager
-                    match self.state.start_operation_now(request, vfs_manager) {
-                        Ok(_operation_id) => {
-                            // Store batch operation as pending action for continuation after copy
-                            self.state.pending_action =
-                                Some(PendingAction::ContinueBatchOperation { operation });
-                        }
-                        Err(e) => {
-                            log::error!("Failed to start copy operation: {}", e);
-                            operation.increment_error();
-                            operation.advance();
-                            self.state.pending_action =
-                                Some(PendingAction::ContinueBatchOperation { operation });
-                        }
-                    }
-                    return;
+            } else {
+                let r = OperationRequest::download(vfs_source.clone(), final_dest);
+                if is_move {
+                    self.state.pending_remote_delete = Some(PendingRemoteDelete {
+                        vfs_source,
+                        vfs_manager: vfs_manager.clone(),
+                    });
                 }
+                r
+            };
 
-                // Local directory - use OperationManager (handles scan + copy)
-                if source.is_dir() {
-                    use termide_file_ops::{OperationPath, OperationRequest};
-
-                    let is_move = operation.operation_type == BatchOperationType::Move;
-                    let request = if is_move {
-                        OperationRequest::r#move(
-                            vec![OperationPath::Local(source.clone())],
-                            OperationPath::Local(final_dest),
-                        )
-                    } else {
-                        OperationRequest::copy(
-                            vec![OperationPath::Local(source.clone())],
-                            OperationPath::Local(final_dest),
-                        )
-                    };
-
-                    let vfs_manager = std::sync::Arc::new(termide_vfs::VfsManager::new());
-
-                    match self.state.start_operation_now(request, vfs_manager) {
-                        Ok(_operation_id) => {
-                            self.state.pending_action =
-                                Some(PendingAction::ContinueBatchOperation { operation });
-                        }
-                        Err(e) => {
-                            log::error!("Failed to start directory copy operation: {}", e);
-                            operation.increment_error();
-                            operation.advance();
-                            self.state.pending_action =
-                                Some(PendingAction::ContinueBatchOperation { operation });
-                        }
-                    }
-                    return;
-                }
-
-                // Unknown source type (symlink?) - skip with error
-                log::error!("Unsupported source type: {}", source.display());
-                operation.increment_error();
-            }
+            self.start_batch_sub_operation(request, vfs_manager, operation);
+            return;
         }
+
+        // Local file or directory - use OperationManager for async copy with progress
+        // Applies to both Copy and Move (move may need copy+delete for cross-filesystem)
+        if source.is_file() || source.is_dir() {
+            use termide_file_ops::{
+                ConflictMode as FileOpsConflictMode, OperationPath, OperationRequest,
+            };
+
+            let is_move = operation.operation_type == BatchOperationType::Move;
+            let worker_conflict_mode = match operation.conflict_mode {
+                ConflictMode::OverwriteAll => FileOpsConflictMode::OverwriteAll,
+                ConflictMode::SkipAll => FileOpsConflictMode::SkipAll,
+                _ => FileOpsConflictMode::Ask,
+            };
+            let request = if is_move {
+                OperationRequest::r#move(
+                    vec![OperationPath::Local(source.clone())],
+                    OperationPath::Local(final_dest),
+                )
+            } else {
+                OperationRequest::copy(
+                    vec![OperationPath::Local(source.clone())],
+                    OperationPath::Local(final_dest),
+                )
+            }
+            .with_conflict_mode(worker_conflict_mode);
+
+            let vfs_manager = std::sync::Arc::new(termide_vfs::VfsManager::new());
+
+            self.start_batch_sub_operation(request, vfs_manager, operation);
+            return;
+        }
+
+        // Unknown source type (symlink?) - skip with error
+        log::error!("Unsupported source type: {}", source.display());
+        operation.increment_error();
 
         // Move to next file
         operation.advance();
@@ -1012,14 +1163,28 @@ impl App {
 
                     let new_name = pattern.apply(&original_name, counter, created, modified);
 
-                    // Create new destination path with new name
-                    let new_dest = path_utils::resolve_rename_destination_path(
-                        &operation.destination,
-                        &new_name,
-                    );
+                    let dest_str = operation.destination.to_string_lossy();
+                    let is_remote_dest = termide_vfs::is_vfs_url(&dest_str);
 
-                    // Check that new path doesn't conflict
-                    if new_dest.exists() {
+                    // Create new destination path with new name
+                    let new_dest = if is_remote_dest {
+                        // For remote URLs, is_dir() always returns false, so
+                        // resolve_rename_destination_path would incorrectly
+                        // use with_file_name(). Instead, parse URL and join.
+                        let base = termide_vfs::parse_vfs_url(&dest_str)
+                            .map(|p| p.path)
+                            .unwrap_or_else(|_| operation.destination.clone());
+                        base.join(&new_name)
+                    } else {
+                        path_utils::resolve_rename_destination_path(
+                            &operation.destination,
+                            &new_name,
+                        )
+                    };
+
+                    // Check that new path doesn't conflict (local only;
+                    // remote conflicts were already detected via VFS stat)
+                    if !is_remote_dest && new_dest.exists() {
                         // Show ConflictModal again
                         let remaining_items = operation
                             .sources
@@ -1032,10 +1197,72 @@ impl App {
                         return Ok(());
                     }
 
-                    // Execute operation with new name
-                    operation.destination = new_dest;
-                    // Continue processing the batch operation
-                    self.process_batch_operation(operation);
+                    // Execute operation directly with the renamed destination.
+                    // Do NOT modify operation.destination — it must remain the original
+                    // directory for subsequent files in the batch. Instead, run the
+                    // operation for this single file using new_dest directly
+                    // (same approach as the Overwrite handler).
+                    if let Some((vfs_manager, vfs_current_path)) =
+                        self.find_remote_file_manager_info()
+                    {
+                        use termide_file_ops::{OperationPath, OperationRequest};
+
+                        let source_name = source
+                            .file_name()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_default();
+                        let vfs_source = vfs_current_path.join(&source_name);
+
+                        let is_move = operation.operation_type == BatchOperationType::Move;
+
+                        let request = if is_remote_dest {
+                            let vfs_dest =
+                                Self::vfs_path_with_connection(&vfs_current_path, new_dest);
+                            if is_move {
+                                OperationRequest::r#move(
+                                    vec![OperationPath::Remote(vfs_source.clone())],
+                                    OperationPath::Remote(vfs_dest),
+                                )
+                            } else {
+                                OperationRequest::copy(
+                                    vec![OperationPath::Remote(vfs_source.clone())],
+                                    OperationPath::Remote(vfs_dest),
+                                )
+                            }
+                        } else {
+                            let r = OperationRequest::download(vfs_source.clone(), new_dest);
+                            if is_move {
+                                self.state.pending_remote_delete = Some(PendingRemoteDelete {
+                                    vfs_source,
+                                    vfs_manager: vfs_manager.clone(),
+                                });
+                            }
+                            r
+                        };
+
+                        self.start_batch_sub_operation(request, vfs_manager, operation);
+                    } else if let Some(panel) = self.layout_manager.active_panel_mut() {
+                        if let Some(_fm) = panel.as_file_manager_mut() {
+                            use termide_file_ops::{OperationPath, OperationRequest};
+
+                            let is_move = operation.operation_type == BatchOperationType::Move;
+                            let request = if is_move {
+                                OperationRequest::r#move(
+                                    vec![OperationPath::Local(source.clone())],
+                                    OperationPath::Local(new_dest),
+                                )
+                            } else {
+                                OperationRequest::copy(
+                                    vec![OperationPath::Local(source.clone())],
+                                    OperationPath::Local(new_dest),
+                                )
+                            };
+
+                            let vfs_manager = std::sync::Arc::new(termide_vfs::VfsManager::new());
+
+                            self.start_batch_sub_operation(request, vfs_manager, operation);
+                        }
+                    }
                 }
             } else {
                 // This is RenameAll - pattern already set in operation,

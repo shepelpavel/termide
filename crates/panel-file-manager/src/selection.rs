@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use super::FileManager;
+use termide_vfs::VfsPath;
 
 impl FileManager {
     /// Toggle selection of current item
@@ -102,9 +103,58 @@ impl FileManager {
         paths
     }
 
+    /// Get list of selected files/directories as VfsPath (for remote operations)
+    /// If nothing is selected, return current item under cursor
+    pub fn get_selected_vfs_paths(&self) -> Vec<VfsPath> {
+        let base_path = self.vfs.current_path();
+
+        if self.selection.items.is_empty() {
+            // If no items are selected, return current one
+            if let Some(entry) = self.entries.get(self.selected) {
+                if entry.name != ".." {
+                    return vec![base_path.join(&entry.name)];
+                }
+            }
+            return Vec::new();
+        }
+
+        // Collect VFS paths of selected items (pre-allocate capacity for efficiency)
+        let mut paths = Vec::with_capacity(self.selection.items.len());
+        for &idx in &self.selection.items {
+            if let Some(entry) = self.entries.get(idx) {
+                if entry.name != ".." {
+                    paths.push(base_path.join(&entry.name));
+                }
+            }
+        }
+        paths
+    }
+
     /// Get count of selected items
     pub fn get_selected_count(&self) -> usize {
         self.selection.items.len()
+    }
+
+    /// Check if any selected entry is a directory
+    /// If nothing is selected, check if current item under cursor is a directory
+    pub fn has_selected_directories(&self) -> bool {
+        if self.selection.items.is_empty() {
+            // If no items are selected, check current one
+            if let Some(entry) = self.entries.get(self.selected) {
+                return entry.is_dir && entry.name != "..";
+            }
+            return false;
+        }
+
+        // Check if any selected item is a directory
+        for &idx in &self.selection.items {
+            if let Some(entry) = self.entries.get(idx) {
+                if entry.is_dir && entry.name != ".." {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     /// Clear file selection

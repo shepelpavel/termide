@@ -7,7 +7,6 @@ use unicode_width::UnicodeWidthStr;
 
 use super::App;
 use crate::PanelExt;
-use termide_config::Config;
 use termide_i18n as i18n;
 
 use termide_theme::Theme;
@@ -17,36 +16,6 @@ use termide_ui_render::{
     BOOKMARKS_MENU_INDEX, OPTIONS_MENU_INDEX, SCRIPTS_MENU_INDEX, SESSIONS_MENU_INDEX,
     WINDOWS_MENU_INDEX,
 };
-
-impl App {
-    /// Apply language by code and save preference (for mouse handler)
-    fn apply_language_mouse(&mut self, lang_code: &str, lang_name: &str) -> Result<()> {
-        if let Err(e) = i18n::set_language(lang_code) {
-            log::warn!("Failed to set language: {}", e);
-            self.state
-                .set_error(format!("Failed to set language: {}", e));
-            return Ok(());
-        }
-
-        let t = i18n::t();
-        self.state.set_info(t.language_changed(lang_name));
-
-        // Save preference to config file
-        if let Err(e) = self.save_language_preference_mouse(lang_code) {
-            log::warn!("Failed to save language preference: {}", e);
-        }
-
-        Ok(())
-    }
-
-    /// Save language preference to config file (for mouse handler)
-    fn save_language_preference_mouse(&self, lang_code: &str) -> Result<()> {
-        let mut config = Config::load()?;
-        config.general.language = lang_code.to_string();
-        config.save()?;
-        Ok(())
-    }
-}
 
 impl App {
     /// Handle mouse event
@@ -484,7 +453,7 @@ impl App {
                     self.state.ui.language_preview_original = None;
                     // Apply selected language
                     if let Some((code, name)) = languages.get(item_index) {
-                        self.apply_language_mouse(code, name)?;
+                        self.apply_language(code, name)?;
                     }
                     self.state.close_menu();
                     return Ok(true);

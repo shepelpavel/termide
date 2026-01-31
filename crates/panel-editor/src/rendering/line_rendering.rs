@@ -722,31 +722,19 @@ pub fn render_content_no_wrap<H: LineHighlighter>(
     current_match_style: Style,
     selection_style: Style,
 ) {
-    // Build list of virtual lines (real buffer lines + deletion markers + diagnostics)
-    let virtual_lines = git::build_virtual_lines(
+    // Build only the virtual lines visible in the viewport
+    let virtual_lines = git::build_virtual_lines_for_viewport(
         buffer,
         git_diff_cache,
         show_git_diff,
         diagnostics,
+        viewport.top_line,
+        content_height,
         content_width,
     );
 
-    // Find index of first virtual line for viewport.top_line
-    let start_virtual_idx = virtual_lines
-        .iter()
-        .position(|vline| matches!(vline, git::VirtualLine::Real(idx) if *idx >= viewport.top_line))
-        .unwrap_or(virtual_lines.len());
-
     // Render visible virtual lines
-    for row in 0..content_height {
-        let virtual_idx = start_virtual_idx + row;
-
-        if virtual_idx >= virtual_lines.len() {
-            break;
-        }
-
-        let virtual_line = &virtual_lines[virtual_idx];
-
+    for (row, virtual_line) in virtual_lines.iter().enumerate().take(content_height) {
         // Handle different types of virtual lines
         match virtual_line {
             git::VirtualLine::Real(line_idx) => {
@@ -823,23 +811,19 @@ pub fn render_content_no_wrap<H: LineHighlighter>(
     }
 
     // Render cursor accounting for virtual lines
-    let cursor_virtual_idx = virtual_lines
+    let cursor_viewport_row = virtual_lines
         .iter()
         .position(|vline| matches!(vline, git::VirtualLine::Real(idx) if *idx == cursor.line));
 
-    if let Some(cursor_virtual_idx) = cursor_virtual_idx {
-        if cursor_virtual_idx >= start_virtual_idx {
-            let viewport_row = cursor_virtual_idx - start_virtual_idx;
+    if let Some(viewport_row) = cursor_viewport_row {
+        if cursor.column >= viewport.left_column {
+            let viewport_col = cursor.column - viewport.left_column;
 
-            if cursor.column >= viewport.left_column {
-                let viewport_col = cursor.column - viewport.left_column;
+            let cursor_x = area.x + line_number_width + viewport_col as u16;
+            let cursor_y = area.y + viewport_row as u16;
 
-                let cursor_x = area.x + line_number_width + viewport_col as u16;
-                let cursor_y = area.y + viewport_row as u16;
-
-                if viewport_col < content_width {
-                    super::cursor_renderer::render_cursor_at(buf, cursor_x, cursor_y, area, theme);
-                }
+            if viewport_col < content_width {
+                super::cursor_renderer::render_cursor_at(buf, cursor_x, cursor_y, area, theme);
             }
         }
     }

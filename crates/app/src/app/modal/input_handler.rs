@@ -15,68 +15,44 @@ impl App {
     /// Handle file creation
     pub(in crate::app) fn handle_create_file(
         &mut self,
-        _panel_index: usize, // obsolete with LayoutManager
+        _panel_index: usize,
         _directory: PathBuf,
         value: Box<dyn std::any::Any>,
     ) -> Result<()> {
-        if let Some(name) = value.downcast_ref::<String>() {
-            let t = i18n::t();
-            // Get active FileManager and create file
-            let result = if let Some(panel) = self.layout_manager.active_panel_mut() {
-                if let Some(fm) = panel.as_file_manager_mut() {
-                    let result = fm.create_file(name.clone());
-                    if result.is_ok() {
-                        log::info!("File created: {}", name);
-                        // Refresh directory contents
-                        let _ = fm.load_directory();
-                    }
-                    Some(result)
-                } else {
-                    log::error!("FileManager panel could not be accessed");
-                    None
-                }
-            } else {
-                log::error!("FileManager not found");
-                None
-            };
-
-            // Update status after FM borrow is dropped
-            if let Some(result) = result {
-                match result {
-                    Ok(_) => {
-                        self.state.set_info(t.status_file_created(name));
-                    }
-                    Err(e) => {
-                        log::error!("File creation error '{}': {}", name, e);
-                        // Show error in modal instead of status bar
-                        use termide_modal::{ActiveModal, InfoModal};
-                        let error_msg = format!("Failed to create file '{}': {}", name, e);
-                        let lines = vec![(String::new(), error_msg)];
-                        let modal = InfoModal::new("Error", lines);
-                        self.state.active_modal = Some(ActiveModal::Info(Box::new(modal)));
-                    }
-                }
-            }
-        }
-        Ok(())
+        self.create_entry_in_file_manager(value, false)
     }
 
     /// Handle directory creation
     pub(in crate::app) fn handle_create_directory(
         &mut self,
-        _panel_index: usize, // obsolete with LayoutManager
+        _panel_index: usize,
         _directory: PathBuf,
         value: Box<dyn std::any::Any>,
     ) -> Result<()> {
+        self.create_entry_in_file_manager(value, true)
+    }
+
+    /// Shared helper for creating a file or directory in the active FileManager.
+    fn create_entry_in_file_manager(
+        &mut self,
+        value: Box<dyn std::any::Any>,
+        is_directory: bool,
+    ) -> Result<()> {
         if let Some(name) = value.downcast_ref::<String>() {
             let t = i18n::t();
-            // Get active FileManager and create directory
             let result = if let Some(panel) = self.layout_manager.active_panel_mut() {
                 if let Some(fm) = panel.as_file_manager_mut() {
-                    let result = fm.create_directory(name.clone());
+                    let result = if is_directory {
+                        fm.create_directory(name.clone())
+                    } else {
+                        fm.create_file(name.clone())
+                    };
                     if result.is_ok() {
-                        log::info!("Directory created: {}", name);
-                        // Refresh directory contents
+                        log::info!(
+                            "{} created: {}",
+                            if is_directory { "Directory" } else { "File" },
+                            name
+                        );
                         let _ = fm.load_directory();
                     }
                     Some(result)
@@ -89,19 +65,23 @@ impl App {
                 None
             };
 
-            // Update status after FM borrow is dropped
             if let Some(result) = result {
                 match result {
                     Ok(_) => {
-                        self.state.set_info(t.status_dir_created(name));
+                        let msg = if is_directory {
+                            t.status_dir_created(name)
+                        } else {
+                            t.status_file_created(name)
+                        };
+                        self.state.set_info(msg);
                     }
                     Err(e) => {
-                        log::error!("Directory creation error '{}': {}", name, e);
-                        // Show error in modal instead of status bar
+                        let kind = if is_directory { "directory" } else { "file" };
+                        log::error!("{} creation error '{}': {}", kind, name, e);
                         use termide_modal::{ActiveModal, InfoModal};
-                        let error_msg = format!("Failed to create directory '{}': {}", name, e);
+                        let error_msg = format!("Failed to create {} '{}': {}", kind, name, e);
                         let lines = vec![(String::new(), error_msg)];
-                        let modal = InfoModal::new("Error", lines);
+                        let modal = InfoModal::new(termide_i18n::t().modal_error_title(), lines);
                         self.state.active_modal = Some(ActiveModal::Info(Box::new(modal)));
                     }
                 }

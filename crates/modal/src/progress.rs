@@ -65,6 +65,8 @@ pub struct ProgressModal {
     eta_seconds: Option<u64>,
     /// Start time for total operation ETA calculation
     operation_start: Option<std::time::Instant>,
+    /// Target title to use when scanning completes (for Upload/Copy modals)
+    target_title: Option<String>,
 }
 
 impl ProgressModal {
@@ -97,6 +99,7 @@ impl ProgressModal {
             individual_file_total: 0,
             eta_seconds: None,
             operation_start: None,
+            target_title: None,
         }
     }
 
@@ -129,6 +132,7 @@ impl ProgressModal {
             individual_file_total: 0,
             eta_seconds: None,
             operation_start: None,
+            target_title: None,
         }
     }
 
@@ -161,6 +165,7 @@ impl ProgressModal {
             individual_file_total: 0,
             eta_seconds: None,
             operation_start: None,
+            target_title: None,
         }
     }
 
@@ -193,6 +198,7 @@ impl ProgressModal {
             individual_file_total: 0,
             eta_seconds: None,
             operation_start: None,
+            target_title: None,
         }
     }
 
@@ -231,13 +237,20 @@ impl ProgressModal {
             individual_file_total: 0,
             eta_seconds: None,
             operation_start: Some(std::time::Instant::now()),
+            target_title: None,
         }
     }
 
-    /// Create a scanning progress modal for directory scanning
-    pub fn new_scanning(title: impl Into<String>, source_path: String) -> Self {
+    /// Create a scanning progress modal for directory scanning with target title for when scan completes
+    pub fn new_scanning(source_path: String) -> Self {
+        Self::new_scanning_with_title(source_path, None)
+    }
+
+    /// Create a scanning progress modal with a specific target title for when scan completes
+    pub fn new_scanning_with_title(source_path: String, target_title: Option<String>) -> Self {
+        let t = termide_i18n::t();
         Self {
-            title: title.into(),
+            title: t.progress_scanning().to_string(),
             current: 0,
             total: 0,
             current_item: None,
@@ -263,13 +276,14 @@ impl ProgressModal {
             individual_file_total: 0,
             eta_seconds: None,
             operation_start: None,
+            target_title,
         }
     }
 
     /// Create a delete progress modal
     pub fn new_delete_progress(total: usize, source_path: String) -> Self {
         Self {
-            title: "Delete".into(),
+            title: termide_i18n::t().progress_delete_title().into(),
             current: 0,
             total,
             current_item: None,
@@ -295,6 +309,7 @@ impl ProgressModal {
             individual_file_total: 0,
             eta_seconds: None,
             operation_start: None,
+            target_title: None,
         }
     }
 
@@ -350,6 +365,11 @@ impl ProgressModal {
     pub fn update_progress(&mut self, current: usize, item: Option<String>) {
         self.current = current;
         self.current_item = item;
+    }
+
+    /// Update total count (when actual file count becomes known after scanning)
+    pub fn set_total(&mut self, total: usize) {
+        self.total = total;
     }
 
     /// Update progress with new source/destination paths
@@ -460,16 +480,25 @@ impl ProgressModal {
         self.scanning_mode
     }
 
+    /// Get the modal title
+    pub fn title(&self) -> &str {
+        &self.title
+    }
+
     /// Exit scanning mode and prepare for copy operation
     pub fn finish_scanning(
         &mut self,
         total_files: usize,
         total_bytes: u64,
         dest_display: String,
-        title: impl Into<String>,
+        fallback_title: impl Into<String>,
     ) {
         self.scanning_mode = false;
-        self.title = title.into();
+        // Use target_title if set, otherwise use the fallback
+        self.title = self
+            .target_title
+            .take()
+            .unwrap_or_else(|| fallback_title.into());
         self.total = total_files;
         self.current = 0;
         self.total_file_bytes = total_bytes;
@@ -644,10 +673,9 @@ impl Modal for ProgressModal {
             dir_para.render(chunks[1], buf);
 
             // Stats: files count and total size
-            let stats_text = format!(
-                "Files: {}  |  Size: {}",
-                self.scan_files_count,
-                format_bytes(self.scan_total_bytes)
+            let stats_text = termide_i18n::t().progress_files_size(
+                &self.scan_files_count.to_string(),
+                &format_bytes(self.scan_total_bytes),
             );
             let stats_para = Paragraph::new(stats_text)
                 .alignment(Alignment::Center)
@@ -656,7 +684,10 @@ impl Modal for ProgressModal {
 
             // Cancel button
             let cancel_style = button_style(true, theme);
-            let cancel_span = Span::styled("[ Cancel ]", cancel_style);
+            let cancel_span = Span::styled(
+                format!("[ {} ]", termide_i18n::t().ui_cancel()),
+                cancel_style,
+            );
             let cancel_line = Line::from(vec![cancel_span]);
             let cancel_para = Paragraph::new(cancel_line).alignment(Alignment::Center);
             cancel_para.render(chunks[5], buf);
@@ -705,17 +736,18 @@ impl Modal for ProgressModal {
             bar_para.render(chunks[2], buf);
 
             // Files count
+            let t = termide_i18n::t();
             let files_text = if self.total > 0 {
-                format!("Files: {} / {}", self.current, self.total)
+                t.progress_files_count(self.current, self.total)
             } else {
-                "Counting files...".to_string()
+                t.progress_counting_files().to_string()
             };
             let files_para = Paragraph::new(files_text).style(Style::default().fg(theme.fg));
             files_para.render(chunks[4], buf);
 
             // Render Cancel button
             let cancel_style = button_style(true, theme);
-            let cancel_span = Span::styled("[ Cancel ]", cancel_style);
+            let cancel_span = Span::styled(format!("[ {} ]", t.ui_cancel()), cancel_style);
             let cancel_line = Line::from(vec![cancel_span]);
             let cancel_para = Paragraph::new(cancel_line).alignment(Alignment::Center);
             cancel_para.render(chunks[6], buf);
@@ -807,8 +839,9 @@ impl Modal for ProgressModal {
             bar_para.render(chunks[3], buf);
 
             // Line 1: Files count
+            let t = termide_i18n::t();
             let files_text = if self.total > 0 {
-                format!("Files: {} / {}", self.current, self.total)
+                t.progress_files_count(self.current, self.total)
             } else {
                 String::new()
             };
@@ -817,10 +850,9 @@ impl Modal for ProgressModal {
 
             // Line 2: Data progress
             let data_text = if self.total_file_bytes > 0 {
-                format!(
-                    "Data: {} / {}",
-                    format_bytes(self.current_file_bytes),
-                    format_bytes(self.total_file_bytes)
+                t.progress_data_count(
+                    &format_bytes(self.current_file_bytes),
+                    &format_bytes(self.total_file_bytes),
                 )
             } else {
                 String::new()
@@ -832,9 +864,9 @@ impl Modal for ProgressModal {
             let speed_text = if self.transfer_speed_bps > 0.0 {
                 let speed_str = format_speed(self.transfer_speed_bps);
                 if let Some(eta_secs) = self.eta_seconds {
-                    format!("Speed: {}  |  ETA: {}", speed_str, format_eta(eta_secs))
+                    t.progress_speed_eta(&speed_str, &format_eta(eta_secs))
                 } else {
-                    format!("Speed: {}", speed_str)
+                    t.progress_speed(&speed_str)
                 }
             } else {
                 String::new()
@@ -856,7 +888,11 @@ impl Modal for ProgressModal {
             // Render buttons
             let mut button_spans = Vec::new();
 
-            let pause_text = if self.paused { "Resume" } else { "Suspend" };
+            let pause_text = if self.paused {
+                t.progress_resume()
+            } else {
+                t.progress_suspend()
+            };
 
             if self.pause_enabled {
                 let pause_style = button_style(self.selected_button == 0, theme);
@@ -866,7 +902,10 @@ impl Modal for ProgressModal {
 
             let cancel_button_index = if self.pause_enabled { 1 } else { 0 };
             let cancel_style = button_style(self.selected_button == cancel_button_index, theme);
-            button_spans.push(Span::styled("[ Abort ]".to_string(), cancel_style));
+            button_spans.push(Span::styled(
+                format!("[ {} ]", t.progress_abort()),
+                cancel_style,
+            ));
 
             let buttons_line = Line::from(button_spans);
             let buttons_para = Paragraph::new(buttons_line).alignment(Alignment::Center);
@@ -1058,7 +1097,12 @@ impl Modal for ProgressModal {
                 let mut button_spans = Vec::new();
 
                 // Determine pause/resume text
-                let pause_text = if self.paused { "Resume" } else { "Pause" };
+                let t = termide_i18n::t();
+                let pause_text = if self.paused {
+                    t.progress_resume()
+                } else {
+                    t.progress_pause()
+                };
 
                 // Render Pause/Resume button if enabled
                 if self.pause_enabled {
@@ -1070,7 +1114,7 @@ impl Modal for ProgressModal {
                 // Render Cancel button
                 let cancel_button_index = if self.pause_enabled { 1 } else { 0 };
                 let cancel_style = button_style(self.selected_button == cancel_button_index, theme);
-                button_spans.push(Span::styled("[ Cancel ]".to_string(), cancel_style));
+                button_spans.push(Span::styled(format!("[ {} ]", t.ui_cancel()), cancel_style));
 
                 // Render buttons as single centered line
                 let buttons_line = Line::from(button_spans);

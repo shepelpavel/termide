@@ -166,6 +166,14 @@ impl Translation for RuntimeTranslation {
         self.get_string("panel_journal")
     }
 
+    fn panel_operations(&self) -> &str {
+        self.get_string("panel_operations")
+    }
+
+    fn no_active_operations(&self) -> &str {
+        self.get_string("no_active_operations")
+    }
+
     fn editor_close_unsaved(&self) -> &str {
         self.get_string("editor_close_unsaved")
     }
@@ -1083,6 +1091,10 @@ impl Translation for RuntimeTranslation {
         self.get_string("tools_diagnostics")
     }
 
+    fn tools_operations(&self) -> &str {
+        self.get_string("tools_operations")
+    }
+
     fn options_help(&self) -> &str {
         self.get_string("options_help")
     }
@@ -1571,5 +1583,222 @@ impl Translation for RuntimeTranslation {
 
     fn file_type_symlink(&self) -> &str {
         self.get_string("file_type_symlink")
+    }
+
+    fn progress_scanning(&self) -> &str {
+        self.get_string("progress_scanning")
+    }
+
+    fn progress_delete_title(&self) -> &str {
+        self.get_string("progress_delete_title")
+    }
+
+    fn progress_copy_title(&self) -> &str {
+        self.get_string("progress_copy_title")
+    }
+
+    fn progress_move_title(&self) -> &str {
+        self.get_string("progress_move_title")
+    }
+
+    fn progress_resume(&self) -> &str {
+        self.get_string("progress_resume")
+    }
+
+    fn progress_suspend(&self) -> &str {
+        self.get_string("progress_suspend")
+    }
+
+    fn progress_pause(&self) -> &str {
+        self.get_string("progress_pause")
+    }
+
+    fn progress_abort(&self) -> &str {
+        self.get_string("progress_abort")
+    }
+
+    fn progress_counting_files(&self) -> &str {
+        self.get_string("progress_counting_files")
+    }
+
+    fn progress_files_count(&self, current: usize, total: usize) -> String {
+        self.format(
+            "progress_files_count",
+            &[
+                ("current", &current.to_string()),
+                ("total", &total.to_string()),
+            ],
+        )
+    }
+
+    fn progress_files_size(&self, count: &str, size: &str) -> String {
+        self.format("progress_files_size", &[("count", count), ("size", size)])
+    }
+
+    fn progress_data_count(&self, current: &str, total: &str) -> String {
+        self.format(
+            "progress_data_count",
+            &[("current", current), ("total", total)],
+        )
+    }
+
+    fn progress_speed_eta(&self, speed: &str, eta: &str) -> String {
+        self.format("progress_speed_eta", &[("speed", speed), ("eta", eta)])
+    }
+
+    fn progress_speed(&self, speed: &str) -> String {
+        self.format("progress_speed", &[("speed", speed)])
+    }
+
+    fn conflict_directory_title(&self) -> &str {
+        self.get_string("conflict_directory_title")
+    }
+
+    fn conflict_file_title(&self) -> &str {
+        self.get_string("conflict_file_title")
+    }
+
+    fn conflict_overwrite(&self) -> &str {
+        self.get_string("conflict_overwrite")
+    }
+
+    fn conflict_skip(&self) -> &str {
+        self.get_string("conflict_skip")
+    }
+
+    fn conflict_rename(&self) -> &str {
+        self.get_string("conflict_rename")
+    }
+
+    fn conflict_overwrite_all(&self) -> &str {
+        self.get_string("conflict_overwrite_all")
+    }
+
+    fn conflict_skip_all(&self) -> &str {
+        self.get_string("conflict_skip_all")
+    }
+
+    fn conflict_rename_all(&self) -> &str {
+        self.get_string("conflict_rename_all")
+    }
+
+    fn conflict_already_exists(&self, item_type: &str, name: &str) -> String {
+        self.format(
+            "conflict_already_exists",
+            &[("type", item_type), ("name", name)],
+        )
+    }
+
+    fn operation_cancelled_title(&self) -> &str {
+        self.get_string("operation_cancelled_title")
+    }
+
+    fn cleanup_delete(&self) -> &str {
+        self.get_string("cleanup_delete")
+    }
+
+    fn cleanup_keep(&self) -> &str {
+        self.get_string("cleanup_keep")
+    }
+
+    fn cleanup_delete_partial(&self) -> &str {
+        self.get_string("cleanup_delete_partial")
+    }
+
+    fn cleanup_delete_all(&self) -> &str {
+        self.get_string("cleanup_delete_all")
+    }
+
+    fn cleanup_keep_all(&self) -> &str {
+        self.get_string("cleanup_keep_all")
+    }
+
+    fn cleanup_delete_copied(&self) -> &str {
+        self.get_string("cleanup_delete_copied")
+    }
+
+    fn cleanup_keep_copied(&self) -> &str {
+        self.get_string("cleanup_keep_copied")
+    }
+
+    fn status_delete_cancelled(&self) -> &str {
+        self.get_string("status_delete_cancelled")
+    }
+
+    fn status_download_cancelled(&self) -> &str {
+        self.get_string("status_download_cancelled")
+    }
+
+    fn status_upload_cancelled(&self) -> &str {
+        self.get_string("status_upload_cancelled")
+    }
+
+    fn status_operation_cancelled(&self) -> &str {
+        self.get_string("status_operation_cancelled")
+    }
+
+    fn status_scan_cancelled(&self) -> &str {
+        self.get_string("status_scan_cancelled")
+    }
+
+    fn status_config_saved(&self) -> &str {
+        self.get_string("status_config_saved")
+    }
+
+    fn status_delete_failed(&self, error: &str) -> String {
+        self.format("status_delete_failed", &[("error", error)])
+    }
+
+    fn op_type_copy_upload(&self) -> &str {
+        self.get_string("op_type_copy_upload")
+    }
+
+    fn op_type_copy_download(&self) -> &str {
+        self.get_string("op_type_copy_download")
+    }
+
+    fn op_type_move_upload(&self) -> &str {
+        self.get_string("op_type_move_upload")
+    }
+
+    fn op_type_move_download(&self) -> &str {
+        self.get_string("op_type_move_download")
+    }
+
+    fn op_type_rename(&self) -> &str {
+        self.get_string("op_type_rename")
+    }
+
+    fn op_type_scanning(&self) -> &str {
+        self.get_string("op_type_scanning")
+    }
+
+    fn op_found_count(&self, count: usize) -> String {
+        self.format("op_found_count", &[("count", &count.to_string())])
+    }
+
+    fn op_files_progress(&self, current: usize, total: usize) -> String {
+        self.format(
+            "op_files_progress",
+            &[
+                ("current", &current.to_string()),
+                ("total", &total.to_string()),
+            ],
+        )
+    }
+
+    fn op_data_progress(&self, current: &str, total: &str) -> String {
+        self.format(
+            "op_data_progress",
+            &[("current", current), ("total", total)],
+        )
+    }
+
+    fn op_speed_rate(&self, speed: &str) -> String {
+        self.format("op_speed_rate", &[("speed", speed)])
+    }
+
+    fn modal_error_title(&self) -> &str {
+        self.get_string("modal_error_title")
     }
 }

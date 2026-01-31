@@ -80,6 +80,11 @@ impl OperationManager {
         Self::with_config(vfs_manager, OperationManagerConfig::default())
     }
 
+    /// Update the VFS manager used for remote operations.
+    pub fn set_vfs_manager(&mut self, vfs_manager: Arc<VfsManager>) {
+        self.vfs_manager = vfs_manager;
+    }
+
     /// Create with custom configuration.
     pub fn with_config(vfs_manager: Arc<VfsManager>, config: OperationManagerConfig) -> Self {
         let (event_tx, event_rx) = mpsc::channel();

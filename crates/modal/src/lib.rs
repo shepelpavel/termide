@@ -34,7 +34,6 @@ pub mod file_search;
 pub mod info;
 pub mod info_action;
 pub mod input;
-pub mod overwrite;
 pub mod progress;
 pub mod rename_pattern;
 pub mod replace;
@@ -56,7 +55,6 @@ pub use file_search::{FileSearchModal, SearchResultItem};
 pub use info::InfoModal;
 pub use info_action::{ActionButton, InfoActionModal, InfoActionResult};
 pub use input::InputModal;
-pub use overwrite::{OverwriteChoice, OverwriteModal};
 pub use progress::ProgressModal;
 pub use rename_pattern::RenamePatternModal;
 pub use replace::{ReplaceAction, ReplaceModal, ReplaceModalResult};
@@ -80,9 +78,6 @@ pub enum ActiveModal {
     Input(Box<InputModal>),
     /// Selection modal (single selection)
     Select(Box<SelectModal>),
-    /// File overwrite modal
-    #[allow(dead_code)]
-    Overwrite(Box<OverwriteModal>),
     /// File conflict resolution modal
     Conflict(Box<ConflictModal>),
     /// Information modal
@@ -113,6 +108,106 @@ pub enum ActiveModal {
     BookmarkAdd(Box<BookmarkAddModal>),
     /// Progress modal for long-running operations
     Progress(Box<ProgressModal>),
+}
+
+/// Helper to convert a typed ModalResult into a type-erased ModalResult<Box<dyn Any>>.
+fn erase_modal_result<T: 'static>(result: ModalResult<T>) -> ModalResult<Box<dyn std::any::Any>> {
+    match result {
+        ModalResult::Confirmed(value) => {
+            ModalResult::Confirmed(Box::new(value) as Box<dyn std::any::Any>)
+        }
+        ModalResult::Cancelled => ModalResult::Cancelled,
+    }
+}
+
+/// Dispatch a method call to the inner modal across all ActiveModal variants.
+macro_rules! dispatch_modal {
+    ($self:expr, $method:ident $(, $arg:expr)*) => {
+        match $self {
+            ActiveModal::Commit(m) => m.$method($($arg),*),
+            ActiveModal::Confirm(m) => m.$method($($arg),*),
+            ActiveModal::Choice(m) => m.$method($($arg),*),
+            ActiveModal::Input(m) => m.$method($($arg),*),
+            ActiveModal::Select(m) => m.$method($($arg),*),
+            ActiveModal::Conflict(m) => m.$method($($arg),*),
+            ActiveModal::Info(m) => m.$method($($arg),*),
+            ActiveModal::InfoAction(m) => m.$method($($arg),*),
+            ActiveModal::RenamePattern(m) => m.$method($($arg),*),
+            ActiveModal::EditableSelect(m) => m.$method($($arg),*),
+            ActiveModal::Search(m) => m.$method($($arg),*),
+            ActiveModal::Replace(m) => m.$method($($arg),*),
+            ActiveModal::Sessions(m) => m.$method($($arg),*),
+            ActiveModal::FileSearch(m) => m.$method($($arg),*),
+            ActiveModal::ContentSearch(m) => m.$method($($arg),*),
+            ActiveModal::DirectoryPicker(m) => m.$method($($arg),*),
+            ActiveModal::SaveAs(m) => m.$method($($arg),*),
+            ActiveModal::DirectorySwitcher(m) => m.$method($($arg),*),
+            ActiveModal::BookmarkAdd(m) => m.$method($($arg),*),
+            ActiveModal::Progress(m) => m.$method($($arg),*),
+        }
+    };
+}
+
+/// Dispatch handle_key/handle_mouse and erase the result type.
+macro_rules! dispatch_modal_erased {
+    ($self:expr, $method:ident $(, $arg:expr)*) => {
+        match $self {
+            ActiveModal::Commit(m) => m.$method($($arg),*)?.map(erase_modal_result),
+            ActiveModal::Confirm(m) => m.$method($($arg),*)?.map(erase_modal_result),
+            ActiveModal::Choice(m) => m.$method($($arg),*)?.map(erase_modal_result),
+            ActiveModal::Input(m) => m.$method($($arg),*)?.map(erase_modal_result),
+            ActiveModal::Select(m) => m.$method($($arg),*)?.map(erase_modal_result),
+            ActiveModal::Conflict(m) => m.$method($($arg),*)?.map(erase_modal_result),
+            ActiveModal::Info(m) => m.$method($($arg),*)?.map(erase_modal_result),
+            ActiveModal::InfoAction(m) => m.$method($($arg),*)?.map(erase_modal_result),
+            ActiveModal::RenamePattern(m) => m.$method($($arg),*)?.map(erase_modal_result),
+            ActiveModal::EditableSelect(m) => m.$method($($arg),*)?.map(erase_modal_result),
+            ActiveModal::Search(m) => m.$method($($arg),*)?.map(erase_modal_result),
+            ActiveModal::Replace(m) => m.$method($($arg),*)?.map(erase_modal_result),
+            ActiveModal::Sessions(m) => m.$method($($arg),*)?.map(erase_modal_result),
+            ActiveModal::FileSearch(m) => m.$method($($arg),*)?.map(erase_modal_result),
+            ActiveModal::ContentSearch(m) => m.$method($($arg),*)?.map(erase_modal_result),
+            ActiveModal::DirectoryPicker(m) => m.$method($($arg),*)?.map(erase_modal_result),
+            ActiveModal::SaveAs(m) => m.$method($($arg),*)?.map(erase_modal_result),
+            ActiveModal::DirectorySwitcher(m) => m.$method($($arg),*)?.map(erase_modal_result),
+            ActiveModal::BookmarkAdd(m) => m.$method($($arg),*)?.map(erase_modal_result),
+            ActiveModal::Progress(m) => m.$method($($arg),*)?.map(erase_modal_result),
+        }
+    };
+}
+
+impl ActiveModal {
+    /// Handle keyboard event, returning type-erased result.
+    pub fn handle_key_erased(
+        &mut self,
+        key: KeyEvent,
+    ) -> Result<Option<ModalResult<Box<dyn std::any::Any>>>> {
+        Ok(dispatch_modal_erased!(self, handle_key, key))
+    }
+
+    /// Handle mouse event, returning type-erased result.
+    pub fn handle_mouse_erased(
+        &mut self,
+        mouse: crossterm::event::MouseEvent,
+        modal_area: Rect,
+    ) -> Result<Option<ModalResult<Box<dyn std::any::Any>>>> {
+        Ok(dispatch_modal_erased!(
+            self,
+            handle_mouse,
+            mouse,
+            modal_area
+        ))
+    }
+
+    /// Render the modal.
+    pub fn render(&mut self, area: Rect, buf: &mut Buffer, theme: &Theme) {
+        dispatch_modal!(self, render, area, buf, theme);
+    }
+
+    /// Handle paste event.
+    pub fn handle_paste(&mut self, text: &str) -> bool {
+        dispatch_modal!(self, handle_paste, text)
+    }
 }
 
 /// Trait for all modal windows.

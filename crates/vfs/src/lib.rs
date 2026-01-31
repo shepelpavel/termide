@@ -88,6 +88,17 @@ pub struct VfsManager {
     pending_auth: Arc<RwLock<Vec<AuthRequest>>>,
 }
 
+impl std::fmt::Debug for VfsManager {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("VfsManager")
+            .field(
+                "remote_providers_count",
+                &self.remote_providers.read().map(|p| p.len()).unwrap_or(0),
+            )
+            .finish_non_exhaustive()
+    }
+}
+
 /// Authentication request for user interaction.
 #[derive(Debug, Clone)]
 pub struct AuthRequest {
@@ -134,42 +145,6 @@ impl VfsManager {
     /// Get or create a provider for the given path.
     ///
     /// For local paths, returns the local provider.
-    /// For remote paths, returns an existing connected provider or creates a new one.
-    ///
-    /// # Deprecated
-    ///
-    /// This method has a fundamental design flaw and cannot return references to providers
-    /// stored in RwLock. Use specific methods like `read_file()`, `download()`, `upload()` instead.
-    #[deprecated(note = "Use specific methods (read_file, download, upload) instead")]
-    pub fn provider_for(&self, path: &VfsPath) -> VfsResult<&dyn VfsProvider> {
-        if path.is_local() {
-            return Ok(&self.local);
-        }
-
-        let key = path.connection_key();
-
-        // Check if we have an existing connected provider
-        let providers = self
-            .remote_providers
-            .read()
-            .map_err(|_| VfsError::RemoteError {
-                message: "Failed to acquire provider lock".to_string(),
-            })?;
-
-        if providers.contains_key(&key) {
-            // Return reference - this is tricky because we need to release the lock
-            // For now, we'll indicate the provider exists
-            drop(providers);
-
-            // Re-acquire and get reference
-            // This is a limitation - in practice, you'd use get_provider_mut or similar
-            return Err(VfsError::NotConnected);
-        }
-
-        // No existing provider - need to connect
-        Err(VfsError::NotConnected)
-    }
-
     /// Get a mutable reference to create/connect a provider.
     ///
     /// This method handles the creation and connection of remote providers.
@@ -392,6 +367,38 @@ impl VfsManager {
             if let Some(provider) = providers.get(&key) {
                 self.cache.invalidate_with_parent(path);
                 return provider.create_dir(path);
+            }
+        }
+
+        VfsOperation::error(VfsError::NotConnected)
+    }
+
+    /// Check if a path exists.
+    pub fn exists(&self, path: &VfsPath) -> VfsOperation<bool> {
+        if path.is_local() {
+            return self.local.exists(path);
+        }
+
+        let key = path.connection_key();
+        if let Ok(providers) = self.remote_providers.read() {
+            if let Some(provider) = providers.get(&key) {
+                return provider.exists(path);
+            }
+        }
+
+        VfsOperation::error(VfsError::NotConnected)
+    }
+
+    /// Get metadata for a path.
+    pub fn metadata(&self, path: &VfsPath) -> VfsOperation<VfsMetadata> {
+        if path.is_local() {
+            return self.local.metadata(path);
+        }
+
+        let key = path.connection_key();
+        if let Ok(providers) = self.remote_providers.read() {
+            if let Some(provider) = providers.get(&key) {
+                return provider.metadata(path);
             }
         }
 

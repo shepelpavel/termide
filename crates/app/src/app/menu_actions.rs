@@ -13,6 +13,38 @@ use super::App;
 use crate::state::{ActiveModal, PendingAction};
 use crate::PanelExt;
 use termide_app_core::Panel;
+
+/// Result of generic submenu keyboard navigation.
+enum SubmenuNavAction {
+    /// User pressed Esc/Left — close submenu
+    Close,
+    /// User pressed Enter/Right — execute selected action
+    Execute,
+    /// Navigation handled (Up/Down) or no-op
+    None,
+}
+
+/// Handle generic submenu keyboard navigation.
+/// Updates selection on Up/Down and returns the action for Esc/Enter.
+fn navigate_submenu(
+    key: &crossterm::event::KeyEvent,
+    submenu: &mut termide_state::SubmenuState,
+    item_count: usize,
+) -> SubmenuNavAction {
+    match key.code {
+        KeyCode::Esc | KeyCode::Left => SubmenuNavAction::Close,
+        KeyCode::Up => {
+            submenu.select_prev(item_count);
+            SubmenuNavAction::None
+        }
+        KeyCode::Down => {
+            submenu.select_next(item_count);
+            SubmenuNavAction::None
+        }
+        KeyCode::Right | KeyCode::Enter => SubmenuNavAction::Execute,
+        _ => SubmenuNavAction::None,
+    }
+}
 use termide_config::Config;
 use termide_i18n as i18n;
 
@@ -432,26 +464,14 @@ impl App {
 
         use termide_ui_render::OPTIONS_SUBMENU_ITEM_COUNT;
 
-        match key.code {
-            KeyCode::Esc | KeyCode::Left => {
-                // Close submenu, return to menu
-                self.state.close_submenu();
-            }
-            KeyCode::Up => {
-                if self.state.ui.options_submenu.selected > 0 {
-                    self.state.ui.options_submenu.selected -= 1;
-                } else {
-                    self.state.ui.options_submenu.selected = OPTIONS_SUBMENU_ITEM_COUNT - 1;
-                }
-            }
-            KeyCode::Down => {
-                self.state.ui.options_submenu.selected =
-                    (self.state.ui.options_submenu.selected + 1) % OPTIONS_SUBMENU_ITEM_COUNT;
-            }
-            KeyCode::Right | KeyCode::Enter => {
-                self.execute_submenu_action()?;
-            }
-            _ => {}
+        match navigate_submenu(
+            &key,
+            &mut self.state.ui.options_submenu,
+            OPTIONS_SUBMENU_ITEM_COUNT,
+        ) {
+            SubmenuNavAction::Close => self.state.close_submenu(),
+            SubmenuNavAction::Execute => self.execute_submenu_action()?,
+            SubmenuNavAction::None => {}
         }
         Ok(())
     }
@@ -632,7 +652,7 @@ impl App {
     }
 
     /// Apply language by code and save preference
-    fn apply_language(&mut self, lang_code: &str, lang_name: &str) -> Result<()> {
+    pub(super) fn apply_language(&mut self, lang_code: &str, lang_name: &str) -> Result<()> {
         if let Err(e) = i18n::set_language(lang_code) {
             log::warn!("Failed to set language: {}", e);
             self.state
@@ -670,26 +690,14 @@ impl App {
     ) -> Result<()> {
         use termide_ui_render::SESSIONS_SUBMENU_ITEM_COUNT;
 
-        match key.code {
-            KeyCode::Esc | KeyCode::Left => {
-                // Close submenu, return to menu
-                self.state.close_sessions_submenu();
-            }
-            KeyCode::Up => {
-                if self.state.ui.sessions_submenu.selected > 0 {
-                    self.state.ui.sessions_submenu.selected -= 1;
-                } else {
-                    self.state.ui.sessions_submenu.selected = SESSIONS_SUBMENU_ITEM_COUNT - 1;
-                }
-            }
-            KeyCode::Down => {
-                self.state.ui.sessions_submenu.selected =
-                    (self.state.ui.sessions_submenu.selected + 1) % SESSIONS_SUBMENU_ITEM_COUNT;
-            }
-            KeyCode::Right | KeyCode::Enter => {
-                self.execute_sessions_submenu_action()?;
-            }
-            _ => {}
+        match navigate_submenu(
+            &key,
+            &mut self.state.ui.sessions_submenu,
+            SESSIONS_SUBMENU_ITEM_COUNT,
+        ) {
+            SubmenuNavAction::Close => self.state.close_sessions_submenu(),
+            SubmenuNavAction::Execute => self.execute_sessions_submenu_action()?,
+            SubmenuNavAction::None => {}
         }
         Ok(())
     }
@@ -794,26 +802,14 @@ impl App {
     ) -> Result<()> {
         use termide_ui_render::TOOLS_SUBMENU_ITEM_COUNT;
 
-        match key.code {
-            KeyCode::Esc | KeyCode::Left => {
-                // Close submenu, return to menu
-                self.state.close_tools_submenu();
-            }
-            KeyCode::Up => {
-                if self.state.ui.tools_submenu.selected > 0 {
-                    self.state.ui.tools_submenu.selected -= 1;
-                } else {
-                    self.state.ui.tools_submenu.selected = TOOLS_SUBMENU_ITEM_COUNT - 1;
-                }
-            }
-            KeyCode::Down => {
-                self.state.ui.tools_submenu.selected =
-                    (self.state.ui.tools_submenu.selected + 1) % TOOLS_SUBMENU_ITEM_COUNT;
-            }
-            KeyCode::Right | KeyCode::Enter => {
-                self.execute_tools_submenu_action()?;
-            }
-            _ => {}
+        match navigate_submenu(
+            &key,
+            &mut self.state.ui.tools_submenu,
+            TOOLS_SUBMENU_ITEM_COUNT,
+        ) {
+            SubmenuNavAction::Close => self.state.close_tools_submenu(),
+            SubmenuNavAction::Execute => self.execute_tools_submenu_action()?,
+            SubmenuNavAction::None => {}
         }
         Ok(())
     }
@@ -855,6 +851,11 @@ impl App {
                 // Diagnostics - open diagnostics panel
                 self.state.close_menu();
                 self.handle_open_diagnostics()?;
+            }
+            7 => {
+                // Operations - open operations panel
+                self.state.close_menu();
+                self.open_operations_panel()?;
             }
             _ => {}
         }
@@ -935,27 +936,10 @@ impl App {
             return Ok(());
         }
 
-        match key.code {
-            KeyCode::Esc | KeyCode::Left => {
-                self.state.close_scripts_submenu();
-            }
-            KeyCode::Up => {
-                if self.state.ui.scripts_submenu.selected > 0 {
-                    self.state.ui.scripts_submenu.selected -= 1;
-                } else {
-                    self.state.ui.scripts_submenu.selected = item_count.saturating_sub(1);
-                }
-            }
-            KeyCode::Down => {
-                if item_count > 0 {
-                    self.state.ui.scripts_submenu.selected =
-                        (self.state.ui.scripts_submenu.selected + 1) % item_count;
-                }
-            }
-            KeyCode::Right | KeyCode::Enter => {
-                self.execute_scripts_submenu_action()?;
-            }
-            _ => {}
+        match navigate_submenu(&key, &mut self.state.ui.scripts_submenu, item_count) {
+            SubmenuNavAction::Close => self.state.close_scripts_submenu(),
+            SubmenuNavAction::Execute => self.execute_scripts_submenu_action()?,
+            SubmenuNavAction::None => {}
         }
         Ok(())
     }
@@ -1017,27 +1001,10 @@ impl App {
             })
             .unwrap_or(0);
 
-        match key.code {
-            KeyCode::Esc | KeyCode::Left => {
-                self.state.close_scripts_nested_submenu();
-            }
-            KeyCode::Up => {
-                if self.state.ui.scripts_nested.selected > 0 {
-                    self.state.ui.scripts_nested.selected -= 1;
-                } else {
-                    self.state.ui.scripts_nested.selected = item_count.saturating_sub(1);
-                }
-            }
-            KeyCode::Down => {
-                if item_count > 0 {
-                    self.state.ui.scripts_nested.selected =
-                        (self.state.ui.scripts_nested.selected + 1) % item_count;
-                }
-            }
-            KeyCode::Enter => {
-                self.execute_scripts_nested_action()?;
-            }
-            _ => {}
+        match navigate_submenu(&key, &mut self.state.ui.scripts_nested, item_count) {
+            SubmenuNavAction::Close => self.state.close_scripts_nested_submenu(),
+            SubmenuNavAction::Execute => self.execute_scripts_nested_action()?,
+            SubmenuNavAction::None => {}
         }
         Ok(())
     }
@@ -1209,27 +1176,10 @@ impl App {
         use termide_ui_render::get_bookmarks_item_count;
         let item_count = get_bookmarks_item_count(&self.state.bookmarks);
 
-        match key.code {
-            KeyCode::Esc | KeyCode::Left => {
-                self.state.close_bookmarks_submenu();
-            }
-            KeyCode::Up => {
-                if self.state.ui.bookmarks_submenu.selected > 0 {
-                    self.state.ui.bookmarks_submenu.selected -= 1;
-                } else {
-                    self.state.ui.bookmarks_submenu.selected = item_count.saturating_sub(1);
-                }
-            }
-            KeyCode::Down => {
-                if item_count > 0 {
-                    self.state.ui.bookmarks_submenu.selected =
-                        (self.state.ui.bookmarks_submenu.selected + 1) % item_count;
-                }
-            }
-            KeyCode::Right | KeyCode::Enter => {
-                self.execute_bookmarks_submenu_action()?;
-            }
-            _ => {}
+        match navigate_submenu(&key, &mut self.state.ui.bookmarks_submenu, item_count) {
+            SubmenuNavAction::Close => self.state.close_bookmarks_submenu(),
+            SubmenuNavAction::Execute => self.execute_bookmarks_submenu_action()?,
+            SubmenuNavAction::None => {}
         }
         Ok(())
     }
@@ -1291,27 +1241,10 @@ impl App {
             .map(|name| get_bookmarks_group_items(&self.state.bookmarks, name).len())
             .unwrap_or(0);
 
-        match key.code {
-            KeyCode::Esc | KeyCode::Left => {
-                self.state.close_bookmarks_nested_submenu();
-            }
-            KeyCode::Up => {
-                if self.state.ui.bookmarks_nested.selected > 0 {
-                    self.state.ui.bookmarks_nested.selected -= 1;
-                } else {
-                    self.state.ui.bookmarks_nested.selected = item_count.saturating_sub(1);
-                }
-            }
-            KeyCode::Down => {
-                if item_count > 0 {
-                    self.state.ui.bookmarks_nested.selected =
-                        (self.state.ui.bookmarks_nested.selected + 1) % item_count;
-                }
-            }
-            KeyCode::Enter => {
-                self.execute_bookmarks_nested_action()?;
-            }
-            _ => {}
+        match navigate_submenu(&key, &mut self.state.ui.bookmarks_nested, item_count) {
+            SubmenuNavAction::Close => self.state.close_bookmarks_nested_submenu(),
+            SubmenuNavAction::Execute => self.execute_bookmarks_nested_action()?,
+            SubmenuNavAction::None => {}
         }
         Ok(())
     }

@@ -189,6 +189,21 @@ impl OperationProgress {
         }
     }
 
+    /// Create progress for scanning phase with details.
+    pub fn scanning_details(
+        files_found: usize,
+        bytes_found: u64,
+        current_dir: Option<String>,
+    ) -> Self {
+        Self {
+            phase: OperationPhase::Scanning,
+            files_completed: files_found,
+            total_bytes: bytes_found,
+            current_item: current_dir,
+            ..Default::default()
+        }
+    }
+
     /// Create progress for transferring phase.
     pub fn transferring(
         bytes_transferred: u64,

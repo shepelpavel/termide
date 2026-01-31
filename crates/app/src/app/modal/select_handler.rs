@@ -10,7 +10,6 @@ use super::super::App;
 use crate::state::{ActiveModal, PendingAction};
 use crate::PanelExt;
 use termide_i18n as i18n;
-use termide_ui::path_utils;
 
 impl App {
     /// Handle editor closure with saving
@@ -32,6 +31,13 @@ impl App {
                 0 => {
                     // Save and close
                     log::info!("Selected: Save and close editor");
+                    // Capture editor file path before mutable borrow for save
+                    let editor_file_path = self
+                        .layout_manager
+                        .active_panel()
+                        .and_then(|p| p.as_any().downcast_ref::<termide_panel_editor::Editor>())
+                        .and_then(|e| e.file_path().map(|p| p.to_path_buf()));
+
                     if let Some(panel) = self.layout_manager.active_panel_mut() {
                         if let Some(editor) = panel.as_editor_mut() {
                             // Try to save
@@ -46,19 +52,8 @@ impl App {
                                         return Ok(());
                                     }
                                     Ok(Some((temp_path, remote_path, vfs_manager))) => {
-                                        // Remote file - start async upload with progress modal
+                                        // Remote file - start async upload (no modal)
                                         log::info!("Starting remote file upload before closing");
-
-                                        let filename = remote_path
-                                            .file_name()
-                                            .map(|n| n.to_string_lossy().to_string())
-                                            .unwrap_or_else(|| "file".to_string());
-                                        let modal = termide_modal::ProgressModal::indeterminate(
-                                            "Upload",
-                                            format!("Uploading {}...", filename),
-                                        );
-                                        self.state.active_modal =
-                                            Some(ActiveModal::Progress(Box::new(modal)));
 
                                         // Set uploading flag to show spinner in editor header
                                         if let Some(panel) = self.layout_manager.active_panel_mut()
@@ -69,23 +64,35 @@ impl App {
                                         }
 
                                         // Create upload request via OperationManager
+                                        let total_bytes = std::fs::metadata(&temp_path)
+                                            .map(|m| m.len())
+                                            .unwrap_or(0);
+                                        let source_display = temp_path.display().to_string();
                                         let request = termide_file_ops::OperationRequest::upload(
                                             temp_path,
-                                            remote_path,
+                                            remote_path.clone(),
                                         );
 
-                                        // Start upload via OperationManager
+                                        // Start upload via OperationManager (no modal)
                                         match self.state.start_operation_now(request, vfs_manager) {
-                                            Ok(_operation_id) => {
+                                            Ok(operation_id) => {
                                                 log::info!("Started save-before-close upload");
-                                                // Mark that editor should be closed after upload
-                                                self.state.close_editor_after_upload = true;
+                                                self.state.track_operation(
+                                                    operation_id,
+                                                    crate::state::OperationType::CopyUpload,
+                                                    source_display,
+                                                    remote_path.to_url_string(),
+                                                    1,
+                                                    total_bytes,
+                                                );
+                                                // Store editor path so we close the right panel
+                                                self.state.close_editor_after_upload =
+                                                    editor_file_path;
                                                 // Skip file manager refresh - file already exists
                                                 self.state.skip_refresh_after_upload = true;
                                             }
                                             Err(e) => {
                                                 log::error!("Failed to start upload: {}", e);
-                                                self.state.close_modal();
                                                 self.state
                                                     .set_error(format!("Upload failed: {}", e));
                                                 // Clear uploading flag
@@ -414,78 +421,6 @@ impl App {
             }
         }
 
-        Ok(())
-    }
-
-    /// Handle file overwrite decision
-    pub(in crate::app) fn handle_overwrite_decision(
-        &mut self,
-        _panel_index: usize, // obsolete with LayoutManager
-        source: PathBuf,
-        destination: PathBuf,
-        is_move: bool,
-        value: Box<dyn std::any::Any>,
-    ) -> Result<()> {
-        if let Some(choice) = value.downcast_ref::<termide_modal::OverwriteChoice>() {
-            use termide_modal::OverwriteChoice;
-
-            let item_name = path_utils::get_file_name_str(&source);
-
-            let final_dest = path_utils::resolve_destination_path(&source, &destination);
-
-            // Check overwrite conditions
-            let should_proceed = match choice {
-                OverwriteChoice::Replace => true,
-                OverwriteChoice::ReplaceIfNewer => {
-                    // Compare modification time
-                    if let (Ok(src_meta), Ok(dst_meta)) = (source.metadata(), final_dest.metadata())
-                    {
-                        if let (Ok(src_time), Ok(dst_time)) =
-                            (src_meta.modified(), dst_meta.modified())
-                        {
-                            src_time > dst_time
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    }
-                }
-                OverwriteChoice::ReplaceIfLarger => {
-                    // Compare file sizes
-                    if let (Ok(src_meta), Ok(dst_meta)) = (source.metadata(), final_dest.metadata())
-                    {
-                        src_meta.len() > dst_meta.len()
-                    } else {
-                        false
-                    }
-                }
-                OverwriteChoice::Skip => false,
-            };
-
-            if should_proceed {
-                // Use batch operation system for async handling (all operations)
-                use termide_state::{BatchOperation, BatchOperationType};
-
-                let operation_type = if is_move {
-                    BatchOperationType::Move
-                } else {
-                    BatchOperationType::Copy
-                };
-
-                let batch_op = BatchOperation::new(
-                    operation_type,
-                    vec![source.clone()],
-                    final_dest.parent().unwrap_or(&final_dest).to_path_buf(),
-                );
-
-                self.process_batch_operation(batch_op);
-            } else {
-                let t = i18n::t();
-                log::info!("Operation '{}' skipped", item_name);
-                self.state.set_info(t.status_operation_skipped(item_name));
-            }
-        }
         Ok(())
     }
 }

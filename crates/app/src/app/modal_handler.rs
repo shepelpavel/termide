@@ -6,19 +6,9 @@ use super::App;
 use crate::panel_ext::PanelExt;
 use crate::state::ActiveModal;
 use termide_modal::{
-    Modal, ModalResult, ReplaceAction, ReplaceModalResult, SearchAction, SearchModalResult,
+    ModalResult, ReplaceAction, ReplaceModalResult, SearchAction, SearchModalResult,
 };
 use termide_ui::path_utils;
-
-/// Helper to convert typed ModalResult to Box<dyn Any>
-fn box_modal_result<T: 'static>(result: ModalResult<T>) -> ModalResult<Box<dyn std::any::Any>> {
-    match result {
-        ModalResult::Confirmed(value) => {
-            ModalResult::Confirmed(Box::new(value) as Box<dyn std::any::Any>)
-        }
-        ModalResult::Cancelled => ModalResult::Cancelled,
-    }
-}
 
 /// Result of processing search/replace modal
 enum SearchReplaceResult {
@@ -38,29 +28,7 @@ impl App {
         // Get mutable reference to active modal window
         if let Some(modal) = self.state.get_active_modal_mut() {
             // Handle event in corresponding modal window
-            let modal_result = match modal {
-                ActiveModal::Commit(m) => m.handle_key(key)?.map(box_modal_result),
-                ActiveModal::Confirm(m) => m.handle_key(key)?.map(box_modal_result),
-                ActiveModal::Choice(m) => m.handle_key(key)?.map(box_modal_result),
-                ActiveModal::Input(m) => m.handle_key(key)?.map(box_modal_result),
-                ActiveModal::Select(m) => m.handle_key(key)?.map(box_modal_result),
-                ActiveModal::Overwrite(m) => m.handle_key(key)?.map(box_modal_result),
-                ActiveModal::Conflict(m) => m.handle_key(key)?.map(box_modal_result),
-                ActiveModal::Info(m) => m.handle_key(key)?.map(box_modal_result),
-                ActiveModal::InfoAction(m) => m.handle_key(key)?.map(box_modal_result),
-                ActiveModal::RenamePattern(m) => m.handle_key(key)?.map(box_modal_result),
-                ActiveModal::EditableSelect(m) => m.handle_key(key)?.map(box_modal_result),
-                ActiveModal::Search(m) => m.handle_key(key)?.map(box_modal_result),
-                ActiveModal::Replace(m) => m.handle_key(key)?.map(box_modal_result),
-                ActiveModal::Sessions(m) => m.handle_key(key)?.map(box_modal_result),
-                ActiveModal::FileSearch(m) => m.handle_key(key)?.map(box_modal_result),
-                ActiveModal::ContentSearch(m) => m.handle_key(key)?.map(box_modal_result),
-                ActiveModal::DirectoryPicker(m) => m.handle_key(key)?.map(box_modal_result),
-                ActiveModal::SaveAs(m) => m.handle_key(key)?.map(box_modal_result),
-                ActiveModal::DirectorySwitcher(m) => m.handle_key(key)?.map(box_modal_result),
-                ActiveModal::BookmarkAdd(m) => m.handle_key(key)?.map(box_modal_result),
-                ActiveModal::Progress(m) => m.handle_key(key)?.map(box_modal_result),
-            };
+            let modal_result = modal.handle_key_erased(key)?;
 
             // If modal window returned result, handle it
             if let Some(result) = modal_result {
@@ -175,12 +143,7 @@ impl App {
     /// Returns true if modal handled the paste, false to pass to panel
     pub(super) fn handle_modal_paste(&mut self, text: &str) -> bool {
         if let Some(modal) = self.state.get_active_modal_mut() {
-            match modal {
-                ActiveModal::BookmarkAdd(m) => m.handle_paste(text),
-                ActiveModal::Input(m) => m.handle_paste(text),
-                // Other modals don't have text input fields, use default (false)
-                _ => false,
-            }
+            modal.handle_paste(text)
         } else {
             false
         }
@@ -195,53 +158,7 @@ impl App {
         // Get mutable reference to active modal window
         if let Some(modal) = self.state.get_active_modal_mut() {
             // Handle event in corresponding modal window
-            let modal_result = match modal {
-                ActiveModal::Commit(m) => m.handle_mouse(mouse, modal_area)?.map(box_modal_result),
-                ActiveModal::Confirm(m) => m.handle_mouse(mouse, modal_area)?.map(box_modal_result),
-                ActiveModal::Choice(m) => m.handle_mouse(mouse, modal_area)?.map(box_modal_result),
-                ActiveModal::Input(m) => m.handle_mouse(mouse, modal_area)?.map(box_modal_result),
-                ActiveModal::Select(m) => m.handle_mouse(mouse, modal_area)?.map(box_modal_result),
-                ActiveModal::Overwrite(m) => {
-                    m.handle_mouse(mouse, modal_area)?.map(box_modal_result)
-                }
-                ActiveModal::Conflict(m) => {
-                    m.handle_mouse(mouse, modal_area)?.map(box_modal_result)
-                }
-                ActiveModal::Info(m) => m.handle_mouse(mouse, modal_area)?.map(box_modal_result),
-                ActiveModal::InfoAction(m) => {
-                    m.handle_mouse(mouse, modal_area)?.map(box_modal_result)
-                }
-                ActiveModal::RenamePattern(m) => {
-                    m.handle_mouse(mouse, modal_area)?.map(box_modal_result)
-                }
-                ActiveModal::EditableSelect(m) => {
-                    m.handle_mouse(mouse, modal_area)?.map(box_modal_result)
-                }
-                ActiveModal::Search(m) => m.handle_mouse(mouse, modal_area)?.map(box_modal_result),
-                ActiveModal::Replace(m) => m.handle_mouse(mouse, modal_area)?.map(box_modal_result),
-                ActiveModal::Sessions(m) => {
-                    m.handle_mouse(mouse, modal_area)?.map(box_modal_result)
-                }
-                ActiveModal::FileSearch(m) => {
-                    m.handle_mouse(mouse, modal_area)?.map(box_modal_result)
-                }
-                ActiveModal::ContentSearch(m) => {
-                    m.handle_mouse(mouse, modal_area)?.map(box_modal_result)
-                }
-                ActiveModal::DirectoryPicker(m) => {
-                    m.handle_mouse(mouse, modal_area)?.map(box_modal_result)
-                }
-                ActiveModal::SaveAs(m) => m.handle_mouse(mouse, modal_area)?.map(box_modal_result),
-                ActiveModal::DirectorySwitcher(m) => {
-                    m.handle_mouse(mouse, modal_area)?.map(box_modal_result)
-                }
-                ActiveModal::BookmarkAdd(m) => {
-                    m.handle_mouse(mouse, modal_area)?.map(box_modal_result)
-                }
-                ActiveModal::Progress(m) => {
-                    m.handle_mouse(mouse, modal_area)?.map(box_modal_result)
-                }
-            };
+            let modal_result = modal.handle_mouse_erased(mouse, modal_area)?;
 
             // If modal window returned result, handle it
             if let Some(result) = modal_result {
@@ -341,6 +258,13 @@ impl App {
                 PendingAction::DeletePath { panel_index, paths } => {
                     self.handle_delete_path(panel_index, paths, value)?;
                 }
+                PendingAction::DeleteRemotePath {
+                    panel_index,
+                    paths,
+                    vfs_manager,
+                } => {
+                    self.handle_delete_remote_path(panel_index, paths, vfs_manager, value)?;
+                }
                 PendingAction::SaveFileAs {
                     panel_index,
                     directory,
@@ -358,20 +282,6 @@ impl App {
                 }
                 PendingAction::CloseEditorConflict { panel_index } => {
                     self.handle_close_editor_conflict(panel_index, value)?;
-                }
-                PendingAction::OverwriteDecision {
-                    panel_index,
-                    source,
-                    destination,
-                    is_move,
-                } => {
-                    self.handle_overwrite_decision(
-                        panel_index,
-                        source,
-                        destination,
-                        is_move,
-                        value,
-                    )?;
                 }
                 PendingAction::CopyPath {
                     panel_index,

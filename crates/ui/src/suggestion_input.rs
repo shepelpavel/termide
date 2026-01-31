@@ -267,7 +267,10 @@ impl SuggestionInput {
                 SuggestionAction::Handled
             }
             KeyCode::Enter if self.state == DropdownState::Expanded => {
-                self.confirm();
+                // Just collapse, keeping whatever text is in the input.
+                // Up/Down navigation already updates input text to the selected value,
+                // so if the user edited the text manually, their edits are preserved.
+                self.collapse();
                 SuggestionAction::Confirmed
             }
             _ => SuggestionAction::NotHandled,
@@ -445,6 +448,22 @@ mod tests {
         let action = input.handle_key(KeyEvent::from(KeyCode::Enter));
         assert_eq!(action, SuggestionAction::Confirmed);
         assert_eq!(input.text(), "bar");
+        assert!(!input.is_expanded());
+    }
+
+    #[test]
+    fn test_handle_key_enter_expanded_after_edit() {
+        let suggestions = vec!["foo".to_string(), "bar".to_string()];
+        let mut input = SuggestionInput::new(suggestions);
+
+        input.expand();
+        input.select_down(); // text becomes "bar"
+        input.input_mut().set_text("bar_edited".to_string()); // user edits manually
+
+        let action = input.handle_key(KeyEvent::from(KeyCode::Enter));
+        assert_eq!(action, SuggestionAction::Confirmed);
+        // Should preserve the manually edited text, not replace with suggestion
+        assert_eq!(input.text(), "bar_edited");
         assert!(!input.is_expanded());
     }
 
