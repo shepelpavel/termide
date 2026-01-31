@@ -13,15 +13,16 @@ use termide_vfs::{
 };
 
 /// Result type for pending VFS operations.
-#[allow(dead_code)]
 pub enum PendingVfsOperation {
     /// Directory listing operation.
     ListDir(VfsOperation<Vec<VfsEntry>>),
     /// Connection operation.
     Connect(VfsOperation<()>),
-    /// File read operation.
+    /// File read operation (infrastructure for future VFS operations).
+    #[allow(dead_code)]
     ReadFile(VfsOperation<Vec<u8>>),
-    /// Generic operation (create, delete, etc.).
+    /// Generic operation (infrastructure for future VFS operations).
+    #[allow(dead_code)]
     Generic(VfsOperation<()>),
 }
 

@@ -3,7 +3,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
-use std::time::Instant;
 
 use termide_vfs::{VfsManager, VfsPath};
 
@@ -393,10 +392,7 @@ impl UploadWorker {
         let operation = self.vfs_manager.upload_with_progress(source, dest);
 
         // Speed/ETA tracking
-        let start_time = Instant::now();
-        let mut last_bytes = 0u64;
-        let mut last_time = start_time;
-        let mut current_speed = 0.0f64;
+        let mut speed_tracker = super::SpeedTracker::new();
 
         loop {
             // Check for cancellation
@@ -428,35 +424,11 @@ impl UploadWorker {
 
             // Forward progress with speed/ETA calculation
             if let Some(progress) = operation.drain_progress() {
-                let now = Instant::now();
                 let bytes_transferred = progress.bytes_uploaded;
                 let total_bytes = progress.total_bytes;
 
-                // Calculate speed using delta over interval (smoother than total average)
-                let elapsed_since_last = now.duration_since(last_time).as_secs_f64();
-                if elapsed_since_last >= 0.2 {
-                    // Update speed every 200ms
-                    let delta_bytes = bytes_transferred.saturating_sub(last_bytes);
-                    if elapsed_since_last > 0.0 {
-                        // Smooth speed using exponential moving average
-                        let instant_speed = delta_bytes as f64 / elapsed_since_last;
-                        current_speed = if current_speed > 0.0 {
-                            current_speed * 0.7 + instant_speed * 0.3
-                        } else {
-                            instant_speed
-                        };
-                    }
-                    last_bytes = bytes_transferred;
-                    last_time = now;
-                }
-
-                // Calculate ETA
-                let eta_seconds = if current_speed > 0.0 && total_bytes > bytes_transferred {
-                    let remaining_bytes = total_bytes - bytes_transferred;
-                    Some((remaining_bytes as f64 / current_speed) as u64)
-                } else {
-                    None
-                };
+                let current_speed = speed_tracker.update(bytes_transferred);
+                let eta_seconds = speed_tracker.eta(bytes_transferred, total_bytes);
 
                 on_progress(OperationProgress {
                     phase: OperationPhase::Transferring,

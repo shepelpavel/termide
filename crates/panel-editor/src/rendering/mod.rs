@@ -23,6 +23,31 @@ pub mod inline_diff;
 pub mod line_rendering;
 pub mod wrap_rendering;
 
+/// Right-align a number into a fixed-width string without heap allocation.
+/// Returns a `&str` of exactly `WIDTH` chars (space-padded on the left).
+pub(crate) fn itoa_right_align<const WIDTH: usize>(n: usize, buf: &mut [u8; 20]) -> &str {
+    let mut pos = 20;
+    let mut val = n;
+    if val == 0 {
+        pos -= 1;
+        buf[pos] = b'0';
+    } else {
+        while val > 0 {
+            pos -= 1;
+            buf[pos] = b'0' + (val % 10) as u8;
+            val /= 10;
+        }
+    }
+    let digit_count = 20 - pos;
+    if digit_count >= WIDTH {
+        std::str::from_utf8(&buf[pos..]).unwrap_or("????")
+    } else {
+        let start = 20 - WIDTH;
+        buf[start..pos].fill(b' ');
+        std::str::from_utf8(&buf[start..]).unwrap_or("????")
+    }
+}
+
 /// Width of the line number column (including git markers).
 ///
 /// Format: "  123  " (2 spaces + 3 digits + 2 git markers)

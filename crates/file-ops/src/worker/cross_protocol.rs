@@ -291,22 +291,7 @@ impl CrossProtocolWorker {
         path: &VfsPath,
         control: &OperationControl,
     ) -> Result<(), OperationError> {
-        let operation = self.vfs_manager.delete(path);
-
-        loop {
-            if control.is_cancelled() {
-                return Err(OperationError::Cancelled);
-            }
-
-            if let Some(result) = operation.try_recv() {
-                return match result {
-                    Ok(()) => Ok(()),
-                    Err(e) => Err(OperationError::Vfs(e.to_string())),
-                };
-            }
-
-            std::thread::sleep(std::time::Duration::from_millis(50));
-        }
+        super::poll_vfs_delete(self.vfs_manager.delete(path), control)
     }
 
     /// Delete local source file after successful move.

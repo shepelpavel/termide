@@ -243,7 +243,8 @@ fn render_empty_line(
 
     // Render line number (4 chars) with git color
     let line_num_style = Style::default().fg(line_num_color);
-    let line_num_str = format!("{:>4}", line_idx + 1);
+    let mut num_buf = [0u8; 20];
+    let line_num_str = super::itoa_right_align::<4>(line_idx + 1, &mut num_buf);
 
     for (i, ch) in line_num_str.chars().enumerate() {
         let x = area.x + i as u16;
@@ -328,7 +329,8 @@ fn render_visual_line<H: LineHighlighter>(
 
         // Render line number (4 chars) with git color
         let line_num_style = Style::default().fg(line_num_color);
-        let line_num_str = format!("{:>4}", line_idx + 1);
+        let mut num_buf = [0u8; 20];
+        let line_num_str = super::itoa_right_align::<4>(line_idx + 1, &mut num_buf);
 
         for (i, ch) in line_num_str.chars().enumerate() {
             let x = area.x + i as u16;

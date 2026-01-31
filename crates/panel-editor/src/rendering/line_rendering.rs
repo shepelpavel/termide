@@ -134,11 +134,12 @@ fn render_line_gutter(
     let line_num_color = git::get_line_number_color(line_idx, git_diff_cache, show_git_diff, theme);
     let lsp_marker = git::get_lsp_marker(diagnostic_severity, theme);
 
-    // Render line number (4 chars) with git color
+    // Render line number (4 chars) with git color — write digits directly to avoid format!()
     let line_num_style = Style::default().fg(line_num_color);
-    let line_num_str = format!("{:>4}", line_idx + 1);
+    let mut num_buf = [0u8; 20];
+    let num_str = super::itoa_right_align::<4>(line_idx + 1, &mut num_buf);
 
-    for (i, ch) in line_num_str.chars().enumerate() {
+    for (i, ch) in num_str.chars().enumerate() {
         let x = area.x + i as u16;
         let y = area.y + row as u16;
         if let Some(cell) = buf.cell_mut((x, y)) {
@@ -595,38 +596,34 @@ fn render_diagnostic_first_row(
     message: &str,
     content_width: usize,
 ) -> String {
-    let wavy = "~".repeat(underline_len);
+    const WAVY: &str = "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~";
+    const SPACES: &str = "                                                                                                                                ";
+    let wavy = &WAVY[..underline_len.min(WAVY.len())];
     let code_part = code.map(|c| format!(" [{}]", c)).unwrap_or_default();
 
     // Calculate prefix length
     let prefix_len = start_col + underline_len + code_part.len() + 1; // +1 for space before message
 
     if content_width > prefix_len {
+        let indent = &SPACES[..start_col.min(SPACES.len())];
         let available_for_msg = content_width - prefix_len;
         let msg_part = get_message_part(message, 0, available_for_msg);
-        format!(
-            "{}{}{} {}",
-            " ".repeat(start_col),
-            wavy,
-            code_part,
-            msg_part
-        )
+        format!("{}{}{} {}", indent, wavy, code_part, msg_part)
     } else if content_width > start_col + underline_len {
         // Only show underline and partial code
         let available = content_width.saturating_sub(start_col + underline_len);
         let truncated_code = truncate_right(&code_part, available);
-        format!("{}{}{}", " ".repeat(start_col), wavy, truncated_code)
+        let indent = &SPACES[..start_col.min(SPACES.len())];
+        format!("{}{}{}", indent, wavy, truncated_code)
     } else if content_width > start_col {
         // Only show partial underline
         let available = content_width.saturating_sub(start_col);
-        format!(
-            "{}{}",
-            " ".repeat(start_col),
-            "~".repeat(available.min(underline_len))
-        )
+        let indent = &SPACES[..start_col.min(SPACES.len())];
+        let partial_wavy = &WAVY[..available.min(underline_len).min(WAVY.len())];
+        format!("{}{}", indent, partial_wavy)
     } else {
         // Show what we can from the start
-        "~".repeat(content_width.min(underline_len))
+        WAVY[..content_width.min(underline_len).min(WAVY.len())].to_string()
     }
 }
 

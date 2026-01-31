@@ -8,10 +8,10 @@ use ratatui::style::{Color, Modifier, Style};
 
 use termide_git::{InlineChange, InlineChangeType};
 
-/// Segment of visual line with its change type.
+/// Segment of visual line with its change type (borrows text from InlineChange).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct VisualSegment {
-    pub text: String,
+pub struct VisualSegment<'a> {
+    pub text: &'a str,
     pub change_type: InlineChangeType,
 }
 
@@ -23,11 +23,11 @@ pub struct VisualSegment {
 ///
 /// # Returns
 /// Vec of segments in display order, including both deleted and current text.
-pub fn build_visual_line(inline_changes: &[InlineChange]) -> Vec<VisualSegment> {
+pub fn build_visual_line(inline_changes: &[InlineChange]) -> Vec<VisualSegment<'_>> {
     inline_changes
         .iter()
         .map(|change| VisualSegment {
-            text: change.text.clone(),
+            text: &change.text,
             change_type: change.change_type,
         })
         .collect()

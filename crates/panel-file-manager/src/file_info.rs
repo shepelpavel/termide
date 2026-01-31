@@ -14,8 +14,6 @@ pub struct FileInfo {
     pub size: String,
     pub owner: String,
     pub group: String,
-    #[allow(dead_code)]
-    pub modified: String,
     pub mode: String, // Access permissions in format "0755"
 }
 
@@ -23,7 +21,6 @@ impl FileManager {
     /// Get information about the currently selected file
     pub fn get_current_file_info(&self) -> Option<FileInfo> {
         use std::os::unix::fs::MetadataExt;
-        use std::time::SystemTime;
 
         let entry = self.entries.get(self.selected)?;
 
@@ -35,7 +32,6 @@ impl FileManager {
                 size: "DIR".to_string(),
                 owner: "remote".to_string(),
                 group: "remote".to_string(),
-                modified: "Unknown".to_string(),
                 mode: "????".to_string(),
             });
         }
@@ -59,20 +55,6 @@ impl FileManager {
                     .unwrap_or_else(|| "Unknown".to_string())
             };
 
-            let modified = entry
-                .modified
-                .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
-                .map(|d| {
-                    chrono::DateTime::from_timestamp(d.as_secs() as i64, 0)
-                        .map(|dt| {
-                            dt.with_timezone(&chrono::Local)
-                                .format("%Y-%m-%d %H:%M:%S")
-                                .to_string()
-                        })
-                        .unwrap_or_else(|| "Unknown".to_string())
-                })
-                .unwrap_or_else(|| "Unknown".to_string());
-
             let mode = if entry.is_executable {
                 "0755".to_string()
             } else if entry.is_readonly {
@@ -87,7 +69,6 @@ impl FileManager {
                 size,
                 owner: "remote".to_string(),
                 group: "remote".to_string(),
-                modified,
                 mode,
             });
         }
@@ -121,21 +102,6 @@ impl FileManager {
         let owner = utils::get_user_name(metadata.uid());
         let group = utils::get_group_name(metadata.gid());
 
-        let modified = metadata
-            .modified()
-            .ok()
-            .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
-            .map(|d| {
-                chrono::DateTime::from_timestamp(d.as_secs() as i64, 0)
-                    .map(|dt| {
-                        dt.with_timezone(&chrono::Local)
-                            .format("%Y-%m-%d %H:%M:%S")
-                            .to_string()
-                    })
-                    .unwrap_or_else(|| "Unknown".to_string())
-            })
-            .unwrap_or_else(|| "Unknown".to_string());
-
         // Format access permissions in octal format (e.g. "0755")
         let mode = format!("{:04o}", metadata.mode() & 0o7777);
 
@@ -145,7 +111,6 @@ impl FileManager {
             size,
             owner,
             group,
-            modified,
             mode,
         })
     }

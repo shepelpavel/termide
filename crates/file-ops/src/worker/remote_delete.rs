@@ -33,20 +33,6 @@ impl RemoteDeleteWorker {
             retry_policy: RetryPolicy::network(),
         }
     }
-
-    /// Create a new remote delete worker with custom retry policy.
-    #[allow(dead_code)]
-    pub fn with_retry_policy(
-        vfs_manager: std::sync::Arc<VfsManager>,
-        paths: Vec<VfsPath>,
-        retry_policy: RetryPolicy,
-    ) -> Self {
-        Self {
-            vfs_manager,
-            paths,
-            retry_policy,
-        }
-    }
 }
 
 impl OperationWorker for RemoteDeleteWorker {

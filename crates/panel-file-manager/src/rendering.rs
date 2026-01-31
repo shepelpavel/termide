@@ -41,6 +41,8 @@ impl FileManager {
         const TIME_COLUMN_WIDTH: usize = 19;
         const SEPARATOR: &str = " │ ";
         const SEPARATOR_WIDTH: usize = 3;
+        // Static padding buffer to avoid per-item allocation
+        const PAD: &str = "                                                                                                                                                                                                        ";
 
         // Determine whether to show extended view with columns
         let show_extended = available_width >= config.extended_view_width;
@@ -139,7 +141,7 @@ impl FileManager {
                 // Extended mode with columns
                 // Use name_width without prefix, since max_name_len already accounted for prefix_width when subtracting
                 let padding_len = max_name_len.saturating_sub(name_width);
-                let padding = " ".repeat(padding_len);
+                let padding = &PAD[..padding_len.min(PAD.len())];
 
                 // Format size (or spaces for directories and ".."), right-aligned
                 let size_str = if let Some(size) = entry.size {
@@ -166,7 +168,7 @@ impl FileManager {
                 // Normal mode without columns
                 let content_width = attr_width + icon_width + 1 + prefix_width + name_width;
                 let padding_len = available_width.saturating_sub(content_width);
-                let padding = " ".repeat(padding_len);
+                let padding = &PAD[..padding_len.min(PAD.len())];
 
                 lines.push(Line::from(vec![
                     Span::styled(attr, attr_style),
@@ -183,18 +185,18 @@ impl FileManager {
             let name_column_width = available_width.saturating_sub(
                 SEPARATOR_WIDTH + SIZE_COLUMN_WIDTH + SEPARATOR_WIDTH + TIME_COLUMN_WIDTH,
             );
-            let empty_name = " ".repeat(name_column_width);
-            let empty_size = " ".repeat(SIZE_COLUMN_WIDTH);
-            let empty_time = " ".repeat(TIME_COLUMN_WIDTH);
+            let empty_name = &PAD[..name_column_width.min(PAD.len())];
+            let empty_size = &PAD[..SIZE_COLUMN_WIDTH.min(PAD.len())];
+            let empty_time = &PAD[..TIME_COLUMN_WIDTH.min(PAD.len())];
             let separator_style = Style::default().fg(theme.disabled);
 
             for _ in lines.len()..height {
                 lines.push(Line::from(vec![
-                    Span::raw(empty_name.clone()),
+                    Span::raw(empty_name),
                     Span::styled(SEPARATOR, separator_style),
-                    Span::raw(empty_size.clone()),
+                    Span::raw(empty_size),
                     Span::styled(SEPARATOR, separator_style),
-                    Span::raw(empty_time.clone()),
+                    Span::raw(empty_time),
                 ]));
             }
         }
