@@ -25,9 +25,6 @@ use termide_theme::Theme;
 
 pub use rendering::format_bytes;
 
-/// Height of a single operation card (including border)
-pub const CARD_HEIGHT: u16 = 9;
-
 /// Lightweight snapshot of an operation for rendering.
 /// Copied from ActiveOperation to avoid borrowing issues.
 #[derive(Debug, Clone)]
@@ -57,6 +54,16 @@ impl OperationSnapshot {
             started_at: op.started_at,
             speed: op.speed_tracker.speed(),
         }
+    }
+
+    /// Card height for this operation based on its type and state.
+    pub fn card_height(&self) -> u16 {
+        let has_dest = !self.dest.is_empty();
+        let has_data = !self.is_scanning && self.op_type.has_data_progress();
+        // Content lines: header + bar + source = 3 (always)
+        //   + dest (if present) + files (always) + data + speed (if has_data)
+        let content_lines: u16 = 3 + has_dest as u16 + 1 + if has_data { 2 } else { 0 };
+        content_lines + 2 // + top/bottom border
     }
 }
 
@@ -163,9 +170,9 @@ impl OperationsPanel {
 
     /// Ensure cursor is visible after moving down
     fn ensure_cursor_visible(&mut self, total: usize) {
-        // Calculate viewport height in terms of cards
-        let viewport_height = self.last_area.height.saturating_sub(2); // minus borders
-        let visible_cards = (viewport_height / CARD_HEIGHT) as usize;
+        let viewport_height = self.last_area.height;
+        // Count how many cards fit starting from scroll_offset
+        let visible_cards = self.count_visible_cards(viewport_height);
 
         if visible_cards == 0 {
             return;
@@ -179,6 +186,21 @@ impl OperationsPanel {
         // Clamp scroll offset to valid range
         let max_scroll = total.saturating_sub(visible_cards);
         self.scroll_offset = self.scroll_offset.min(max_scroll);
+    }
+
+    /// Count how many operations fit in the given viewport height starting from scroll_offset.
+    fn count_visible_cards(&self, viewport_height: u16) -> usize {
+        let mut y = 0u16;
+        let mut count = 0;
+        for op in self.operations.iter().skip(self.scroll_offset) {
+            let h = op.card_height();
+            if y + h > viewport_height {
+                break;
+            }
+            y += h;
+            count += 1;
+        }
+        count
     }
 
     /// Ensure cursor is visible after moving up

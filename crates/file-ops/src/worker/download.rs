@@ -63,11 +63,15 @@ impl DownloadWorker {
 
     /// Check if a remote path is a directory by trying to list it.
     /// Returns true if listing succeeds (meaning it's a directory).
-    fn is_remote_directory(&self, path: &VfsPath) -> bool {
+    /// Returns false if cancelled or not a directory.
+    fn is_remote_directory(&self, path: &VfsPath, control: &OperationControl) -> bool {
         // Try to list the path - if it succeeds, it's a directory
         let operation = self.vfs_manager.list_dir(path);
 
         loop {
+            if control.is_cancelled() {
+                return false;
+            }
             if let Some(result) = operation.try_recv() {
                 return result.is_ok();
             }
@@ -85,7 +89,7 @@ impl OperationWorker for DownloadWorker {
         // For single source (file or directory), use optimized single-file path
         // which properly proxies VFS progress (real file counts, pause, cancel)
         if self.sources.len() == 1 {
-            let is_dir = self.is_remote_directory(&self.sources[0]);
+            let is_dir = self.is_remote_directory(&self.sources[0], control);
             if is_dir {
                 // Notify UI about scanning phase before VFS starts internal scan
                 let _ = progress_tx.send(OperationProgress::scanning());

@@ -1217,7 +1217,15 @@ impl App {
 
         if total == 1 {
             if success == 1 {
-                self.state.set_info(format!("Файл {}", action_name.0));
+                // Capitalize the localized action word (e.g., "copied" → "Copied")
+                let word = action_name.0;
+                let capitalized: String = word
+                    .chars()
+                    .take(1)
+                    .flat_map(|c| c.to_uppercase())
+                    .chain(word.chars().skip(1))
+                    .collect();
+                self.state.set_info(capitalized);
             } else {
                 let error_msg = match operation.operation_type {
                     BatchOperationType::Copy => t.batch_result_error_copy(),

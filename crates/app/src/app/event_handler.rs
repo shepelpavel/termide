@@ -11,6 +11,7 @@ use anyhow::Result;
 use std::path::PathBuf;
 
 use super::App;
+use crate::state::PendingAction;
 use crate::PanelExt;
 use termide_core::{GitOperationType, PanelEvent};
 use termide_i18n as i18n;
@@ -1206,8 +1207,23 @@ impl App {
             }
         }
 
-        // Update batch tracking paused state
+        // Update batch tracking paused state (UI card)
         self.state.set_batch_paused(!is_paused);
+
+        // Also sync pause state into the pending BatchOperation so that
+        // process_batch_operation() won't start the next sub-op while paused.
+        if self.state.batch_tracking_id == Some(op_id) {
+            if let Some(PendingAction::ContinueBatchOperation { ref mut operation }) =
+                self.state.pending_action
+            {
+                operation.pause_state = if !is_paused {
+                    termide_state::PauseState::Paused
+                } else {
+                    termide_state::PauseState::Running
+                };
+            }
+        }
+
         self.state.needs_redraw = true;
     }
 

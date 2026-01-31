@@ -10,7 +10,7 @@ use ratatui::{
 
 use termide_ui::path_utils::truncate_left;
 
-use crate::{OperationSnapshot, CARD_HEIGHT};
+use crate::OperationSnapshot;
 
 /// Format bytes to human-readable string
 pub fn format_bytes(bytes: u64) -> String {
@@ -68,13 +68,17 @@ fn render_snapshot_card(
     let inner = block.inner(area);
     block.render(area, buf);
 
-    if inner.height < 7 || inner.width < 10 {
+    if inner.height < 4 || inner.width < 10 {
         return; // Not enough space to render
     }
 
     let content_width = inner.width as usize;
     let is_scanning = op.is_scanning;
+    let has_data = !is_scanning && op.op_type.has_data_progress();
     let t = termide_i18n::t();
+
+    // Running y offset for compact layout
+    let mut y = inner.y;
 
     // Line 1: [⏸] Type                    45%
     let pause_icon = if op.is_paused { "\u{23F8} " } else { "" }; // ⏸
@@ -97,7 +101,8 @@ fn render_snapshot_card(
         Span::raw(&SPACES[..padding.min(SPACES.len())]),
         Span::styled(&percent, Style::default().fg(accent_color)),
     ]);
-    buf.set_line(inner.x, inner.y, &header_line, inner.width);
+    buf.set_line(inner.x, y, &header_line, inner.width);
+    y += 1;
 
     // Line 2: Progress bar
     let bar_width = content_width;
@@ -115,63 +120,66 @@ fn render_snapshot_card(
         Span::styled(filled_part, Style::default().fg(bar_color)),
         Span::styled(empty_part, Style::default().fg(bar_color)),
     ]);
-    buf.set_line(inner.x, inner.y + 1, &bar_line, inner.width);
+    buf.set_line(inner.x, y, &bar_line, inner.width);
+    y += 1;
 
     // Line 3: Source path (truncate left)
     let source = truncate_left(&op.source, content_width);
     buf.set_line(
         inner.x,
-        inner.y + 2,
+        y,
         &Line::from(Span::styled(source, Style::default().fg(disabled_color))),
         inner.width,
     );
+    y += 1;
 
-    // Line 4: Destination path (truncate left) - skip for Delete operations
+    // Line 4: Destination path (truncate left) — only if present
     if !op.dest.is_empty() {
         let dest = truncate_left(&op.dest, content_width);
         buf.set_line(
             inner.x,
-            inner.y + 3,
+            y,
             &Line::from(Span::styled(dest, Style::default().fg(disabled_color))),
             inner.width,
         );
+        y += 1;
     }
 
     // Line 5: Files count (during scanning show "Found: N")
     let files = if is_scanning {
-        // During scanning, total_files = files discovered so far,
-        // files_completed stays 0 (no files transferred yet)
         t.op_found_count(op.progress.total_files)
     } else {
         t.op_files_progress(op.progress.files_completed, op.progress.total_files)
     };
     buf.set_line(
         inner.x,
-        inner.y + 4,
+        y,
         &Line::from(Span::styled(files, Style::default().fg(fg_color))),
         inner.width,
     );
+    y += 1;
 
-    // Line 6: Data (hide for delete operations and scanning phase)
-    if !is_scanning && op.op_type.has_data_progress() {
+    // Line 6: Data (only for transfer operations, not during scanning)
+    if has_data {
         let data = t.op_data_progress(
             &format_bytes(op.progress.bytes_transferred),
             &format_bytes(op.progress.total_bytes),
         );
         buf.set_line(
             inner.x,
-            inner.y + 5,
+            y,
             &Line::from(Span::styled(data, Style::default().fg(fg_color))),
             inner.width,
         );
+        y += 1;
     }
 
-    // Line 7: Speed (hide for delete operations and scanning phase)
-    if !is_scanning && op.op_type.has_data_progress() {
+    // Line 7: Speed (only for transfer operations, not during scanning)
+    if has_data {
         let speed = t.op_speed_rate(&format_bytes(op.speed as u64));
         buf.set_line(
             inner.x,
-            inner.y + 6,
+            y,
             &Line::from(Span::styled(speed, Style::default().fg(fg_color))),
             inner.width,
         );
@@ -203,18 +211,20 @@ pub fn render_operations_panel_snapshots(
         return card_areas;
     }
 
-    let visible_cards = (area.height / CARD_HEIGHT) as usize;
+    // Calculate how many cards fit by summing their individual heights
+    let mut y_offset: u16 = 0;
 
     for (i, op) in operations.iter().skip(scroll_offset).enumerate() {
-        if (i as u16) * CARD_HEIGHT >= area.height {
+        let card_h = op.card_height();
+        if y_offset + card_h > area.height {
             break;
         }
 
         let card_area = Rect {
             x: area.x,
-            y: area.y + (i as u16) * CARD_HEIGHT,
+            y: area.y + y_offset,
             width: area.width,
-            height: CARD_HEIGHT.min(area.height - (i as u16) * CARD_HEIGHT),
+            height: card_h.min(area.height - y_offset),
         };
 
         let op_index = scroll_offset + i;
@@ -231,7 +241,10 @@ pub fn render_operations_panel_snapshots(
         );
 
         card_areas.push((op_index, card_area));
+        y_offset += card_h;
     }
+
+    let visible_cards = card_areas.len();
 
     // Render scroll indicators if needed
     if scroll_offset > 0 {

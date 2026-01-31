@@ -533,10 +533,10 @@ impl OperationManager {
                 _ => {}
             }
 
-            // Send resolution to waiting worker
+            // Send resolution to waiting worker.
+            // Keep the sender alive for subsequent conflicts in the same operation.
             if let Some(ref tx) = op.pending_conflict_resolution {
                 if tx.send(resolution).is_ok() {
-                    op.pending_conflict_resolution = None;
                     return true;
                 }
             }

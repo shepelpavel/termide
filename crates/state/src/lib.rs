@@ -681,9 +681,9 @@ impl OperationProgress {
     /// Calculate completion percentage (0-100)
     pub fn percent(&self) -> u8 {
         if self.total_bytes > 0 {
-            ((self.bytes_transferred * 100) / self.total_bytes) as u8
+            (((self.bytes_transferred * 100) / self.total_bytes) as u8).min(100)
         } else if self.total_files > 0 {
-            ((self.files_completed * 100) / self.total_files) as u8
+            (((self.files_completed * 100) / self.total_files) as u8).min(100)
         } else {
             0
         }

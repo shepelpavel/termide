@@ -255,9 +255,14 @@ impl OperationWorker for UploadWorker {
                     files_completed += 1;
                     bytes_transferred += file_size;
 
-                    // If move, delete source
+                    // If move, delete source (file or directory)
                     if self.is_move {
-                        if let Err(e) = fs::remove_file(source) {
+                        let delete_result = if source.is_dir() {
+                            fs::remove_dir_all(source)
+                        } else {
+                            fs::remove_file(source)
+                        };
+                        if let Err(e) = delete_result {
                             // Log but don't fail the batch
                             failed_files
                                 .push(format!("{}: failed to delete source: {}", file_name, e));
@@ -325,9 +330,14 @@ impl UploadWorker {
                 let _ = progress_tx.send(progress);
             });
 
-        // Handle move cleanup for single file
+        // Handle move cleanup for single file or directory
         if self.is_move && result.is_success() {
-            if let Err(e) = fs::remove_file(source) {
+            let delete_result = if source.is_dir() {
+                fs::remove_dir_all(source)
+            } else {
+                fs::remove_file(source)
+            };
+            if let Err(e) = delete_result {
                 return OperationResult::Failed(format!(
                     "Upload succeeded but failed to delete source: {}",
                     e

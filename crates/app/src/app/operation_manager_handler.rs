@@ -37,27 +37,37 @@ impl App {
                     let is_batch = self.state.batch_sub_operation_id == Some(id)
                         && self.state.batch_tracking_id.is_some();
                     if let Some(op) = self.state.active_operations.get_mut(&tracking_id) {
-                        op.progress.bytes_transferred = progress.bytes_transferred;
-                        op.progress.total_bytes = progress.total_bytes;
-                        if !is_batch {
-                            op.progress.files_completed = progress.files_completed;
-                            if progress.total_files > 0 {
-                                op.progress.total_files = progress.total_files;
+                        if is_batch {
+                            // For batch: add offset from previously completed sub-ops
+                            // so bytes don't reset to 0 when a new sub-op starts.
+                            op.progress.bytes_transferred =
+                                op.batch_bytes_offset + progress.bytes_transferred;
+                            // Track current sub-op's total for offset shift on completion
+                            op.batch_current_file_total = progress.total_bytes;
+                            // Update total_bytes only if the accumulated value is larger
+                            let accumulated_total = op.batch_bytes_offset + progress.total_bytes;
+                            if accumulated_total > op.progress.total_bytes {
+                                op.progress.total_bytes = accumulated_total;
                             }
-                        } else {
-                            // For batch sub-operations: update file counts only when
-                            // the sub-op reports larger values (e.g., folder scanning
-                            // discovered many files inside a directory). This prevents
-                            // a single-file sub-op (total=1) from overwriting batch
-                            // total (e.g., 8), while letting folder scans update.
+                            // Update file counts only when the sub-op reports larger
+                            // values (e.g., folder scanning discovered many files).
                             if progress.total_files > op.progress.total_files {
                                 op.progress.total_files = progress.total_files;
                             }
                             if progress.files_completed > op.progress.files_completed {
                                 op.progress.files_completed = progress.files_completed;
                             }
+                        } else {
+                            op.progress.bytes_transferred = progress.bytes_transferred;
+                            op.progress.total_bytes = progress.total_bytes;
+                            op.progress.files_completed = progress.files_completed;
+                            if progress.total_files > 0 {
+                                op.progress.total_files = progress.total_files;
+                            }
                         }
-                        op.speed_tracker.update(progress.bytes_transferred);
+                        // Use accumulated bytes for speed tracking so it doesn't
+                        // reset between batch sub-operations.
+                        op.speed_tracker.update(op.progress.bytes_transferred);
                         op.is_scanning = matches!(progress.phase, OperationPhase::Scanning);
 
                         // Update op_type for cross-protocol (remote→remote) transfers
@@ -293,10 +303,26 @@ impl App {
 
                             // Continue batch operation if pending
                             if has_batch {
+                                // Accumulate bytes from completed sub-op into offset
+                                if let Some(batch_id) = self.state.batch_tracking_id {
+                                    if let Some(op) =
+                                        self.state.active_operations.get_mut(&batch_id)
+                                    {
+                                        op.batch_bytes_offset = op.progress.bytes_transferred;
+                                    }
+                                }
+
                                 if let Some(PendingAction::ContinueBatchOperation {
                                     mut operation,
                                 }) = self.state.pending_action.take()
                                 {
+                                    // Track completed destination for cancel cleanup
+                                    if let Some(source) = operation.current_source() {
+                                        let filename =
+                                            source.file_name().unwrap_or_default().to_os_string();
+                                        let dest_path = operation.destination.join(filename);
+                                        operation.add_completed_destination(dest_path);
+                                    }
                                     operation.increment_success();
                                     operation.advance();
                                     // Update file count immediately so the card reflects completion
@@ -340,10 +366,30 @@ impl App {
 
                             // Continue batch operation if pending
                             if has_batch {
+                                // Accumulate bytes from completed sub-op into offset
+                                if let Some(batch_id) = self.state.batch_tracking_id {
+                                    if let Some(op) =
+                                        self.state.active_operations.get_mut(&batch_id)
+                                    {
+                                        op.batch_bytes_offset = op.progress.bytes_transferred;
+                                    }
+                                }
+
                                 if let Some(PendingAction::ContinueBatchOperation {
                                     mut operation,
                                 }) = self.state.pending_action.take()
                                 {
+                                    // Track completed destination for cancel cleanup
+                                    if completed > 0 {
+                                        if let Some(source) = operation.current_source() {
+                                            let filename = source
+                                                .file_name()
+                                                .unwrap_or_default()
+                                                .to_os_string();
+                                            let dest_path = operation.destination.join(filename);
+                                            operation.add_completed_destination(dest_path);
+                                        }
+                                    }
                                     // Add completed count to batch
                                     for _ in 0..completed {
                                         operation.increment_success();
@@ -402,6 +448,15 @@ impl App {
 
                             // Continue batch operation if pending
                             if has_batch {
+                                // Accumulate bytes from completed sub-op into offset
+                                if let Some(batch_id) = self.state.batch_tracking_id {
+                                    if let Some(op) =
+                                        self.state.active_operations.get_mut(&batch_id)
+                                    {
+                                        op.batch_bytes_offset = op.progress.bytes_transferred;
+                                    }
+                                }
+
                                 if let Some(PendingAction::ContinueBatchOperation {
                                     mut operation,
                                 }) = self.state.pending_action.take()

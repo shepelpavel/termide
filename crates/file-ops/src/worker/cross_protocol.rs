@@ -210,11 +210,19 @@ impl CrossProtocolWorker {
             _ => return OperationResult::Failed("Destination must be remote".to_string()),
         };
 
-        // Create temp directory for intermediate file
+        // Create temp directory for intermediate file.
+        // Use a RAII guard to ensure cleanup on panic or early return.
         let temp_dir = std::env::temp_dir().join(format!("termide_xfer_{}", std::process::id()));
         if let Err(e) = std::fs::create_dir_all(&temp_dir) {
             return OperationResult::Failed(format!("Failed to create temp directory: {}", e));
         }
+        struct TempDirGuard(PathBuf);
+        impl Drop for TempDirGuard {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        let _temp_guard = TempDirGuard(temp_dir.clone());
 
         let file_name = source_path
             .file_name()
@@ -239,13 +247,11 @@ impl CrossProtocolWorker {
 
         let download_result = download_worker.execute(control, progress_tx);
         if !download_result.is_success() {
-            let _ = std::fs::remove_dir_all(&temp_dir);
-            return download_result;
+            return download_result; // _temp_guard cleans up on drop
         }
 
         if control.is_cancelled() {
-            let _ = std::fs::remove_dir_all(&temp_dir);
-            return OperationResult::Cancelled;
+            return OperationResult::Cancelled; // _temp_guard cleans up on drop
         }
 
         // Phase 2: Upload from temp
@@ -265,8 +271,7 @@ impl CrossProtocolWorker {
 
         let upload_result = upload_worker.execute(control, progress_tx);
 
-        // Clean up temp file
-        let _ = std::fs::remove_dir_all(&temp_dir);
+        // _temp_guard will clean up temp dir on drop
 
         if !upload_result.is_success() {
             return upload_result;

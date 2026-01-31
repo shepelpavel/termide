@@ -758,8 +758,8 @@ impl AppState {
         total_files: usize,
         total_bytes: u64,
     ) -> termide_file_ops::OperationId {
-        // Generate synthetic ID
-        self.batch_id_counter += 1;
+        // Generate synthetic ID (wraps around if exhausted, which is practically impossible)
+        self.batch_id_counter = self.batch_id_counter.wrapping_add(1);
         let batch_id = termide_file_ops::OperationId::new(self.batch_id_counter);
 
         // Create tracked operation
