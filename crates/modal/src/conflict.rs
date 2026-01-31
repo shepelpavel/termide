@@ -39,17 +39,9 @@ pub enum ConflictResolution {
 #[derive(Debug)]
 pub struct ConflictModal {
     title: String,
-    #[allow(dead_code)]
-    source_name: String,
     dest_name: String,
     is_directory: bool,
     remaining_items: usize, // Number of items remaining in queue (excluding current)
-    /// Current conflict number (1-indexed) - used in title construction.
-    #[allow(dead_code)]
-    current_conflict: usize,
-    /// Total number of conflicts detected - used in title construction.
-    #[allow(dead_code)]
-    total_conflicts: usize,
     selected: usize,
     button_areas: Vec<Rect>,
 }
@@ -75,11 +67,6 @@ impl ConflictModal {
         current_conflict: usize,
         total_conflicts: usize,
     ) -> Self {
-        let source_name = source
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("?")
-            .to_string();
         let dest_name = destination
             .file_name()
             .and_then(|n| n.to_str())
@@ -105,12 +92,9 @@ impl ConflictModal {
 
         Self {
             title,
-            source_name,
             dest_name,
             is_directory,
             remaining_items,
-            current_conflict,
-            total_conflicts,
             selected: 0,
             button_areas: Vec::new(),
         }

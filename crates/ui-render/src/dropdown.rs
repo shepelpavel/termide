@@ -152,7 +152,10 @@ impl<'a> Dropdown<'a> {
                 // -6: borders(2) + leading space(1) + suffix " ▶ "(3)
                 let padding_len = (width as usize).saturating_sub(label_width + 6);
                 if padding_len > 0 {
-                    spans.push(Span::styled(" ".repeat(padding_len), base_style));
+                    // Use a static buffer to avoid per-item allocation
+                    const SPACES: &str = "                                                                                                                                ";
+                    let pad = &SPACES[..padding_len.min(SPACES.len())];
+                    spans.push(Span::styled(pad, base_style));
                 }
 
                 if item.has_submenu {

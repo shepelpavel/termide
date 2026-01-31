@@ -188,28 +188,13 @@ impl App {
         &mut self,
         mouse: crossterm::event::MouseEvent,
     ) -> Result<()> {
-        let panel_rects = self.calculate_panel_rects();
-
-        for (group_idx, _panel_idx, rect, is_expanded) in panel_rects {
-            // Skip collapsed panels
-            if !is_expanded {
-                continue;
-            }
-
-            // Check if mouse is within this panel's area
-            if mouse.column >= rect.x
-                && mouse.column < rect.x + rect.width
-                && mouse.row >= rect.y
-                && mouse.row < rect.y + rect.height
-            {
-                if let Some(group) = self.layout_manager.panel_groups.get_mut(group_idx) {
-                    if let Some(panel) = group.expanded_panel_mut() {
-                        // handle_mouse returns Vec<PanelEvent>
-                        let events = panel.handle_mouse(mouse, rect);
-                        self.process_panel_events(events)?;
-                    }
+        if let Some((group_idx, rect)) = self.find_expanded_panel_group_at(mouse.column, mouse.row)
+        {
+            if let Some(group) = self.layout_manager.panel_groups.get_mut(group_idx) {
+                if let Some(panel) = group.expanded_panel_mut() {
+                    let events = panel.handle_mouse(mouse, rect);
+                    self.process_panel_events(events)?;
                 }
-                break;
             }
         }
 
@@ -218,14 +203,10 @@ impl App {
 
     /// Get active panel area
     fn get_active_panel_area(&self) -> Rect {
-        // Use calculate_panel_rects() to get all panel areas with proper layout calculation
-        let panel_rects = self.calculate_panel_rects();
-
-        // Find the active panel based on current focus
         let focused_group_idx = self.layout_manager.focus;
 
-        // Find expanded panel in the focused group
-        for (group_idx, _panel_idx, rect, is_expanded) in panel_rects {
+        // Find expanded panel rect in the focused group
+        for (group_idx, _panel_idx, rect, is_expanded) in self.calculate_panel_rects() {
             if group_idx == focused_group_idx && is_expanded {
                 return rect;
             }
@@ -893,6 +874,20 @@ impl App {
         Ok(())
     }
 
+    /// Find the expanded panel group at the given screen coordinates.
+    /// Returns `(group_idx, rect)` if an expanded panel contains the point.
+    fn find_expanded_panel_group_at(&self, x: u16, y: u16) -> Option<(usize, Rect)> {
+        for (group_idx, _panel_idx, rect, is_expanded) in self.calculate_panel_rects() {
+            if !is_expanded {
+                continue;
+            }
+            if x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height {
+                return Some((group_idx, rect));
+            }
+        }
+        None
+    }
+
     /// Calculate panel rectangles for mouse hit testing
     /// Returns Vec<(group_idx, panel_idx, rect, is_expanded)>
     fn calculate_panel_rects(&self) -> Vec<(usize, usize, Rect, bool)> {
@@ -997,27 +992,13 @@ impl App {
         mouse: crossterm::event::MouseEvent,
         delta: i32,
     ) -> Result<()> {
-        let panel_rects = self.calculate_panel_rects();
-
-        for (group_idx, _panel_idx, rect, is_expanded) in panel_rects {
-            // Skip collapsed panels
-            if !is_expanded {
-                continue;
-            }
-
-            // Check if mouse is within this panel's area
-            if mouse.column >= rect.x
-                && mouse.column < rect.x + rect.width
-                && mouse.row >= rect.y
-                && mouse.row < rect.y + rect.height
-            {
-                if let Some(group) = self.layout_manager.panel_groups.get_mut(group_idx) {
-                    if let Some(panel) = group.expanded_panel_mut() {
-                        let events = panel.handle_scroll(delta, rect);
-                        self.process_panel_events(events)?;
-                    }
+        if let Some((group_idx, rect)) = self.find_expanded_panel_group_at(mouse.column, mouse.row)
+        {
+            if let Some(group) = self.layout_manager.panel_groups.get_mut(group_idx) {
+                if let Some(panel) = group.expanded_panel_mut() {
+                    let events = panel.handle_scroll(delta, rect);
+                    self.process_panel_events(events)?;
                 }
-                break;
             }
         }
 

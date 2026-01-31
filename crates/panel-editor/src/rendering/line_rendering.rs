@@ -264,11 +264,13 @@ fn render_line_regular<H: LineHighlighter>(
     theme: &Theme,
 ) {
     // Get syntax highlighting segments
+    let no_syntax_segment;
     let segments = if syntax_highlighting_enabled && highlight_cache.has_syntax() {
         highlight_cache.get_line_segments(line_idx, line_text)
     } else {
-        // No syntax highlighting - use single segment
-        &[(line_text.to_string(), style)][..]
+        // No syntax highlighting - use single segment (avoid allocation)
+        no_syntax_segment = [(line_text.to_string(), style)];
+        &no_syntax_segment[..]
     };
 
     // Render segments with horizontal scrolling
@@ -354,10 +356,12 @@ fn render_line_with_inline_diff<H: LineHighlighter>(
         .collect();
 
     // Get syntax highlighting for the current text
+    let no_syntax_seg;
     let syntax_segments = if syntax_highlighting_enabled && highlight_cache.has_syntax() {
         highlight_cache.get_line_segments(line_idx, &current_text)
     } else {
-        &[(current_text.clone(), style)][..]
+        no_syntax_seg = [(current_text, style)];
+        &no_syntax_seg[..]
     };
 
     // Build a map of buffer position -> syntax style
@@ -661,7 +665,9 @@ fn render_diagnostic_continuation_row(
         return String::new();
     }
 
-    format!("{}{}", " ".repeat(continuation_indent), msg_part)
+    const SPACES: &str = "                                                                                                                                ";
+    let indent = &SPACES[..continuation_indent.min(SPACES.len())];
+    format!("{}{}", indent, msg_part)
 }
 
 /// Get a part of message starting at char_offset, fitting within max_width.
@@ -670,8 +676,13 @@ fn get_message_part(message: &str, char_offset: usize, max_width: usize) -> Stri
         return String::new();
     }
 
-    // Skip to char_offset
-    let remaining: String = message.chars().skip(char_offset).collect();
+    // Skip to char_offset using byte index (avoids allocating a String)
+    let byte_start = message
+        .char_indices()
+        .nth(char_offset)
+        .map(|(i, _)| i)
+        .unwrap_or(message.len());
+    let remaining = &message[byte_start..];
 
     if remaining.is_empty() {
         return String::new();
