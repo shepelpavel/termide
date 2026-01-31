@@ -62,11 +62,13 @@ impl GitStatusPanel {
         // === TOP ZONE: Selectors ===
         self.selector_y = y;
 
+        let t = termide_i18n::t();
+
         let repo_name = self
             .repo_manager
             .current()
             .map(git::get_repo_name)
-            .unwrap_or_else(|| "No repo".to_string());
+            .unwrap_or_else(|| t.git_no_repo().to_string());
         let repo_focused = self.current_section == Section::RepoSelector && is_focused;
         let repo_selector =
             InlineSelector::new(&repo_name, self.repo_dropdown_open, repo_focused, &theme);
@@ -75,7 +77,7 @@ impl GitStatusPanel {
         let branch_name = self
             .branch
             .clone()
-            .unwrap_or_else(|| "(detached)".to_string());
+            .unwrap_or_else(|| t.git_branch_detached().to_string());
         let branch_focused = self.current_section == Section::BranchSelector && is_focused;
         let branch_x = content_area.x + repo_width + 2;
         self.branch_selector_x = branch_x;
@@ -114,9 +116,14 @@ impl GitStatusPanel {
 
             if vline == unstaged_header_line {
                 // Unstaged header
-                let title = format!("Unstaged ({})", self.unstaged_files.len());
+                let title = format!(
+                    "{} ({})",
+                    t.git_unstaged_header(),
+                    self.unstaged_files.len()
+                );
+                let stage_all_btn = format!("[{}]", t.git_stage_all_btn());
                 let btn = if !self.unstaged_files.is_empty() {
-                    Some("[Stage all]")
+                    Some(stage_all_btn.as_str())
                 } else {
                     None
                 };
@@ -147,9 +154,10 @@ impl GitStatusPanel {
                 );
             } else if vline == staged_header_line {
                 // Staged header
-                let title = format!("Staged ({})", self.staged_files.len());
+                let title = format!("{} ({})", t.git_staged_header(), self.staged_files.len());
+                let unstage_all_btn = format!("[{}]", t.git_unstage_all_btn());
                 let btn = if !self.staged_files.is_empty() {
-                    Some("[Unstage all]")
+                    Some(unstage_all_btn.as_str())
                 } else {
                     None
                 };
@@ -210,9 +218,14 @@ impl GitStatusPanel {
             && !staged_sticky;
 
         if unstaged_sticky {
-            let title = format!("Unstaged ({})", self.unstaged_files.len());
+            let title = format!(
+                "{} ({})",
+                t.git_unstaged_header(),
+                self.unstaged_files.len()
+            );
+            let stage_all_btn = format!("[{}]", t.git_stage_all_btn());
             let btn = if !self.unstaged_files.is_empty() {
-                Some("[Stage all]")
+                Some(stage_all_btn.as_str())
             } else {
                 None
             };
@@ -230,9 +243,10 @@ impl GitStatusPanel {
         }
 
         if staged_sticky {
-            let title = format!("Staged ({})", self.staged_files.len());
+            let title = format!("{} ({})", t.git_staged_header(), self.staged_files.len());
+            let unstage_all_btn = format!("[{}]", t.git_unstage_all_btn());
             let btn = if !self.staged_files.is_empty() {
-                Some("[Unstage all]")
+                Some(unstage_all_btn.as_str())
             } else {
                 None
             };

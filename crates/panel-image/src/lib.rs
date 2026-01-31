@@ -39,10 +39,11 @@ pub struct ImagePanel {
 impl ImagePanel {
     /// Create a new image panel for the given file path.
     pub fn new(path: PathBuf) -> Result<Self> {
+        let t = termide_i18n::t();
         let title = path
             .file_name()
             .and_then(|n| n.to_str())
-            .unwrap_or("Image")
+            .unwrap_or(t.panel_image())
             .to_string();
 
         let mut panel = Self {
@@ -70,10 +71,11 @@ impl ImagePanel {
     /// Update the displayed image to a new path.
     pub fn set_image(&mut self, path: PathBuf) {
         self.file_path = path.clone();
+        let t = termide_i18n::t();
         self.title = path
             .file_name()
             .and_then(|n| n.to_str())
-            .unwrap_or("Image")
+            .unwrap_or(t.panel_image())
             .to_string();
         self.load_image(&path);
     }
@@ -85,7 +87,8 @@ impl ImagePanel {
             match Picker::from_query_stdio() {
                 Ok(picker) => self.picker = Some(picker),
                 Err(e) => {
-                    self.error = Some(format!("Graphics protocol not available: {}", e));
+                    let t = termide_i18n::t();
+                    self.error = Some(t.image_error_fmt(&e.to_string()));
                     return;
                 }
             }
@@ -100,7 +103,8 @@ impl ImagePanel {
                 }
             }
             Err(e) => {
-                self.error = Some(format!("Failed to load image: {}", e));
+                let t = termide_i18n::t();
+                self.error = Some(t.image_error_fmt(&e.to_string()));
             }
         }
     }

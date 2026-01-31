@@ -602,12 +602,14 @@ impl Panel for GitStatusPanel {
     fn title(&self) -> String {
         use termide_config::constants::spinner_frame;
 
+        let t = termide_i18n::t();
         let repo_name = self
             .repo_manager
             .current()
             .map(git::get_repo_name)
-            .unwrap_or_else(|| "No repo".to_string());
-        let branch = self.branch.as_deref().unwrap_or("(detached)");
+            .unwrap_or_else(|| t.git_no_repo().to_string());
+        let detached = t.git_branch_detached().to_string();
+        let branch = self.branch.as_deref().unwrap_or(&detached);
 
         let uncommitted = self.unstaged_files.len() + self.staged_files.len();
         let status = format!("*{} ↑{} ↓{}", uncommitted, self.ahead, self.behind);
@@ -615,8 +617,12 @@ impl Panel for GitStatusPanel {
         if self.is_loading {
             let spinner = spinner_frame();
             format!(
-                "{} {} ({}) {} (loading)",
-                spinner, repo_name, branch, status
+                "{} {} ({}) {} ({})",
+                spinner,
+                repo_name,
+                branch,
+                status,
+                t.git_status_loading()
             )
         } else {
             format!("{} ({}) {}", repo_name, branch, status)
@@ -737,7 +743,7 @@ impl Panel for GitStatusPanel {
         if matches_binding_or_default(&kb.refresh, &key, KeyCode::Char('r'), KeyModifiers::CONTROL)
         {
             self.refresh();
-            self.status_message = Some("Refreshed".to_string());
+            self.status_message = Some(termide_i18n::t().git_refreshed().to_string());
             return vec![];
         }
 

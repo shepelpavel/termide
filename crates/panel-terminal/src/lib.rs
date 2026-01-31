@@ -1661,7 +1661,8 @@ impl Panel for Terminal {
     fn needs_close_confirmation(&self) -> Option<String> {
         // If process is alive and has child processes - request confirmation
         if self.is_alive() && self.has_running_processes() {
-            Some("Kill running processes?".to_string())
+            let t = termide_i18n::t();
+            Some(t.terminal_kill_confirm().to_string())
         } else {
             None
         }

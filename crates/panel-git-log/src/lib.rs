@@ -567,13 +567,14 @@ impl Panel for GitLogPanel {
     }
 
     fn title(&self) -> String {
+        let t = termide_i18n::t();
         let repo_name = self
             .repo_manager
             .current()
             .map(git::get_repo_name)
-            .unwrap_or_else(|| "No repo".to_string());
-        let branch = self.branch.as_deref().unwrap_or("(detached)");
-        format!("Git Log: {} - {}", repo_name, branch)
+            .unwrap_or_else(|| t.git_no_repo().to_string());
+        let branch = self.branch.as_deref().unwrap_or(t.git_branch_detached());
+        t.git_log_title_fmt(&repo_name, branch)
     }
 
     fn prepare_render(&mut self, theme: &Theme, config: &Config) {
@@ -648,14 +649,19 @@ impl Panel for GitLogPanel {
             }
             KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.refresh();
-                self.status_message = Some("Refreshed".to_string());
+                let t = termide_i18n::t();
+                self.status_message = Some(t.git_refreshed().to_string());
             }
             KeyCode::Char('c') | KeyCode::Char('C') => {
                 // Checkout commit (show message for now)
                 if let Some(commit) = self.selected_commit() {
                     if !commit.hash.is_empty() {
-                        self.status_message =
-                            Some(format!("Checkout {} not implemented yet", commit.hash));
+                        let t = termide_i18n::t();
+                        self.status_message = Some(format!(
+                            "Checkout {} {}",
+                            commit.hash,
+                            t.git_checkout_not_impl()
+                        ));
                     }
                 }
             }

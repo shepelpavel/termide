@@ -608,12 +608,17 @@ impl GitDiffPanel {
                     FileStatus::Renamed => "R",
                 };
                 let stats = format!("(+{} -{})", diff.additions, diff.deletions);
-                let staged_marker = if diff.staged { " [staged]" } else { "" };
+                let t = termide_i18n::t();
+                let staged_marker = if diff.staged {
+                    format!(" [{}]", t.git_diff_staged_marker())
+                } else {
+                    String::new()
+                };
 
                 // Format: ─[▼] ~ path (+N -M) [staged] ─────────
                 let title_text = format!(
                     "{} {} {} {}{}",
-                    collapse_btn, status_char, &diff.path, stats, staged_marker
+                    collapse_btn, status_char, &diff.path, stats, &staged_marker
                 );
                 let title_width = title_text.width();
 
@@ -772,17 +777,15 @@ impl Panel for GitDiffPanel {
     }
 
     fn title(&self) -> String {
+        let t = termide_i18n::t();
         let repo_name = git::get_repo_name(&self.repo_path);
         let file_count = self.diffs.len();
         if let Some(ref hash) = self.commit_hash {
             // Show short hash (first 7 characters)
             let short_hash = if hash.len() > 7 { &hash[..7] } else { hash };
-            format!(
-                "Git Diff: {} @ {} ({} files)",
-                repo_name, short_hash, file_count
-            )
+            t.git_diff_title_commit_fmt(&repo_name, short_hash, file_count)
         } else {
-            format!("Git Diff: {} ({} files)", repo_name, file_count)
+            t.git_diff_title_fmt(&repo_name, file_count)
         }
     }
 
@@ -839,7 +842,8 @@ impl Panel for GitDiffPanel {
             // Refresh
             KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.refresh();
-                self.status_message = Some("Refreshed".to_string());
+                let t = termide_i18n::t();
+                self.status_message = Some(t.git_refreshed().to_string());
             }
 
             _ => {}

@@ -97,10 +97,11 @@ impl SeverityFilter {
 
     /// Get display text.
     pub fn display(&self) -> &'static str {
+        let t = termide_i18n::t();
         match self {
-            SeverityFilter::All => "All",
-            SeverityFilter::Errors => "Errors",
-            SeverityFilter::ErrorsAndWarnings => "E+W",
+            SeverityFilter::All => t.diagnostics_filter_all(),
+            SeverityFilter::Errors => t.diagnostics_filter_errors(),
+            SeverityFilter::ErrorsAndWarnings => t.diagnostics_filter_ew(),
         }
     }
 
@@ -343,12 +344,13 @@ impl Panel for DiagnosticsPanel {
     }
 
     fn title(&self) -> String {
+        let t = termide_i18n::t();
         let errors = self.error_count();
         let warnings = self.warning_count();
         if errors > 0 || warnings > 0 {
-            format!("Diagnostics ({} errors, {} warnings)", errors, warnings)
+            t.diagnostics_title_fmt(errors, warnings)
         } else {
-            "Diagnostics".to_string()
+            t.diagnostics_title().to_string()
         }
     }
 
@@ -377,11 +379,11 @@ impl Panel for DiagnosticsPanel {
         // Render header with filter info
         let filtered_len = self.filtered_count();
         if area.height > 1 {
+            let t = termide_i18n::t();
             let header_y = area.top();
             let header_text = format!(
-                " Filter: {} | {} items",
-                self.filter.display(),
-                filtered_len
+                " {}",
+                t.diagnostics_filter_fmt(self.filter.display(), filtered_len)
             );
             let header_style = Style::default().bg(theme.accented_bg).fg(theme.fg);
 
@@ -404,7 +406,8 @@ impl Panel for DiagnosticsPanel {
 
         if filtered_len == 0 {
             // Show "No diagnostics" message
-            let msg = "No diagnostics";
+            let t = termide_i18n::t();
+            let msg = t.diagnostics_no_items();
             let msg_y = content_top + content_height as u16 / 2;
             let msg_x = area.left() + (area.width.saturating_sub(msg.width() as u16)) / 2;
 

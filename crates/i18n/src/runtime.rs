@@ -61,14 +61,6 @@ impl RuntimeTranslation {
 }
 
 impl Translation for RuntimeTranslation {
-    fn fm_copy_files(&self) -> &str {
-        self.get_string("fm_copy_files")
-    }
-
-    fn fm_cut_files(&self) -> &str {
-        self.get_string("fm_cut_files")
-    }
-
     fn fm_paste_confirm(&self, count: usize, mode: &str, dest: &str) -> String {
         let plural = self.pluralize(count, "file");
         self.format(
@@ -82,44 +74,12 @@ impl Translation for RuntimeTranslation {
         )
     }
 
-    fn fm_delete_confirm(&self, count: usize) -> String {
-        let plural = self.pluralize(count, "file");
-        self.format(
-            "fm_delete_confirm",
-            &[("count", &count.to_string()), ("plural", plural)],
-        )
-    }
-
-    fn fm_rename_prompt(&self, old_name: &str) -> String {
-        self.format("fm_rename_prompt", &[("old_name", old_name)])
-    }
-
-    fn fm_create_file_prompt(&self) -> &str {
-        self.get_string("fm_create_file_prompt")
-    }
-
-    fn fm_create_dir_prompt(&self) -> &str {
-        self.get_string("fm_create_dir_prompt")
-    }
-
     fn fm_copy_prompt(&self, name: &str) -> String {
         self.format("fm_copy_prompt", &[("name", name)])
     }
 
     fn fm_move_prompt(&self, name: &str) -> String {
         self.format("fm_move_prompt", &[("name", name)])
-    }
-
-    fn fm_search_prompt(&self) -> &str {
-        self.get_string("fm_search_prompt")
-    }
-
-    fn fm_no_results(&self) -> &str {
-        self.get_string("fm_no_results")
-    }
-
-    fn fm_operation_cancelled(&self) -> &str {
-        self.get_string("fm_operation_cancelled")
     }
 
     fn git_operation_cancelled(&self) -> &str {
@@ -130,32 +90,8 @@ impl Translation for RuntimeTranslation {
         self.get_string("modal_yes")
     }
 
-    fn modal_no(&self) -> &str {
-        self.get_string("modal_no")
-    }
-
     fn modal_ok(&self) -> &str {
         self.get_string("modal_ok")
-    }
-
-    fn modal_cancel(&self) -> &str {
-        self.get_string("modal_cancel")
-    }
-
-    fn panel_file_manager(&self) -> &str {
-        self.get_string("panel_file_manager")
-    }
-
-    fn panel_editor(&self, filename: &str) -> String {
-        self.format("panel_editor", &[("filename", filename)])
-    }
-
-    fn panel_terminal(&self) -> &str {
-        self.get_string("panel_terminal")
-    }
-
-    fn panel_welcome(&self) -> &str {
-        self.get_string("panel_welcome")
     }
 
     fn panel_help(&self) -> &str {
@@ -226,36 +162,8 @@ impl Translation for RuntimeTranslation {
         self.get_string("editor_reload_from_disk")
     }
 
-    fn editor_save_error(&self, error: &str) -> String {
-        self.format("editor_save_error", &[("error", error)])
-    }
-
-    fn editor_saved(&self, path: &str) -> String {
-        self.format("editor_saved", &[("path", path)])
-    }
-
     fn editor_file_opened(&self, filename: &str) -> String {
         self.format("editor_file_opened", &[("filename", filename)])
-    }
-
-    fn editor_search_title(&self) -> &str {
-        self.get_string("editor_search_title")
-    }
-
-    fn editor_search_prompt(&self) -> &str {
-        self.get_string("editor_search_prompt")
-    }
-
-    fn editor_replace_title(&self) -> &str {
-        self.get_string("editor_replace_title")
-    }
-
-    fn editor_replace_prompt(&self) -> &str {
-        self.get_string("editor_replace_prompt")
-    }
-
-    fn editor_replace_with_prompt(&self) -> &str {
-        self.get_string("editor_replace_with_prompt")
     }
 
     fn editor_search_match_info(&self, current: usize, total: usize) -> String {
@@ -312,56 +220,8 @@ impl Translation for RuntimeTranslation {
         self.get_string("connection_timeout_message")
     }
 
-    fn terminal_exit_confirm(&self) -> &str {
-        self.get_string("terminal_exit_confirm")
-    }
-
-    fn terminal_exited(&self, code: i32) -> String {
-        self.format("terminal_exited", &[("code", &code.to_string())])
-    }
-
-    fn git_detected(&self) -> &str {
-        self.get_string("git_detected")
-    }
-
-    fn git_not_found(&self) -> &str {
-        self.get_string("git_not_found")
-    }
-
     fn app_quit_confirm(&self) -> &str {
         self.get_string("app_quit_confirm")
-    }
-
-    fn error_operation_failed(&self, error: &str) -> String {
-        self.format("error_operation_failed", &[("error", error)])
-    }
-
-    fn error_file_exists(&self, path: &str) -> String {
-        self.format("error_file_exists", &[("path", path)])
-    }
-
-    fn error_invalid_path(&self) -> &str {
-        self.get_string("error_invalid_path")
-    }
-
-    fn error_source_eq_dest(&self) -> &str {
-        self.get_string("error_source_eq_dest")
-    }
-
-    fn error_dest_is_subdir(&self) -> &str {
-        self.get_string("error_dest_is_subdir")
-    }
-
-    fn help_title(&self) -> &str {
-        self.get_string("help_title")
-    }
-
-    fn help_app_title(&self) -> &str {
-        self.get_string("help_app_title")
-    }
-
-    fn help_version(&self) -> &str {
-        env!("CARGO_PKG_VERSION")
     }
 
     fn help_global_keys(&self) -> &str {
@@ -380,20 +240,8 @@ impl Translation for RuntimeTranslation {
         self.get_string("help_terminal_keys")
     }
 
-    fn help_git_integration(&self) -> &str {
-        self.get_string("help_git_integration")
-    }
-
-    fn help_clipboard_operations(&self) -> &str {
-        self.get_string("help_clipboard_operations")
-    }
-
     fn help_desc_menu(&self) -> &str {
         self.get_string("help_desc_menu")
-    }
-
-    fn help_desc_panel_menu(&self) -> &str {
-        self.get_string("help_desc_panel_menu")
     }
 
     fn help_desc_quit(&self) -> &str {
@@ -404,16 +252,8 @@ impl Translation for RuntimeTranslation {
         self.get_string("help_desc_help")
     }
 
-    fn help_desc_switch_panel(&self) -> &str {
-        self.get_string("help_desc_switch_panel")
-    }
-
     fn help_desc_close_panel(&self) -> &str {
         self.get_string("help_desc_close_panel")
-    }
-
-    fn help_desc_navigate(&self) -> &str {
-        self.get_string("help_desc_navigate")
     }
 
     fn help_desc_select(&self) -> &str {
@@ -422,14 +262,6 @@ impl Translation for RuntimeTranslation {
 
     fn help_desc_select_all(&self) -> &str {
         self.get_string("help_desc_select_all")
-    }
-
-    fn help_desc_open_file(&self) -> &str {
-        self.get_string("help_desc_open_file")
-    }
-
-    fn help_desc_open_editor(&self) -> &str {
-        self.get_string("help_desc_open_editor")
     }
 
     fn help_desc_new_terminal(&self) -> &str {
@@ -460,10 +292,6 @@ impl Translation for RuntimeTranslation {
         self.get_string("help_desc_create_dir")
     }
 
-    fn help_desc_rename(&self) -> &str {
-        self.get_string("help_desc_rename")
-    }
-
     fn help_desc_copy(&self) -> &str {
         self.get_string("help_desc_copy")
     }
@@ -478,18 +306,6 @@ impl Translation for RuntimeTranslation {
 
     fn help_desc_search(&self) -> &str {
         self.get_string("help_desc_search")
-    }
-
-    fn help_desc_fm_copy_clipboard(&self) -> &str {
-        self.get_string("help_desc_fm_copy_clipboard")
-    }
-
-    fn help_desc_fm_cut_clipboard(&self) -> &str {
-        self.get_string("help_desc_fm_cut_clipboard")
-    }
-
-    fn help_desc_fm_paste_clipboard(&self) -> &str {
-        self.get_string("help_desc_fm_paste_clipboard")
     }
 
     fn help_desc_save(&self) -> &str {
@@ -508,32 +324,12 @@ impl Translation for RuntimeTranslation {
         self.get_string("help_desc_cut_system")
     }
 
-    fn help_desc_paste_ctrl_y(&self) -> &str {
-        self.get_string("help_desc_paste_ctrl_y")
-    }
-
     fn help_desc_undo(&self) -> &str {
         self.get_string("help_desc_undo")
     }
 
     fn help_desc_redo(&self) -> &str {
         self.get_string("help_desc_redo")
-    }
-
-    fn help_desc_git_ignored(&self) -> &str {
-        self.get_string("help_desc_git_ignored")
-    }
-
-    fn help_desc_git_modified(&self) -> &str {
-        self.get_string("help_desc_git_modified")
-    }
-
-    fn help_desc_git_added(&self) -> &str {
-        self.get_string("help_desc_git_added")
-    }
-
-    fn help_desc_git_deleted(&self) -> &str {
-        self.get_string("help_desc_git_deleted")
     }
 
     fn help_section_panels(&self) -> &str {
@@ -784,42 +580,8 @@ impl Translation for RuntimeTranslation {
         self.format("status_file_created", &[("name", name)])
     }
 
-    fn status_error_create_file(&self, error: &str) -> String {
-        self.format("status_error_create_file", &[("error", error)])
-    }
-
     fn status_dir_created(&self, name: &str) -> String {
         self.format("status_dir_created", &[("name", name)])
-    }
-
-    fn status_error_create_dir(&self, error: &str) -> String {
-        self.format("status_error_create_dir", &[("error", error)])
-    }
-
-    fn status_item_deleted(&self) -> &str {
-        self.get_string("status_item_deleted")
-    }
-
-    fn status_error_delete(&self) -> &str {
-        self.get_string("status_error_delete")
-    }
-
-    fn status_items_deleted(&self, count: usize) -> String {
-        let plural = self.pluralize(count, "file");
-        self.format(
-            "status_items_deleted",
-            &[("count", &count.to_string()), ("plural", plural)],
-        )
-    }
-
-    fn status_items_deleted_with_errors(&self, success: usize, errors: usize) -> String {
-        self.format(
-            "status_items_deleted_with_errors",
-            &[
-                ("success", &success.to_string()),
-                ("errors", &errors.to_string()),
-            ],
-        )
     }
 
     fn status_file_saved(&self, name: &str) -> String {
@@ -845,42 +607,8 @@ impl Translation for RuntimeTranslation {
         )
     }
 
-    fn status_item_actioned(&self, name: &str, action: &str) -> String {
-        self.format(
-            "status_item_actioned",
-            &[("name", name), ("action", action)],
-        )
-    }
-
-    fn status_error_action(&self, action: &str, error: &str) -> String {
-        self.format(
-            "status_error_action",
-            &[("action", action), ("error", error)],
-        )
-    }
-
-    fn status_operation_skipped(&self, name: &str) -> String {
-        self.format("status_operation_skipped", &[("name", name)])
-    }
-
     fn status_opening_external(&self, name: &str) -> String {
         self.format("status_opening_external", &[("name", name)])
-    }
-
-    fn action_copied(&self) -> &str {
-        self.get_string("action_copied")
-    }
-
-    fn action_moved(&self) -> &str {
-        self.get_string("action_moved")
-    }
-
-    fn action_copying(&self) -> &str {
-        self.get_string("action_copying")
-    }
-
-    fn action_moving(&self) -> &str {
-        self.get_string("action_moving")
     }
 
     fn modal_copy_single_title(&self, name: &str) -> String {
@@ -929,10 +657,6 @@ impl Translation for RuntimeTranslation {
 
     fn modal_save_as_title(&self) -> &str {
         self.get_string("modal_save_as_title")
-    }
-
-    fn modal_enter_filename(&self) -> &str {
-        self.get_string("modal_enter_filename")
     }
 
     fn modal_copy_single_prompt(&self, name: &str) -> String {
@@ -1055,14 +779,6 @@ impl Translation for RuntimeTranslation {
         self.get_string("bookmarks_add_group")
     }
 
-    fn bookmarks_add_new_group(&self) -> &str {
-        self.get_string("bookmarks_add_new_group")
-    }
-
-    fn bookmarks_ungrouped(&self) -> &str {
-        self.get_string("bookmarks_ungrouped")
-    }
-
     fn tools_files(&self) -> &str {
         self.get_string("tools_files")
     }
@@ -1101,14 +817,6 @@ impl Translation for RuntimeTranslation {
 
     fn options_manage_scripts(&self) -> &str {
         self.get_string("options_manage_scripts")
-    }
-
-    fn git_action_stage(&self) -> &str {
-        self.get_string("git_action_stage")
-    }
-
-    fn git_action_unstage(&self) -> &str {
-        self.get_string("git_action_unstage")
     }
 
     fn git_action_diff(&self) -> &str {
@@ -1230,18 +938,6 @@ impl Translation for RuntimeTranslation {
         self.get_string("git_pull_failed").to_string()
     }
 
-    fn git_output(&self) -> String {
-        self.get_string("git_output").to_string()
-    }
-
-    fn git_error(&self) -> String {
-        self.get_string("git_error").to_string()
-    }
-
-    fn git_status_label(&self) -> String {
-        self.get_string("git_status_label").to_string()
-    }
-
     fn git_completed(&self) -> String {
         self.get_string("git_completed").to_string()
     }
@@ -1258,16 +954,8 @@ impl Translation for RuntimeTranslation {
         self.get_string("preferences_edit")
     }
 
-    fn theme_select_title(&self) -> &str {
-        self.get_string("theme_select_title")
-    }
-
     fn theme_changed(&self, name: &str) -> String {
         self.format("theme_changed", &[("name", name)])
-    }
-
-    fn language_select_title(&self) -> &str {
-        self.get_string("language_select_title")
     }
 
     fn language_changed(&self, name: &str) -> String {
@@ -1300,10 +988,6 @@ impl Translation for RuntimeTranslation {
 
     fn session_moved(&self) -> &str {
         self.get_string("session_moved")
-    }
-
-    fn directory_picker_title(&self) -> &str {
-        self.get_string("directory_picker_title")
     }
 
     fn directory_picker_create(&self) -> &str {
@@ -1414,24 +1098,12 @@ impl Translation for RuntimeTranslation {
         self.get_string("status_readonly")
     }
 
-    fn status_cwd(&self) -> &str {
-        self.get_string("status_cwd")
-    }
-
-    fn status_shell(&self) -> &str {
-        self.get_string("status_shell")
-    }
-
     fn status_terminal(&self) -> &str {
         self.get_string("status_terminal")
     }
 
     fn status_layout(&self) -> &str {
         self.get_string("status_layout")
-    }
-
-    fn status_panel(&self) -> &str {
-        self.get_string("status_panel")
     }
 
     fn ui_yes(&self) -> &str {
@@ -1458,14 +1130,6 @@ impl Translation for RuntimeTranslation {
         self.get_string("ui_close")
     }
 
-    fn ui_enter_confirm(&self) -> &str {
-        self.get_string("ui_enter_confirm")
-    }
-
-    fn ui_esc_cancel(&self) -> &str {
-        self.get_string("ui_esc_cancel")
-    }
-
     fn ui_hint_separator(&self) -> &str {
         self.get_string("ui_hint_separator")
     }
@@ -1490,14 +1154,6 @@ impl Translation for RuntimeTranslation {
         self.get_string("size_gigabytes")
     }
 
-    fn size_terabytes(&self) -> &str {
-        self.get_string("size_terabytes")
-    }
-
-    fn file_info_title(&self) -> &str {
-        self.get_string("file_info_title")
-    }
-
     fn file_info_title_file(&self, name: &str) -> String {
         self.format("file_info_title_file", &[("name", name)])
     }
@@ -1510,16 +1166,8 @@ impl Translation for RuntimeTranslation {
         self.format("file_info_title_symlink", &[("name", name)])
     }
 
-    fn file_info_name(&self) -> &str {
-        self.get_string("file_info_name")
-    }
-
     fn file_info_path(&self) -> &str {
         self.get_string("file_info_path")
-    }
-
-    fn file_info_type(&self) -> &str {
-        self.get_string("file_info_type")
     }
 
     fn file_info_size(&self) -> &str {
@@ -1544,10 +1192,6 @@ impl Translation for RuntimeTranslation {
 
     fn file_info_calculating(&self) -> &str {
         self.get_string("file_info_calculating")
-    }
-
-    fn file_info_press_key(&self) -> &str {
-        self.get_string("file_info_press_key")
     }
 
     fn file_info_git(&self) -> &str {
@@ -1579,10 +1223,6 @@ impl Translation for RuntimeTranslation {
 
     fn file_type_file(&self) -> &str {
         self.get_string("file_type_file")
-    }
-
-    fn file_type_symlink(&self) -> &str {
-        self.get_string("file_type_symlink")
     }
 
     fn progress_scanning(&self) -> &str {
@@ -1689,58 +1329,6 @@ impl Translation for RuntimeTranslation {
         )
     }
 
-    fn operation_cancelled_title(&self) -> &str {
-        self.get_string("operation_cancelled_title")
-    }
-
-    fn cleanup_delete(&self) -> &str {
-        self.get_string("cleanup_delete")
-    }
-
-    fn cleanup_keep(&self) -> &str {
-        self.get_string("cleanup_keep")
-    }
-
-    fn cleanup_delete_partial(&self) -> &str {
-        self.get_string("cleanup_delete_partial")
-    }
-
-    fn cleanup_delete_all(&self) -> &str {
-        self.get_string("cleanup_delete_all")
-    }
-
-    fn cleanup_keep_all(&self) -> &str {
-        self.get_string("cleanup_keep_all")
-    }
-
-    fn cleanup_delete_copied(&self) -> &str {
-        self.get_string("cleanup_delete_copied")
-    }
-
-    fn cleanup_keep_copied(&self) -> &str {
-        self.get_string("cleanup_keep_copied")
-    }
-
-    fn status_delete_cancelled(&self) -> &str {
-        self.get_string("status_delete_cancelled")
-    }
-
-    fn status_download_cancelled(&self) -> &str {
-        self.get_string("status_download_cancelled")
-    }
-
-    fn status_upload_cancelled(&self) -> &str {
-        self.get_string("status_upload_cancelled")
-    }
-
-    fn status_operation_cancelled(&self) -> &str {
-        self.get_string("status_operation_cancelled")
-    }
-
-    fn status_scan_cancelled(&self) -> &str {
-        self.get_string("status_scan_cancelled")
-    }
-
     fn status_config_saved(&self) -> &str {
         self.get_string("status_config_saved")
     }
@@ -1800,5 +1388,155 @@ impl Translation for RuntimeTranslation {
 
     fn modal_error_title(&self) -> &str {
         self.get_string("modal_error_title")
+    }
+
+    fn git_no_repo(&self) -> &str {
+        self.get_string("git_no_repo")
+    }
+
+    fn git_branch_detached(&self) -> &str {
+        self.get_string("git_branch_detached")
+    }
+
+    fn git_refreshed(&self) -> &str {
+        self.get_string("git_refreshed")
+    }
+
+    fn git_status_loading(&self) -> &str {
+        self.get_string("git_status_loading")
+    }
+
+    fn git_staged_header(&self) -> &str {
+        self.get_string("git_staged_header")
+    }
+
+    fn git_unstaged_header(&self) -> &str {
+        self.get_string("git_unstaged_header")
+    }
+
+    fn git_stage_all_btn(&self) -> &str {
+        self.get_string("git_stage_all_btn")
+    }
+
+    fn git_unstage_all_btn(&self) -> &str {
+        self.get_string("git_unstage_all_btn")
+    }
+
+    fn git_checkout_not_impl(&self) -> &str {
+        self.get_string("git_checkout_not_impl")
+    }
+
+    fn git_diff_staged_marker(&self) -> &str {
+        self.get_string("git_diff_staged_marker")
+    }
+
+    fn git_pushing(&self) -> &str {
+        self.get_string("git_pushing")
+    }
+
+    fn git_pulling(&self) -> &str {
+        self.get_string("git_pulling")
+    }
+
+    fn git_action_files_fmt(&self, action: &str, count: usize) -> String {
+        let plural = self.pluralize(count, "file");
+        self.format(
+            "git_action_files_fmt",
+            &[
+                ("action", action),
+                ("count", &count.to_string()),
+                ("plural", plural),
+            ],
+        )
+    }
+
+    fn git_action_error_fmt(&self, action: &str, error: &str) -> String {
+        self.format(
+            "git_action_error_fmt",
+            &[("action", action), ("error", error)],
+        )
+    }
+
+    fn git_switched_to_fmt(&self, branch: &str) -> String {
+        self.format("git_switched_to_fmt", &[("branch", branch)])
+    }
+
+    fn git_checkout_error_fmt(&self, error: &str) -> String {
+        self.format("git_checkout_error_fmt", &[("error", error)])
+    }
+
+    fn git_init_failed_fmt(&self, error: &str) -> String {
+        self.format("git_init_failed_fmt", &[("error", error)])
+    }
+
+    fn git_log_title_fmt(&self, repo: &str, branch: &str) -> String {
+        self.format("git_log_title_fmt", &[("repo", repo), ("branch", branch)])
+    }
+
+    fn git_diff_title_commit_fmt(&self, repo: &str, hash: &str, count: usize) -> String {
+        self.format(
+            "git_diff_title_commit_fmt",
+            &[
+                ("repo", repo),
+                ("hash", hash),
+                ("count", &count.to_string()),
+            ],
+        )
+    }
+
+    fn git_diff_title_fmt(&self, repo: &str, count: usize) -> String {
+        self.format(
+            "git_diff_title_fmt",
+            &[("repo", repo), ("count", &count.to_string())],
+        )
+    }
+
+    fn diagnostics_title(&self) -> &str {
+        self.get_string("diagnostics_title")
+    }
+
+    fn diagnostics_no_items(&self) -> &str {
+        self.get_string("diagnostics_no_items")
+    }
+
+    fn diagnostics_filter_all(&self) -> &str {
+        self.get_string("diagnostics_filter_all")
+    }
+
+    fn diagnostics_filter_errors(&self) -> &str {
+        self.get_string("diagnostics_filter_errors")
+    }
+
+    fn diagnostics_filter_ew(&self) -> &str {
+        self.get_string("diagnostics_filter_ew")
+    }
+
+    fn diagnostics_title_fmt(&self, errors: usize, warnings: usize) -> String {
+        self.format(
+            "diagnostics_title_fmt",
+            &[
+                ("errors", &errors.to_string()),
+                ("warnings", &warnings.to_string()),
+            ],
+        )
+    }
+
+    fn diagnostics_filter_fmt(&self, filter: &str, count: usize) -> String {
+        self.format(
+            "diagnostics_filter_fmt",
+            &[("filter", filter), ("count", &count.to_string())],
+        )
+    }
+
+    fn terminal_kill_confirm(&self) -> &str {
+        self.get_string("terminal_kill_confirm")
+    }
+
+    fn panel_image(&self) -> &str {
+        self.get_string("panel_image")
+    }
+
+    fn image_error_fmt(&self, error: &str) -> String {
+        self.format("image_error_fmt", &[("error", error)])
     }
 }

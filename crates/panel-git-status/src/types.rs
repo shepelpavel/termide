@@ -56,11 +56,11 @@ impl Button {
             Button::Push => t.git_action_push().to_string(),
             Button::Pushing => {
                 let s = SPINNER_FRAMES[spinner_frame % SPINNER_FRAMES.len()];
-                format!("{} Pushing…", s)
+                format!("{} {}", s, t.git_pushing())
             }
             Button::Pulling => {
                 let s = SPINNER_FRAMES[spinner_frame % SPINNER_FRAMES.len()];
-                format!("{} Pulling…", s)
+                format!("{} {}", s, t.git_pulling())
             }
             Button::Init => t.git_action_init().to_string(),
         }

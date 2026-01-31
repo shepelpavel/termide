@@ -23,11 +23,13 @@ impl GitStatusPanel {
         if let Some(repo) = self.repo_manager.current() {
             match op(repo, &files) {
                 Ok(()) => {
-                    self.status_message = Some(format!("{} {} file(s)", action, files.len()));
+                    let t = termide_i18n::t();
+                    self.status_message = Some(t.git_action_files_fmt(action, files.len()));
                     self.refresh();
                 }
                 Err(e) => {
-                    self.status_message = Some(format!("{} error: {}", action, e));
+                    let t = termide_i18n::t();
+                    self.status_message = Some(t.git_action_error_fmt(action, &e.to_string()));
                 }
             }
         }
@@ -36,25 +38,29 @@ impl GitStatusPanel {
     /// Execute stage action
     pub(crate) fn do_stage(&mut self) {
         let files = self.get_selected_unstaged();
-        self.execute_git_op(files, git::stage_files, "Staged");
+        let t = termide_i18n::t();
+        self.execute_git_op(files, git::stage_files, t.git_staged_header());
     }
 
     /// Execute unstage action
     pub(crate) fn do_unstage(&mut self) {
         let files = self.get_selected_staged();
-        self.execute_git_op(files, git::unstage_files, "Unstaged");
+        let t = termide_i18n::t();
+        self.execute_git_op(files, git::unstage_files, t.git_unstaged_header());
     }
 
     /// Stage all unstaged files
     pub(crate) fn do_stage_all(&mut self) {
         let files: Vec<PathBuf> = self.unstaged_files.iter().map(|f| f.path.clone()).collect();
-        self.execute_git_op(files, git::stage_files, "Staged");
+        let t = termide_i18n::t();
+        self.execute_git_op(files, git::stage_files, t.git_staged_header());
     }
 
     /// Unstage all staged files
     pub(crate) fn do_unstage_all(&mut self) {
         let files: Vec<PathBuf> = self.staged_files.iter().map(|f| f.path.clone()).collect();
-        self.execute_git_op(files, git::unstage_files, "Unstaged");
+        let t = termide_i18n::t();
+        self.execute_git_op(files, git::unstage_files, t.git_unstaged_header());
     }
 
     /// Show file properties modal with Edit/Diff/Revert actions
@@ -164,11 +170,13 @@ impl GitStatusPanel {
                 let branch_name = branch_name.clone();
                 match git::checkout_branch(repo, &branch_name) {
                     Ok(()) => {
-                        self.status_message = Some(format!("Switched to {}", branch_name));
+                        let t = termide_i18n::t();
+                        self.status_message = Some(t.git_switched_to_fmt(&branch_name));
                         self.refresh();
                     }
                     Err(e) => {
-                        self.status_message = Some(format!("Checkout error: {}", e));
+                        let t = termide_i18n::t();
+                        self.status_message = Some(t.git_checkout_error_fmt(&e.to_string()));
                     }
                 }
             }
@@ -244,7 +252,7 @@ impl GitStatusPanel {
                     let branch_name = self
                         .branch
                         .clone()
-                        .unwrap_or_else(|| "(detached)".to_string());
+                        .unwrap_or_else(|| termide_i18n::t().git_branch_detached().to_string());
                     let modal =
                         termide_modal::CommitModal::new(staged_count, repo_name, branch_name);
                     self.modal_request = Some((
@@ -293,7 +301,8 @@ impl GitStatusPanel {
                                 Some(t.git_init_success(&path.display().to_string()));
                         }
                         Err(e) => {
-                            self.status_message = Some(format!("Init failed: {}", e));
+                            let t = termide_i18n::t();
+                            self.status_message = Some(t.git_init_failed_fmt(&e.to_string()));
                         }
                     }
                 }
