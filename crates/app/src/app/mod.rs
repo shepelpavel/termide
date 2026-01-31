@@ -333,6 +333,9 @@ impl App {
                         // Poll unified operation manager for events (new system)
                         self.poll_operation_manager();
 
+                        // Sync active operations data to the operations panel
+                        self.update_operations_panel();
+
                         // Check pending local batch operation (start after modal rendered)
                         self.check_pending_batch_operation();
                     }

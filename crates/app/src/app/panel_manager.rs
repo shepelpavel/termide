@@ -90,6 +90,73 @@ impl App {
         // No need to manually update active_panel index
     }
 
+    /// Close a specific editor panel identified by its file path.
+    ///
+    /// Searches all panel groups for an editor whose file_path matches,
+    /// temporarily focuses that panel, and closes it. This is used for
+    /// the "save and close" flow where the upload completes asynchronously
+    /// and the user may have switched to a different panel in the meantime.
+    pub(super) fn close_editor_by_path(&mut self, path: &std::path::Path) {
+        // Find the group and panel index of the editor with this path
+        let mut target = None;
+        for (group_idx, group) in self.layout_manager.panel_groups.iter().enumerate() {
+            for (panel_idx, panel) in group.panels().iter().enumerate() {
+                if let Some(editor) = panel.as_editor() {
+                    if editor.file_path() == Some(path) {
+                        target = Some((group_idx, panel_idx));
+                        break;
+                    }
+                }
+            }
+            if target.is_some() {
+                break;
+            }
+        }
+
+        let Some((group_idx, panel_idx)) = target else {
+            log::warn!(
+                "close_editor_by_path: editor not found for {}",
+                path.display()
+            );
+            return;
+        };
+
+        // Save and restore current focus so we don't disrupt the user
+        let saved_focus = self.layout_manager.focus;
+        self.layout_manager.focus = group_idx;
+
+        // Expand the target panel within its group so close_panel_at_index targets it
+        self.layout_manager.panel_groups[group_idx].set_expanded(panel_idx);
+
+        self.close_panel_at_index(0);
+
+        // Restore focus (adjust if the closed group was removed)
+        if !self.layout_manager.panel_groups.is_empty() {
+            self.layout_manager.focus = saved_focus.min(self.layout_manager.panel_groups.len() - 1);
+        }
+    }
+
+    /// Clear uploading flag on the editor with the given file path.
+    pub(super) fn clear_editor_uploading_flag(&mut self, path: &std::path::Path) {
+        for panel in self.layout_manager.iter_all_panels_mut() {
+            if let Some(editor) = panel.as_editor_mut() {
+                if editor.file_path() == Some(path) {
+                    editor.set_uploading(false);
+                    return;
+                }
+            }
+        }
+    }
+
+    /// Clear uploading flag on any editor that currently has it set.
+    pub(super) fn clear_any_editor_uploading_flag(&mut self) {
+        for panel in self.layout_manager.iter_all_panels_mut() {
+            if let Some(editor) = panel.as_editor_mut() {
+                editor.set_uploading(false);
+            }
+        }
+    }
+
     /// Collect all working directory paths from all panels
     /// Returns deduplicated list of paths from all panel types (FM, Terminal, Editor, etc.)
     pub(super) fn collect_panel_paths(&self) -> Vec<PathBuf> {

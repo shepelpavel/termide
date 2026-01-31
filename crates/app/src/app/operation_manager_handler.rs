@@ -3,6 +3,7 @@
 //! Handles events from the unified operation manager for file operations.
 
 use termide_file_ops::{OperationEvent, OperationPath, OperationPhase, OperationResult};
+use termide_panel_editor::{Editor, FileState};
 
 use crate::state::{ActiveModal, PendingAction};
 use crate::PanelExt;
@@ -24,7 +25,65 @@ impl App {
                     log::info!("Operation {} started", id);
                     self.state.needs_redraw = true;
                 }
-                OperationEvent::Progress(_id, progress) => {
+                OperationEvent::Progress(id, progress) => {
+                    // Resolve to batch tracking ID if this is a sub-operation
+                    let tracking_id = if self.state.batch_sub_operation_id == Some(id) {
+                        self.state.batch_tracking_id.unwrap_or(id)
+                    } else {
+                        id
+                    };
+
+                    // Update active operation progress for operations panel
+                    let is_batch = self.state.batch_sub_operation_id == Some(id)
+                        && self.state.batch_tracking_id.is_some();
+                    if let Some(op) = self.state.active_operations.get_mut(&tracking_id) {
+                        op.progress.bytes_transferred = progress.bytes_transferred;
+                        op.progress.total_bytes = progress.total_bytes;
+                        if !is_batch {
+                            op.progress.files_completed = progress.files_completed;
+                            if progress.total_files > 0 {
+                                op.progress.total_files = progress.total_files;
+                            }
+                        } else {
+                            // For batch sub-operations: update file counts only when
+                            // the sub-op reports larger values (e.g., folder scanning
+                            // discovered many files inside a directory). This prevents
+                            // a single-file sub-op (total=1) from overwriting batch
+                            // total (e.g., 8), while letting folder scans update.
+                            if progress.total_files > op.progress.total_files {
+                                op.progress.total_files = progress.total_files;
+                            }
+                            if progress.files_completed > op.progress.files_completed {
+                                op.progress.files_completed = progress.files_completed;
+                            }
+                        }
+                        op.speed_tracker.update(progress.bytes_transferred);
+                        op.is_scanning = matches!(progress.phase, OperationPhase::Scanning);
+
+                        // Update op_type for cross-protocol (remote→remote) transfers
+                        // based on current phase reported by CrossProtocolWorker
+                        if let Some(ref item) = progress.current_item {
+                            let is_move = matches!(
+                                op.op_type,
+                                crate::state::OperationType::MoveUpload
+                                    | crate::state::OperationType::MoveDownload
+                            );
+                            if item.starts_with("Downloading") {
+                                op.op_type = if is_move {
+                                    crate::state::OperationType::MoveDownload
+                                } else {
+                                    crate::state::OperationType::CopyDownload
+                                };
+                            } else if item.starts_with("Uploading") {
+                                op.op_type = if is_move {
+                                    crate::state::OperationType::MoveUpload
+                                } else {
+                                    crate::state::OperationType::CopyUpload
+                                };
+                            }
+                        }
+                    }
+
                     // Update progress modal if active
                     if let Some(crate::state::ActiveModal::Progress(ref mut modal)) =
                         self.state.active_modal
@@ -42,9 +101,9 @@ impl App {
                         } else if let Some(ref current) = progress.current_item {
                             modal.update_progress(0, Some(current.clone()));
                         }
-
-                        self.state.needs_redraw = true;
                     }
+
+                    self.state.needs_redraw = true;
 
                     // Check if operation completed via progress phase
                     if matches!(
@@ -84,6 +143,64 @@ impl App {
                                         );
                                     }
                                 });
+                            }
+
+                            // Handle pending editor download (open editor after remote file download)
+                            if let Some(pending_download) =
+                                self.state.pending_editor_download.take()
+                            {
+                                if pending_download.operation_id == id {
+                                    let (size, mtime) =
+                                        match std::fs::metadata(&pending_download.temp_path) {
+                                            Ok(meta) => (meta.len(), meta.modified().ok()),
+                                            Err(_) => (0, None),
+                                        };
+
+                                    match Editor::open_file_with_config(
+                                        pending_download.temp_path.clone(),
+                                        pending_download.config,
+                                    ) {
+                                        Ok(mut editor) => {
+                                            editor.set_file_state(FileState::from_remote(
+                                                pending_download.remote_path.clone(),
+                                                pending_download.temp_path,
+                                                mtime,
+                                                size,
+                                            ));
+                                            editor.set_vfs_manager(pending_download.vfs_manager);
+
+                                            if let Some(lsp) = &mut self.state.lsp_manager {
+                                                editor.init_lsp(lsp);
+                                            }
+
+                                            self.add_panel(Box::new(editor));
+                                            self.auto_save_session();
+
+                                            let filename = pending_download
+                                                .remote_path
+                                                .file_name()
+                                                .and_then(|n| n.to_str())
+                                                .unwrap_or("remote file");
+                                            log::info!(
+                                                "Remote file '{}' opened in editor",
+                                                filename
+                                            );
+                                            self.state
+                                                .set_info(format!("File {} opened", filename));
+                                        }
+                                        Err(e) => {
+                                            log::error!("Failed to open downloaded file: {}", e);
+                                            self.state.set_error(format!(
+                                                "Failed to open downloaded file: {}",
+                                                e
+                                            ));
+                                            let _ =
+                                                std::fs::remove_file(&pending_download.temp_path);
+                                        }
+                                    }
+                                } else {
+                                    self.state.pending_editor_download = Some(pending_download);
+                                }
                             }
 
                             // Handle batch upload continuation
@@ -182,6 +299,11 @@ impl App {
                                 {
                                     operation.increment_success();
                                     operation.advance();
+                                    // Update file count immediately so the card reflects completion
+                                    self.state.update_batch_progress(
+                                        operation.current_index,
+                                        operation.total_count(),
+                                    );
                                     self.process_batch_operation(operation);
                                 }
                             }
@@ -190,20 +312,16 @@ impl App {
                             if self.state.skip_refresh_after_upload {
                                 self.state.skip_refresh_after_upload = false;
                                 should_refresh_file_managers = false;
+                                self.clear_any_editor_uploading_flag();
                             }
 
                             // Handle close editor after upload (for "save and close" flow)
-                            if self.state.close_editor_after_upload.is_some() {
-                                self.state.close_editor_after_upload = None;
-                                // Clear uploading flag on editor
-                                if let Some(panel) = self.layout_manager.active_panel_mut() {
-                                    if let Some(editor) = panel.as_editor_mut() {
-                                        editor.set_uploading(false);
-                                    }
-                                }
-                                // Close the editor panel
-                                self.close_panel_at_index(0);
+                            if let Some(editor_path) = self.state.close_editor_after_upload.take() {
+                                self.close_editor_by_path(&editor_path);
                             }
+
+                            // Untrack completed operation from operations panel
+                            self.state.untrack_operation(id);
                         }
                         OperationResult::PartialSuccess {
                             completed,
@@ -237,6 +355,10 @@ impl App {
                                         operation.increment_error();
                                     }
                                     operation.advance();
+                                    self.state.update_batch_progress(
+                                        operation.current_index,
+                                        operation.total_count(),
+                                    );
                                     self.process_batch_operation(operation);
                                 }
                             } else if skipped > 0 || failed > 0 {
@@ -245,6 +367,9 @@ impl App {
                                     completed, skipped, failed
                                 ));
                             }
+
+                            // Untrack partially completed operation from operations panel
+                            self.state.untrack_operation(id);
                         }
                         OperationResult::Failed(err) => {
                             log::error!("Operation {} failed: {}", id, err);
@@ -252,16 +377,22 @@ impl App {
                             // Clear pending remote delete (don't delete source if download failed)
                             self.state.pending_remote_delete = None;
 
-                            // Clear editor upload flags on failure
-                            self.state.skip_refresh_after_upload = false;
-                            if self.state.close_editor_after_upload.is_some() {
-                                self.state.close_editor_after_upload = None;
-                                // Clear uploading flag on editor
-                                if let Some(panel) = self.layout_manager.active_panel_mut() {
-                                    if let Some(editor) = panel.as_editor_mut() {
-                                        editor.set_uploading(false);
-                                    }
+                            // Clear pending editor download on failure
+                            if let Some(pending) = self.state.pending_editor_download.take() {
+                                if pending.operation_id == id {
+                                    let _ = std::fs::remove_file(&pending.temp_path);
+                                } else {
+                                    self.state.pending_editor_download = Some(pending);
                                 }
+                            }
+
+                            // Clear editor upload flags on failure
+                            if self.state.skip_refresh_after_upload {
+                                self.state.skip_refresh_after_upload = false;
+                                self.clear_any_editor_uploading_flag();
+                            }
+                            if let Some(editor_path) = self.state.close_editor_after_upload.take() {
+                                self.clear_editor_uploading_flag(&editor_path);
                             }
 
                             // Clear pending batch upload (don't continue if upload failed)
@@ -277,11 +408,18 @@ impl App {
                                 {
                                     operation.increment_error();
                                     operation.advance();
+                                    self.state.update_batch_progress(
+                                        operation.current_index,
+                                        operation.total_count(),
+                                    );
                                     self.process_batch_operation(operation);
                                 }
                             } else {
                                 self.state.set_error(format!("Operation failed: {}", err));
                             }
+
+                            // Untrack failed operation from operations panel
+                            self.state.untrack_operation(id);
                         }
                         OperationResult::Cancelled => {
                             log::info!("Operation {} cancelled", id);
@@ -289,16 +427,22 @@ impl App {
                             // Clear pending remote delete (don't delete source if download cancelled)
                             self.state.pending_remote_delete = None;
 
-                            // Clear editor upload flags on cancel
-                            self.state.skip_refresh_after_upload = false;
-                            if self.state.close_editor_after_upload.is_some() {
-                                self.state.close_editor_after_upload = None;
-                                // Clear uploading flag on editor
-                                if let Some(panel) = self.layout_manager.active_panel_mut() {
-                                    if let Some(editor) = panel.as_editor_mut() {
-                                        editor.set_uploading(false);
-                                    }
+                            // Clear pending editor download on cancel
+                            if let Some(pending) = self.state.pending_editor_download.take() {
+                                if pending.operation_id == id {
+                                    let _ = std::fs::remove_file(&pending.temp_path);
+                                } else {
+                                    self.state.pending_editor_download = Some(pending);
                                 }
+                            }
+
+                            // Clear editor upload flags on cancel
+                            if self.state.skip_refresh_after_upload {
+                                self.state.skip_refresh_after_upload = false;
+                                self.clear_any_editor_uploading_flag();
+                            }
+                            if let Some(editor_path) = self.state.close_editor_after_upload.take() {
+                                self.clear_editor_uploading_flag(&editor_path);
                             }
 
                             // Clear pending batch upload (don't continue if upload cancelled)
@@ -309,6 +453,9 @@ impl App {
 
                             // For batch operations, show cleanup modal
                             if has_batch {
+                                // Remove batch tracking card from operations panel
+                                self.state.finish_batch_tracking();
+
                                 if let Some(PendingAction::ContinueBatchOperation { operation }) =
                                     self.state.pending_action.take()
                                 {
@@ -336,6 +483,9 @@ impl App {
                             } else {
                                 self.state.set_info("Operation cancelled".to_string());
                             }
+
+                            // Untrack cancelled operation from operations panel
+                            self.state.untrack_operation(id);
                         }
                     }
                 }

@@ -17,18 +17,6 @@ impl App {
         remote_path: termide_vfs::VfsPath,
         vfs_manager: std::sync::Arc<termide_vfs::VfsManager>,
     ) {
-        // Show progress modal
-        let filename = remote_path
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| "file".to_string());
-
-        let modal = termide_modal::ProgressModal::indeterminate(
-            "Upload",
-            format!("Uploading {}...", filename),
-        );
-        self.state.active_modal = Some(crate::state::ActiveModal::Progress(Box::new(modal)));
-
         // Set uploading flag on active editor
         if let Some(panel) = self.layout_manager.active_panel_mut() {
             if let Some(editor) = panel.as_editor_mut() {
@@ -37,18 +25,29 @@ impl App {
         }
 
         // Create upload request via OperationManager
-        let request = termide_file_ops::OperationRequest::upload(temp_path, remote_path);
+        let request =
+            termide_file_ops::OperationRequest::upload(temp_path.clone(), remote_path.clone());
 
         // Start upload via OperationManager
         match self.state.start_operation_now(request, vfs_manager) {
-            Ok(_operation_id) => {
-                log::info!("Started editor upload operation");
+            Ok(operation_id) => {
+                log::info!("Started editor upload operation {}", operation_id);
+
+                // Track in operations panel instead of showing modal
+                self.state.track_operation(
+                    operation_id,
+                    crate::state::OperationType::CopyUpload,
+                    temp_path.display().to_string(),
+                    remote_path.to_url_string(),
+                    1,
+                    0,
+                );
+
                 // Skip file manager refresh - file already exists, we're just overwriting
                 self.state.skip_refresh_after_upload = true;
             }
             Err(e) => {
                 log::error!("Failed to start upload operation: {}", e);
-                self.state.close_modal();
                 self.state.set_error(format!("Upload failed: {}", e));
                 // Clear uploading flag
                 if let Some(panel) = self.layout_manager.active_panel_mut() {

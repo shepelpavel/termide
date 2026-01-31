@@ -139,7 +139,9 @@ fn render_snapshot_card(
 
     // Line 5: Files count (during scanning show "Found: N")
     let files = if is_scanning {
-        t.op_found_count(op.progress.files_completed)
+        // During scanning, total_files = files discovered so far,
+        // files_completed stays 0 (no files transferred yet)
+        t.op_found_count(op.progress.total_files)
     } else {
         t.op_files_progress(op.progress.files_completed, op.progress.total_files)
     };

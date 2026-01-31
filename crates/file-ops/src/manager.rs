@@ -162,7 +162,6 @@ impl OperationManager {
 
         // Clone what we need for the thread
         let control_clone = control.clone();
-        let event_tx = self.event_tx.clone();
         let event_tx_for_conflict = self.event_tx.clone();
 
         // Start worker thread with conflict handling
@@ -178,16 +177,9 @@ impl OperationManager {
             };
 
             // Use execute_with_conflicts if available
-            let result = worker.execute_with_conflicts(
-                &control_clone,
-                &progress_tx,
-                Some(&mut conflict_ctx),
-            );
-
-            // Send completion event
-            let _ = event_tx.send(OperationEvent::Completed(id, result.clone()));
-
-            result
+            worker.execute_with_conflicts(&control_clone, &progress_tx, Some(&mut conflict_ctx))
+            // Note: Completed event is NOT sent here. poll() generates it
+            // from thread_handle.join() to avoid duplicate Completed events.
         });
 
         // Send started event

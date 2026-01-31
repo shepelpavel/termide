@@ -96,9 +96,37 @@ impl App {
         vfs_manager: std::sync::Arc<termide_vfs::VfsManager>,
         mut operation: BatchOperation,
     ) {
+        // Extract tracking info before starting (request is consumed)
+        let source_display = request
+            .sources
+            .first()
+            .map(|s| s.display())
+            .unwrap_or_default();
+        let dest_display = request
+            .destination
+            .as_ref()
+            .map(|d| d.display())
+            .unwrap_or_default();
+        let op_type = Self::tracking_op_type(&request);
+
         match self.state.start_operation_now(request, vfs_manager) {
             Ok(op_id) => {
                 self.state.batch_sub_operation_id = Some(op_id);
+
+                // If no batch tracking card exists, create one and open the panel.
+                // Use start_batch_tracking() to get a synthetic ID so that
+                // untrack_operation(real_id) on sub-op completion won't remove it.
+                if self.state.batch_tracking_id.is_none() {
+                    let batch_id = self.state.start_batch_tracking(
+                        op_type,
+                        source_display,
+                        dest_display,
+                        1,
+                        0,
+                    );
+                    let _ = self.open_operations_panel_with_focus(batch_id);
+                }
+
                 self.state.pending_action =
                     Some(PendingAction::ContinueBatchOperation { operation });
             }
@@ -108,6 +136,55 @@ impl App {
                 operation.advance();
                 self.state.pending_action =
                     Some(PendingAction::ContinueBatchOperation { operation });
+            }
+        }
+    }
+
+    /// Map an OperationRequest to a tracking OperationType.
+    fn tracking_op_type(
+        request: &termide_file_ops::OperationRequest,
+    ) -> crate::state::OperationType {
+        use termide_file_ops::OperationType as FO;
+        let is_remote_src = request
+            .sources
+            .first()
+            .map(|s| s.is_remote())
+            .unwrap_or(false);
+        let is_remote_dst = request
+            .destination
+            .as_ref()
+            .map(|d| d.is_remote())
+            .unwrap_or(false);
+
+        match request.op_type {
+            FO::Copy | FO::Move if is_remote_src && !is_remote_dst => {
+                if request.is_move {
+                    crate::state::OperationType::MoveDownload
+                } else {
+                    crate::state::OperationType::CopyDownload
+                }
+            }
+            FO::Copy | FO::Move if !is_remote_src && is_remote_dst => {
+                if request.is_move {
+                    crate::state::OperationType::MoveUpload
+                } else {
+                    crate::state::OperationType::CopyUpload
+                }
+            }
+            FO::Copy | FO::Move if is_remote_src && is_remote_dst => {
+                if request.is_move {
+                    crate::state::OperationType::MoveUpload
+                } else {
+                    crate::state::OperationType::CopyUpload
+                }
+            }
+            FO::Delete => crate::state::OperationType::Delete,
+            _ => {
+                if request.is_move {
+                    crate::state::OperationType::Move
+                } else {
+                    crate::state::OperationType::Copy
+                }
             }
         }
     }
@@ -597,47 +674,54 @@ impl App {
                             )
                         };
 
-                        // Execute operation - search all panels for remote file manager
-                        if let Some((vfs_manager, vfs_current_path)) =
-                            self.find_remote_file_manager_info()
-                        {
-                            use termide_file_ops::{OperationPath, OperationRequest};
+                        // Execute operation - only use remote path when source or dest is remote
+                        let needs_remote_ow = is_remote_dest_ow || !source.exists();
+                        if needs_remote_ow {
+                            if let Some((vfs_manager, vfs_current_path)) =
+                                self.find_remote_file_manager_info()
+                            {
+                                use termide_file_ops::{OperationPath, OperationRequest};
 
-                            let source_name = source
-                                .file_name()
-                                .map(|n| n.to_string_lossy().to_string())
-                                .unwrap_or_default();
-                            let vfs_source = vfs_current_path.join(&source_name);
+                                let source_name = source
+                                    .file_name()
+                                    .map(|n| n.to_string_lossy().to_string())
+                                    .unwrap_or_default();
+                                let vfs_source = vfs_current_path.join(&source_name);
 
-                            let is_move = operation.operation_type == BatchOperationType::Move;
+                                let is_move = operation.operation_type == BatchOperationType::Move;
 
-                            let request = if is_remote_dest_ow {
-                                let vfs_dest =
-                                    Self::vfs_path_with_connection(&vfs_current_path, final_dest);
-                                if is_move {
-                                    OperationRequest::r#move(
-                                        vec![OperationPath::Remote(vfs_source.clone())],
-                                        OperationPath::Remote(vfs_dest),
-                                    )
+                                let request = if is_remote_dest_ow {
+                                    let vfs_dest = Self::vfs_path_with_connection(
+                                        &vfs_current_path,
+                                        final_dest,
+                                    );
+                                    if is_move {
+                                        OperationRequest::r#move(
+                                            vec![OperationPath::Remote(vfs_source.clone())],
+                                            OperationPath::Remote(vfs_dest),
+                                        )
+                                    } else {
+                                        OperationRequest::copy(
+                                            vec![OperationPath::Remote(vfs_source.clone())],
+                                            OperationPath::Remote(vfs_dest),
+                                        )
+                                    }
                                 } else {
-                                    OperationRequest::copy(
-                                        vec![OperationPath::Remote(vfs_source.clone())],
-                                        OperationPath::Remote(vfs_dest),
-                                    )
-                                }
-                            } else {
-                                let r = OperationRequest::download(vfs_source.clone(), final_dest);
-                                if is_move {
-                                    self.state.pending_remote_delete = Some(PendingRemoteDelete {
-                                        vfs_source,
-                                        vfs_manager: vfs_manager.clone(),
-                                    });
-                                }
-                                r
-                            };
+                                    let r =
+                                        OperationRequest::download(vfs_source.clone(), final_dest);
+                                    if is_move {
+                                        self.state.pending_remote_delete =
+                                            Some(PendingRemoteDelete {
+                                                vfs_source,
+                                                vfs_manager: vfs_manager.clone(),
+                                            });
+                                    }
+                                    r
+                                };
 
-                            self.start_batch_sub_operation(request, vfs_manager, operation);
-                            return Ok(());
+                                self.start_batch_sub_operation(request, vfs_manager, operation);
+                                return Ok(());
+                            }
                         }
 
                         // Local file or directory - use OperationManager for async copy
@@ -802,10 +886,16 @@ impl App {
         // 3. Single directory operations (recursive copy/move can take time), OR
         // 4. Single file > 1MB (large file transfer needs progress feedback)
 
-        // Check if this is a remote operation by searching all panels
-        // (active panel may be the operations panel after batch tracking setup)
-        let remote_info = self.find_remote_file_manager_info();
-        let is_remote_operation = remote_info.is_some();
+        // Check if this is a remote operation based on actual operation data:
+        // - destination is a VFS URL (e.g., sftp://...), OR
+        // - source doesn't exist locally (server-side path)
+        let dest_str_check = operation.destination.to_string_lossy();
+        let is_remote_dest_check = termide_vfs::is_vfs_url(&dest_str_check);
+        let source_is_local = operation
+            .current_source()
+            .map(|p| p.exists())
+            .unwrap_or(false);
+        let is_remote_operation = is_remote_dest_check || !source_is_local;
 
         // Check if source is a directory or large file (>1MB)
         let needs_progress = operation
@@ -831,11 +921,19 @@ impl App {
             self.state.close_modal();
 
             // Get source display for tracking
-            let source_display = if let Some((_, ref vfs_path)) = remote_info {
-                if let Some(source_file) = operation.current_source() {
-                    format_vfs_path_for_display(vfs_path, source_file)
+            let source_display = if is_remote_operation {
+                // For remote operations, find the VFS path for nice display
+                if let Some((_, vfs_path)) = self.find_remote_file_manager_info() {
+                    if let Some(source_file) = operation.current_source() {
+                        format_vfs_path_for_display(&vfs_path, source_file)
+                    } else {
+                        String::new()
+                    }
                 } else {
-                    String::new()
+                    operation
+                        .current_source()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_default()
                 }
             } else {
                 operation
@@ -1013,44 +1111,48 @@ impl App {
             }
         }
 
-        // Execute operation - check remote first using all-panels search
-        if let Some((vfs_manager, vfs_current_path)) = self.find_remote_file_manager_info() {
-            use termide_file_ops::{OperationPath, OperationRequest};
+        // Execute operation - use remote path only when source or destination is actually remote.
+        // source.exists() is false for server-side paths (they don't exist locally).
+        let needs_remote = is_remote_dest || !source.exists();
+        if needs_remote {
+            if let Some((vfs_manager, vfs_current_path)) = self.find_remote_file_manager_info() {
+                use termide_file_ops::{OperationPath, OperationRequest};
 
-            let source_name = source
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_default();
-            let vfs_source = vfs_current_path.join(&source_name);
+                let source_name = source
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                let vfs_source = vfs_current_path.join(&source_name);
 
-            let is_move = operation.operation_type == BatchOperationType::Move;
+                let is_move = operation.operation_type == BatchOperationType::Move;
 
-            let request = if is_remote_dest {
-                let vfs_dest = Self::vfs_path_with_connection(&vfs_current_path, final_dest);
-                if is_move {
-                    OperationRequest::r#move(
-                        vec![OperationPath::Remote(vfs_source.clone())],
-                        OperationPath::Remote(vfs_dest),
-                    )
+                let request = if is_remote_dest {
+                    let vfs_dest = Self::vfs_path_with_connection(&vfs_current_path, final_dest);
+                    if is_move {
+                        OperationRequest::r#move(
+                            vec![OperationPath::Remote(vfs_source.clone())],
+                            OperationPath::Remote(vfs_dest),
+                        )
+                    } else {
+                        OperationRequest::copy(
+                            vec![OperationPath::Remote(vfs_source.clone())],
+                            OperationPath::Remote(vfs_dest),
+                        )
+                    }
                 } else {
-                    OperationRequest::copy(
-                        vec![OperationPath::Remote(vfs_source.clone())],
-                        OperationPath::Remote(vfs_dest),
-                    )
-                }
-            } else {
-                let r = OperationRequest::download(vfs_source.clone(), final_dest);
-                if is_move {
-                    self.state.pending_remote_delete = Some(PendingRemoteDelete {
-                        vfs_source,
-                        vfs_manager: vfs_manager.clone(),
-                    });
-                }
-                r
-            };
+                    let r = OperationRequest::download(vfs_source.clone(), final_dest);
+                    if is_move {
+                        self.state.pending_remote_delete = Some(PendingRemoteDelete {
+                            vfs_source,
+                            vfs_manager: vfs_manager.clone(),
+                        });
+                    }
+                    r
+                };
 
-            self.start_batch_sub_operation(request, vfs_manager, operation);
-            return;
+                self.start_batch_sub_operation(request, vfs_manager, operation);
+                return;
+            }
         }
 
         // Local file or directory - use OperationManager for async copy with progress
@@ -1202,45 +1304,48 @@ impl App {
                     // directory for subsequent files in the batch. Instead, run the
                     // operation for this single file using new_dest directly
                     // (same approach as the Overwrite handler).
-                    if let Some((vfs_manager, vfs_current_path)) =
-                        self.find_remote_file_manager_info()
-                    {
-                        use termide_file_ops::{OperationPath, OperationRequest};
+                    let needs_remote_rn = is_remote_dest || !source.exists();
+                    if needs_remote_rn {
+                        if let Some((vfs_manager, vfs_current_path)) =
+                            self.find_remote_file_manager_info()
+                        {
+                            use termide_file_ops::{OperationPath, OperationRequest};
 
-                        let source_name = source
-                            .file_name()
-                            .map(|n| n.to_string_lossy().to_string())
-                            .unwrap_or_default();
-                        let vfs_source = vfs_current_path.join(&source_name);
+                            let source_name = source
+                                .file_name()
+                                .map(|n| n.to_string_lossy().to_string())
+                                .unwrap_or_default();
+                            let vfs_source = vfs_current_path.join(&source_name);
 
-                        let is_move = operation.operation_type == BatchOperationType::Move;
+                            let is_move = operation.operation_type == BatchOperationType::Move;
 
-                        let request = if is_remote_dest {
-                            let vfs_dest =
-                                Self::vfs_path_with_connection(&vfs_current_path, new_dest);
-                            if is_move {
-                                OperationRequest::r#move(
-                                    vec![OperationPath::Remote(vfs_source.clone())],
-                                    OperationPath::Remote(vfs_dest),
-                                )
+                            let request = if is_remote_dest {
+                                let vfs_dest =
+                                    Self::vfs_path_with_connection(&vfs_current_path, new_dest);
+                                if is_move {
+                                    OperationRequest::r#move(
+                                        vec![OperationPath::Remote(vfs_source.clone())],
+                                        OperationPath::Remote(vfs_dest),
+                                    )
+                                } else {
+                                    OperationRequest::copy(
+                                        vec![OperationPath::Remote(vfs_source.clone())],
+                                        OperationPath::Remote(vfs_dest),
+                                    )
+                                }
                             } else {
-                                OperationRequest::copy(
-                                    vec![OperationPath::Remote(vfs_source.clone())],
-                                    OperationPath::Remote(vfs_dest),
-                                )
-                            }
-                        } else {
-                            let r = OperationRequest::download(vfs_source.clone(), new_dest);
-                            if is_move {
-                                self.state.pending_remote_delete = Some(PendingRemoteDelete {
-                                    vfs_source,
-                                    vfs_manager: vfs_manager.clone(),
-                                });
-                            }
-                            r
-                        };
+                                let r = OperationRequest::download(vfs_source.clone(), new_dest);
+                                if is_move {
+                                    self.state.pending_remote_delete = Some(PendingRemoteDelete {
+                                        vfs_source,
+                                        vfs_manager: vfs_manager.clone(),
+                                    });
+                                }
+                                r
+                            };
 
-                        self.start_batch_sub_operation(request, vfs_manager, operation);
+                            self.start_batch_sub_operation(request, vfs_manager, operation);
+                        }
                     } else if let Some(panel) = self.layout_manager.active_panel_mut() {
                         if let Some(_fm) = panel.as_file_manager_mut() {
                             use termide_file_ops::{OperationPath, OperationRequest};
