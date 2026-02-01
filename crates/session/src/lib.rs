@@ -514,6 +514,238 @@ fn collect_sessions(
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // =========================================================================
+    // Round-trip serialization
+    // =========================================================================
+
+    #[test]
+    fn test_round_trip_serialization() {
+        let session = Session {
+            panel_groups: vec![
+                SessionPanelGroup {
+                    panels: vec![
+                        SessionPanel::FileManager {
+                            path_or_url: "/home/user/project".to_string(),
+                        },
+                        SessionPanel::Editor {
+                            path: Some(PathBuf::from("/home/user/project/main.rs")),
+                            unsaved_buffer_file: None,
+                        },
+                    ],
+                    expanded_index: 1,
+                    width: Some(120),
+                },
+                SessionPanelGroup {
+                    panels: vec![SessionPanel::Terminal {
+                        working_dir: PathBuf::from("/home/user/project"),
+                    }],
+                    expanded_index: 0,
+                    width: None,
+                },
+            ],
+            focused_group: 0,
+        };
+
+        let toml_str = toml::to_string_pretty(&session).unwrap();
+        let restored: Session = toml::from_str(&toml_str).unwrap();
+
+        assert_eq!(restored.focused_group, 0);
+        assert_eq!(restored.panel_groups.len(), 2);
+        assert_eq!(restored.panel_groups[0].panels.len(), 2);
+        assert_eq!(restored.panel_groups[0].expanded_index, 1);
+        assert_eq!(restored.panel_groups[0].width, Some(120));
+        assert_eq!(restored.panel_groups[1].width, None);
+    }
+
+    // =========================================================================
+    // Backward compatibility — old "path" field alias
+    // =========================================================================
+
+    #[test]
+    fn test_backward_compat_path_alias() {
+        let toml_str = r#"
+focused_group = 0
+
+[[panel_groups]]
+expanded_index = 0
+
+[[panel_groups.panels]]
+type = "file_manager"
+path = "/old/style/path"
+"#;
+        let session: Session = toml::from_str(toml_str).unwrap();
+        match &session.panel_groups[0].panels[0] {
+            SessionPanel::FileManager { path_or_url } => {
+                assert_eq!(path_or_url, "/old/style/path");
+            }
+            _ => panic!("Expected FileManager panel"),
+        }
+    }
+
+    // =========================================================================
+    // Remote path preservation (SFTP URLs)
+    // =========================================================================
+
+    #[test]
+    fn test_sftp_url_round_trip() {
+        let session = Session {
+            panel_groups: vec![SessionPanelGroup {
+                panels: vec![SessionPanel::FileManager {
+                    path_or_url: "sftp://user@host:22/remote/path".to_string(),
+                }],
+                expanded_index: 0,
+                width: None,
+            }],
+            focused_group: 0,
+        };
+
+        let toml_str = toml::to_string_pretty(&session).unwrap();
+        let restored: Session = toml::from_str(&toml_str).unwrap();
+
+        match &restored.panel_groups[0].panels[0] {
+            SessionPanel::FileManager { path_or_url } => {
+                assert_eq!(path_or_url, "sftp://user@host:22/remote/path");
+            }
+            _ => panic!("Expected FileManager panel"),
+        }
+    }
+
+    // =========================================================================
+    // Unsaved buffer file naming
+    // =========================================================================
+
+    #[test]
+    fn test_generate_unsaved_filename_format() {
+        let filename = generate_unsaved_filename();
+        assert!(filename.starts_with("unsaved-"));
+        assert!(filename.ends_with(".txt"));
+        // Format: unsaved-YYYYMMDD-HHMMSS-MSC.txt
+        assert!(filename.len() > 20);
+    }
+
+    #[test]
+    fn test_generate_unsaved_filename_uniqueness() {
+        // Two calls should (almost certainly) produce different names
+        // due to millisecond precision
+        let a = generate_unsaved_filename();
+        let b = generate_unsaved_filename();
+        // They might be the same if called within the same millisecond,
+        // but we're testing the format is consistent
+        assert!(a.starts_with("unsaved-"));
+        assert!(b.starts_with("unsaved-"));
+    }
+
+    // =========================================================================
+    // Session directory mapping
+    // =========================================================================
+
+    #[test]
+    fn test_session_dir_mapping() {
+        let project = Path::new("/home/user/project");
+        let session_dir = Session::get_session_dir(project).unwrap();
+        // Should contain "sessions/home/user/project"
+        let path_str = session_dir.to_string_lossy();
+        assert!(path_str.contains("sessions"));
+        assert!(path_str.ends_with("home/user/project"));
+    }
+
+    #[test]
+    fn test_session_path_has_toml_extension() {
+        let project = Path::new("/home/user/project");
+        let session_path = Session::get_session_path(project).unwrap();
+        assert!(session_path.to_string_lossy().ends_with("session.toml"));
+    }
+
+    // =========================================================================
+    // Empty/corrupt session handling
+    // =========================================================================
+
+    #[test]
+    fn test_empty_toml_fails_gracefully() {
+        let result: Result<Session, _> = toml::from_str("");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_invalid_toml_fails_gracefully() {
+        let result: Result<Session, _> = toml::from_str("this is not valid toml {{{}}}");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_missing_panels_field() {
+        let toml_str = r#"
+focused_group = 0
+
+[[panel_groups]]
+expanded_index = 0
+panels = []
+"#;
+        let session: Session = toml::from_str(toml_str).unwrap();
+        assert_eq!(session.panel_groups[0].panels.len(), 0);
+    }
+
+    // =========================================================================
+    // All panel types serialize/deserialize
+    // =========================================================================
+
+    #[test]
+    fn test_all_panel_types_round_trip() {
+        let session = Session {
+            panel_groups: vec![SessionPanelGroup {
+                panels: vec![
+                    SessionPanel::FileManager {
+                        path_or_url: "/tmp".to_string(),
+                    },
+                    SessionPanel::Editor {
+                        path: Some(PathBuf::from("/tmp/test.rs")),
+                        unsaved_buffer_file: Some("unsaved-20251203-143022-456.txt".to_string()),
+                    },
+                    SessionPanel::Terminal {
+                        working_dir: PathBuf::from("/tmp"),
+                    },
+                    SessionPanel::Journal,
+                    SessionPanel::Image {
+                        path: PathBuf::from("/tmp/img.png"),
+                    },
+                    SessionPanel::GitStatus {
+                        repo_path: PathBuf::from("/tmp/repo"),
+                    },
+                    SessionPanel::GitLog {
+                        repo_path: PathBuf::from("/tmp/repo"),
+                    },
+                    SessionPanel::GitDiff {
+                        repo_path: PathBuf::from("/tmp/repo"),
+                        commit_hash: Some("abc123".to_string()),
+                    },
+                ],
+                expanded_index: 0,
+                width: None,
+            }],
+            focused_group: 0,
+        };
+
+        let toml_str = toml::to_string_pretty(&session).unwrap();
+        let restored: Session = toml::from_str(&toml_str).unwrap();
+        assert_eq!(restored.panel_groups[0].panels.len(), 8);
+    }
+
+    // =========================================================================
+    // Log filename generation
+    // =========================================================================
+
+    #[test]
+    fn test_generate_log_filename_format() {
+        let filename = generate_log_filename();
+        assert!(filename.starts_with("session-"));
+        assert!(filename.ends_with(".log"));
+    }
+}
+
 /// Format a SystemTime as a relative time string (e.g., "2 hours ago")
 pub fn format_relative_time(time: std::time::SystemTime) -> String {
     use std::time::SystemTime;

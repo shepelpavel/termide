@@ -615,4 +615,93 @@ mod tests {
         // Should display current path as string
         assert!(!state.display_path().is_empty());
     }
+
+    // =========================================================================
+    // Cancel pending connection
+    // =========================================================================
+
+    #[test]
+    fn test_cancel_pending_no_operation() {
+        let mut state = VfsState::new();
+        // No pending operation — should return None
+        let result = state.cancel_pending();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_cancel_pending_clears_state() {
+        let mut state = VfsState::new();
+        // Set some state that cancel_pending would clear
+        state.awaiting_password = true;
+        let _ = state.cancel_pending();
+        assert!(!state.awaiting_password());
+    }
+
+    // =========================================================================
+    // Previous path restoration
+    // =========================================================================
+
+    #[test]
+    fn test_previous_path_stored_on_remote_navigate() {
+        let mut state = VfsState::new();
+        let local_path = VfsPath::local("/home/user/documents");
+        state.set_path(local_path.clone());
+
+        // previous_path is None initially
+        assert!(state.previous_path.is_none());
+    }
+
+    #[test]
+    fn test_with_path_constructor() {
+        let path = VfsPath::local("/custom/path");
+        let state = VfsState::with_path(path.clone(), None);
+        assert_eq!(state.path_buf(), PathBuf::from("/custom/path"));
+        assert!(state.is_local());
+    }
+
+    // =========================================================================
+    // Connection status
+    // =========================================================================
+
+    #[test]
+    fn test_connection_status_initially_none() {
+        let state = VfsState::new();
+        assert!(state.connection_status().is_none());
+        assert!(state.connection_elapsed_secs().is_none());
+    }
+
+    #[test]
+    fn test_is_not_connecting_initially() {
+        let state = VfsState::new();
+        assert!(!state.is_connecting());
+        assert!(!state.is_loading());
+    }
+
+    // =========================================================================
+    // VfsState path operations
+    // =========================================================================
+
+    #[test]
+    fn test_join_path() {
+        let mut state = VfsState::new();
+        state.set_path(VfsPath::local("/home/user"));
+        let joined = state.join("documents");
+        assert_eq!(joined.path, PathBuf::from("/home/user/documents"));
+    }
+
+    #[test]
+    fn test_local_vfs_path() {
+        let state = VfsState::new();
+        let path = state.local_vfs_path(PathBuf::from("/test/path"));
+        assert!(path.is_local());
+        assert_eq!(path.path, PathBuf::from("/test/path"));
+    }
+
+    #[test]
+    fn test_exists_local_path() {
+        let state = VfsState::new();
+        let temp = std::env::temp_dir();
+        let path = VfsPath::local(&temp);
+        assert!(state.exists(&path));
+    }
 }

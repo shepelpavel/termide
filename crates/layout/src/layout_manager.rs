@@ -663,3 +663,385 @@ impl Default for LayoutManager {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::KeyEvent;
+    use ratatui::{buffer::Buffer, layout::Rect};
+    use std::any::Any;
+    use termide_core::{PanelEvent, RenderContext, WidthPreference};
+
+    /// Minimal mock panel for layout tests.
+    struct MockPanel {
+        name: &'static str,
+        width_pref: WidthPreference,
+    }
+
+    impl MockPanel {
+        fn new(name: &'static str) -> Self {
+            Self {
+                name,
+                width_pref: WidthPreference::NoPreference,
+            }
+        }
+
+        #[allow(dead_code)]
+        fn with_width_pref(name: &'static str, pref: WidthPreference) -> Self {
+            Self {
+                name,
+                width_pref: pref,
+            }
+        }
+    }
+
+    impl Panel for MockPanel {
+        fn name(&self) -> &'static str {
+            self.name
+        }
+        fn title(&self) -> String {
+            self.name.to_string()
+        }
+        fn render(&mut self, _area: Rect, _buf: &mut Buffer, _ctx: &RenderContext) {}
+        fn handle_key(&mut self, _key: KeyEvent) -> Vec<PanelEvent> {
+            vec![]
+        }
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
+        fn width_preference(&self) -> WidthPreference {
+            self.width_pref
+        }
+    }
+
+    fn make_config(threshold: u16) -> Config {
+        let mut config = Config::default();
+        config.general.auto_stack_threshold = threshold;
+        config
+    }
+
+    fn panel(name: &'static str) -> Box<dyn Panel> {
+        Box::new(MockPanel::new(name))
+    }
+
+    // =========================================================================
+    // Panel stacking / unstacking
+    // =========================================================================
+
+    #[test]
+    fn test_add_panel_to_empty_layout() {
+        let mut lm = LayoutManager::new();
+        let config = make_config(80);
+        lm.add_panel(panel("a"), &config, 200);
+        assert_eq!(lm.group_count(), 1);
+        assert_eq!(lm.panel_count(), 1);
+        assert_eq!(lm.focus, 0);
+    }
+
+    #[test]
+    fn test_add_panel_creates_new_group_when_wide() {
+        let mut lm = LayoutManager::new();
+        let config = make_config(40); // threshold 40
+        lm.add_panel(panel("a"), &config, 200);
+        lm.add_panel(panel("b"), &config, 200);
+        // 200 / 2 = 100 >= 40, so new group
+        assert_eq!(lm.group_count(), 2);
+        assert_eq!(lm.panel_count(), 2);
+        assert_eq!(lm.focus, 1); // focus moves to new panel
+    }
+
+    #[test]
+    fn test_add_panel_stacks_when_narrow() {
+        let mut lm = LayoutManager::new();
+        let config = make_config(80); // threshold 80
+        lm.add_panel(panel("a"), &config, 100);
+        lm.add_panel(panel("b"), &config, 100);
+        // 100 / 2 = 50 < 80, so auto-stack
+        assert_eq!(lm.group_count(), 1);
+        assert_eq!(lm.panel_count(), 2);
+    }
+
+    #[test]
+    fn test_unstack_panel_from_group() {
+        let mut lm = LayoutManager::new();
+        let config = make_config(80);
+        // Create a single group with 2 panels (force stack)
+        lm.add_panel(panel("a"), &config, 100);
+        lm.add_panel(panel("b"), &config, 100);
+        assert_eq!(lm.group_count(), 1);
+        assert_eq!(lm.panel_count(), 2);
+
+        // Unstack should create a new group
+        lm.toggle_panel_stacking(200).unwrap();
+        assert_eq!(lm.group_count(), 2);
+        assert_eq!(lm.panel_count(), 2);
+    }
+
+    #[test]
+    fn test_stack_panel_merges_into_left() {
+        let mut lm = LayoutManager::new();
+        let config = make_config(40);
+        lm.add_panel(panel("a"), &config, 200);
+        lm.add_panel(panel("b"), &config, 200);
+        assert_eq!(lm.group_count(), 2);
+
+        // Focus on group 1 (single panel), stacking merges into left
+        lm.focus = 1;
+        lm.toggle_panel_stacking(200).unwrap();
+        assert_eq!(lm.group_count(), 1);
+        assert_eq!(lm.panel_count(), 2);
+        assert_eq!(lm.focus, 0);
+    }
+
+    // =========================================================================
+    // Focus tracking after layout changes
+    // =========================================================================
+
+    #[test]
+    fn test_focus_updates_on_add_panel() {
+        let mut lm = LayoutManager::new();
+        let config = make_config(40);
+        lm.add_panel(panel("a"), &config, 400);
+        assert_eq!(lm.focus, 0);
+        lm.add_panel(panel("b"), &config, 400);
+        assert_eq!(lm.focus, 1);
+        lm.add_panel(panel("c"), &config, 400);
+        assert_eq!(lm.focus, 2);
+    }
+
+    #[test]
+    fn test_add_panel_without_focus_preserves_focus() {
+        let mut lm = LayoutManager::new();
+        let config = make_config(40);
+        lm.add_panel(panel("a"), &config, 400);
+        lm.add_panel_without_focus(panel("b"), &config, 400);
+        assert_eq!(lm.focus, 0); // focus stays on first panel
+        assert_eq!(lm.group_count(), 2);
+    }
+
+    #[test]
+    fn test_focus_after_close_last_group() {
+        let mut lm = LayoutManager::new();
+        let config = make_config(40);
+        lm.add_panel(panel("a"), &config, 400);
+        lm.add_panel(panel("b"), &config, 400);
+        lm.focus = 1;
+        lm.close_active_panel(400).unwrap();
+        assert_eq!(lm.group_count(), 1);
+        assert_eq!(lm.focus, 0);
+    }
+
+    // =========================================================================
+    // Width redistribution
+    // =========================================================================
+
+    #[test]
+    fn test_single_group_gets_full_width() {
+        let mut lm = LayoutManager::new();
+        let config = make_config(40);
+        lm.add_panel(panel("a"), &config, 200);
+        lm.redistribute_widths_proportionally(200);
+        assert_eq!(lm.panel_groups[0].width, Some(200));
+    }
+
+    #[test]
+    fn test_widths_assigned_after_multiple_groups() {
+        let mut lm = LayoutManager::new();
+        let config = make_config(20);
+        lm.add_panel(panel("a"), &config, 200);
+        lm.add_panel(panel("b"), &config, 200);
+        lm.add_panel(panel("c"), &config, 200);
+
+        let widths = lm.calculate_actual_widths(200);
+        let total: u16 = widths.iter().sum();
+        // Total widths should equal available width
+        assert_eq!(total, 200);
+    }
+
+    #[test]
+    fn test_redistribute_widths_empty() {
+        let mut lm = LayoutManager::new();
+        // Should not panic
+        lm.redistribute_widths_proportionally(200);
+        assert!(lm.calculate_actual_widths(200).is_empty());
+    }
+
+    // =========================================================================
+    // Panel navigation
+    // =========================================================================
+
+    #[test]
+    fn test_next_prev_group_wrapping() {
+        let mut lm = LayoutManager::new();
+        let config = make_config(20);
+        lm.add_panel(panel("a"), &config, 400);
+        lm.add_panel(panel("b"), &config, 400);
+        lm.add_panel(panel("c"), &config, 400);
+
+        lm.focus = 0;
+        lm.next_group();
+        assert_eq!(lm.focus, 1);
+        lm.next_group();
+        assert_eq!(lm.focus, 2);
+        // Wrap around
+        lm.next_group();
+        assert_eq!(lm.focus, 0);
+
+        // prev wraps back
+        lm.prev_group();
+        assert_eq!(lm.focus, 2);
+    }
+
+    #[test]
+    fn test_next_prev_panel_in_group() {
+        let mut lm = LayoutManager::new();
+        let config = make_config(80);
+        // Force stacking
+        lm.add_panel(panel("a"), &config, 100);
+        lm.add_panel(panel("b"), &config, 100);
+        lm.add_panel(panel("c"), &config, 100);
+        assert_eq!(lm.group_count(), 1);
+
+        let group = &lm.panel_groups[0];
+        let initial_expanded = group.expanded_index();
+
+        lm.next_panel_in_group();
+        let after = lm.panel_groups[0].expanded_index();
+        assert_eq!(after, (initial_expanded + 1) % 3);
+    }
+
+    // =========================================================================
+    // Panel move operations
+    // =========================================================================
+
+    #[test]
+    fn test_move_panel_to_next_group_swaps_single() {
+        let mut lm = LayoutManager::new();
+        let config = make_config(20);
+        lm.add_panel(panel("a"), &config, 400);
+        lm.add_panel(panel("b"), &config, 400);
+        assert_eq!(lm.group_count(), 2);
+
+        // Move group 0 (single panel) to next — this swaps the groups
+        lm.focus = 0;
+        lm.move_panel_to_next_group(400).unwrap();
+        assert_eq!(lm.group_count(), 2); // swap, not merge
+        assert_eq!(lm.focus, 1);
+    }
+
+    #[test]
+    fn test_move_panel_to_prev_group_swaps_single() {
+        let mut lm = LayoutManager::new();
+        let config = make_config(20);
+        lm.add_panel(panel("a"), &config, 400);
+        lm.add_panel(panel("b"), &config, 400);
+        assert_eq!(lm.group_count(), 2);
+
+        lm.focus = 1;
+        lm.move_panel_to_prev_group(400).unwrap();
+        assert_eq!(lm.group_count(), 2); // swap, not merge
+        assert_eq!(lm.focus, 0);
+    }
+
+    #[test]
+    fn test_move_panel_from_stacked_group_merges() {
+        let mut lm = LayoutManager::new();
+        let config = make_config(80);
+        // Create group with 2 stacked panels
+        lm.add_panel(panel("a"), &config, 100);
+        lm.add_panel(panel("b"), &config, 100);
+        assert_eq!(lm.group_count(), 1);
+        assert_eq!(lm.panel_count(), 2);
+
+        // Now add a separate group (wide enough)
+        let config2 = make_config(20);
+        lm.add_panel(panel("c"), &config2, 400);
+        assert_eq!(lm.group_count(), 2);
+
+        // Focus on first group (has 2 panels), move expanded panel to next group
+        lm.focus = 0;
+        lm.panel_groups[0].set_expanded(1); // expand "b"
+        lm.move_panel_to_next_group(400).unwrap();
+        // "b" moved to group 1, group 0 still has "a"
+        assert_eq!(lm.group_count(), 2);
+        assert_eq!(lm.panel_groups[1].len(), 2); // c + b
+    }
+
+    #[test]
+    fn test_move_panel_up_down_in_group() {
+        let mut lm = LayoutManager::new();
+        let config = make_config(80);
+        lm.add_panel(panel("a"), &config, 100);
+        lm.add_panel(panel("b"), &config, 100);
+        lm.add_panel(panel("c"), &config, 100);
+        assert_eq!(lm.group_count(), 1);
+
+        // expanded is the last added panel ("c" at index 2)
+        let group = &lm.panel_groups[0];
+        assert_eq!(group.expanded_index(), 2);
+
+        // Move down should be no-op (already at bottom)
+        lm.move_panel_down_in_group().unwrap();
+        assert_eq!(lm.panel_groups[0].expanded_index(), 2);
+
+        // Move up should swap with index 1
+        lm.move_panel_up_in_group().unwrap();
+        assert_eq!(lm.panel_groups[0].expanded_index(), 1);
+    }
+
+    // =========================================================================
+    // Edge cases
+    // =========================================================================
+
+    #[test]
+    fn test_close_last_panel_removes_group() {
+        let mut lm = LayoutManager::new();
+        let config = make_config(40);
+        lm.add_panel(panel("a"), &config, 200);
+        lm.add_panel(panel("b"), &config, 200);
+        assert_eq!(lm.group_count(), 2);
+
+        // Close panel in second group
+        lm.focus = 1;
+        lm.close_active_panel(200).unwrap();
+        assert_eq!(lm.group_count(), 1);
+    }
+
+    #[test]
+    fn test_close_all_panels() {
+        let mut lm = LayoutManager::new();
+        let config = make_config(40);
+        lm.add_panel(panel("a"), &config, 200);
+        lm.close_active_panel(200).unwrap();
+        assert_eq!(lm.group_count(), 0);
+        assert!(!lm.has_panels());
+        assert_eq!(lm.panel_count(), 0);
+    }
+
+    #[test]
+    fn test_active_panel_with_no_panels() {
+        let lm = LayoutManager::new();
+        assert!(lm.active_panel().is_none());
+    }
+
+    #[test]
+    fn test_next_group_with_no_panels() {
+        let mut lm = LayoutManager::new();
+        // Should not panic
+        lm.next_group();
+        lm.prev_group();
+        assert_eq!(lm.focus, 0);
+    }
+
+    #[test]
+    fn test_set_focus_out_of_bounds() {
+        let mut lm = LayoutManager::new();
+        let config = make_config(40);
+        lm.add_panel(panel("a"), &config, 200);
+        lm.set_focus(100); // out of bounds
+        assert_eq!(lm.focus, 0); // unchanged
+    }
+}

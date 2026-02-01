@@ -341,6 +341,155 @@ fn get_device_for_path(path: &Path) -> Option<String> {
     })
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // =========================================================================
+    // SystemStats::memory_percent()
+    // =========================================================================
+
+    #[test]
+    fn test_memory_percent_normal() {
+        let stats = SystemStats {
+            cpu_usage: 50.0,
+            memory_used: 4_000_000_000,
+            memory_total: 16_000_000_000,
+        };
+        let percent = stats.memory_percent();
+        assert!((percent - 25.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_memory_percent_zero_total() {
+        let stats = SystemStats {
+            cpu_usage: 0.0,
+            memory_used: 0,
+            memory_total: 0,
+        };
+        assert_eq!(stats.memory_percent(), 0.0);
+    }
+
+    #[test]
+    fn test_memory_percent_full() {
+        let stats = SystemStats {
+            cpu_usage: 0.0,
+            memory_used: 16_000_000_000,
+            memory_total: 16_000_000_000,
+        };
+        assert!((stats.memory_percent() - 100.0).abs() < 0.01);
+    }
+
+    // =========================================================================
+    // DiskSpaceInfo
+    // =========================================================================
+
+    #[test]
+    fn test_disk_usage_percent() {
+        let info = DiskSpaceInfo {
+            device: Some("/dev/sda1".to_string()),
+            available: 200_000_000_000,
+            total: 1_000_000_000_000,
+        };
+        // used = 800GB, total = 1TB, percent = 80%
+        assert_eq!(info.usage_percent(), 80);
+    }
+
+    #[test]
+    fn test_disk_usage_percent_zero_total() {
+        let info = DiskSpaceInfo {
+            device: None,
+            available: 0,
+            total: 0,
+        };
+        assert_eq!(info.usage_percent(), 0);
+    }
+
+    #[test]
+    fn test_disk_used_bytes() {
+        let info = DiskSpaceInfo {
+            device: None,
+            available: 300,
+            total: 1000,
+        };
+        assert_eq!(info.used(), 700);
+    }
+
+    #[test]
+    fn test_disk_device_name() {
+        let info = DiskSpaceInfo {
+            device: Some("/dev/nvme0n1p2".to_string()),
+            available: 0,
+            total: 0,
+        };
+        assert_eq!(info.device_name(), Some("NVME0N1P2".to_string()));
+    }
+
+    #[test]
+    fn test_disk_device_name_no_prefix() {
+        let info = DiskSpaceInfo {
+            device: Some("sda1".to_string()),
+            available: 0,
+            total: 0,
+        };
+        assert_eq!(info.device_name(), Some("SDA1".to_string()));
+    }
+
+    #[test]
+    fn test_disk_device_name_none() {
+        let info = DiskSpaceInfo {
+            device: None,
+            available: 0,
+            total: 0,
+        };
+        assert_eq!(info.device_name(), None);
+    }
+
+    // =========================================================================
+    // format_bytes
+    // =========================================================================
+
+    #[test]
+    fn test_format_bytes_bytes() {
+        assert_eq!(format_bytes(500), "500B");
+    }
+
+    #[test]
+    fn test_format_bytes_kb() {
+        assert_eq!(format_bytes(2048), "2.0KB");
+    }
+
+    #[test]
+    fn test_format_bytes_mb() {
+        assert_eq!(format_bytes(5 * 1024 * 1024), "5.0MB");
+    }
+
+    #[test]
+    fn test_format_bytes_gb() {
+        assert_eq!(format_bytes(2 * 1024 * 1024 * 1024), "2.0GB");
+    }
+
+    #[test]
+    fn test_format_bytes_zero() {
+        assert_eq!(format_bytes(0), "0B");
+    }
+
+    // =========================================================================
+    // DiskSpaceInfo GB calculations
+    // =========================================================================
+
+    #[test]
+    fn test_disk_used_gb() {
+        let info = DiskSpaceInfo {
+            device: None,
+            available: 500 * 1_073_741_824, // 500 GB available
+            total: 1000 * 1_073_741_824,    // 1 TB total
+        };
+        assert_eq!(info.used_gb(), 500);
+        assert_eq!(info.total_gb(), 1000);
+    }
+}
+
 /// Get disk space information for a given path.
 ///
 /// Returns `DiskSpaceInfo` with device name, available and total space.

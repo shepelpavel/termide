@@ -233,4 +233,123 @@ mod tests {
         assert!(queue.is_full());
         assert_eq!(queue.len(), 2);
     }
+
+    #[test]
+    fn test_remove_by_id() {
+        let mut queue = OperationQueue::new();
+        queue.enqueue(QueuedOperation::new(
+            OperationId::new(1),
+            make_request(OperationPriority::Normal),
+        ));
+        queue.enqueue(QueuedOperation::new(
+            OperationId::new(2),
+            make_request(OperationPriority::Normal),
+        ));
+        queue.enqueue(QueuedOperation::new(
+            OperationId::new(3),
+            make_request(OperationPriority::Normal),
+        ));
+
+        // Remove middle one
+        let removed = queue.remove(OperationId::new(2));
+        assert!(removed.is_some());
+        assert_eq!(removed.unwrap().id, OperationId::new(2));
+        assert_eq!(queue.len(), 2);
+
+        // Verify order: 1, 3
+        assert_eq!(queue.dequeue().unwrap().id, OperationId::new(1));
+        assert_eq!(queue.dequeue().unwrap().id, OperationId::new(3));
+    }
+
+    #[test]
+    fn test_remove_nonexistent() {
+        let mut queue = OperationQueue::new();
+        queue.enqueue(QueuedOperation::new(
+            OperationId::new(1),
+            make_request(OperationPriority::Normal),
+        ));
+        let removed = queue.remove(OperationId::new(99));
+        assert!(removed.is_none());
+        assert_eq!(queue.len(), 1);
+    }
+
+    #[test]
+    fn test_peek() {
+        let mut queue = OperationQueue::new();
+        assert!(queue.peek().is_none());
+
+        queue.enqueue(QueuedOperation::new(
+            OperationId::new(1),
+            make_request(OperationPriority::Normal),
+        ));
+        assert_eq!(queue.peek().unwrap().id, OperationId::new(1));
+        // peek doesn't remove
+        assert_eq!(queue.len(), 1);
+    }
+
+    #[test]
+    fn test_clear() {
+        let mut queue = OperationQueue::new();
+        queue.enqueue(QueuedOperation::new(
+            OperationId::new(1),
+            make_request(OperationPriority::Normal),
+        ));
+        queue.enqueue(QueuedOperation::new(
+            OperationId::new(2),
+            make_request(OperationPriority::Normal),
+        ));
+        queue.clear();
+        assert!(queue.is_empty());
+        assert_eq!(queue.len(), 0);
+    }
+
+    #[test]
+    fn test_set_priority() {
+        let mut queue = OperationQueue::new();
+        queue.enqueue(QueuedOperation::new(
+            OperationId::new(1),
+            make_request(OperationPriority::Low),
+        ));
+        queue.enqueue(QueuedOperation::new(
+            OperationId::new(2),
+            make_request(OperationPriority::Low),
+        ));
+
+        // Promote op 2 to high priority
+        assert!(queue.set_priority(OperationId::new(2), OperationPriority::High));
+
+        // Op 2 should now come first
+        assert_eq!(queue.dequeue().unwrap().id, OperationId::new(2));
+        assert_eq!(queue.dequeue().unwrap().id, OperationId::new(1));
+    }
+
+    #[test]
+    fn test_ids() {
+        let mut queue = OperationQueue::new();
+        queue.enqueue(QueuedOperation::new(
+            OperationId::new(10),
+            make_request(OperationPriority::Normal),
+        ));
+        queue.enqueue(QueuedOperation::new(
+            OperationId::new(20),
+            make_request(OperationPriority::Normal),
+        ));
+        let ids = queue.ids();
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains(&OperationId::new(10)));
+        assert!(ids.contains(&OperationId::new(20)));
+    }
+
+    #[test]
+    fn test_unlimited_queue() {
+        let mut queue = OperationQueue::new(); // max_size = 0 = unlimited
+        assert!(!queue.is_full());
+        for i in 0..100 {
+            assert!(queue.enqueue(QueuedOperation::new(
+                OperationId::new(i),
+                make_request(OperationPriority::Normal),
+            )));
+        }
+        assert_eq!(queue.len(), 100);
+    }
 }

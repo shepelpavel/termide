@@ -3108,8 +3108,12 @@ name = "termide-layout"
 version = "0.11.0"
 dependencies = [
  "anyhow",
+ "crossterm 0.28.1",
+ "ratatui",
  "termide-config",
  "termide-core",
+ "termide-session",
+ "termide-theme",
 ]
 
 [[package]]

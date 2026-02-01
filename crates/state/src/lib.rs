@@ -949,4 +949,221 @@ mod tests {
         state.select_next(0);
         assert_eq!(state.selected, 0);
     }
+
+    // =========================================================================
+    // OperationProgress tests
+    // =========================================================================
+
+    #[test]
+    fn test_operation_progress_percent_by_bytes() {
+        let p = OperationProgress {
+            bytes_transferred: 50,
+            total_bytes: 100,
+            ..Default::default()
+        };
+        assert_eq!(p.percent(), 50);
+    }
+
+    #[test]
+    fn test_operation_progress_percent_by_files() {
+        let p = OperationProgress {
+            files_completed: 3,
+            total_files: 10,
+            total_bytes: 0,
+            bytes_transferred: 0,
+            ..Default::default()
+        };
+        assert_eq!(p.percent(), 30);
+    }
+
+    #[test]
+    fn test_operation_progress_percent_zero_total() {
+        let p = OperationProgress::default();
+        assert_eq!(p.percent(), 0);
+    }
+
+    #[test]
+    fn test_operation_progress_percent_capped_at_100() {
+        let p = OperationProgress {
+            bytes_transferred: 200,
+            total_bytes: 100,
+            ..Default::default()
+        };
+        assert_eq!(p.percent(), 100);
+    }
+
+    // =========================================================================
+    // BatchOperation tests
+    // =========================================================================
+
+    #[test]
+    fn test_batch_operation_lifecycle() {
+        let mut op = BatchOperation::new(
+            BatchOperationType::Copy,
+            vec![
+                PathBuf::from("/a"),
+                PathBuf::from("/b"),
+                PathBuf::from("/c"),
+            ],
+            PathBuf::from("/dest"),
+        );
+
+        assert_eq!(op.total_count(), 3);
+        assert!(!op.is_complete());
+        assert_eq!(op.current_source(), Some(&PathBuf::from("/a")));
+
+        op.advance();
+        op.increment_success();
+        assert_eq!(op.current_index, 1);
+        assert_eq!(op.success_count, 1);
+
+        op.advance();
+        op.increment_error();
+
+        op.advance();
+        op.increment_skipped();
+
+        assert!(op.is_complete());
+        assert_eq!(op.success_count, 1);
+        assert_eq!(op.error_count, 1);
+        assert_eq!(op.skipped_count, 1);
+    }
+
+    #[test]
+    fn test_batch_operation_completed_destinations() {
+        let mut op = BatchOperation::new(
+            BatchOperationType::Move,
+            vec![PathBuf::from("/a")],
+            PathBuf::from("/dest"),
+        );
+
+        op.add_completed_destination(PathBuf::from("/dest/a"));
+        assert_eq!(op.completed_destinations.len(), 1);
+    }
+
+    #[test]
+    fn test_batch_operation_rename_counter() {
+        let mut op = BatchOperation::new(
+            BatchOperationType::Copy,
+            vec![PathBuf::from("/a")],
+            PathBuf::from("/dest"),
+        );
+
+        assert_eq!(op.get_and_increment_rename_counter(), 1);
+        assert_eq!(op.get_and_increment_rename_counter(), 2);
+        assert_eq!(op.get_and_increment_rename_counter(), 3);
+    }
+
+    #[test]
+    fn test_batch_operation_last_successful_filename() {
+        let mut op = BatchOperation::new(
+            BatchOperationType::Copy,
+            vec![PathBuf::from("/a/file.txt"), PathBuf::from("/b/other.rs")],
+            PathBuf::from("/dest"),
+        );
+
+        // Before any processing
+        assert_eq!(op.last_successful_filename(), None);
+
+        // After processing first file
+        op.advance();
+        op.increment_success();
+        assert_eq!(op.last_successful_filename(), Some("file.txt".to_string()));
+    }
+
+    #[test]
+    fn test_batch_operation_pause_state() {
+        let op = BatchOperation::new(
+            BatchOperationType::Copy,
+            vec![PathBuf::from("/a")],
+            PathBuf::from("/dest"),
+        );
+        assert_eq!(op.pause_state, PauseState::Running);
+    }
+
+    // =========================================================================
+    // DragState tests
+    // =========================================================================
+
+    #[test]
+    fn test_drag_state_lifecycle() {
+        let mut drag = DragState::default();
+        assert!(!drag.is_dragging());
+
+        drag.start(1, 100, 50, 50);
+        assert!(drag.is_dragging());
+        assert_eq!(drag.active_divider, Some(1));
+        assert_eq!(drag.start_x, 100);
+        assert_eq!(drag.start_widths, (50, 50));
+
+        drag.end();
+        assert!(!drag.is_dragging());
+    }
+
+    // =========================================================================
+    // UiState tests
+    // =========================================================================
+
+    #[test]
+    fn test_ui_state_close_all_submenus() {
+        let mut ui = UiState::default();
+        ui.sessions_submenu.open();
+        ui.tools_submenu.open();
+        ui.options_submenu.open();
+        ui.scripts_submenu.open();
+        ui.bookmarks_submenu.open();
+        ui.current_scripts_group = Some("test".to_string());
+        ui.current_bookmarks_group = Some("test".to_string());
+
+        ui.close_all_submenus();
+
+        assert!(!ui.sessions_submenu.open);
+        assert!(!ui.tools_submenu.open);
+        assert!(!ui.options_submenu.open);
+        assert!(!ui.scripts_submenu.open);
+        assert!(!ui.bookmarks_submenu.open);
+        assert!(ui.current_scripts_group.is_none());
+        assert!(ui.current_bookmarks_group.is_none());
+    }
+
+    // =========================================================================
+    // OperationType tests
+    // =========================================================================
+
+    #[test]
+    fn test_operation_type_has_data_progress() {
+        assert!(OperationType::Copy.has_data_progress());
+        assert!(OperationType::Move.has_data_progress());
+        assert!(OperationType::CopyUpload.has_data_progress());
+        assert!(OperationType::CopyDownload.has_data_progress());
+        assert!(!OperationType::Delete.has_data_progress());
+        assert!(!OperationType::Rename.has_data_progress());
+    }
+
+    // =========================================================================
+    // RenamePattern additional tests
+    // =========================================================================
+
+    #[test]
+    fn test_rename_pattern_no_extension() {
+        let pattern = RenamePattern::new("$1_backup".to_string());
+        assert_eq!(pattern.preview("README"), "README_backup");
+    }
+
+    #[test]
+    fn test_rename_pattern_multiple_extensions() {
+        let pattern = RenamePattern::new("$1.$2.$-1".to_string());
+        assert_eq!(pattern.preview("file.tar.gz"), "file.tar.gz");
+    }
+
+    // =========================================================================
+    // TerminalState tests
+    // =========================================================================
+
+    #[test]
+    fn test_terminal_state_default() {
+        let ts = TerminalState::default();
+        assert_eq!(ts.width, 80);
+        assert_eq!(ts.height, 24);
+    }
 }

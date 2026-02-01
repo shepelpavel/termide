@@ -672,6 +672,269 @@ impl FileOperation {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // =========================================================================
+    // OperationProgress tests
+    // =========================================================================
+
+    #[test]
+    fn test_progress_percentage_by_bytes() {
+        let p = OperationProgress::transferring(500, 1000, 0, 0);
+        assert!((p.percentage() - 0.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_progress_percentage_by_files() {
+        let p = OperationProgress {
+            phase: OperationPhase::Transferring,
+            files_completed: 3,
+            total_files: 10,
+            ..Default::default()
+        };
+        assert!((p.percentage() - 0.3).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_progress_percentage_zero() {
+        let p = OperationProgress::default();
+        assert_eq!(p.percentage(), 0.0);
+    }
+
+    #[test]
+    fn test_progress_is_complete() {
+        assert!(OperationProgress::completed(100, 5, 5).is_complete());
+        assert!(OperationProgress {
+            phase: OperationPhase::Failed,
+            ..Default::default()
+        }
+        .is_complete());
+        assert!(OperationProgress {
+            phase: OperationPhase::Cancelled,
+            ..Default::default()
+        }
+        .is_complete());
+        assert!(!OperationProgress::scanning().is_complete());
+        assert!(!OperationProgress::transferring(0, 100, 0, 1).is_complete());
+    }
+
+    #[test]
+    fn test_progress_builders() {
+        let p = OperationProgress::scanning()
+            .with_item("test.txt")
+            .with_speed(1024.0, Some(10));
+        assert_eq!(p.phase, OperationPhase::Scanning);
+        assert_eq!(p.current_item, Some("test.txt".to_string()));
+        assert_eq!(p.speed_bps, 1024.0);
+        assert_eq!(p.eta_seconds, Some(10));
+    }
+
+    #[test]
+    fn test_progress_with_individual() {
+        let p = OperationProgress::transferring(100, 1000, 1, 5).with_individual(50, 200);
+        assert_eq!(p.individual_file_bytes, 50);
+        assert_eq!(p.individual_file_total, 200);
+    }
+
+    #[test]
+    fn test_progress_with_bytes() {
+        let p = OperationProgress::new().with_bytes(500, 1000);
+        assert_eq!(p.bytes_transferred, 500);
+        assert_eq!(p.total_bytes, 1000);
+    }
+
+    // =========================================================================
+    // OperationControl tests
+    // =========================================================================
+
+    #[test]
+    fn test_operation_control_pause_resume() {
+        let ctrl = OperationControl::new();
+        assert!(!ctrl.is_paused());
+        ctrl.set_paused(true);
+        assert!(ctrl.is_paused());
+        ctrl.set_paused(false);
+        assert!(!ctrl.is_paused());
+    }
+
+    #[test]
+    fn test_operation_control_cancel() {
+        let ctrl = OperationControl::new();
+        assert!(!ctrl.is_cancelled());
+        assert!(ctrl.check_cancelled().is_ok());
+
+        ctrl.cancel();
+        assert!(ctrl.is_cancelled());
+        assert!(ctrl.check_cancelled().is_err());
+    }
+
+    #[test]
+    fn test_operation_control_clone_shares_state() {
+        let ctrl = OperationControl::new();
+        let clone = ctrl.clone();
+
+        ctrl.cancel();
+        assert!(clone.is_cancelled());
+
+        ctrl.set_paused(true);
+        assert!(clone.is_paused());
+    }
+
+    // =========================================================================
+    // OperationResult tests
+    // =========================================================================
+
+    #[test]
+    fn test_operation_result_is_success() {
+        assert!(OperationResult::Success.is_success());
+        assert!(OperationResult::SuccessWithPath(PathBuf::from("/x")).is_success());
+        assert!(OperationResult::PartialSuccess {
+            completed: 5,
+            skipped: 1,
+            failed: 0,
+            failed_files: vec![],
+        }
+        .is_success());
+        assert!(!OperationResult::Failed("err".to_string()).is_success());
+        assert!(!OperationResult::Cancelled.is_success());
+    }
+
+    // =========================================================================
+    // OperationPath tests
+    // =========================================================================
+
+    #[test]
+    fn test_operation_path_local() {
+        let p = OperationPath::local("/test/file.txt");
+        assert!(p.is_local());
+        assert!(!p.is_remote());
+        assert_eq!(p.file_name(), Some("file.txt".to_string()));
+        assert_eq!(p.display(), "/test/file.txt");
+    }
+
+    #[test]
+    fn test_operation_path_from_pathbuf() {
+        let p: OperationPath = PathBuf::from("/test").into();
+        assert!(p.is_local());
+    }
+
+    // =========================================================================
+    // OperationRequest tests
+    // =========================================================================
+
+    #[test]
+    fn test_request_copy() {
+        let req = OperationRequest::copy(
+            vec![OperationPath::local("/src")],
+            OperationPath::local("/dst"),
+        );
+        assert_eq!(req.op_type, OperationType::Copy);
+        assert!(!req.is_move);
+        assert_eq!(req.priority, OperationPriority::Normal);
+        assert_eq!(req.conflict_mode, ConflictMode::Ask);
+    }
+
+    #[test]
+    fn test_request_move() {
+        let req = OperationRequest::r#move(
+            vec![OperationPath::local("/src")],
+            OperationPath::local("/dst"),
+        );
+        assert!(req.is_move);
+    }
+
+    #[test]
+    fn test_request_delete() {
+        let req = OperationRequest::delete(vec![OperationPath::local("/src")]);
+        assert_eq!(req.op_type, OperationType::Delete);
+        assert!(req.destination.is_none());
+    }
+
+    #[test]
+    fn test_request_with_modifiers() {
+        let req = OperationRequest::copy(
+            vec![OperationPath::local("/src")],
+            OperationPath::local("/dst"),
+        )
+        .with_priority(OperationPriority::High)
+        .with_conflict_mode(ConflictMode::OverwriteAll);
+
+        assert_eq!(req.priority, OperationPriority::High);
+        assert_eq!(req.conflict_mode, ConflictMode::OverwriteAll);
+    }
+
+    // =========================================================================
+    // BackgroundOperationSummary tests
+    // =========================================================================
+
+    #[test]
+    fn test_summary_no_operations() {
+        let summary = BackgroundOperationSummary::default();
+        assert!(!summary.has_operations());
+        assert_eq!(summary.percentage(), 0.0);
+        assert_eq!(summary.status_text(), "");
+    }
+
+    #[test]
+    fn test_summary_single_active() {
+        let summary = BackgroundOperationSummary {
+            active_count: 1,
+            total_bytes_transferred: 50,
+            total_bytes: 100,
+            current_activity: Some("Copying".to_string()),
+            ..Default::default()
+        };
+        assert!(summary.has_operations());
+        assert!((summary.percentage() - 0.5).abs() < 0.001);
+        assert_eq!(summary.status_text(), "Copying 50%");
+    }
+
+    #[test]
+    fn test_summary_with_queue() {
+        let summary = BackgroundOperationSummary {
+            active_count: 1,
+            queued_count: 3,
+            total_bytes_transferred: 25,
+            total_bytes: 100,
+            current_activity: Some("Moving".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(summary.status_text(), "Moving 25% (+3 queued)");
+    }
+
+    #[test]
+    fn test_summary_speed_text() {
+        let mut summary = BackgroundOperationSummary::default();
+
+        summary.speed_bps = 500.0;
+        assert_eq!(summary.speed_text(), "500 B/s");
+
+        summary.speed_bps = 2048.0;
+        assert_eq!(summary.speed_text(), "2.0 KB/s");
+
+        summary.speed_bps = 5.0 * 1024.0 * 1024.0;
+        assert_eq!(summary.speed_text(), "5.0 MB/s");
+    }
+
+    // =========================================================================
+    // OperationId tests
+    // =========================================================================
+
+    #[test]
+    fn test_operation_id_display() {
+        let id = OperationId::new(42);
+        assert_eq!(format!("{}", id), "op-42");
+    }
+
+    #[test]
+    fn test_operation_id_equality() {
+        assert_eq!(OperationId::new(1), OperationId::new(1));
+        assert_ne!(OperationId::new(1), OperationId::new(2));
+    }
+}
+
 impl std::fmt::Debug for FileOperation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FileOperation")

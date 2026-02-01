@@ -126,6 +126,98 @@ use termide_config::Config;
 use termide_core::{Panel, PanelConfig, RenderContext, ThemeColors};
 use termide_theme::Theme;
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // =========================================================================
+    // smart_truncate_title tests
+    // =========================================================================
+
+    #[test]
+    fn test_truncate_short_title_unchanged() {
+        assert_eq!(smart_truncate_title("main.rs", 20), "main.rs");
+    }
+
+    #[test]
+    fn test_truncate_empty_title() {
+        assert_eq!(smart_truncate_title("", 10), "");
+    }
+
+    #[test]
+    fn test_truncate_exact_fit() {
+        let title = "abcde";
+        assert_eq!(smart_truncate_title(title, 5), "abcde");
+    }
+
+    #[test]
+    fn test_truncate_with_spinner_prefix() {
+        // Spinner char + space + title
+        let title = "\u{280b} main.rs";
+        let result = smart_truncate_title(title, 50);
+        assert_eq!(result, title);
+    }
+
+    #[test]
+    fn test_truncate_with_status_suffix() {
+        let title = "main.rs (indexing)";
+        let result = smart_truncate_title(title, 50);
+        assert_eq!(result, title);
+    }
+
+    #[test]
+    fn test_truncate_preserves_spinner_and_status() {
+        // When title is too long, spinner and status should survive
+        let title = "\u{280b} very_long_filename_that_needs_truncation.rs (indexing)";
+        let result = smart_truncate_title(title, 30);
+        // Spinner should be at start
+        assert!(result.starts_with('\u{280b}'));
+        // Status should be at end
+        assert!(result.ends_with("(indexing)"));
+    }
+
+    #[test]
+    fn test_truncate_long_title_gets_ellipsis() {
+        let title = "a_very_long_filename_that_exceeds_width.rs";
+        let result = smart_truncate_title(title, 15);
+        assert!(result.contains('…'));
+        assert!(result.len() <= title.len());
+    }
+
+    #[test]
+    fn test_truncate_very_narrow_width() {
+        let title = "main.rs";
+        let result = smart_truncate_title(title, 3);
+        // Should not panic, should produce something <= 3 chars wide
+        assert!(result.width() <= 3);
+    }
+
+    #[test]
+    fn test_truncate_width_1() {
+        let title = "main.rs";
+        let result = smart_truncate_title(title, 1);
+        assert!(result.width() <= 1);
+    }
+
+    #[test]
+    fn test_truncate_unicode_cjk() {
+        // CJK chars are typically 2 cells wide
+        let title = "\u{4f60}\u{597d}\u{4e16}\u{754c}"; // "你好世界"
+        let result = smart_truncate_title(title, 4);
+        // Should fit within 4 cells (2 CJK chars)
+        assert!(result.width() <= 4);
+    }
+
+    #[test]
+    fn test_truncate_only_status_no_main() {
+        // Edge case: title that's mostly status
+        let title = "x (very long status message here)";
+        let result = smart_truncate_title(title, 10);
+        // Should not panic
+        assert!(result.width() <= 10);
+    }
+}
+
 /// Render active divider during drag operation.
 ///
 /// Only draws when a divider is being actively dragged.

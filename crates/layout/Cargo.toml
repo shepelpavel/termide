@@ -12,3 +12,9 @@ publish = false
 termide-core = { path = "../core" }
 termide-config = { path = "../config" }
 anyhow.workspace = true
+
+[dev-dependencies]
+crossterm.workspace = true
+ratatui.workspace = true
+termide-session = { path = "../session" }
+termide-theme = { path = "../theme" }
