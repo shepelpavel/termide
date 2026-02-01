@@ -5,6 +5,22 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1] - 2026-02-01
+
+### Added
+- **109 New Tests**: Added tests across 8 crates covering critical gaps (layout, config, buffer, clipboard, core, git, i18n, session)
+
+### Changed
+- **Stale-on-Collapse Optimization**: Collapsed panels skip tick/watcher/git/LSP background work; refresh once when expanded again
+- **Expanded-Aware Iterators**: Added `iter_all_panels_with_expanded_state_mut()` and `iter_expanded_panels_mut()` to LayoutManager
+- **LSP Polling Scoped to Expanded Editors**: Loading status updates only run for visible editor panels
+
+### Fixed
+- **CI/Security**: Vendored OpenSSL for cross-platform builds, fixed macOS statvfs types, redacted credentials from logs
+- **SFTP Stale Bug**: Remote panels are never marked stale by local fs/git events (prevents broken reconnections)
+- **VFS Spinner Hang**: FileManager tick always drains VFS and git-status receivers even when collapsed, preventing stuck spinners
+- **VFS Error Draining**: Fixed early return in FileManager tick that prevented VFS error results from being consumed
+
 ## [0.11.0] - 2026-02-01
 
 ### Added
