@@ -733,6 +733,7 @@ impl AppState {
     ) {
         let op = ActiveOperation::new(id, op_type, source, dest, total_files, total_bytes);
         self.active_operations.insert(id, op);
+        self.operations_panel_dirty = true;
     }
 
     /// Get operations list sorted by start time (newest first).
@@ -754,7 +755,9 @@ impl AppState {
 
     /// Remove an operation from tracking (e.g., when completed/cancelled).
     pub fn untrack_operation(&mut self, id: termide_file_ops::OperationId) {
-        self.active_operations.remove(&id);
+        if self.active_operations.remove(&id).is_some() {
+            self.operations_panel_dirty = true;
+        }
     }
 
     /// Start tracking a batch operation.
@@ -781,7 +784,9 @@ impl AppState {
     /// Finish batch tracking - remove the batch operation from active_operations.
     pub fn finish_batch_tracking(&mut self) {
         if let Some(batch_id) = self.batch_tracking_id.take() {
-            self.active_operations.remove(&batch_id);
+            if self.active_operations.remove(&batch_id).is_some() {
+                self.operations_panel_dirty = true;
+            }
         }
         self.batch_sub_operation_id = None;
     }
