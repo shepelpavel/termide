@@ -194,6 +194,20 @@ impl VfsPath {
         }
     }
 
+    /// Get a log-safe connection identifier (username redacted).
+    pub fn log_safe_key(&self) -> String {
+        if self.is_local() {
+            "local".to_string()
+        } else {
+            format!(
+                "{}://***@{}:{}",
+                self.protocol.scheme(),
+                self.host.as_deref().unwrap_or(""),
+                self.effective_port().unwrap_or(0)
+            )
+        }
+    }
+
     /// Get the default port for this protocol.
     pub fn default_port(&self) -> Option<u16> {
         match self.protocol {

@@ -553,7 +553,10 @@ impl Drop for VfsState {
         if self.current_path.is_remote() {
             let key = self.current_path.connection_key();
             self.manager.disconnect(&key);
-            log::debug!("VfsState dropped: disconnected from {}", key);
+            log::debug!(
+                "VfsState dropped: disconnected from {}",
+                self.current_path.log_safe_key()
+            );
         }
     }
 }

@@ -168,7 +168,7 @@ impl VfsProvider for FtpProvider {
                 // Enable passive mode (more firewall-friendly)
                 stream.transfer_type(suppaftp::types::FileType::Binary).ok();
 
-                log::info!("FTP: Connected and logged in as {}", username);
+                log::info!("FTP: Connected and logged in to {}", addr);
                 Ok(stream)
             })();
 

@@ -322,7 +322,7 @@ impl App {
             None => {
                 log::error!(
                     "No active connection to remote host: {}",
-                    remote_path.connection_key()
+                    remote_path.log_safe_key()
                 );
                 self.state
                     .set_error("No active connection to remote host".to_string());

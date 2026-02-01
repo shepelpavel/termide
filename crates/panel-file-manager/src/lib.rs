@@ -1567,11 +1567,9 @@ impl Panel for FileManager {
         // Defensive check: ensure remote paths include protocol
         if self.is_remote() && !path_or_url.contains("://") {
             log::warn!(
-                "Session save WARNING: Remote path missing protocol: '{}'. VfsPath details: protocol={:?}, host={:?}, username={:?}, path={:?}",
-                path_or_url,
+                "Session save WARNING: Remote path missing protocol. VfsPath details: protocol={:?}, host={:?}, path={:?}",
                 self.vfs.current_path().protocol,
                 self.vfs.current_path().host,
-                self.vfs.current_path().username,
                 self.vfs.current_path().path
             );
 

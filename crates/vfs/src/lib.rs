@@ -152,7 +152,10 @@ impl VfsManager {
     pub fn connect_sftp(&self, path: &VfsPath, options: ConnectOptions) -> VfsOperation<()> {
         use crate::sftp::SftpProvider;
 
-        log::info!("VfsManager::connect_sftp() called for path: {}", path);
+        log::info!(
+            "VfsManager::connect_sftp() called for {}",
+            path.log_safe_key()
+        );
 
         if !matches!(path.protocol, VfsProtocol::Sftp) {
             return VfsOperation::error(VfsError::InvalidPath("Expected SFTP path".to_string()));
@@ -309,12 +312,18 @@ impl VfsManager {
         let key = path.connection_key();
         if let Ok(providers) = self.remote_providers.read() {
             if let Some(provider) = providers.get(&key) {
-                log::debug!("VfsManager: Using connected provider for key '{}'", key);
+                log::debug!(
+                    "VfsManager: Using connected provider for {}",
+                    path.log_safe_key()
+                );
                 return provider.list_dir(path);
             }
         }
 
-        log::debug!("VfsManager: No connected provider for key '{}'", key);
+        log::debug!(
+            "VfsManager: No connected provider for {}",
+            path.log_safe_key()
+        );
         VfsOperation::error(VfsError::NotConnected)
     }
 
