@@ -724,9 +724,12 @@ impl VfsProvider for LocalFileSystem {
                 let mut stat: MaybeUninit<libc::statvfs> = MaybeUninit::uninit();
                 if libc::statvfs(c_path.as_ptr(), stat.as_mut_ptr()) == 0 {
                     let stat = stat.assume_init();
-                    let block_size = stat.f_frsize;
-                    let total = stat.f_blocks * block_size;
-                    let free = stat.f_bfree * block_size;
+                    #[allow(clippy::unnecessary_cast)]
+                    let block_size = stat.f_frsize as u64;
+                    #[allow(clippy::unnecessary_cast)]
+                    let total = stat.f_blocks as u64 * block_size;
+                    #[allow(clippy::unnecessary_cast)]
+                    let free = stat.f_bfree as u64 * block_size;
                     let used = total - free;
                     return Some(DiskSpace { total, free, used });
                 }
