@@ -18,6 +18,9 @@ termide-logger = { path = "../logger" }
 # SFTP support
 ssh2 = "0.9"
 
+# OpenSSL vendored (for cross-compilation)
+openssl-sys = { version = "0.9", optional = true, features = ["vendored"] }
+
 # FTP support
 suppaftp = { version = "5.3", features = ["native-tls"] }
 
@@ -36,6 +39,7 @@ sftp = []
 ftp = []
 smb = ["pavao"]
 nfs = []
+vendored-openssl = ["openssl-sys"]
 
 [dev-dependencies]
 tempfile.workspace = true

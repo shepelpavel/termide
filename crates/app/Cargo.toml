@@ -59,5 +59,8 @@ termide-panel-diagnostics = { path = "../panel-diagnostics" }
 termide-panel-misc = { path = "../panel-misc" }
 termide-panel-operations = { path = "../panel-operations" }
 
+[features]
+vendored-openssl = ["termide-vfs/vendored-openssl"]
+
 [dev-dependencies]
 tempfile.workspace = true

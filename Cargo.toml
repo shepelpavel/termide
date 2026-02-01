@@ -186,6 +186,9 @@ termide-app-watcher = { path = "crates/app-watcher" }
 termide-app-session = { path = "crates/app-session" }
 termide-app = { path = "crates/app" }
 
+[features]
+vendored-openssl = ["termide-app/vendored-openssl"]
+
 [build-dependencies]
 cc = "1.0"
 
