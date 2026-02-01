@@ -1361,6 +1361,7 @@ impl App {
                 if let Some(panel) = self.layout_manager.active_panel_mut() {
                     if let Some(fm) = panel.as_file_manager_mut() {
                         let _ = fm.navigate_to(PathBuf::from(path));
+                        self.state.needs_watcher_registration = true;
                         return Ok(());
                     }
                 }
@@ -1433,6 +1434,7 @@ impl App {
                 if let Some(panel) = self.layout_manager.active_panel_mut() {
                     if let Some(fm) = panel.as_file_manager_mut() {
                         let _ = fm.navigate_to_url(path);
+                        self.state.needs_watcher_registration = true;
                         return Ok(());
                     }
                 }

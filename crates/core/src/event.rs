@@ -57,6 +57,11 @@ impl EventHandler {
         }
     }
 
+    /// Update the tick rate (for adaptive idle/active polling)
+    pub fn set_tick_rate(&mut self, rate: Duration) {
+        self.tick_rate = rate;
+    }
+
     /// Wait for next event
     pub fn next(&self) -> Result<Event> {
         // Check pending events first (from previous coalescing)

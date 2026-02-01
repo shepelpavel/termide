@@ -637,6 +637,9 @@ impl App {
                     log::error!("Navigation failed: {}", e);
                     self.state
                         .set_error(format!("Cannot navigate to: {}", path.display()));
+                } else {
+                    // Navigation resets watched_root; trigger watcher re-registration
+                    self.state.needs_watcher_registration = true;
                 }
             }
         }
@@ -1161,6 +1164,12 @@ impl App {
     /// Update operations panel data before rendering.
     /// Called from render loop to sync panel with active_operations.
     pub fn update_operations_panel(&mut self) {
+        let has_ops = self.state.has_active_operations();
+        // Skip if no operations and panel was already synced empty
+        if !has_ops && !self.state.operations_panel_dirty {
+            return;
+        }
+        self.state.operations_panel_dirty = has_ops;
         // Find operations panel and update its data
         for group in &mut self.layout_manager.panel_groups {
             for panel in group.panels_mut() {

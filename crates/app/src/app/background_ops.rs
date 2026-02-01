@@ -368,16 +368,24 @@ impl App {
     }
 
     /// Update system resource monitoring (CPU, RAM)
-    /// Respects the configured update interval
+    /// Respects the configured update interval.
+    /// Only triggers redraw if display values actually changed.
     pub(super) fn update_system_resources(&mut self) {
         let interval =
             std::time::Duration::from_millis(self.state.config.logging.resource_monitor_interval);
         let elapsed = self.state.last_resource_update.elapsed();
 
         if elapsed >= interval {
+            let old_stats = self.state.system_monitor.stats();
             self.state.system_monitor.update();
             self.state.last_resource_update = std::time::Instant::now();
-            self.state.needs_redraw = true;
+            let new_stats = self.state.system_monitor.stats();
+            // Only redraw if display values actually changed (rounded CPU% or MB of memory)
+            if old_stats.cpu_usage.round() as u8 != new_stats.cpu_usage.round() as u8
+                || old_stats.memory_used / (1024 * 1024) != new_stats.memory_used / (1024 * 1024)
+            {
+                self.state.needs_redraw = true;
+            }
         }
     }
 

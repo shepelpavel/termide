@@ -11,13 +11,13 @@ use termide_watcher::WatchEvent;
 use super::App;
 
 impl App {
-    /// Check unified watcher for git and filesystem events
-    pub(super) fn check_watcher_events(&mut self) {
+    /// Register panel directories with the watcher (lazy registration).
+    /// Called when panels are added or navigated, not on every tick.
+    pub(super) fn register_panel_watchers(&mut self) {
         let Some(watcher) = &mut self.state.watcher else {
             return;
         };
 
-        // Lazy registration: register panel directories with watcher
         for panel in self.layout_manager.iter_all_panels_mut() {
             // Use GetFsWatchInfo to check watch state
             if let CommandResult::FsWatchInfo {
@@ -58,6 +58,14 @@ impl App {
                 }
             }
         }
+    }
+
+    /// Poll watcher for filesystem and git events (no registration).
+    /// Called on every tick to process pending watcher events.
+    pub(super) fn poll_watcher_events(&mut self) {
+        let Some(watcher) = &mut self.state.watcher else {
+            return;
+        };
 
         // Poll events from unified watcher
         let events = watcher.poll_events();

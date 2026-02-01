@@ -452,6 +452,7 @@ impl App {
                 if let Some(fm) = panel.as_file_manager_mut() {
                     // Try to navigate - errors are silently ignored for now
                     let _ = fm.navigate_to_url(path_str);
+                    self.state.needs_watcher_registration = true;
                 }
             }
         }

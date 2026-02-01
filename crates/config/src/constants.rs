@@ -84,5 +84,11 @@ pub const MAX_LOG_ENTRIES: usize = 1000;
 /// Event update interval in milliseconds (42ms = ~24 FPS).
 pub const EVENT_HANDLER_INTERVAL_MS: u64 = 42;
 
+/// Idle tick rate in milliseconds (200ms = 5 FPS) — reduces CPU when no user input.
+pub const IDLE_TICK_MS: u64 = 200;
+
+/// Duration of inactivity before switching to idle tick rate (in milliseconds).
+pub const IDLE_THRESHOLD_MS: u64 = 500;
+
 /// Double-click detection interval in milliseconds.
 pub const DOUBLE_CLICK_INTERVAL_MS: u128 = 500;

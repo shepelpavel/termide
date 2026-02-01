@@ -242,6 +242,12 @@ pub struct AppState {
     pub last_mouse_scroll: Option<std::time::Instant>,
     /// Flag for batching scroll renders (set on scroll, consumed on tick)
     pub pending_scroll_render: bool,
+    /// Flag indicating watcher registration is needed (set on panel add/navigate)
+    pub needs_watcher_registration: bool,
+    /// Last time user interacted (key/mouse/paste) — for adaptive tick rate
+    pub last_activity: std::time::Instant,
+    /// Whether the operations panel has stale data that needs a final empty sync
+    pub operations_panel_dirty: bool,
     /// Active file operations tracked in Operations panel (keyed by OperationId).
     /// This provides UI state for displaying operation progress in the Operations panel.
     pub active_operations: HashMap<termide_file_ops::OperationId, ActiveOperation>,
@@ -324,6 +330,9 @@ impl AppState {
             last_operation_paused: false,
             last_mouse_scroll: None,
             pending_scroll_render: false,
+            needs_watcher_registration: true, // Register watchers on first tick
+            last_activity: std::time::Instant::now(),
+            operations_panel_dirty: false,
             active_operations: HashMap::new(),
             batch_tracking_id: None,
             batch_sub_operation_id: None,

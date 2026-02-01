@@ -442,6 +442,7 @@ impl App {
             if let Some(panel) = self.layout_manager.active_panel_mut() {
                 if let Some(file_manager) = panel.as_file_manager_mut() {
                     file_manager.navigate_to_file(path);
+                    self.state.needs_watcher_registration = true;
                 }
             }
         }
@@ -551,6 +552,7 @@ impl App {
                 // Try as FileManager
                 if let Some(file_manager) = panel.as_file_manager_mut() {
                     let _ = file_manager.navigate_to(path.clone());
+                    self.state.needs_watcher_registration = true;
                     self.state
                         .set_info(format!("Switched to: {}", path.display()));
                     return Ok(());

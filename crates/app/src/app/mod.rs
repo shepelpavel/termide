@@ -156,6 +156,7 @@ impl App {
         let terminal_width = self.state.terminal.width;
         let config = &self.state.config;
         self.layout_manager.add_panel(panel, config, terminal_width);
+        self.state.needs_watcher_registration = true;
     }
 
     /// Add panel without changing focus.
@@ -181,6 +182,7 @@ impl App {
         let config = &self.state.config;
         self.layout_manager
             .add_panel_without_focus(panel, config, terminal_width);
+        self.state.needs_watcher_registration = true;
     }
 
     /// Run the main application loop
@@ -200,10 +202,18 @@ impl App {
             // Process events
             match self.event_handler.next()? {
                 Event::Key(key) => {
+                    self.state.last_activity = std::time::Instant::now();
+                    self.event_handler.set_tick_rate(Duration::from_millis(
+                        termide_config::constants::EVENT_HANDLER_INTERVAL_MS,
+                    ));
                     self.handle_key_event(key)?;
                     self.state.needs_redraw = true;
                 }
                 Event::Mouse(mouse) => {
+                    self.state.last_activity = std::time::Instant::now();
+                    self.event_handler.set_tick_rate(Duration::from_millis(
+                        termide_config::constants::EVENT_HANDLER_INTERVAL_MS,
+                    ));
                     self.handle_mouse_event(mouse)?;
                     self.state.needs_redraw = true;
                 }
@@ -228,6 +238,10 @@ impl App {
                     self.state.needs_redraw = true;
                 }
                 Event::Paste(text) => {
+                    self.state.last_activity = std::time::Instant::now();
+                    self.event_handler.set_tick_rate(Duration::from_millis(
+                        termide_config::constants::EVENT_HANDLER_INTERVAL_MS,
+                    ));
                     // Handle bracketed paste - check modal first, then send to active panel
                     if !self.handle_modal_paste(&text) {
                         self.handle_paste_event(text)?;
@@ -235,11 +249,24 @@ impl App {
                     self.state.needs_redraw = true;
                 }
                 Event::MouseScrollCoalesced { event, delta } => {
+                    self.state.last_activity = std::time::Instant::now();
+                    self.event_handler.set_tick_rate(Duration::from_millis(
+                        termide_config::constants::EVENT_HANDLER_INTERVAL_MS,
+                    ));
                     // Handle coalesced scroll events (batched for performance)
                     self.handle_coalesced_scroll(event, delta)?;
                     self.state.needs_redraw = true;
                 }
                 Event::Tick => {
+                    // Adaptive tick rate: slow down polling when idle
+                    if self.state.last_activity.elapsed()
+                        > Duration::from_millis(termide_config::constants::IDLE_THRESHOLD_MS)
+                    {
+                        self.event_handler.set_tick_rate(Duration::from_millis(
+                            termide_config::constants::IDLE_TICK_MS,
+                        ));
+                    }
+
                     // Debounce scroll renders: consume pending flag and trigger redraw
                     if self.state.pending_scroll_render {
                         self.state.pending_scroll_render = false;
@@ -254,24 +281,18 @@ impl App {
                         .map(|t| t.elapsed() < Duration::from_millis(100))
                         .unwrap_or(false);
 
-                    // Check terminal panels for pending output (efficient redraw trigger)
-                    // This is fast, always run it
-                    for panel in self.layout_manager.iter_all_panels_mut() {
-                        if let Some(terminal) = panel.as_terminal_mut() {
-                            if terminal.has_pending_output() {
-                                self.state.needs_redraw = true;
-                                break; // One terminal with output is enough to trigger redraw
-                            }
-                        }
-                    }
-
                     // Skip heavy operations during active scrolling
                     if !is_scrolling {
-                        // Call tick() on all panels to process periodic operations
-                        // (FileManager: VFS operations, Editor/Terminal: auto-scroll during selection drag)
-                        // Collect events first, then process them (to avoid borrow issues)
+                        // Single combined loop: terminal output + panel tick + FM spinner
                         let mut all_panel_events = Vec::new();
                         for panel in self.layout_manager.iter_all_panels_mut() {
+                            // Terminal output check (always needed, even during idle)
+                            if let Some(terminal) = panel.as_terminal_mut() {
+                                if terminal.has_pending_output() {
+                                    self.state.needs_redraw = true;
+                                }
+                            }
+
                             // Call tick() on all panels
                             let events = panel.tick();
                             if !events.is_empty() {
@@ -290,7 +311,19 @@ impl App {
                         if !all_panel_events.is_empty() {
                             let _ = self.process_panel_events(all_panel_events);
                         }
+                    } else {
+                        // During scrolling: only check terminal output (lightweight)
+                        for panel in self.layout_manager.iter_all_panels_mut() {
+                            if let Some(terminal) = panel.as_terminal_mut() {
+                                if terminal.has_pending_output() {
+                                    self.state.needs_redraw = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
 
+                    if !is_scrolling {
                         // Check for modal requests from FileManager panels (e.g., VFS error modals)
                         // This must happen after tick() processing to show connection error modals
                         let modal_request = self
@@ -315,8 +348,14 @@ impl App {
                         // Check channel for directory size calculation results
                         self.check_dir_size_update();
 
-                        // Check unified watcher for git and filesystem events
-                        self.check_watcher_events();
+                        // Register panel watchers only when needed (panel added/navigated)
+                        if self.state.needs_watcher_registration {
+                            self.register_panel_watchers();
+                            self.state.needs_watcher_registration = false;
+                        }
+
+                        // Poll unified watcher for git and filesystem events
+                        self.poll_watcher_events();
 
                         // Check async git status results for FileManager panels
                         self.check_fm_git_status_async();
