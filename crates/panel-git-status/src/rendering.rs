@@ -661,10 +661,20 @@ impl GitStatusPanel {
 
             // Truncate item
             let max_item_width = (width - 2) as usize;
-            let display_item = if item.width() > max_item_width {
-                &item[..max_item_width]
+            let display_item: std::borrow::Cow<str> = if item.width() > max_item_width {
+                let mut end = 0;
+                let mut w = 0;
+                for ch in item.chars() {
+                    let cw = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+                    if w + cw > max_item_width {
+                        break;
+                    }
+                    w += cw;
+                    end += ch.len_utf8();
+                }
+                std::borrow::Cow::Borrowed(&item[..end])
             } else {
-                item
+                std::borrow::Cow::Borrowed(item)
             };
 
             // Clear line and draw item

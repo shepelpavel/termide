@@ -430,10 +430,21 @@ impl GitLogPanel {
         if let Some(ref msg) = self.status_message {
             let msg_y = area.y + area.height.saturating_sub(2);
             let style = Style::default().fg(theme.cursor);
-            let truncated = if msg.width() > content_area.width as usize {
-                &msg[..content_area.width as usize]
+            let max_w = content_area.width as usize;
+            let truncated: std::borrow::Cow<str> = if msg.width() > max_w {
+                let mut end = 0;
+                let mut w = 0;
+                for ch in msg.chars() {
+                    let cw = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+                    if w + cw > max_w {
+                        break;
+                    }
+                    w += cw;
+                    end += ch.len_utf8();
+                }
+                std::borrow::Cow::Borrowed(&msg[..end])
             } else {
-                msg
+                std::borrow::Cow::Borrowed(msg)
             };
             buf.set_string(content_area.x, msg_y, truncated, style);
         }

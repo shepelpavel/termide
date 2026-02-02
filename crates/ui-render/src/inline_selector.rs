@@ -44,9 +44,19 @@ impl<'a> InlineSelector<'a> {
         };
 
         // Truncate label if needed: "[" + label + " " + arrow + "]" = 4 extra chars
-        let max_label_len = max_width.saturating_sub(4) as usize;
-        let truncated_label = if self.label.width() > max_label_len {
-            &self.label[..max_label_len]
+        let max_label_width = max_width.saturating_sub(4) as usize;
+        let truncated_label = if self.label.width() > max_label_width {
+            let mut end = 0;
+            let mut w = 0;
+            for ch in self.label.chars() {
+                let cw = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+                if w + cw > max_label_width {
+                    break;
+                }
+                w += cw;
+                end += ch.len_utf8();
+            }
+            &self.label[..end]
         } else {
             self.label
         };
