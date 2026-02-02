@@ -105,6 +105,8 @@ pub struct GitStatusPanel {
     initial_paths: Vec<PathBuf>,
     /// Cached vim_mode setting for keyboard handling
     vim_mode: bool,
+    /// Whether panel missed updates while collapsed (stale-on-collapse)
+    is_stale: bool,
 }
 
 impl GitStatusPanel {
@@ -147,6 +149,7 @@ impl GitStatusPanel {
             spinner_frame: 0,
             initial_paths: paths.to_vec(),
             vim_mode: false,
+            is_stale: false,
         };
 
         panel.refresh();
@@ -193,6 +196,7 @@ impl GitStatusPanel {
             spinner_frame: 0,
             initial_paths,
             vim_mode: false,
+            is_stale: false,
         };
 
         panel.refresh();
@@ -692,6 +696,19 @@ impl Panel for GitStatusPanel {
                     return CommandResult::NeedsRedraw(true);
                 }
                 CommandResult::NeedsRedraw(false)
+            }
+            PanelCommand::MarkStale => {
+                self.is_stale = true;
+                CommandResult::None
+            }
+            PanelCommand::RefreshIfStale => {
+                if self.is_stale {
+                    self.is_stale = false;
+                    self.refresh();
+                    CommandResult::NeedsRedraw(true)
+                } else {
+                    CommandResult::None
+                }
             }
             _ => CommandResult::None,
         }
