@@ -868,6 +868,7 @@ impl Panel for GitDiffPanel {
 
                         if clicked_visual_line == file_header_line {
                             self.selected_file = file_idx;
+                            self.toggle_collapse();
                             return vec![];
                         }
 
