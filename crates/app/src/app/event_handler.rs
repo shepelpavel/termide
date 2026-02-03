@@ -1252,16 +1252,15 @@ impl App {
         self.state.needs_redraw = true;
     }
 
-    /// Open or focus the Operations panel
+    /// Open or expand the Operations panel without stealing focus.
+    /// The panel expands in its accordion group but focus stays where it was.
     pub(super) fn open_operations_panel(&mut self) -> Result<()> {
         use termide_panel_operations::OperationsPanel;
 
-        // Check if operations panel already exists
+        // Check if operations panel already exists — expand it without changing focus
         for (group_idx, group) in self.layout_manager.panel_groups.iter().enumerate() {
             for (panel_idx, panel) in group.panels().iter().enumerate() {
                 if panel.name() == "operations" {
-                    // Panel exists, focus it
-                    self.layout_manager.set_focus(group_idx);
                     if let Some(group) = self.layout_manager.get_group_mut(group_idx) {
                         group.set_expanded(panel_idx);
                     }
@@ -1270,23 +1269,23 @@ impl App {
             }
         }
 
-        // Create new operations panel
+        // Create new operations panel without stealing focus
         let panel = OperationsPanel::new();
-        self.add_panel(Box::new(panel));
+        self.add_panel_without_focus(Box::new(panel));
         self.auto_save_session();
         Ok(())
     }
 
-    /// Open operations panel and focus on specific operation
+    /// Open operations panel and select specific operation without stealing focus.
     pub(super) fn open_operations_panel_with_focus(
         &mut self,
         op_id: termide_file_ops::OperationId,
     ) -> Result<()> {
         self.open_operations_panel()?;
 
-        // Find and focus the operations panel, then select the operation
-        for (group_idx, group) in self.layout_manager.panel_groups.iter_mut().enumerate() {
-            for (panel_idx, panel) in group.panels_mut().iter_mut().enumerate() {
+        // Find the operations panel, update its data and select the operation
+        for group in self.layout_manager.panel_groups.iter_mut() {
+            for panel in group.panels_mut().iter_mut() {
                 if let Some(ops_panel) = panel
                     .as_any_mut()
                     .downcast_mut::<termide_panel_operations::OperationsPanel>()
@@ -1295,16 +1294,11 @@ impl App {
                     let ops_list = self.state.operations_list();
                     ops_panel.update_operations(&ops_list);
 
-                    // Focus on the specific operation
+                    // Select the specific operation
                     if let Some(index) = self.state.operation_index(op_id) {
                         ops_panel.set_selected(index);
                     }
 
-                    // Ensure panel is focused
-                    self.layout_manager.set_focus(group_idx);
-                    if let Some(g) = self.layout_manager.get_group_mut(group_idx) {
-                        g.set_expanded(panel_idx);
-                    }
                     return Ok(());
                 }
             }
