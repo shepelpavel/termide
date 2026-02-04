@@ -5,6 +5,20 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.2] - 2026-02-04
+
+### Fixed
+- **UTF-8 Panic**: Fixed byte-index panic when resizing panels with Cyrillic/Unicode text — now truncates by display width, not byte offset
+- **Editor Word-Wrap Mouse**: Fixed cursor mispositioning on mouse click in word-wrap mode when git deletion markers are present
+- **Editor Word-Wrap Scroll**: Fixed viewport failing to scroll past lines with deletion markers or diagnostics in word-wrap mode
+- **Editor Visual Cursor**: Fixed cursor unable to reach end of last visual row during page navigation in word-wrap mode
+- **Editor Inline Diff Click**: Fixed mouse click offset in no-wrap mode when inline diff deleted text shifts visual positions
+- **Git Status Stale Panel**: Collapsed git-status panel now marks itself stale and refreshes on expand (MarkStale/RefreshIfStale)
+- **Git Status Title**: Collapsed git-status panel title now updates branch/file counts on git/filesystem events
+- **Git Diff Toggle**: Mouse click on file header in git-diff panel now correctly toggles collapse
+- **Operations Panel Focus**: Opening the operations panel no longer steals focus from the active editor
+- **CodeQL Security**: Broke taint chain for cleartext-logging alerts in VFS types
+
 ## [0.11.1] - 2026-02-01
 
 ### Added
