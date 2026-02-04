@@ -1161,32 +1161,44 @@ impl Editor {
         let rows_remaining_in_top_line =
             top_line_visual_rows.saturating_sub(self.viewport.top_visual_row_offset);
 
-        // Count diagnostic virtual rows between viewport top and cursor line
+        // Count virtual rows between viewport top and cursor line
         // These take up visual space but aren't accounted for by wrap row counts
-        let diagnostic_rows_between = {
-            let mut diag_rows = 0;
-            // Count diagnostic rows for top_line through cursor_line - 1
-            // (diagnostics render AFTER their associated line)
-            for diag in &self.lsp.diagnostics {
-                let diag_line = diag.range.start.line as usize;
-                if diag_line >= self.viewport.top_line && diag_line < self.cursor.line {
-                    let start_col = diag.range.start.character as usize;
-                    let end_col = diag.range.end.character as usize;
-                    let underline_len = end_col.saturating_sub(start_col).max(1);
-                    let code = diag.code.as_ref().map(|c| match c {
-                        lsp_types::NumberOrString::Number(n) => n.to_string(),
-                        lsp_types::NumberOrString::String(s) => s.clone(),
-                    });
-                    diag_rows += git::calculate_diagnostic_rows(
-                        start_col,
-                        underline_len,
-                        code.as_deref(),
-                        &diag.message,
-                        content_width,
-                    );
+        let virtual_rows_between = {
+            let mut extra_rows = 0;
+            let show_git_diff = self.render_cache.config.editor.show_git_diff;
+
+            for line in self.viewport.top_line..self.cursor.line {
+                // Count deletion markers (rendered between text and diagnostics)
+                if show_git_diff {
+                    if let Some(ref git_diff) = self.git.diff_cache {
+                        if git_diff.has_deletion_marker(line) {
+                            extra_rows += 1;
+                        }
+                    }
+                }
+
+                // Count diagnostic rows
+                for diag in &self.lsp.diagnostics {
+                    let diag_line = diag.range.start.line as usize;
+                    if diag_line == line {
+                        let start_col = diag.range.start.character as usize;
+                        let end_col = diag.range.end.character as usize;
+                        let underline_len = end_col.saturating_sub(start_col).max(1);
+                        let code = diag.code.as_ref().map(|c| match c {
+                            lsp_types::NumberOrString::Number(n) => n.to_string(),
+                            lsp_types::NumberOrString::String(s) => s.clone(),
+                        });
+                        extra_rows += git::calculate_diagnostic_rows(
+                            start_col,
+                            underline_len,
+                            code.as_deref(),
+                            &diag.message,
+                            content_width,
+                        );
+                    }
                 }
             }
-            diag_rows
+            extra_rows
         };
 
         // Visual rows for lines between top_line and cursor_line (exclusive)
@@ -1225,10 +1237,10 @@ impl Editor {
         };
 
         // Total visual rows from viewport top to cursor position
-        // Include diagnostic virtual rows that appear between viewport top and cursor
+        // Include virtual rows (deletion markers + diagnostics) between viewport top and cursor
         let cursor_visual_pos = rows_remaining_in_top_line
             + visual_rows_between
-            + diagnostic_rows_between
+            + virtual_rows_between
             + cursor_visual_row_in_line;
 
         // If cursor is visible, no scrolling needed
@@ -1246,12 +1258,15 @@ impl Editor {
 
     /// Apply scroll down by a given number of visual rows.
     /// Updates top_line and top_visual_row_offset directly.
+    /// Accounts for deletion markers and diagnostic virtual rows between lines.
     fn apply_visual_scroll_down(
         &mut self,
         mut remaining: usize,
         content_width: usize,
         use_smart_wrap: bool,
     ) {
+        let show_git_diff = self.render_cache.config.editor.show_git_diff;
+
         while remaining > 0 && self.viewport.top_line < self.buffer.line_count() {
             let line_visual_rows = word_wrap::get_visual_rows_cached(
                 &mut self.render_cache,
@@ -1270,8 +1285,48 @@ impl Editor {
                 return;
             }
 
-            // Move to next line
+            // Consume remaining text rows for this line
             remaining -= rows_available;
+
+            // Count virtual rows after this line (deletion markers + diagnostics)
+            let mut virtual_after_line = 0;
+            if show_git_diff {
+                if let Some(ref git_diff) = self.git.diff_cache {
+                    if git_diff.has_deletion_marker(self.viewport.top_line) {
+                        virtual_after_line += 1;
+                    }
+                }
+            }
+            for diag in &self.lsp.diagnostics {
+                let diag_line = diag.range.start.line as usize;
+                if diag_line == self.viewport.top_line {
+                    let start_col = diag.range.start.character as usize;
+                    let end_col = diag.range.end.character as usize;
+                    let underline_len = end_col.saturating_sub(start_col).max(1);
+                    let code = diag.code.as_ref().map(|c| match c {
+                        lsp_types::NumberOrString::Number(n) => n.to_string(),
+                        lsp_types::NumberOrString::String(s) => s.clone(),
+                    });
+                    virtual_after_line += git::calculate_diagnostic_rows(
+                        start_col,
+                        underline_len,
+                        code.as_deref(),
+                        &diag.message,
+                        content_width,
+                    );
+                }
+            }
+
+            // Consume virtual rows
+            if remaining <= virtual_after_line {
+                // We stop within the virtual rows — advance to next line anyway
+                // since virtual rows aren't addressable for viewport positioning
+                remaining = 0;
+            } else {
+                remaining -= virtual_after_line;
+            }
+
+            // Move to next line
             self.viewport.top_line += 1;
             self.viewport.top_visual_row_offset = 0;
         }

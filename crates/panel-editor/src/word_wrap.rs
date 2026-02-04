@@ -8,6 +8,7 @@ use std::collections::HashMap;
 
 use lsp_types::Diagnostic;
 use termide_buffer::{calculate_wrap_point, TextBuffer};
+use termide_git::GitDiffCache;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
@@ -911,6 +912,8 @@ fn get_visual_row_bounds(
 /// - `content_width`: Width for wrapping
 /// - `use_smart_wrap`: Whether to use smart wrapping
 /// - `diagnostics`: Diagnostic list for virtual lines
+/// - `git_diff_cache`: Git diff cache for deletion markers
+/// - `show_git_diff`: Whether git diff display is enabled
 ///
 /// Returns (buffer_line, column_offset, chunk_end, is_virtual_line).
 #[allow(clippy::too_many_arguments)]
@@ -922,6 +925,8 @@ pub(crate) fn visual_row_to_buffer_position_cached(
     content_width: usize,
     use_smart_wrap: bool,
     diagnostics: &[Diagnostic],
+    git_diff_cache: &Option<GitDiffCache>,
+    show_git_diff: bool,
 ) -> (usize, usize, usize, bool) {
     if content_width == 0 {
         // No wrap - delegate to non-cached version
@@ -957,6 +962,19 @@ pub(crate) fn visual_row_to_buffer_position_cached(
             return (line_idx, start, end, false);
         }
         current_visual_row += visual_rows;
+
+        // Check deletion marker after this line (rendered between text and diagnostics)
+        if show_git_diff {
+            if let Some(git_diff) = git_diff_cache.as_ref() {
+                if git_diff.has_deletion_marker(line_idx) {
+                    if visual_row == current_visual_row {
+                        // Target is a deletion marker virtual line
+                        return (line_idx, 0, line_len, true);
+                    }
+                    current_visual_row += 1;
+                }
+            }
+        }
 
         // Check diagnostic virtual rows after this line
         let diag_row_count = diagnostics_by_line.get(&line_idx).copied().unwrap_or(0);

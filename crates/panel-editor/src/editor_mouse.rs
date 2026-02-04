@@ -12,6 +12,7 @@ use ratatui::layout::Rect;
 use termide_buffer::{Cursor, Selection};
 use termide_core::PanelEvent;
 
+use crate::rendering::inline_diff;
 use crate::{git, rendering, selection, word_wrap, Editor};
 
 /// Convert screen column to grapheme index, accounting for display widths.
@@ -188,6 +189,7 @@ impl Editor {
             // Use cached content_width to ensure consistency with wrap cache
             let cached_width = self.render_cache.content_width;
             let use_smart_wrap = self.render_cache.use_smart_wrap;
+            let show_git_diff = self.render_cache.config.editor.show_git_diff;
             word_wrap::visual_row_to_buffer_position_cached(
                 &mut self.render_cache,
                 &self.buffer,
@@ -196,6 +198,8 @@ impl Editor {
                 cached_width,
                 use_smart_wrap,
                 &self.lsp.diagnostics,
+                &self.git.diff_cache,
+                show_git_diff,
             )
         } else {
             // Use virtual lines to correctly map visual row to buffer line
@@ -289,7 +293,26 @@ impl Editor {
             wrapped_offset + grapheme_in_segment
         } else {
             // Without wrap: convert absolute screen col to grapheme idx
-            screen_col_to_grapheme_idx(&line_text, self.viewport.left_column + rel_x)
+            let visual_col = self.viewport.left_column + rel_x;
+
+            // Adjust for inline diff: deleted text is shown visually but
+            // doesn't exist in the buffer, shifting all positions after it.
+            let buffer_col = if self.render_cache.config.editor.show_git_diff {
+                if let Some(changes) = self
+                    .git
+                    .diff_cache
+                    .as_ref()
+                    .and_then(|cache| cache.get_inline_diff(target_line, &line_text))
+                {
+                    inline_diff::visual_to_buffer_col(visual_col, &changes)
+                } else {
+                    visual_col
+                }
+            } else {
+                visual_col
+            };
+
+            screen_col_to_grapheme_idx(&line_text, buffer_col)
         };
 
         let line_len = self.buffer.line_len_graphemes(target_line);
