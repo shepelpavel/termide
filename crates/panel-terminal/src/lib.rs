@@ -1381,7 +1381,7 @@ impl Panel for Terminal {
             let abs_row = screen.visual_to_absolute(inner_row);
             let cols = screen.cols;
 
-            if let Some((link_type, link_start_row, link_start_col)) =
+            if let Some((link_type, link_start_row, link_start_col, display_len)) =
                 link_detection::detect_link_at_position(
                     &screen,
                     abs_row,
@@ -1397,9 +1397,8 @@ impl Panel for Terminal {
                     .unwrap_or(true);
 
                 // Build segments for multi-line highlighting
-                let text_len = link_detection::link_text_len(&link_type);
                 let segments = link_detection::build_link_segments(
-                    text_len,
+                    display_len,
                     link_start_row,
                     link_start_col,
                     cols,

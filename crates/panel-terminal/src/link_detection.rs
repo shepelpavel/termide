@@ -30,13 +30,15 @@ pub enum LinkType {
 pub type HighlightSegment = (usize, usize, usize);
 
 /// Detect link (URL or file path) at given position.
-/// Returns (LinkType, start_row, start_col) if found.
+/// Returns (LinkType, start_row, start_col, display_len) if found.
+/// `display_len` is the length of the matched text on screen (in cells),
+/// which may differ from `link_text().len()` for resolved file paths.
 pub fn detect_link_at_position(
     screen: &TerminalScreen,
     abs_row: usize,
     col: usize,
     cwd: &Path,
-) -> Option<(LinkType, usize, usize)> {
+) -> Option<(LinkType, usize, usize, usize)> {
     let cols = screen.cols;
 
     // Look back up to 5 lines to find where a wrapped link might have started
@@ -46,9 +48,12 @@ pub fn detect_link_at_position(
     let mut search_start = abs_row;
     for row in (start_row..abs_row).rev() {
         if let Some(line) = screen.get_line_by_absolute(row) {
-            let line_text: String = line.iter().map(|c| c.ch).collect();
-            let trimmed_len = line_text.trim_end().len();
-            if trimmed_len >= cols {
+            // Use cell count (not byte count) to check if line fills terminal width
+            let trimmed_cell_len = line
+                .iter()
+                .rposition(|c| c.ch != ' ' && c.ch != '\0')
+                .map_or(0, |p| p + 1);
+            if trimmed_cell_len >= cols {
                 search_start = row;
             } else {
                 break;
@@ -58,18 +63,25 @@ pub fn detect_link_at_position(
         }
     }
 
-    // Concatenate text from search_start through current row and forward
+    // Concatenate text from search_start through current row and forward.
+    // Track char offsets (= cell offsets) for each line, since regex returns
+    // byte offsets that don't match cell positions for non-ASCII content.
     let mut combined_text = String::new();
-    let mut line_starts: Vec<(usize, usize)> = Vec::new();
+    let mut line_starts: Vec<(usize, usize)> = Vec::new(); // (row, char_offset)
+    let mut char_count: usize = 0;
 
     for row in search_start.. {
         if let Some(line) = screen.get_line_by_absolute(row) {
-            line_starts.push((row, combined_text.len()));
+            line_starts.push((row, char_count));
             let line_text: String = line.iter().map(|c| c.ch).collect();
-            let trimmed_len = line_text.trim_end().len();
+            char_count += line.len(); // cell count = char count (one char per cell)
+            let trimmed_cell_len = line
+                .iter()
+                .rposition(|c| c.ch != ' ' && c.ch != '\0')
+                .map_or(0, |p| p + 1);
             combined_text.push_str(&line_text);
 
-            if row >= abs_row && trimmed_len < cols {
+            if row >= abs_row && trimmed_cell_len < cols {
                 break;
             }
             if row > abs_row + 5 {
@@ -80,17 +92,21 @@ pub fn detect_link_at_position(
         }
     }
 
-    // Calculate cursor offset in combined text
-    let cursor_offset = line_starts
+    // Calculate cursor offset in char/cell units
+    let cursor_char_offset = line_starts
         .iter()
         .find(|(row, _)| *row == abs_row)
-        .map(|(_, offset)| offset + col)?;
+        .map(|(_, char_offset)| char_offset + col)?;
 
-    // Helper to find start row/col from offset
-    let find_start_pos = |start_offset: usize| -> Option<(usize, usize)> {
+    // Convert regex byte offset to char offset (handles multi-byte chars)
+    let byte_to_char =
+        |byte_offset: usize| -> usize { combined_text[..byte_offset].chars().count() };
+
+    // Helper to find start row/col from char offset
+    let find_start_pos = |char_offset: usize| -> Option<(usize, usize)> {
         for (row, offset) in line_starts.iter().rev() {
-            if start_offset >= *offset {
-                return Some((*row, start_offset - offset));
+            if char_offset >= *offset {
+                return Some((*row, char_offset - offset));
             }
         }
         None
@@ -98,9 +114,12 @@ pub fn detect_link_at_position(
 
     // Try to detect URL first (using cached regex)
     for m in URL_REGEX.find_iter(&combined_text) {
-        if cursor_offset >= m.start() && cursor_offset < m.end() {
-            if let Some((row, col)) = find_start_pos(m.start()) {
-                return Some((LinkType::Url(m.as_str().to_string()), row, col));
+        let match_start = byte_to_char(m.start());
+        let match_end = byte_to_char(m.end());
+        if cursor_char_offset >= match_start && cursor_char_offset < match_end {
+            let display_len = match_end - match_start;
+            if let Some((row, col)) = find_start_pos(match_start) {
+                return Some((LinkType::Url(m.as_str().to_string()), row, col, display_len));
             }
         }
     }
@@ -108,7 +127,9 @@ pub fn detect_link_at_position(
     // Try to detect file path (using cached regex)
     // Matches: /path/to/file, ./path, ../path, ~/path
     for m in PATH_REGEX.find_iter(&combined_text) {
-        if cursor_offset >= m.start() && cursor_offset < m.end() {
+        let match_start = byte_to_char(m.start());
+        let match_end = byte_to_char(m.end());
+        if cursor_char_offset >= match_start && cursor_char_offset < match_end {
             let path_str = m.as_str();
             // Expand ~ to home directory
             let expanded = if let Some(suffix) = path_str.strip_prefix('~') {
@@ -126,8 +147,9 @@ pub fn detect_link_at_position(
 
             // Check if path exists
             if expanded.exists() {
-                if let Some((row, col)) = find_start_pos(m.start()) {
-                    return Some((LinkType::FilePath(expanded), row, col));
+                let display_len = match_end - match_start;
+                if let Some((row, col)) = find_start_pos(match_start) {
+                    return Some((LinkType::FilePath(expanded), row, col, display_len));
                 }
             }
         }
@@ -170,9 +192,4 @@ pub fn link_text(link: &LinkType) -> String {
         LinkType::Url(url) => url.clone(),
         LinkType::FilePath(path) => path.display().to_string(),
     }
-}
-
-/// Get the length of link text in characters
-pub fn link_text_len(link: &LinkType) -> usize {
-    link_text(link).chars().count()
 }
