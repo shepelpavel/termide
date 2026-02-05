@@ -826,18 +826,24 @@ impl App {
         Ok(())
     }
 
-    /// Send git update event to refresh git panels
+    /// Send git update event to refresh git panels.
+    /// Expanded panels get `OnGitUpdate`, collapsed panels get `MarkStale`
+    /// (consistent with `poll_watcher_events()`).
     fn send_git_update(&mut self, repo_path: &std::path::Path) {
         use termide_core::PanelCommand;
-        // Send OnGitUpdate command to all panels
         let repo_paths: Vec<&std::path::Path> = vec![repo_path];
-        for panel in self.layout_manager.iter_all_panels_mut() {
-            if panel
-                .handle_command(PanelCommand::OnGitUpdate {
+        for (panel, is_expanded) in self
+            .layout_manager
+            .iter_all_panels_with_expanded_state_mut()
+        {
+            let result = if is_expanded {
+                panel.handle_command(PanelCommand::OnGitUpdate {
                     repo_paths: &repo_paths,
                 })
-                .needs_redraw()
-            {
+            } else {
+                panel.handle_command(PanelCommand::MarkStale)
+            };
+            if result.needs_redraw() {
                 self.state.needs_redraw = true;
             }
         }

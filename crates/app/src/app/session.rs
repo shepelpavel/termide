@@ -54,6 +54,9 @@ impl App {
 
         log::info!("Session loaded");
 
+        // Register watchers for the new panels
+        self.state.needs_watcher_registration = true;
+
         // Initialize LSP for all restored editors
         if let Some(ref mut lsp_manager) = self.state.lsp_manager {
             for group in &mut self.layout_manager.panel_groups {

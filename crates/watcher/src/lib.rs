@@ -16,7 +16,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::{Duration, Instant};
 
 /// Debounce duration for filesystem events.
-pub const FS_DEBOUNCE_MS: u64 = 300;
+pub const FS_DEBOUNCE_MS: u64 = 1000;
 /// Debounce duration for git events.
 pub const GIT_DEBOUNCE_MS: u64 = 1000;
 
@@ -191,6 +191,7 @@ impl UnifiedWatcher {
 
         // Walk directory tree respecting .gitignore
         // This watches ~100 dirs instead of ~7000 (skips target/, node_modules/, etc.)
+        let git_objects_dir = repo_root.join(".git/objects");
         for entry in WalkBuilder::new(&repo_root)
             .hidden(false) // don't skip hidden files (we need .git/)
             .git_ignore(true) // respect .gitignore
@@ -201,6 +202,11 @@ impl UnifiedWatcher {
             .filter(|e| e.file_type().is_some_and(|ft| ft.is_dir()))
         {
             let path = entry.into_path();
+            // Skip .git/objects/ — hundreds of hash-named subdirectories that
+            // generate no useful events (object writes are not commit-related).
+            if path.starts_with(&git_objects_dir) && path != git_objects_dir {
+                continue;
+            }
             if watcher.watch(&path, RecursiveMode::NonRecursive).is_ok() {
                 watched_paths.insert(path);
             }
