@@ -1,0 +1,25 @@
+# Matrix theme for TermIDE
+# Inspired by the green "digital rain" from The Matrix (1999)
+name = "matrix"
+is_light = false
+
+[colors]
+# Base - pure black with green phosphor text
+bg = { rgb = [0, 10, 2] }
+fg = { rgb = [0, 200, 0] }
+
+# Accented - darker green panel with bright green accent
+accented_bg = { rgb = [0, 30, 5] }
+accented_fg = { rgb = [0, 255, 65] }
+
+# Selection - bright green on dark green
+selected_bg = { rgb = [0, 160, 0] }
+selected_fg = { rgb = [0, 10, 2] }
+
+# Disabled - dim green
+disabled = { rgb = [0, 90, 20] }
+
+# Semantic
+success = { rgb = [50, 255, 50] }
+warning = { rgb = [180, 255, 0] }
+error = { rgb = [255, 50, 50] }

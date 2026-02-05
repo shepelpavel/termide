@@ -1,0 +1,25 @@
+# Terminator theme for TermIDE
+# Inspired by Skynet HUD / Mars red aesthetics from The Terminator
+name = "terminator"
+is_light = false
+
+[colors]
+# Base - very dark with warm red-tinted gray text
+bg = { rgb = [15, 5, 5] }
+fg = { rgb = [220, 180, 170] }
+
+# Accented - deep crimson panel with bright red accent
+accented_bg = { rgb = [50, 10, 10] }
+accented_fg = { rgb = [255, 40, 40] }
+
+# Selection - red on dark
+selected_bg = { rgb = [180, 20, 20] }
+selected_fg = { rgb = [255, 230, 220] }
+
+# Disabled - muted dark red
+disabled = { rgb = [120, 60, 55] }
+
+# Semantic
+success = { rgb = [200, 120, 50] }
+warning = { rgb = [255, 160, 30] }
+error = { rgb = [255, 50, 30] }

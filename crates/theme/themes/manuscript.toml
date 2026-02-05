@@ -1,0 +1,25 @@
+# Medieval Manuscript theme for TermIDE
+# Aged parchment, iron gall ink, vermillion initials, floral borders
+name = "manuscript"
+is_light = true
+
+[colors]
+# Base - yellowed parchment with dark iron gall ink
+bg = { rgb = [228, 210, 170] }
+fg = { rgb = [40, 30, 20] }
+
+# Accented - darker aged vellum with vermillion red accent (drop caps)
+accented_bg = { rgb = [195, 175, 135] }
+accented_fg = { rgb = [170, 30, 20] }
+
+# Selection - faded gold leaf on deep brown
+selected_bg = { rgb = [140, 105, 45] }
+selected_fg = { rgb = [245, 235, 210] }
+
+# Disabled - faded sepia ink
+disabled = { rgb = [160, 140, 110] }
+
+# Semantic
+success = { rgb = [60, 110, 40] }
+warning = { rgb = [190, 140, 20] }
+error = { rgb = [170, 30, 20] }

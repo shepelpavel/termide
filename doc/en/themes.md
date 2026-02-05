@@ -1,6 +1,6 @@
 # Themes
 
-TermIDE comes with 20 built-in themes and supports custom user themes. You can switch themes by editing the configuration file.
+TermIDE comes with 24 built-in themes and supports custom user themes. You can switch themes by editing the configuration file.
 
 ## Built-in Themes
 
@@ -24,6 +24,7 @@ TermIDE comes with 20 built-in themes and supports custom user themes. You can s
 | `atom-one-light` | Atom One Light theme |
 | `ayu-light` | Ayu Light theme with warm tones |
 | `github-light` | GitHub Light theme |
+| `manuscript` | Medieval manuscript with aged parchment, iron gall ink, vermillion accents |
 | `material-lighter` | Material Lighter theme |
 | `solarized-light` | Light variant of the Solarized color scheme |
 | `macos-light` | macOS light style theme |
@@ -38,6 +39,14 @@ TermIDE comes with 20 built-in themes and supports custom user themes. You can s
 | `volkov-commander` | Volkov Commander style theme |
 | `windows-95` | Windows 95 style theme |
 | `windows-98` | Windows 98 style theme |
+
+### Cinematic Themes
+
+| Theme Name | Description |
+|-----------|-------------|
+| `matrix` | The Matrix digital rain — green phosphor on black |
+| `pip-boy` | Fallout Pip-Boy 3000 — warm green phosphor CRT display |
+| `terminator` | Skynet HUD / Mars — deep red and crimson tones |
 
 ## Switching Themes
 

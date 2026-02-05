@@ -35,7 +35,7 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 - **Multi-panel Layout** - Accordion system with smart auto-stacking
 - **Image Viewer** - Native graphics in Kitty, WezTerm, iTerm2, Ghostty, foot terminals
 - **External Apps** - Open files with system default applications (Shift+Enter)
-- **20 Built-in Themes** - Dark, light, and retro themes (Dracula, Nord, Monokai, Solarized, etc.)
+- **24 Built-in Themes** - Dark, light, retro, and cinematic themes (Dracula, Nord, Monokai, Solarized, Matrix, Pip-Boy, etc.)
 - **Custom Themes** - Create your own themes in TOML format
 - **15 UI Languages** - Bengali, Chinese, English, French, German, Hindi, Indonesian, Japanese, Korean, Portuguese, Russian, Spanish, Thai, Turkish, Vietnamese
 - **Session Management** - Auto-save and restore panel layouts
@@ -382,6 +382,7 @@ fm_extended_view_width = 50
 - `atom-one-light` - Atom One Light theme
 - `ayu-light` - Ayu Light theme
 - `github-light` - GitHub Light theme
+- `manuscript` - Medieval manuscript with aged parchment tones
 - `material-lighter` - Material Lighter theme
 - `solarized-light` - Light Solarized theme
 - `macos-light` - macOS light style
@@ -393,6 +394,11 @@ fm_extended_view_width = 50
 - `volkov-commander` - Volkov Commander style
 - `windows-95` - Windows 95 style
 - `windows-98` - Windows 98 style
+
+**Cinematic Themes:**
+- `matrix` - The Matrix digital rain (green on black)
+- `pip-boy` - Fallout Pip-Boy 3000 phosphor CRT
+- `terminator` - Skynet HUD / Mars red aesthetics
 
 **Theme Examples:**
 

@@ -70,13 +70,17 @@ const THEME_FAR_MANAGER_TOML: &str = include_str!("../themes/far-manager.toml");
 const THEME_GITHUB_LIGHT_TOML: &str = include_str!("../themes/github-light.toml");
 const THEME_MACOS_DARK_TOML: &str = include_str!("../themes/macos-dark.toml");
 const THEME_MACOS_LIGHT_TOML: &str = include_str!("../themes/macos-light.toml");
+const THEME_MANUSCRIPT_TOML: &str = include_str!("../themes/manuscript.toml");
 const THEME_MATERIAL_LIGHTER_TOML: &str = include_str!("../themes/material-lighter.toml");
+const THEME_MATRIX_TOML: &str = include_str!("../themes/matrix.toml");
 const THEME_MIDNIGHT_TOML: &str = include_str!("../themes/midnight.toml");
 const THEME_MONOKAI_TOML: &str = include_str!("../themes/monokai.toml");
 const THEME_NORD_TOML: &str = include_str!("../themes/nord.toml");
 const THEME_NORTON_COMMANDER_TOML: &str = include_str!("../themes/norton-commander.toml");
 const THEME_ONEDARK_TOML: &str = include_str!("../themes/onedark.toml");
+const THEME_PIP_BOY_TOML: &str = include_str!("../themes/pip-boy.toml");
 const THEME_SOLARIZED_DARK_TOML: &str = include_str!("../themes/solarized-dark.toml");
+const THEME_TERMINATOR_TOML: &str = include_str!("../themes/terminator.toml");
 const THEME_SOLARIZED_LIGHT_TOML: &str = include_str!("../themes/solarized-light.toml");
 const THEME_VOLKOV_COMMANDER_TOML: &str = include_str!("../themes/volkov-commander.toml");
 const THEME_WINDOWS_95_TOML: &str = include_str!("../themes/windows-95.toml");
@@ -92,13 +96,17 @@ static THEME_FAR_MANAGER: OnceLock<Theme> = OnceLock::new();
 static THEME_GITHUB_LIGHT: OnceLock<Theme> = OnceLock::new();
 static THEME_MACOS_DARK: OnceLock<Theme> = OnceLock::new();
 static THEME_MACOS_LIGHT: OnceLock<Theme> = OnceLock::new();
+static THEME_MANUSCRIPT: OnceLock<Theme> = OnceLock::new();
 static THEME_MATERIAL_LIGHTER: OnceLock<Theme> = OnceLock::new();
+static THEME_MATRIX: OnceLock<Theme> = OnceLock::new();
 static THEME_MIDNIGHT: OnceLock<Theme> = OnceLock::new();
 static THEME_MONOKAI: OnceLock<Theme> = OnceLock::new();
 static THEME_NORD: OnceLock<Theme> = OnceLock::new();
 static THEME_NORTON_COMMANDER: OnceLock<Theme> = OnceLock::new();
 static THEME_ONEDARK: OnceLock<Theme> = OnceLock::new();
+static THEME_PIP_BOY: OnceLock<Theme> = OnceLock::new();
 static THEME_SOLARIZED_DARK: OnceLock<Theme> = OnceLock::new();
+static THEME_TERMINATOR: OnceLock<Theme> = OnceLock::new();
 static THEME_SOLARIZED_LIGHT: OnceLock<Theme> = OnceLock::new();
 static THEME_VOLKOV_COMMANDER: OnceLock<Theme> = OnceLock::new();
 static THEME_WINDOWS_95: OnceLock<Theme> = OnceLock::new();
@@ -158,9 +166,19 @@ static BUILTIN_THEMES: &[BuiltinThemeEntry] = &[
         storage: &THEME_MACOS_LIGHT,
     },
     BuiltinThemeEntry {
+        name: "manuscript",
+        content: THEME_MANUSCRIPT_TOML,
+        storage: &THEME_MANUSCRIPT,
+    },
+    BuiltinThemeEntry {
         name: "material-lighter",
         content: THEME_MATERIAL_LIGHTER_TOML,
         storage: &THEME_MATERIAL_LIGHTER,
+    },
+    BuiltinThemeEntry {
+        name: "matrix",
+        content: THEME_MATRIX_TOML,
+        storage: &THEME_MATRIX,
     },
     BuiltinThemeEntry {
         name: "midnight",
@@ -188,6 +206,11 @@ static BUILTIN_THEMES: &[BuiltinThemeEntry] = &[
         storage: &THEME_ONEDARK,
     },
     BuiltinThemeEntry {
+        name: "pip-boy",
+        content: THEME_PIP_BOY_TOML,
+        storage: &THEME_PIP_BOY,
+    },
+    BuiltinThemeEntry {
         name: "solarized-dark",
         content: THEME_SOLARIZED_DARK_TOML,
         storage: &THEME_SOLARIZED_DARK,
@@ -196,6 +219,11 @@ static BUILTIN_THEMES: &[BuiltinThemeEntry] = &[
         name: "solarized-light",
         content: THEME_SOLARIZED_LIGHT_TOML,
         storage: &THEME_SOLARIZED_LIGHT,
+    },
+    BuiltinThemeEntry {
+        name: "terminator",
+        content: THEME_TERMINATOR_TOML,
+        storage: &THEME_TERMINATOR,
     },
     BuiltinThemeEntry {
         name: "volkov-commander",

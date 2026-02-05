@@ -1,0 +1,26 @@
+# Pip-Boy theme for TermIDE
+# Inspired by the Pip-Boy 3000 from Fallout series
+# Warm amber-green phosphor CRT display
+name = "pip-boy"
+is_light = false
+
+[colors]
+# Base - dark olive-tinted black with characteristic Pip-Boy green
+bg = { rgb = [10, 14, 8] }
+fg = { rgb = [18, 255, 128] }
+
+# Accented - slightly lighter background with bright phosphor accent
+accented_bg = { rgb = [20, 35, 15] }
+accented_fg = { rgb = [80, 255, 160] }
+
+# Selection - bright green on mid green
+selected_bg = { rgb = [15, 180, 80] }
+selected_fg = { rgb = [5, 10, 5] }
+
+# Disabled - dim warm green
+disabled = { rgb = [30, 100, 55] }
+
+# Semantic
+success = { rgb = [50, 255, 130] }
+warning = { rgb = [200, 255, 50] }
+error = { rgb = [255, 80, 60] }
