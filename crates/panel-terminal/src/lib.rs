@@ -485,6 +485,22 @@ impl Terminal {
         }
     }
 
+    /// Acquire a read lock on the terminal screen, recovering from poisoning.
+    fn read_screen(&self) -> std::sync::RwLockReadGuard<'_, TerminalScreen> {
+        self.screen.read().unwrap_or_else(|e| {
+            log::warn!("Terminal screen RwLock poisoned (read), recovering");
+            e.into_inner()
+        })
+    }
+
+    /// Acquire a write lock on the terminal screen, recovering from poisoning.
+    fn write_screen(&self) -> std::sync::RwLockWriteGuard<'_, TerminalScreen> {
+        self.screen.write().unwrap_or_else(|e| {
+            log::warn!("Terminal screen RwLock poisoned (write), recovering");
+            e.into_inner()
+        })
+    }
+
     /// Send input to PTY
     fn send_input(&mut self, data: &[u8]) -> Result<()> {
         self.writer.write_all(data)?;
@@ -538,7 +554,7 @@ impl Terminal {
         use std::io::Write;
 
         let (mouse_tracking, sgr_mode) = {
-            let screen = self.screen.read().expect("Terminal screen lock poisoned");
+            let screen = self.read_screen();
             (screen.mouse_tracking, screen.sgr_mouse_mode)
         };
 
@@ -614,7 +630,7 @@ impl Terminal {
             use_alt_screen,
             force_invalidation,
         ) = {
-            let screen = self.screen.read().expect("Terminal screen lock poisoned");
+            let screen = self.read_screen();
             (
                 screen.dirty,
                 screen.selection_start.is_some(),
@@ -707,7 +723,7 @@ impl Terminal {
         }
 
         // === PHASE 1: Render directly under lock (zero-copy) ===
-        let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
+        let mut screen = self.write_screen();
         // Clear dirty flag since we're about to render
         screen.dirty = false;
         // Ensure buffer has correct size before rendering (guards against IL/DL edge cases)
@@ -969,6 +985,9 @@ impl Terminal {
             lines.push(Line::from(spans));
         }
 
+        // Release write lock before modifying other self fields
+        drop(screen);
+
         // === PHASE 3: Cache the result (no clone - just wrap in Arc) ===
         let arc_lines = Arc::new(lines);
         self.cached_lines = Some(Arc::clone(&arc_lines));
@@ -1066,7 +1085,7 @@ impl Panel for Terminal {
         paragraph.render(area, buf);
 
         // Render scrollbar for scrollback history
-        let screen = self.screen.read().expect("Terminal screen lock poisoned");
+        let screen = self.read_screen();
         let scrollback_len = screen.scrollback.len();
         let scroll_offset = screen.scroll_offset;
         let use_alt_screen = screen.use_alt_screen;
@@ -1134,7 +1153,7 @@ impl Panel for Terminal {
 
         // Scroll up (Shift+PageUp)
         if matches_binding_or_default(&kb.scroll_up, &key, KeyCode::PageUp, KeyModifiers::SHIFT) {
-            let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
+            let mut screen = self.write_screen();
             let scroll_amount = screen.rows.saturating_sub(1);
             screen.scroll_view_up(scroll_amount);
             return vec![];
@@ -1147,7 +1166,7 @@ impl Panel for Terminal {
             KeyCode::PageDown,
             KeyModifiers::SHIFT,
         ) {
-            let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
+            let mut screen = self.write_screen();
             let scroll_amount = screen.rows.saturating_sub(1);
             screen.scroll_view_down(scroll_amount);
             return vec![];
@@ -1155,24 +1174,21 @@ impl Panel for Terminal {
 
         // Scroll top (Shift+Home)
         if matches_binding_or_default(&kb.scroll_top, &key, KeyCode::Home, KeyModifiers::SHIFT) {
-            let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
+            let mut screen = self.write_screen();
             screen.scroll_offset = screen.scrollback.len();
             return vec![];
         }
 
         // Scroll bottom (Shift+End)
         if matches_binding_or_default(&kb.scroll_bottom, &key, KeyCode::End, KeyModifiers::SHIFT) {
-            self.screen
-                .write()
-                .expect("Terminal screen lock poisoned")
-                .reset_scroll();
+            self.write_screen().reset_scroll();
             return vec![];
         }
 
         // Reset scroll on input, cache application_cursor_keys - single lock
         // Note: selection is NOT cleared on keypress to allow copying from running apps
         let application_cursor_keys = {
-            let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
+            let mut screen = self.write_screen();
             screen.reset_scroll();
             screen.application_cursor_keys
         };
@@ -1185,16 +1201,13 @@ impl Panel for Terminal {
                     if c.eq_ignore_ascii_case(&'c') {
                         // Ctrl+C: copy if there's a selection, otherwise send SIGINT
                         let has_selection = {
-                            let screen = self.screen.read().expect("Terminal screen lock poisoned");
+                            let screen = self.read_screen();
                             screen.selection_start.is_some() && screen.selection_end.is_some()
                         };
                         if has_selection {
                             let _ = self.copy_selection_to_clipboard();
                             // Clear selection after copying
-                            self.screen
-                                .write()
-                                .expect("Terminal screen lock poisoned")
-                                .clear_selection();
+                            self.write_screen().clear_selection();
                         } else {
                             let _ = self.send_input(&[3]); // Ctrl+C (SIGINT)
                         }
@@ -1377,7 +1390,7 @@ impl Panel for Terminal {
 
         // Detect link (URL or path) under cursor when Ctrl is pressed
         if ctrl_pressed && is_inside {
-            let screen = self.screen.read().expect("Terminal screen lock poisoned");
+            let screen = self.read_screen();
             let abs_row = screen.visual_to_absolute(inner_row);
             let cols = screen.cols;
 
@@ -1428,17 +1441,11 @@ impl Panel for Terminal {
         // Handle scroll events first - they should work even when cursor is near border
         match mouse.kind {
             MouseEventKind::ScrollUp => {
-                self.screen
-                    .write()
-                    .expect("Terminal screen lock poisoned")
-                    .scroll_view_up(3);
+                self.write_screen().scroll_view_up(3);
                 return vec![];
             }
             MouseEventKind::ScrollDown => {
-                self.screen
-                    .write()
-                    .expect("Terminal screen lock poisoned")
-                    .scroll_view_down(3);
+                self.write_screen().scroll_view_down(3);
                 return vec![];
             }
             _ => {}
@@ -1446,7 +1453,7 @@ impl Panel for Terminal {
 
         // Check if selection is active
         let selection_active = {
-            let screen = self.screen.read().expect("Terminal screen lock poisoned");
+            let screen = self.read_screen();
             screen.selection_start.is_some()
         };
 
@@ -1493,7 +1500,7 @@ impl Panel for Terminal {
                 }
 
                 // Start text selection with absolute coordinates
-                let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
+                let mut screen = self.write_screen();
                 let abs_row = screen.visual_to_absolute(inner_row);
                 screen.selection_start = Some((abs_row, inner_col));
                 screen.selection_end = Some((abs_row, inner_col)); // Set immediately for visibility
@@ -1506,7 +1513,7 @@ impl Panel for Terminal {
                 let _ = self.send_mouse_to_pty(&mouse, panel_area);
             }
             MouseEventKind::Drag(MouseButton::Left) => {
-                let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
+                let mut screen = self.write_screen();
                 if screen.selection_start.is_some() {
                     // Auto-scroll if mouse is above or below content area
                     let max_scroll = screen.scrollback.len();
@@ -1530,7 +1537,7 @@ impl Panel for Terminal {
 
                 // Finalize selection
                 let is_single_click = {
-                    let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
+                    let mut screen = self.write_screen();
                     let abs_row = screen.visual_to_absolute(inner_row);
                     if let Some(start) = screen.selection_start {
                         screen.selection_end = Some((abs_row, inner_col));
@@ -1544,7 +1551,7 @@ impl Panel for Terminal {
                 // Clear selection on single click (no drag)
                 // Copy is done manually via Ctrl+Shift+C
                 if is_single_click {
-                    let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
+                    let mut screen = self.write_screen();
                     screen.clear_selection();
                 }
 
@@ -1566,7 +1573,7 @@ impl Panel for Terminal {
 
     fn handle_scroll(&mut self, delta: i32, _panel_area: Rect) -> Vec<PanelEvent> {
         let lines = delta.unsigned_abs() as usize * 3; // 3 lines per scroll unit
-        let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
+        let mut screen = self.write_screen();
         if delta < 0 {
             screen.scroll_view_up(lines);
         } else {
@@ -1593,7 +1600,7 @@ impl Panel for Terminal {
         let inner_y = bounds.y + 1;
         let inner_height = bounds.height.saturating_sub(2);
 
-        let mut screen = self.screen.write().expect("Terminal screen lock poisoned");
+        let mut screen = self.write_screen();
 
         // Skip if no selection
         if screen.selection_start.is_none() {

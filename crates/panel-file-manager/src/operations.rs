@@ -1,11 +1,42 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use std::fs;
+use std::path::Component;
 
 use super::FileManager;
+
+/// Validate that a user-provided file/directory name does not escape the parent directory.
+/// Rejects names containing `..`, absolute paths, and path separators.
+fn validate_entry_name(name: &str) -> Result<()> {
+    if name.is_empty() {
+        bail!("Name cannot be empty");
+    }
+
+    let path = std::path::Path::new(name);
+
+    // Reject absolute paths
+    if path.is_absolute() {
+        bail!("Absolute paths are not allowed");
+    }
+
+    // Reject any component that is `..` or contains path separators leading outside
+    for component in path.components() {
+        match component {
+            Component::ParentDir => bail!("Path traversal ('..') is not allowed"),
+            Component::RootDir | Component::Prefix(_) => {
+                bail!("Absolute paths are not allowed")
+            }
+            _ => {}
+        }
+    }
+
+    Ok(())
+}
 
 impl FileManager {
     /// Create a new file
     pub fn create_file(&mut self, name: String) -> Result<()> {
+        validate_entry_name(&name)?;
+
         if self.vfs.is_remote() {
             // Remote path - use VFS
             let vfs_path = self.vfs.current_path();
@@ -30,6 +61,8 @@ impl FileManager {
 
     /// Create a new directory
     pub fn create_directory(&mut self, name: String) -> Result<()> {
+        validate_entry_name(&name)?;
+
         if self.vfs.is_remote() {
             // Remote path - use VFS
             let vfs_path = self.vfs.current_path();

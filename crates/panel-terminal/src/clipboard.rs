@@ -13,7 +13,10 @@ use crate::terminal::TerminalScreen;
 
 /// Get selected text from terminal screen using absolute buffer coordinates.
 pub fn get_selected_text(screen: &RwLock<TerminalScreen>) -> String {
-    let screen = screen.read().expect("Terminal screen lock poisoned");
+    let screen = screen.read().unwrap_or_else(|e| {
+        log::warn!("Terminal screen RwLock poisoned (read), recovering");
+        e.into_inner()
+    });
     let (start, end) = match (screen.selection_start, screen.selection_end) {
         (Some(s), Some(e)) => (s, e),
         _ => return String::new(),

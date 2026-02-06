@@ -19,42 +19,15 @@ impl App {
     ) -> Result<()> {
         if let Some(confirmed) = value.downcast_ref::<bool>() {
             if *confirmed && !paths.is_empty() {
-                // Build source display string
                 let source_display = if paths.len() == 1 {
                     path_utils::get_file_name_str(&paths[0]).to_string()
                 } else {
                     format!("{} items", paths.len())
                 };
-
-                log::info!("Starting async delete of {}", source_display);
-
-                let paths_count = paths.len();
-
-                // Create delete operation request
                 let sources: Vec<OperationPath> =
                     paths.into_iter().map(OperationPath::Local).collect();
-                let request = OperationRequest::delete(sources);
-
-                // Get or create VFS manager for operation manager
-                let vfs_manager = std::sync::Arc::new(termide_vfs::VfsManager::new());
-
-                // Start delete operation via OperationManager
-                match self.start_tracked_operation(
-                    request,
-                    vfs_manager,
-                    OperationType::Delete,
-                    source_display,
-                    String::new(),
-                    paths_count,
-                    0,
-                ) {
-                    Ok(_operation_id) => {}
-                    Err(e) => {
-                        log::error!("Failed to start delete operation: {}", e);
-                        self.state
-                            .set_error(termide_i18n::t().status_delete_failed(&e.to_string()));
-                    }
-                }
+                let vfs_manager = Arc::new(VfsManager::new());
+                self.start_delete_operation(sources, vfs_manager, source_display);
             }
         }
         Ok(())
@@ -69,7 +42,6 @@ impl App {
     ) -> Result<()> {
         if let Some(confirmed) = value.downcast_ref::<bool>() {
             if *confirmed && !paths.is_empty() {
-                // Build source display string
                 let source_display = if paths.len() == 1 {
                     paths[0]
                         .file_name()
@@ -78,36 +50,41 @@ impl App {
                 } else {
                     format!("{} items", paths.len())
                 };
-
-                log::info!("Starting async remote delete of {}", source_display);
-
-                let paths_count = paths.len();
-
-                // Create delete operation request with VFS paths
                 let sources: Vec<OperationPath> =
                     paths.into_iter().map(OperationPath::Remote).collect();
-                let request = OperationRequest::delete(sources);
-
-                // Start delete operation via OperationManager with tracking
-                match self.start_tracked_operation(
-                    request,
-                    vfs_manager,
-                    OperationType::Delete,
-                    source_display,
-                    String::new(),
-                    paths_count,
-                    0,
-                ) {
-                    Ok(_operation_id) => {}
-                    Err(e) => {
-                        log::error!("Failed to start remote delete operation: {}", e);
-                        self.state
-                            .set_error(termide_i18n::t().status_delete_failed(&e.to_string()));
-                    }
-                }
+                self.start_delete_operation(sources, vfs_manager, source_display);
             }
         }
         Ok(())
+    }
+
+    /// Start a tracked delete operation (shared by local and remote delete handlers).
+    fn start_delete_operation(
+        &mut self,
+        sources: Vec<OperationPath>,
+        vfs_manager: Arc<VfsManager>,
+        source_display: String,
+    ) {
+        log::info!("Starting async delete of {}", source_display);
+        let paths_count = sources.len();
+        let request = OperationRequest::delete(sources);
+
+        match self.start_tracked_operation(
+            request,
+            vfs_manager,
+            OperationType::Delete,
+            source_display,
+            String::new(),
+            paths_count,
+            0,
+        ) {
+            Ok(_operation_id) => {}
+            Err(e) => {
+                log::error!("Failed to start delete operation: {}", e);
+                self.state
+                    .set_error(termide_i18n::t().status_delete_failed(&e.to_string()));
+            }
+        }
     }
 
     /// Handle panel closure
