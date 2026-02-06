@@ -498,7 +498,6 @@ crates/
 ├── session/          # Session persistence
 ├── state/            # Application state management
 ├── system-monitor/   # CPU/RAM/Disk monitoring
-├── text-search/      # Search and replace functionality
 ├── theme/            # Theme system and built-in themes
 ├── ui/               # UI utilities and path formatting
 ├── ui-render/        # UI rendering (menu, status bar, panels)

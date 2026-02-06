@@ -103,11 +103,6 @@ impl SystemMonitor {
         self.with_system(|sys| sys.global_cpu_usage().round() as u8)
     }
 
-    /// Get CPU usage as float percentage.
-    pub fn cpu_usage_float(&self) -> f32 {
-        self.stats().cpu_usage
-    }
-
     /// Get memory usage percentage.
     pub fn memory_percent(&self) -> f32 {
         self.stats().memory_percent()
@@ -185,16 +180,19 @@ impl DiskSpaceInfo {
     }
 
     /// Get used space in GB.
+    #[cfg(test)]
     pub fn used_gb(&self) -> u64 {
         (self.used() as f64 / BYTES_PER_GB).round() as u64
     }
 
     /// Get total space in GB.
+    #[cfg(test)]
     pub fn total_gb(&self) -> u64 {
         (self.total as f64 / BYTES_PER_GB).round() as u64
     }
 
     /// Get device name (extracted from path).
+    #[cfg(test)]
     pub fn device_name(&self) -> Option<String> {
         self.device
             .as_ref()

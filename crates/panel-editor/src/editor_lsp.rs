@@ -425,6 +425,7 @@ impl Editor {
     /// Update diagnostics from LSP.
     pub fn update_diagnostics(&mut self, diagnostics: Vec<lsp_types::Diagnostic>) {
         self.lsp.update_diagnostics(diagnostics);
+        self.render_cache.invalidate_diagnostic_cache();
     }
 
     // =========================================================================

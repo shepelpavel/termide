@@ -164,11 +164,6 @@ impl Logger {
         }
     }
 
-    /// Get all log entries
-    fn get_entries(&self) -> Vec<LogEntry> {
-        self.entries.iter().cloned().collect()
-    }
-
     /// Get the total number of entries
     fn entry_count(&self) -> usize {
         self.entries.len()
@@ -236,18 +231,6 @@ pub fn init(file_path: PathBuf, max_entries: usize, min_level: LogLevel) {
     // Register with log crate (ignore error if already set)
     let _ = log::set_logger(&TERMIDE_LOGGER);
     log::set_max_level(log_level_to_filter(min_level));
-}
-
-/// Get all log entries
-///
-/// Returns a vector of all log entries currently stored in memory.
-/// Used by the debug panel to display logs.
-pub fn get_entries() -> Vec<LogEntry> {
-    if let Ok(logger) = get_logger().lock() {
-        logger.get_entries()
-    } else {
-        Vec::new()
-    }
 }
 
 /// Get the total number of log entries

@@ -19,9 +19,8 @@ use std::io;
 use termide_app::App;
 use termide_config::Config;
 use termide_core::init_terminal_caps;
-use termide_git::check_git_available;
+use termide_git::is_available as check_git_available;
 use termide_i18n::init_with_language;
-use termide_panel_file_manager::FileManager;
 use termide_theme::{set_ansi16_mode, set_themes_dir};
 
 fn main() -> Result<()> {
@@ -91,9 +90,7 @@ fn main() -> Result<()> {
     // Try to load session, fallback to default layout on error
     if let Err(_e) = app.load_session() {
         // Session file doesn't exist or is corrupted - use default layout
-        // Add two FileManager panels in a 50/50 split
-        app.add_panel(Box::new(FileManager::new()));
-        app.add_panel(Box::new(FileManager::new()));
+        app.setup_default_layout();
     }
 
     // Run application

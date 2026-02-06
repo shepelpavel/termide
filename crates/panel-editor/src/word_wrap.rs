@@ -475,7 +475,7 @@ pub fn visual_row_to_buffer_position_with_diagnostics(
 /// Count total diagnostic visual rows per buffer line.
 ///
 /// This accounts for multi-row diagnostic messages that wrap based on content_width.
-fn count_diagnostic_rows_by_line(
+pub(crate) fn count_diagnostic_rows_by_line(
     diagnostics: &[Diagnostic],
     _buffer: &TextBuffer,
     content_width: usize,
@@ -940,8 +940,11 @@ pub(crate) fn visual_row_to_buffer_position_cached(
         );
     }
 
-    // Group diagnostics by line
-    let diagnostics_by_line = count_diagnostic_rows_by_line(diagnostics, buffer, content_width);
+    // Ensure diagnostic rows cache is populated
+    if !cache.is_diagnostic_cache_valid(content_width) {
+        let map = count_diagnostic_rows_by_line(diagnostics, buffer, content_width);
+        cache.set_diagnostic_rows_cache(map, content_width);
+    }
 
     let mut current_visual_row = 0;
     let mut line_idx = viewport_top;
@@ -976,8 +979,8 @@ pub(crate) fn visual_row_to_buffer_position_cached(
             }
         }
 
-        // Check diagnostic virtual rows after this line
-        let diag_row_count = diagnostics_by_line.get(&line_idx).copied().unwrap_or(0);
+        // Check diagnostic virtual rows after this line (from cache)
+        let diag_row_count = cache.diagnostic_rows_for_line(line_idx);
         if diag_row_count > 0 && visual_row < current_visual_row + diag_row_count {
             // Target is a diagnostic virtual line
             return (line_idx, 0, line_len, true);

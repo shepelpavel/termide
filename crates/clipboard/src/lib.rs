@@ -104,8 +104,3 @@ pub fn paste() -> Option<String> {
 pub fn cut(text: &str) -> Result<(), String> {
     copy(text)
 }
-
-/// Check if clipboard contains text.
-pub fn has_text() -> bool {
-    paste().map(|t| !t.is_empty()).unwrap_or(false)
-}

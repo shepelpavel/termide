@@ -173,7 +173,6 @@ termide-panel-git-log = { path = "crates/panel-git-log" }
 termide-session = { path = "crates/session" }
 termide-state = { path = "crates/state" }
 termide-system-monitor = { path = "crates/system-monitor" }
-termide-text-search = { path = "crates/text-search" }
 termide-theme = { path = "crates/theme" }
 termide-ui = { path = "crates/ui" }
 termide-ui-render = { path = "crates/ui-render" }

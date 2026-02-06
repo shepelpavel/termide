@@ -371,18 +371,6 @@ impl Theme {
         base_theme
     }
 
-    /// Get list of all available built-in themes.
-    pub fn all_themes() -> Vec<&'static Theme> {
-        BUILTIN_THEMES
-            .iter()
-            .map(|entry| {
-                entry
-                    .storage
-                    .get_or_init(|| load_theme_from_toml(entry.content, entry.name))
-            })
-            .collect()
-    }
-
     /// Get list of all theme names (built-in + user themes).
     /// Returns owned Vec since user themes are discovered at runtime.
     pub fn all_theme_names() -> Vec<String> {
@@ -407,11 +395,6 @@ impl Theme {
 
         names.sort();
         names
-    }
-
-    /// Get list of built-in theme names only.
-    pub fn builtin_theme_names() -> Vec<&'static str> {
-        BUILTIN_THEMES.iter().map(|e| e.name).collect()
     }
 }
 

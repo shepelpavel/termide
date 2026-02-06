@@ -207,14 +207,3 @@ impl Editor {
         }
     }
 }
-
-/// Cleanup temporary files for remote editing.
-///
-/// Call this when the editor is closed to remove temp files.
-pub fn cleanup_temp_file(temp_path: Option<&PathBuf>) {
-    if let Some(path) = temp_path {
-        if path.exists() {
-            let _ = std::fs::remove_file(path);
-        }
-    }
-}

@@ -66,12 +66,6 @@ pub fn is_available() -> bool {
     })
 }
 
-/// Alias for backward compatibility.
-#[inline]
-pub fn check_git_available() -> bool {
-    is_available()
-}
-
 /// Find git repository root by walking up from a path.
 pub fn find_repo_root(path: &Path) -> Option<PathBuf> {
     let mut current = path;

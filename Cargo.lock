@@ -2848,7 +2848,6 @@ dependencies = [
  "termide-session",
  "termide-state",
  "termide-system-monitor",
- "termide-text-search",
  "termide-theme",
  "termide-ui",
  "termide-ui-render",
@@ -3394,14 +3393,6 @@ dependencies = [
  "libc",
  "sysinfo",
  "termide-i18n",
-]
-
-[[package]]
-name = "termide-text-search"
-version = "0.11.2"
-dependencies = [
- "anyhow",
- "regex",
 ]
 
 [[package]]
