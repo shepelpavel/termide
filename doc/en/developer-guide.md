@@ -79,70 +79,77 @@ cargo fmt --check
 
 ## Project Structure
 
+TermIDE uses a Cargo workspace with modular crates:
+
 ```
 termide/
-├── src/
-│   ├── app/                    # Application core and event handling
-│   │   ├── mod.rs             # Main app structure
-│   │   ├── key_handler.rs     # Keyboard input handling
-│   │   ├── mouse_handler.rs   # Mouse input handling
-│   │   ├── modal_handler.rs   # Modal dialog handling
-│   │   └── modal/             # Modal implementations
-│   ├── config.rs              # Configuration management
-│   ├── constants.rs           # Application constants
-│   ├── i18n/                  # Internationalization
-│   │   ├── en.rs             # English strings
-│   │   └── ru.rs             # Russian strings
-│   ├── layout_manager.rs      # Panel layout and accordion system
-│   ├── panels/                # Panel implementations
-│   │   ├── mod.rs            # Panel trait definition
-│   │   ├── panel_group.rs    # Vertical accordion group
-│   │   ├── file_manager/     # File manager panel
-│   │   ├── editor.rs         # Text editor panel
-│   │   ├── terminal_pty.rs   # Terminal panel with PTY
-│   │   ├── debug.rs          # Log panel
-│   │   └── welcome.rs        # Welcome screen panel
-│   ├── state.rs               # Application state management
-│   ├── system_monitor.rs      # CPU/RAM monitoring
-│   ├── theme.rs               # Theme system
-│   └── ui/                    # UI components
-│       ├── layout.rs         # Main layout rendering
-│       ├── panel_rendering.rs # Panel rendering utilities
-│       ├── menu.rs           # Menu bar
-│       ├── modal.rs          # Modal dialogs
-│       ├── status_bar.rs     # Status bar
-│       └── dropdown.rs       # Dropdown menus
-├── themes/                    # Built-in theme definitions (TOML)
+├── src/                       # Binary entry point
+│   ├── main.rs               # App initialization, terminal setup
+│   └── ui.rs                 # Top-level rendering bridge
+├── crates/
+│   ├── app/                  # Application core, event handling, panel management
+│   ├── app-core/             # Core application traits (LayoutController, PanelProvider)
+│   ├── app-event/            # Event handling logic and hotkey processing
+│   ├── app-modal/            # Modal dialog handling
+│   ├── app-panel/            # Panel management operations
+│   ├── app-session/          # Session save/restore logic
+│   ├── app-watcher/          # File system watcher integration
+│   ├── buffer/               # Text buffer implementation (ropey-based)
+│   ├── clipboard/            # System clipboard integration
+│   ├── config/               # Configuration management (TOML)
+│   ├── core/                 # Core Panel trait and shared types
+│   ├── file-ops/             # File operations (copy, move, delete, upload, download)
+│   ├── git/                  # Git integration (status, diff, log)
+│   ├── highlight/            # Syntax highlighting (tree-sitter, 15+ languages)
+│   ├── i18n/                 # Internationalization (15 languages)
+│   ├── keyboard/             # Keyboard handling and layout translation
+│   ├── layout/               # Panel layout and accordion system
+│   ├── logger/               # Logging system
+│   ├── lsp/                  # Language Server Protocol client
+│   ├── modal/                # Modal dialog implementations
+│   ├── panel-diagnostics/    # LSP diagnostics panel
+│   ├── panel-editor/         # Text editor panel
+│   ├── panel-file-manager/   # File manager panel
+│   ├── panel-git-diff/       # Git diff viewer panel
+│   ├── panel-git-log/        # Git log panel
+│   ├── panel-git-status/     # Git status panel
+│   ├── panel-image/          # Image viewer panel
+│   ├── panel-misc/           # Welcome and Log panels
+│   ├── panel-operations/     # Background operations panel
+│   ├── panel-terminal/       # Terminal emulator panel (PTY)
+│   ├── session/              # Session persistence
+│   ├── state/                # Application state (batch, layout, operations, ui)
+│   ├── system-monitor/       # CPU/RAM/Disk monitoring
+│   ├── theme/                # Theme system and 24 built-in themes
+│   ├── ui/                   # UI utilities and path formatting
+│   ├── ui-render/            # UI rendering (menu, status bar, panels)
+│   ├── vfs/                  # Virtual filesystem (SFTP, FTP, SMB)
+│   └── watcher/              # File system event watcher
 ├── doc/                       # Documentation
 │   ├── en/                   # English documentation
 │   └── ru/                   # Russian documentation
-└── help/                      # In-app help files
-    ├── en.txt                # English help
-    └── ru.txt                # Russian help
+└── packaging/                 # Distribution packaging (deb, rpm, AUR, Homebrew, Nix)
 ```
 
 ## Key Components
 
-### 1. LayoutManager (`src/layout_manager.rs`)
+### 1. LayoutManager (`crates/layout/src/`)
 
 Manages the accordion panel layout system:
-- Tracks FileManager (static left panel)
-- Manages horizontal panel groups
-- Handles focus navigation
-- Implements smart panel stacking/unstacking
+- Manages horizontal panel groups (`Vec<PanelGroup>`)
+- Handles focus navigation (Alt+Left/Right between groups)
+- Smart panel stacking/unstacking (Alt+Backspace)
+- Width-adaptive default layout via `setup_default_layout()`
 
-**Key Types:**
-- `FocusTarget` - Either FileManager or Group(usize)
-- `LayoutManager` - Main layout coordinator
-
-### 2. PanelGroup (`src/panels/panel_group.rs`)
+### 2. PanelGroup (`crates/layout/src/panel_group.rs`)
 
 Represents a vertical stack of panels (accordion):
 - One expanded panel, others collapsed to title bar
-- Maintains expanded_index
-- Provides navigation within group
+- Maintains `expanded_index`
+- `width: Option<u16>` for explicit width control
+- Provides navigation within group (Alt+Up/Down)
 
-### 3. Panel Trait (`src/panels/mod.rs`)
+### 3. Panel Trait (`crates/core/src/lib.rs`)
 
 All panels implement this trait:
 ```rust
@@ -156,7 +163,7 @@ pub trait Panel {
 }
 ```
 
-### 4. Event Handling
+### 4. Event Handling (`crates/app/src/app/`)
 
 **Flow:**
 1. `EventHandler` polls for terminal events
@@ -167,7 +174,9 @@ pub trait Panel {
 3. Handlers update `LayoutManager` and panel states
 4. UI re-renders on next frame
 
-### 5. State Management (`src/state.rs`)
+### 5. State Management (`crates/state/src/`)
+
+Split into modules: `batch.rs`, `layout.rs`, `operations.rs`, `pending_action.rs`, `ui.rs`.
 
 `AppState` contains:
 - Theme configuration
@@ -175,7 +184,7 @@ pub trait Panel {
 - File system watcher
 - Batch operations state
 - Modal state
-- Error messages
+- UI state (menu, submenus, drag)
 
 ## Coding Conventions
 

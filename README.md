@@ -219,12 +219,12 @@ cargo build --release
 
 ### Quick Start
 
-After launching TermIDE, you'll see:
-- Two-panel file manager (like Midnight Commander)
-- Menu bar at the top
-- Status bar at the bottom
+After launching TermIDE, you'll see a width-adaptive layout:
+- **Wide terminals (>= 160 cols):** Sidebar (Git Status + Operations accordion) + two File Manager panels
+- **Normal terminals (< 160 cols):** Sidebar (Git Status + File Manager + Operations accordion) + File Manager panel
+- Menu bar at the top, status bar at the bottom
 
-Use `Tab` to switch between panels, `Alt+M` to open the menu.
+Use `Alt+←/→` to switch between panel groups, `Alt+↑/↓` to navigate within a group, `Alt+M` to open the menu.
 
 ### Documentation
 
@@ -494,6 +494,7 @@ crates/
 ├── panel-git-status/ # Git status panel
 ├── panel-image/      # Image viewer panel
 ├── panel-misc/       # Welcome and Log panels
+├── panel-operations/ # Background operations panel
 ├── panel-terminal/   # Terminal emulator panel
 ├── session/          # Session persistence
 ├── state/            # Application state management

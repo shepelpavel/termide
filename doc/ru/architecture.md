@@ -58,7 +58,7 @@ TermIDE — это терминальная IDE, построенная на Rus
 pub struct PanelGroup {
     panels: Vec<Box<dyn Panel>>,  // Панели в этой группе
     expanded_index: usize,         // Какая панель развёрнута
-    horizontal_weight: u16,        // Вес компоновки (по умолчанию 100)
+    pub width: Option<u16>,        // Ширина в символах (None = авто-распределение)
 }
 ```
 
@@ -168,6 +168,33 @@ pub trait Panel {
 - Просмотр логов
 - Информация о панелях
 - Мониторинг системных ресурсов
+
+**GitStatus** (`crates/panel-git-status/src/lib.rs`)
+- Обзор состояния репозитория
+- Добавление/удаление файлов из индекса
+- Переключение веток
+- Создание коммитов
+
+**GitLog** (`crates/panel-git-log/src/lib.rs`)
+- История коммитов с ASCII-графом
+- Просмотр diff
+- Копирование хеша коммита
+
+**GitDiff** (`crates/panel-git-diff/src/lib.rs`)
+- Просмотр diff бок о бок или inline
+- Diff с подсветкой синтаксиса
+
+**Diagnostics** (`crates/panel-diagnostics/src/lib.rs`)
+- Отображение LSP-диагностик
+- Навигация по ошибкам/предупреждениям
+
+**Operations** (`crates/panel-operations/src/lib.rs`)
+- Отслеживание фоновых файловых операций
+- Индикация прогресса для копирования/перемещения/удаления
+
+**Image** (`crates/panel-image/src/lib.rs`)
+- Нативный рендеринг изображений (Kitty, iTerm2, Sixel протоколы)
+- Fallback на Unicode-блоки
 
 **Welcome** (`crates/panel-misc/src/welcome.rs`)
 - Показывается, когда нет открытых панелей
@@ -306,7 +333,7 @@ fn render_layout_with_accordion(frame, layout_manager, state) {
 
 #### 5.1 AppState
 
-**Расположение:** `crates/state/src/lib.rs`
+**Расположение:** `crates/state/src/` (разделён на `batch.rs`, `layout.rs`, `operations.rs`, `pending_action.rs`, `ui.rs`)
 
 Центральный контейнер состояния:
 
@@ -353,7 +380,7 @@ pub struct Config {
 
 **Расположение:** `crates/theme/src/lib.rs`
 
-**Встроенные темы:** 12 тем (Dracula, Nord, Monokai и др.)
+**Встроенные темы:** 24 темы (Dracula, Nord, Monokai, Matrix, Pip-Boy и др.)
 
 **Пользовательские темы:** Загрузка из `~/.config/termide/themes/*.toml`
 
@@ -386,18 +413,24 @@ crates/i18n/
 │   ├── lib.rs      # Трейт переводов и рантайм
 │   └── runtime.rs  # Определение языка и загрузка
 └── i18n/           # Файлы переводов
-    ├── en.toml     # Английский
-    ├── ru.toml     # Русский
+    ├── bn.toml     # Бенгальский
     ├── de.toml     # Немецкий
+    ├── en.toml     # Английский
     ├── es.toml     # Испанский
     ├── fr.toml     # Французский
     ├── hi.toml     # Хинди
+    ├── id.toml     # Индонезийский
+    ├── ja.toml     # Японский
+    ├── ko.toml     # Корейский
     ├── pt.toml     # Португальский
+    ├── ru.toml     # Русский
     ├── th.toml     # Тайский
+    ├── tr.toml     # Турецкий
+    ├── vi.toml     # Вьетнамский
     └── zh.toml     # Китайский
 ```
 
-**Языки:** 9 поддерживаемых (английский, русский, немецкий, испанский, французский, хинди, португальский, тайский, китайский)
+**Языки:** 15 поддерживаемых (английский, русский, немецкий, испанский, французский, хинди, бенгальский, индонезийский, японский, корейский, португальский, тайский, турецкий, вьетнамский, китайский)
 
 **Определение:**
 1. Настройка `config.language`

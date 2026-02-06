@@ -58,7 +58,7 @@ A `PanelGroup` represents a vertical stack of panels with accordion behavior.
 pub struct PanelGroup {
     panels: Vec<Box<dyn Panel>>,  // Panels in this group
     expanded_index: usize,         // Which panel is expanded
-    horizontal_weight: u16,        // Layout weight (default 100)
+    pub width: Option<u16>,        // Width in characters (None = auto-distribution)
 }
 ```
 
@@ -168,6 +168,33 @@ pub trait Panel {
 - Log viewer
 - Panel information
 - System resource monitoring
+
+**GitStatus** (`crates/panel-git-status/src/lib.rs`)
+- Repository status overview
+- File staging/unstaging
+- Branch switching
+- Commit creation
+
+**GitLog** (`crates/panel-git-log/src/lib.rs`)
+- Commit history with ASCII graph
+- Diff viewing
+- Commit hash copying
+
+**GitDiff** (`crates/panel-git-diff/src/lib.rs`)
+- Side-by-side or inline diff view
+- Syntax-highlighted diffs
+
+**Diagnostics** (`crates/panel-diagnostics/src/lib.rs`)
+- LSP diagnostics display
+- Error/warning navigation
+
+**Operations** (`crates/panel-operations/src/lib.rs`)
+- Background file operation tracking
+- Progress display for copy/move/delete
+
+**Image** (`crates/panel-image/src/lib.rs`)
+- Native image rendering (Kitty, iTerm2, Sixel protocols)
+- Fallback to Unicode block characters
 
 **Welcome** (`crates/panel-misc/src/welcome.rs`)
 - Shows when no panels are open
@@ -306,7 +333,7 @@ Borders and buttons are drawn by `panel_rendering.rs`, then panel's `render()` m
 
 #### 5.1 AppState
 
-**Location:** `crates/state/src/lib.rs`
+**Location:** `crates/state/src/` (split into `batch.rs`, `layout.rs`, `operations.rs`, `pending_action.rs`, `ui.rs`)
 
 Central state container:
 
@@ -353,7 +380,7 @@ pub struct Config {
 
 **Location:** `crates/theme/src/lib.rs`
 
-**Built-in Themes:** 12 themes (Dracula, Nord, Monokai, etc.)
+**Built-in Themes:** 24 themes (Dracula, Nord, Monokai, Matrix, Pip-Boy, etc.)
 
 **Custom Themes:** Load from `~/.config/termide/themes/*.toml`
 
@@ -386,18 +413,24 @@ crates/i18n/
 │   ├── lib.rs      # Translation trait and runtime
 │   └── runtime.rs  # Language detection and loading
 └── i18n/           # Translation files
-    ├── en.toml     # English
-    ├── ru.toml     # Russian
+    ├── bn.toml     # Bengali
     ├── de.toml     # German
+    ├── en.toml     # English
     ├── es.toml     # Spanish
     ├── fr.toml     # French
     ├── hi.toml     # Hindi
+    ├── id.toml     # Indonesian
+    ├── ja.toml     # Japanese
+    ├── ko.toml     # Korean
     ├── pt.toml     # Portuguese
+    ├── ru.toml     # Russian
     ├── th.toml     # Thai
+    ├── tr.toml     # Turkish
+    ├── vi.toml     # Vietnamese
     └── zh.toml     # Chinese
 ```
 
-**Languages:** 9 supported (English, Russian, German, Spanish, French, Hindi, Portuguese, Thai, Chinese)
+**Languages:** 15 supported (Bengali, Chinese, English, French, German, Hindi, Indonesian, Japanese, Korean, Portuguese, Russian, Spanish, Thai, Turkish, Vietnamese)
 
 **Detection:**
 1. `config.language` setting
