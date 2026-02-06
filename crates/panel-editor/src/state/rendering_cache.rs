@@ -1,6 +1,7 @@
 //! Rendering cache state for the editor.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use ratatui::style::Color;
 use termide_config::Config;
@@ -42,10 +43,16 @@ pub(crate) struct RenderingCache {
     cumulative_visual_rows: Vec<usize>,
     /// Whether cumulative cache is valid.
     cumulative_valid: bool,
+    /// Cached diagnostic rows per buffer line: line -> total diagnostic visual rows.
+    diagnostic_rows_cache: HashMap<usize, usize>,
+    /// Content width used to compute diagnostic rows cache.
+    diagnostic_cache_width: usize,
+    /// Whether diagnostic rows cache is valid.
+    diagnostic_cache_valid: bool,
     /// Cached theme for rendering.
     pub theme: Theme,
-    /// Cached config for rendering.
-    pub config: Config,
+    /// Cached config for rendering (Arc to avoid full clone every frame).
+    pub config: Arc<Config>,
 }
 
 impl Default for RenderingCache {
@@ -68,8 +75,11 @@ impl RenderingCache {
             wrap_cache: HashMap::new(),
             cumulative_visual_rows: Vec::new(),
             cumulative_valid: false,
+            diagnostic_rows_cache: HashMap::new(),
+            diagnostic_cache_width: 0,
+            diagnostic_cache_valid: false,
             theme,
-            config: Config::default(),
+            config: Arc::new(Config::default()),
         }
     }
 
@@ -86,15 +96,12 @@ impl RenderingCache {
             wrap_cache: HashMap::new(),
             cumulative_visual_rows: Vec::new(),
             cumulative_valid: false,
+            diagnostic_rows_cache: HashMap::new(),
+            diagnostic_cache_width: 0,
+            diagnostic_cache_valid: false,
             theme,
-            config: Config::default(),
+            config: Arc::new(Config::default()),
         }
-    }
-
-    /// Update cached theme and config before render.
-    pub fn prepare(&mut self, theme: &Theme, config: &Config) {
-        self.theme = *theme;
-        self.config = config.clone();
     }
 
     /// Get cached wrap data for a line, if available and valid for current settings.
@@ -306,5 +313,41 @@ impl RenderingCache {
     /// Check if cumulative cache is valid.
     pub fn is_cumulative_valid(&self) -> bool {
         self.cumulative_valid
+    }
+
+    // =========================================================================
+    // Diagnostic Rows Cache
+    // =========================================================================
+
+    /// Check if diagnostic rows cache is valid for given content width.
+    pub fn is_diagnostic_cache_valid(&self, content_width: usize) -> bool {
+        self.diagnostic_cache_valid && self.diagnostic_cache_width == content_width
+    }
+
+    /// Store computed diagnostic rows cache.
+    pub fn set_diagnostic_rows_cache(
+        &mut self,
+        cache: HashMap<usize, usize>,
+        content_width: usize,
+    ) {
+        self.diagnostic_rows_cache = cache;
+        self.diagnostic_cache_width = content_width;
+        self.diagnostic_cache_valid = true;
+    }
+
+    /// Get cached diagnostic rows for a specific buffer line.
+    ///
+    /// Returns 0 if cache is invalid or line has no diagnostics.
+    pub fn diagnostic_rows_for_line(&self, line: usize) -> usize {
+        if self.diagnostic_cache_valid {
+            self.diagnostic_rows_cache.get(&line).copied().unwrap_or(0)
+        } else {
+            0
+        }
+    }
+
+    /// Invalidate diagnostic rows cache (e.g., when diagnostics change).
+    pub fn invalidate_diagnostic_cache(&mut self) {
+        self.diagnostic_cache_valid = false;
     }
 }
