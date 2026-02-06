@@ -195,14 +195,13 @@ impl App {
         use termide_panel_operations::OperationsPanel;
 
         let width = self.state.terminal.width;
-        let has_git = termide_git::find_repo_root(&self.project_root).is_some();
+        let repo_root = termide_git::find_repo_root(&self.project_root);
 
         // Build sidebar group: GitStatus?, FileManager, Operations (accordion)
         let build_sidebar = |fm_in_sidebar: bool| -> PanelGroup {
             // Accordion order: GitStatus (0?), FileManager (next?), Operations (last)
             // Default expanded = FileManager
-            if has_git {
-                let repo_root = termide_git::find_repo_root(&self.project_root).unwrap();
+            if let Some(repo_root) = repo_root.clone() {
                 let mut g = PanelGroup::new(Box::new(
                     termide_panel_git_status::GitStatusPanel::new_for_repo(repo_root),
                 ));

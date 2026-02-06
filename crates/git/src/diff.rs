@@ -39,6 +39,7 @@ fn load_original_from_head_sync(file_path: &std::path::Path) -> Option<String> {
         .arg("--show-toplevel")
         .current_dir(file_path.parent().unwrap_or(std::path::Path::new("/")))
         .output()
+        .map_err(|e| log::debug!("git rev-parse failed for {:?}: {}", file_path, e))
         .ok()?;
 
     if !git_root_output.status.success() {
@@ -46,6 +47,7 @@ fn load_original_from_head_sync(file_path: &std::path::Path) -> Option<String> {
     }
 
     let git_root = String::from_utf8(git_root_output.stdout)
+        .map_err(|e| log::debug!("git root path is not valid UTF-8: {}", e))
         .ok()?
         .trim()
         .to_string();
@@ -60,6 +62,7 @@ fn load_original_from_head_sync(file_path: &std::path::Path) -> Option<String> {
         .arg(format!("HEAD:{}", relative_path.display()))
         .current_dir(&git_root)
         .output()
+        .map_err(|e| log::debug!("git show failed for {:?}: {}", relative_path, e))
         .ok()?;
 
     if !output.status.success() {
@@ -67,7 +70,9 @@ fn load_original_from_head_sync(file_path: &std::path::Path) -> Option<String> {
         return Some(String::new());
     }
 
-    String::from_utf8(output.stdout).ok()
+    String::from_utf8(output.stdout)
+        .map_err(|e| log::debug!("git show output is not valid UTF-8: {}", e))
+        .ok()
 }
 
 /// Git diff status for a line in a file

@@ -12,10 +12,24 @@ use crate::state::{
     PendingRemoteDelete,
 };
 use crate::PanelExt;
+use termide_file_ops::{OperationPath, OperationRequest};
 use termide_i18n as i18n;
 use termide_modal::ConflictModal;
 use termide_ui::path_utils;
 use termide_vfs::VfsPath;
+
+/// Create a copy or move OperationRequest based on operation type.
+fn make_copy_or_move_request(
+    source: OperationPath,
+    dest: OperationPath,
+    is_move: bool,
+) -> OperationRequest {
+    if is_move {
+        OperationRequest::r#move(vec![source], dest)
+    } else {
+        OperationRequest::copy(vec![source], dest)
+    }
+}
 
 /// Calculate total size of all sources (files and directories recursively).
 fn scan_sources_total_bytes(sources: &[PathBuf]) -> u64 {
@@ -368,7 +382,6 @@ impl App {
         }
 
         // Create upload operation request
-        use termide_file_ops::OperationRequest;
         let request = OperationRequest::upload(source.clone(), final_remote.clone());
 
         // Store batch upload state for continuation
@@ -478,18 +491,11 @@ impl App {
         }
 
         // Create remote-to-remote copy/move request
-        use termide_file_ops::{OperationPath, OperationRequest};
-        let request = if is_move {
-            OperationRequest::r#move(
-                vec![OperationPath::Remote(vfs_source.clone())],
-                OperationPath::Remote(vfs_dest.clone()),
-            )
-        } else {
-            OperationRequest::copy(
-                vec![OperationPath::Remote(vfs_source.clone())],
-                OperationPath::Remote(vfs_dest.clone()),
-            )
-        };
+        let request = make_copy_or_move_request(
+            OperationPath::Remote(vfs_source.clone()),
+            OperationPath::Remote(vfs_dest.clone()),
+            is_move,
+        );
 
         let op_type = if is_move {
             OperationType::Move
@@ -665,8 +671,6 @@ impl App {
                             if let Some((vfs_manager, vfs_current_path)) =
                                 self.find_remote_file_manager_info()
                             {
-                                use termide_file_ops::{OperationPath, OperationRequest};
-
                                 let source_name = source
                                     .file_name()
                                     .map(|n| n.to_string_lossy().to_string())
@@ -680,17 +684,11 @@ impl App {
                                         &vfs_current_path,
                                         final_dest,
                                     );
-                                    if is_move {
-                                        OperationRequest::r#move(
-                                            vec![OperationPath::Remote(vfs_source.clone())],
-                                            OperationPath::Remote(vfs_dest),
-                                        )
-                                    } else {
-                                        OperationRequest::copy(
-                                            vec![OperationPath::Remote(vfs_source.clone())],
-                                            OperationPath::Remote(vfs_dest),
-                                        )
-                                    }
+                                    make_copy_or_move_request(
+                                        OperationPath::Remote(vfs_source.clone()),
+                                        OperationPath::Remote(vfs_dest),
+                                        is_move,
+                                    )
                                 } else {
                                     let r =
                                         OperationRequest::download(vfs_source.clone(), final_dest);
@@ -711,23 +709,14 @@ impl App {
 
                         // Local file or directory - use OperationManager for async copy
                         if source.is_file() || source.is_dir() {
-                            use termide_file_ops::{
-                                ConflictMode as FileOpsConflictMode, OperationPath,
-                                OperationRequest,
-                            };
+                            use termide_file_ops::ConflictMode as FileOpsConflictMode;
 
                             let is_move = operation.operation_type == BatchOperationType::Move;
-                            let request = if is_move {
-                                OperationRequest::r#move(
-                                    vec![OperationPath::Local(source.clone())],
-                                    OperationPath::Local(final_dest.clone()),
-                                )
-                            } else {
-                                OperationRequest::copy(
-                                    vec![OperationPath::Local(source.clone())],
-                                    OperationPath::Local(final_dest.clone()),
-                                )
-                            }
+                            let request = make_copy_or_move_request(
+                                OperationPath::Local(source.clone()),
+                                OperationPath::Local(final_dest.clone()),
+                                is_move,
+                            )
                             .with_conflict_mode(FileOpsConflictMode::OverwriteAll);
 
                             let vfs_manager = std::sync::Arc::new(termide_vfs::VfsManager::new());
@@ -1101,8 +1090,6 @@ impl App {
         let needs_remote = is_remote_dest || !source.exists();
         if needs_remote {
             if let Some((vfs_manager, vfs_current_path)) = self.find_remote_file_manager_info() {
-                use termide_file_ops::{OperationPath, OperationRequest};
-
                 let source_name = source
                     .file_name()
                     .map(|n| n.to_string_lossy().to_string())
@@ -1113,17 +1100,11 @@ impl App {
 
                 let request = if is_remote_dest {
                     let vfs_dest = Self::vfs_path_with_connection(&vfs_current_path, final_dest);
-                    if is_move {
-                        OperationRequest::r#move(
-                            vec![OperationPath::Remote(vfs_source.clone())],
-                            OperationPath::Remote(vfs_dest),
-                        )
-                    } else {
-                        OperationRequest::copy(
-                            vec![OperationPath::Remote(vfs_source.clone())],
-                            OperationPath::Remote(vfs_dest),
-                        )
-                    }
+                    make_copy_or_move_request(
+                        OperationPath::Remote(vfs_source.clone()),
+                        OperationPath::Remote(vfs_dest),
+                        is_move,
+                    )
                 } else {
                     let r = OperationRequest::download(vfs_source.clone(), final_dest);
                     if is_move {
@@ -1143,9 +1124,7 @@ impl App {
         // Local file or directory - use OperationManager for async copy with progress
         // Applies to both Copy and Move (move may need copy+delete for cross-filesystem)
         if source.is_file() || source.is_dir() {
-            use termide_file_ops::{
-                ConflictMode as FileOpsConflictMode, OperationPath, OperationRequest,
-            };
+            use termide_file_ops::ConflictMode as FileOpsConflictMode;
 
             let is_move = operation.operation_type == BatchOperationType::Move;
             let worker_conflict_mode = match operation.conflict_mode {
@@ -1153,17 +1132,11 @@ impl App {
                 ConflictMode::SkipAll => FileOpsConflictMode::SkipAll,
                 _ => FileOpsConflictMode::Ask,
             };
-            let request = if is_move {
-                OperationRequest::r#move(
-                    vec![OperationPath::Local(source.clone())],
-                    OperationPath::Local(final_dest),
-                )
-            } else {
-                OperationRequest::copy(
-                    vec![OperationPath::Local(source.clone())],
-                    OperationPath::Local(final_dest),
-                )
-            }
+            let request = make_copy_or_move_request(
+                OperationPath::Local(source.clone()),
+                OperationPath::Local(final_dest),
+                is_move,
+            )
             .with_conflict_mode(worker_conflict_mode);
 
             let vfs_manager = std::sync::Arc::new(termide_vfs::VfsManager::new());
@@ -1302,8 +1275,6 @@ impl App {
                         if let Some((vfs_manager, vfs_current_path)) =
                             self.find_remote_file_manager_info()
                         {
-                            use termide_file_ops::{OperationPath, OperationRequest};
-
                             let source_name = source
                                 .file_name()
                                 .map(|n| n.to_string_lossy().to_string())
@@ -1315,17 +1286,11 @@ impl App {
                             let request = if is_remote_dest {
                                 let vfs_dest =
                                     Self::vfs_path_with_connection(&vfs_current_path, new_dest);
-                                if is_move {
-                                    OperationRequest::r#move(
-                                        vec![OperationPath::Remote(vfs_source.clone())],
-                                        OperationPath::Remote(vfs_dest),
-                                    )
-                                } else {
-                                    OperationRequest::copy(
-                                        vec![OperationPath::Remote(vfs_source.clone())],
-                                        OperationPath::Remote(vfs_dest),
-                                    )
-                                }
+                                make_copy_or_move_request(
+                                    OperationPath::Remote(vfs_source.clone()),
+                                    OperationPath::Remote(vfs_dest),
+                                    is_move,
+                                )
                             } else {
                                 let r = OperationRequest::download(vfs_source.clone(), new_dest);
                                 if is_move {
@@ -1341,20 +1306,12 @@ impl App {
                         }
                     } else if let Some(panel) = self.layout_manager.active_panel_mut() {
                         if let Some(_fm) = panel.as_file_manager_mut() {
-                            use termide_file_ops::{OperationPath, OperationRequest};
-
                             let is_move = operation.operation_type == BatchOperationType::Move;
-                            let request = if is_move {
-                                OperationRequest::r#move(
-                                    vec![OperationPath::Local(source.clone())],
-                                    OperationPath::Local(new_dest),
-                                )
-                            } else {
-                                OperationRequest::copy(
-                                    vec![OperationPath::Local(source.clone())],
-                                    OperationPath::Local(new_dest),
-                                )
-                            };
+                            let request = make_copy_or_move_request(
+                                OperationPath::Local(source.clone()),
+                                OperationPath::Local(new_dest),
+                                is_move,
+                            );
 
                             let vfs_manager = std::sync::Arc::new(termide_vfs::VfsManager::new());
 

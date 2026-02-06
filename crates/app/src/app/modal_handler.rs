@@ -575,7 +575,10 @@ impl App {
 
                             // If resumed, continue processing
                             if operation.pause_state == termide_state::PauseState::Running {
-                                let op = self.state.pending_action.take().unwrap();
+                                let op =
+                                    self.state.pending_action.take().expect(
+                                        "pending_action confirmed Some by enclosing if-let",
+                                    );
                                 if let termide_state::PendingAction::ContinueBatchOperation {
                                     operation: batch_op,
                                 } = op
