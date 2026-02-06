@@ -15,7 +15,6 @@ impl App {
     /// Handle editor closure with saving
     pub(in crate::app) fn handle_close_editor_with_save(
         &mut self,
-        _panel_index: usize, // obsolete with LayoutManager
         value: Box<dyn std::any::Any>,
     ) -> Result<()> {
         // Store info needed for LSP notification (before mutable borrow)
@@ -129,7 +128,6 @@ impl App {
                                 let current_dir =
                                     std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
                                 let action = PendingAction::SaveFileAs {
-                                    panel_index: 0, // placeholder, obsolete
                                     directory: current_dir,
                                 };
                                 self.state.set_pending_action(
@@ -143,12 +141,12 @@ impl App {
                         }
                     }
                     // Close panel after saving
-                    self.close_panel_at_index(0); // panel_index is obsolete
+                    self.close_panel_at_index();
                 }
                 1 => {
                     // Close without saving
                     log::info!("Selected: Close without saving");
-                    self.close_panel_at_index(0); // panel_index is obsolete
+                    self.close_panel_at_index();
                 }
                 _ => {
                     // Cancel - do nothing
@@ -170,7 +168,6 @@ impl App {
     /// Handle editor closure with external changes (file changed on disk)
     pub(in crate::app) fn handle_close_editor_external(
         &mut self,
-        _panel_index: usize, // obsolete with LayoutManager
         value: Box<dyn std::any::Any>,
     ) -> Result<()> {
         if let Some(selected) = value.downcast_ref::<Vec<usize>>() {
@@ -198,12 +195,12 @@ impl App {
                             }
                         }
                     }
-                    self.close_panel_at_index(0);
+                    self.close_panel_at_index();
                 }
                 1 => {
                     // Keep disk version (just close)
                     log::info!("Selected: Keep disk version, close editor");
-                    self.close_panel_at_index(0);
+                    self.close_panel_at_index();
                 }
                 2 => {
                     // Reload into editor (don't close)
@@ -233,7 +230,6 @@ impl App {
     /// Handle editor closure with conflict (local + external changes)
     pub(in crate::app) fn handle_close_editor_conflict(
         &mut self,
-        _panel_index: usize, // obsolete with LayoutManager
         value: Box<dyn std::any::Any>,
     ) -> Result<()> {
         if let Some(selected) = value.downcast_ref::<Vec<usize>>() {
@@ -261,7 +257,7 @@ impl App {
                             }
                         }
                     }
-                    self.close_panel_at_index(0);
+                    self.close_panel_at_index();
                 }
                 1 => {
                     // Reload from disk (discard local changes)
@@ -276,7 +272,7 @@ impl App {
                             }
                         }
                     }
-                    self.close_panel_at_index(0);
+                    self.close_panel_at_index();
                 }
                 _ => {
                     // Cancel - do nothing

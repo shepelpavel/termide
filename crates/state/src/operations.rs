@@ -206,7 +206,6 @@ mod tests {
             total_files: 10,
             total_bytes: 0,
             bytes_transferred: 0,
-            ..Default::default()
         };
         assert_eq!(p.percent(), 30);
     }

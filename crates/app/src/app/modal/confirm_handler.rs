@@ -14,7 +14,6 @@ impl App {
     /// Handle deletion of files/directories
     pub(in crate::app) fn handle_delete_path(
         &mut self,
-        _panel_index: usize, // obsolete with LayoutManager
         paths: Vec<PathBuf>,
         value: Box<dyn std::any::Any>,
     ) -> Result<()> {
@@ -64,7 +63,6 @@ impl App {
     /// Handle deletion of remote files/directories
     pub(in crate::app) fn handle_delete_remote_path(
         &mut self,
-        _panel_index: usize, // obsolete with LayoutManager
         paths: Vec<VfsPath>,
         vfs_manager: Arc<VfsManager>,
         value: Box<dyn std::any::Any>,
@@ -115,7 +113,6 @@ impl App {
     /// Handle panel closure
     pub(in crate::app) fn handle_close_panel(
         &mut self,
-        _panel_index: usize, // obsolete with LayoutManager
         value: Box<dyn std::any::Any>,
     ) -> Result<()> {
         if let Some(confirmed) = value.downcast_ref::<bool>() {
@@ -125,7 +122,7 @@ impl App {
                     panel.kill_processes();
                 }
                 // Close active panel
-                self.close_panel_at_index(0); // panel_index is obsolete
+                self.close_panel_at_index();
             }
         }
         Ok(())

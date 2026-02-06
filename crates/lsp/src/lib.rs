@@ -304,7 +304,6 @@ mod tests {
 
     #[test]
     fn test_find_workspace_root() {
-        let _markers = vec!["Cargo.toml".to_string()];
         // This test depends on the actual filesystem
         // In a real test, we'd use tempfile to create a test directory structure
     }

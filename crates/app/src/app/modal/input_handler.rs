@@ -15,7 +15,6 @@ impl App {
     /// Handle file creation
     pub(in crate::app) fn handle_create_file(
         &mut self,
-        _panel_index: usize,
         _directory: PathBuf,
         value: Box<dyn std::any::Any>,
     ) -> Result<()> {
@@ -25,7 +24,6 @@ impl App {
     /// Handle directory creation
     pub(in crate::app) fn handle_create_directory(
         &mut self,
-        _panel_index: usize,
         _directory: PathBuf,
         value: Box<dyn std::any::Any>,
     ) -> Result<()> {
@@ -93,7 +91,6 @@ impl App {
     /// Handle saving file with new name
     pub(in crate::app) fn handle_save_file_as(
         &mut self,
-        _panel_index: usize, // obsolete with LayoutManager
         directory: PathBuf,
         value: Box<dyn std::any::Any>,
     ) -> Result<()> {

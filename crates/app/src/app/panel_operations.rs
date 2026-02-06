@@ -12,7 +12,7 @@ use termide_i18n as i18n;
 
 impl App {
     /// Handle panel close request with confirmation if needed
-    pub(crate) fn handle_close_panel_request(&mut self, _panel_index: usize) -> Result<()> {
+    pub(crate) fn handle_close_panel_request(&mut self) -> Result<()> {
         log::debug!("Panel close requested");
         // Check if confirmation is required before closing active panel
         if let Some(panel) = self.layout_manager.active_panel_mut() {
@@ -39,7 +39,7 @@ impl App {
                                 t.editor_cancel().to_string(),
                             ],
                         );
-                        let action = PendingAction::CloseEditorConflict { panel_index: 0 };
+                        let action = PendingAction::CloseEditorConflict;
                         self.state
                             .set_pending_action(action, ActiveModal::Select(Box::new(modal)));
                         return Ok(());
@@ -54,7 +54,7 @@ impl App {
                                 t.editor_cancel().to_string(),
                             ],
                         );
-                        let action = PendingAction::CloseEditorWithSave { panel_index: 0 };
+                        let action = PendingAction::CloseEditorWithSave;
                         self.state
                             .set_pending_action(action, ActiveModal::Select(Box::new(modal)));
                         return Ok(());
@@ -70,7 +70,7 @@ impl App {
                                 t.editor_cancel().to_string(),
                             ],
                         );
-                        let action = PendingAction::CloseEditorExternal { panel_index: 0 };
+                        let action = PendingAction::CloseEditorExternal;
                         self.state
                             .set_pending_action(action, ActiveModal::Select(Box::new(modal)));
                         return Ok(());
@@ -79,7 +79,7 @@ impl App {
                     // For other panels show simple confirmation
                     let t = i18n::t();
                     let modal = termide_modal::ConfirmModal::new(t.modal_yes(), &_message);
-                    let action = PendingAction::ClosePanel { panel_index: 0 };
+                    let action = PendingAction::ClosePanel;
                     self.state
                         .set_pending_action(action, ActiveModal::Confirm(Box::new(modal)));
                     return Ok(());
@@ -88,7 +88,7 @@ impl App {
         }
 
         // Close active panel without confirmation
-        self.close_panel_at_index(0);
+        self.close_panel_at_index();
         Ok(())
     }
 
@@ -432,11 +432,7 @@ impl App {
     }
 
     /// Handle file search modal result - navigate to selected file
-    pub(super) fn handle_file_search(
-        &mut self,
-        _panel_index: usize,
-        value: Box<dyn std::any::Any>,
-    ) -> Result<()> {
+    pub(super) fn handle_file_search(&mut self, value: Box<dyn std::any::Any>) -> Result<()> {
         if let Some(path) = value.downcast_ref::<std::path::PathBuf>() {
             // Get the active file manager panel and navigate to the file
             if let Some(panel) = self.layout_manager.active_panel_mut() {
@@ -450,11 +446,7 @@ impl App {
     }
 
     /// Handle content search modal result - open file and go to line
-    pub(super) fn handle_content_search(
-        &mut self,
-        _panel_index: usize,
-        value: Box<dyn std::any::Any>,
-    ) -> Result<()> {
+    pub(super) fn handle_content_search(&mut self, value: Box<dyn std::any::Any>) -> Result<()> {
         use termide_modal::ContentSearchResultItem;
         use termide_panel_editor::Editor;
 

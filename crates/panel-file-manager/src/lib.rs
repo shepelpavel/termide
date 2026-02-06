@@ -1795,7 +1795,6 @@ impl FileManager {
                 let t = termide_i18n::t();
                 let modal = InputModal::new(t.modal_create_file_title(), "");
                 let action = PendingAction::CreateFile {
-                    panel_index: 0,
                     directory: self.current_path.clone(),
                 };
                 self.modal_request = Some((action, ActiveModal::Input(Box::new(modal))));
@@ -1804,7 +1803,6 @@ impl FileManager {
                 let t = termide_i18n::t();
                 let modal = InputModal::new(t.modal_create_dir_title(), "");
                 let action = PendingAction::CreateDirectory {
-                    panel_index: 0,
                     directory: self.current_path.clone(),
                 };
                 self.modal_request = Some((action, ActiveModal::Input(Box::new(modal))));
@@ -1826,7 +1824,6 @@ impl FileManager {
                         };
                         let modal = ConfirmModal::new(&title, "");
                         let action = PendingAction::DeleteRemotePath {
-                            panel_index: 0,
                             paths: vfs_paths,
                             vfs_manager: self.vfs_manager_arc(),
                         };
@@ -1844,10 +1841,7 @@ impl FileManager {
                             t.modal_delete_multiple_title(paths.len())
                         };
                         let modal = ConfirmModal::new(&title, "");
-                        let action = PendingAction::DeletePath {
-                            panel_index: 0,
-                            paths,
-                        };
+                        let action = PendingAction::DeletePath { paths };
                         self.modal_request = Some((action, ActiveModal::Confirm(Box::new(modal))));
                     }
                 }
@@ -1865,7 +1859,6 @@ impl FileManager {
                     };
                     let modal = InputModal::with_default("Copy", &message, &default_dest);
                     let action = PendingAction::CopyPath {
-                        panel_index: 0,
                         sources: paths,
                         target_directory: None,
                     };
@@ -1887,7 +1880,6 @@ impl FileManager {
                     };
                     let modal = InputModal::with_default("Move", &message, &default_dest);
                     let action = PendingAction::MovePath {
-                        panel_index: 0,
                         sources: paths,
                         target_directory: None,
                     };
@@ -1914,7 +1906,7 @@ impl FileManager {
             FmCommand::SearchFiles => {
                 let t = termide_i18n::t();
                 let modal = FileSearchModal::new(t.file_search_title(), self.current_path.clone());
-                let action = PendingAction::FileSearch { panel_index: 0 };
+                let action = PendingAction::FileSearch;
                 self.modal_request = Some((action, ActiveModal::FileSearch(Box::new(modal))));
             }
             FmCommand::SearchContent => {
@@ -1926,7 +1918,7 @@ impl FileManager {
                     self.current_path.clone(),
                     max_file_size,
                 );
-                let action = PendingAction::ContentSearch { panel_index: 0 };
+                let action = PendingAction::ContentSearch;
                 self.modal_request = Some((action, ActiveModal::ContentSearch(Box::new(modal))));
             }
 
@@ -1970,7 +1962,6 @@ impl FileManager {
                             &self.current_path.display().to_string(),
                         );
                         let action = PendingAction::CopyPath {
-                            panel_index: 0,
                             sources: files,
                             target_directory: Some(self.current_path.clone()),
                         };
@@ -2006,7 +1997,6 @@ impl FileManager {
                 let modal =
                     InputModal::with_default(t.fm_goto_title(), t.fm_goto_prompt(), &current_path);
                 let action = PendingAction::GoToPath {
-                    panel_index: 0,
                     current_directory: self.current_path.clone(),
                 };
                 self.modal_request = Some((action, ActiveModal::Input(Box::new(modal))));

@@ -139,3 +139,4 @@ Compare with baseline: warnings removed, LOC deleted/changed.
 - Do not expand refactoring beyond the agreed scope
 - Atomic changes: one fix at a time, verify after each
 - Output to terminal, not to report files
+- Communicate in the user's language

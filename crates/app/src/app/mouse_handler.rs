@@ -256,7 +256,7 @@ impl App {
                 self.layout_manager.focus = group_idx;
 
                 // Now use the same close logic as keyboard shortcut (with confirmation)
-                self.handle_close_panel_request(0)?;
+                self.handle_close_panel_request()?;
                 return Ok(true);
             } else if (4..=6).contains(&relative_x) {
                 // Click on [▶]/[▼] button - expand/collapse panel

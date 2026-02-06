@@ -906,15 +906,22 @@ mod tests {
 
     #[test]
     fn test_summary_speed_text() {
-        let mut summary = BackgroundOperationSummary::default();
-
-        summary.speed_bps = 500.0;
+        let summary = BackgroundOperationSummary {
+            speed_bps: 500.0,
+            ..Default::default()
+        };
         assert_eq!(summary.speed_text(), "500 B/s");
 
-        summary.speed_bps = 2048.0;
+        let summary = BackgroundOperationSummary {
+            speed_bps: 2048.0,
+            ..Default::default()
+        };
         assert_eq!(summary.speed_text(), "2.0 KB/s");
 
-        summary.speed_bps = 5.0 * 1024.0 * 1024.0;
+        let summary = BackgroundOperationSummary {
+            speed_bps: 5.0 * 1024.0 * 1024.0,
+            ..Default::default()
+        };
         assert_eq!(summary.speed_text(), "5.0 MB/s");
     }
 

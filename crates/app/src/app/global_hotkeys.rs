@@ -32,7 +32,7 @@ impl App {
             .unwrap_or(false);
 
         if self.hotkey_processor.should_escape_close(&key, captures) {
-            self.handle_close_panel_request(0)?;
+            self.handle_close_panel_request()?;
             return Ok(Some(()));
         }
 
@@ -98,7 +98,7 @@ impl App {
 
             // Panel management
             HotkeyAction::ClosePanel => {
-                self.handle_close_panel_request(0)?;
+                self.handle_close_panel_request()?;
             }
             HotkeyAction::ToggleStacking => {
                 self.toggle_panel_stacking();

@@ -339,6 +339,53 @@ fn get_device_for_path(path: &Path) -> Option<String> {
     })
 }
 
+/// Get disk space information for a given path.
+///
+/// Returns `DiskSpaceInfo` with device name, available and total space.
+pub fn get_disk_space_info(path: &Path) -> Option<DiskSpaceInfo> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    // Convert path to CString for passing to statvfs
+    let path_cstr = CString::new(path.as_os_str().as_bytes()).ok()?;
+
+    // Get device name for this path
+    let device = get_device_for_path(path);
+
+    // SAFETY: statvfs is a POSIX function that fills a statvfs struct with
+    // filesystem statistics. We zero-initialize the struct to ensure all fields
+    // have defined values. path_cstr is a valid null-terminated CString created
+    // above. statvfs returns 0 on success and writes valid data to the struct.
+    // We only read the struct fields after confirming success (return == 0).
+    unsafe {
+        let mut stat: libc::statvfs = std::mem::zeroed();
+        if libc::statvfs(path_cstr.as_ptr(), &mut stat) == 0 {
+            // f_bavail - available blocks for non-privileged users
+            // f_blocks - total blocks in the filesystem
+            // f_bsize - block size in bytes
+            // On macOS, f_bavail and f_blocks are u32, f_bsize is u64
+            // On Linux, all are u64
+            #[cfg(target_os = "macos")]
+            let available = (stat.f_bavail as u64) * stat.f_bsize;
+            #[cfg(not(target_os = "macos"))]
+            let available = stat.f_bavail * stat.f_bsize;
+
+            #[cfg(target_os = "macos")]
+            let total = (stat.f_blocks as u64) * stat.f_bsize;
+            #[cfg(not(target_os = "macos"))]
+            let total = stat.f_blocks * stat.f_bsize;
+
+            Some(DiskSpaceInfo {
+                device,
+                available,
+                total,
+            })
+        } else {
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -485,52 +532,5 @@ mod tests {
         };
         assert_eq!(info.used_gb(), 500);
         assert_eq!(info.total_gb(), 1000);
-    }
-}
-
-/// Get disk space information for a given path.
-///
-/// Returns `DiskSpaceInfo` with device name, available and total space.
-pub fn get_disk_space_info(path: &Path) -> Option<DiskSpaceInfo> {
-    use std::ffi::CString;
-    use std::os::unix::ffi::OsStrExt;
-
-    // Convert path to CString for passing to statvfs
-    let path_cstr = CString::new(path.as_os_str().as_bytes()).ok()?;
-
-    // Get device name for this path
-    let device = get_device_for_path(path);
-
-    // SAFETY: statvfs is a POSIX function that fills a statvfs struct with
-    // filesystem statistics. We zero-initialize the struct to ensure all fields
-    // have defined values. path_cstr is a valid null-terminated CString created
-    // above. statvfs returns 0 on success and writes valid data to the struct.
-    // We only read the struct fields after confirming success (return == 0).
-    unsafe {
-        let mut stat: libc::statvfs = std::mem::zeroed();
-        if libc::statvfs(path_cstr.as_ptr(), &mut stat) == 0 {
-            // f_bavail - available blocks for non-privileged users
-            // f_blocks - total blocks in the filesystem
-            // f_bsize - block size in bytes
-            // On macOS, f_bavail and f_blocks are u32, f_bsize is u64
-            // On Linux, all are u64
-            #[cfg(target_os = "macos")]
-            let available = (stat.f_bavail as u64) * stat.f_bsize;
-            #[cfg(not(target_os = "macos"))]
-            let available = stat.f_bavail * stat.f_bsize;
-
-            #[cfg(target_os = "macos")]
-            let total = (stat.f_blocks as u64) * stat.f_bsize;
-            #[cfg(not(target_os = "macos"))]
-            let total = stat.f_blocks * stat.f_bsize;
-
-            Some(DiskSpaceInfo {
-                device,
-                available,
-                total,
-            })
-        } else {
-            None
-        }
     }
 }

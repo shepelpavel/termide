@@ -1983,10 +1983,7 @@ impl Editor {
         let default_value = default_path.display().to_string();
 
         let modal = SaveAsModal::new(t().modal_save_as_title(), default_value);
-        let action = PendingAction::SaveFileAs {
-            panel_index: 0, // will be updated in app.rs
-            directory,
-        };
+        let action = PendingAction::SaveFileAs { directory };
         self.modal_request = Some((action, ActiveModal::SaveAs(Box::new(modal))));
         Ok(())
     }

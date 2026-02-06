@@ -204,7 +204,6 @@ impl App {
     fn handle_file_operation(
         &mut self,
         operation_type: BatchOperationType,
-        panel_index: usize,
         sources: Vec<PathBuf>,
         target_directory: Option<PathBuf>,
         value: Box<dyn std::any::Any>,
@@ -277,11 +276,11 @@ impl App {
                         fm.get_current_directory().join(&destination)
                     }
                 } else {
-                    log::error!("Panel {} is not FileManager", panel_index);
+                    log::error!("Active panel is not FileManager");
                     return Ok(());
                 }
             } else {
-                log::error!("Panel with index {} not found", panel_index);
+                log::error!("No active panel found");
                 return Ok(());
             }
         };
@@ -613,35 +612,21 @@ impl App {
     /// Handle file copying
     pub(in crate::app) fn handle_copy_path(
         &mut self,
-        panel_index: usize,
         sources: Vec<PathBuf>,
         target_directory: Option<PathBuf>,
         value: Box<dyn std::any::Any>,
     ) -> Result<()> {
-        self.handle_file_operation(
-            BatchOperationType::Copy,
-            panel_index,
-            sources,
-            target_directory,
-            value,
-        )
+        self.handle_file_operation(BatchOperationType::Copy, sources, target_directory, value)
     }
 
     /// Handle file moving
     pub(in crate::app) fn handle_move_path(
         &mut self,
-        panel_index: usize,
         sources: Vec<PathBuf>,
         target_directory: Option<PathBuf>,
         value: Box<dyn std::any::Any>,
     ) -> Result<()> {
-        self.handle_file_operation(
-            BatchOperationType::Move,
-            panel_index,
-            sources,
-            target_directory,
-            value,
-        )
+        self.handle_file_operation(BatchOperationType::Move, sources, target_directory, value)
     }
 
     /// Handle continuation of batch operation after conflict resolution

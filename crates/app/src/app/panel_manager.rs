@@ -10,9 +10,8 @@ use crate::PanelExt;
 use termide_panel_misc::HelpPanel as Help;
 
 impl App {
-    /// Close panel by index and switch focus to next visible panel
-    /// NOTE: panel_index parameter is now obsolete with LayoutManager, kept for compatibility
-    pub(super) fn close_panel_at_index(&mut self, _panel_index: usize) {
+    /// Close active panel and switch focus to next visible panel
+    pub(super) fn close_panel_at_index(&mut self) {
         // Before closing, cleanup temporary files if this is an unsaved editor
         if let Some(panel) = self.layout_manager.active_panel_mut() {
             if let Some(editor) = panel.as_editor_mut() {
@@ -128,7 +127,7 @@ impl App {
         // Expand the target panel within its group so close_panel_at_index targets it
         self.layout_manager.panel_groups[group_idx].set_expanded(panel_idx);
 
-        self.close_panel_at_index(0);
+        self.close_panel_at_index();
 
         // Restore focus (adjust if the closed group was removed)
         if !self.layout_manager.panel_groups.is_empty() {

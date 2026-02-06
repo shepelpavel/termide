@@ -11,51 +11,36 @@ use crate::batch::BatchOperation;
 #[derive(Debug, Clone)]
 pub enum PendingAction {
     /// Create new file in specified directory
-    CreateFile {
-        panel_index: usize,
-        directory: PathBuf,
-    },
+    CreateFile { directory: PathBuf },
     /// Create new directory in specified directory
-    CreateDirectory {
-        panel_index: usize,
-        directory: PathBuf,
-    },
+    CreateDirectory { directory: PathBuf },
     /// Delete files/directories (one or multiple)
-    DeletePath {
-        panel_index: usize,
-        paths: Vec<PathBuf>,
-    },
+    DeletePath { paths: Vec<PathBuf> },
     /// Delete remote files/directories (one or multiple)
     DeleteRemotePath {
-        panel_index: usize,
         paths: Vec<VfsPath>,
         vfs_manager: Arc<VfsManager>,
     },
     /// Copy files/directories (one or multiple)
     CopyPath {
-        panel_index: usize,
         sources: Vec<PathBuf>,
         target_directory: Option<PathBuf>,
     },
     /// Move files/directories (one or multiple)
     MovePath {
-        panel_index: usize,
         sources: Vec<PathBuf>,
         target_directory: Option<PathBuf>,
     },
     /// Save unnamed file (Save As)
-    SaveFileAs {
-        panel_index: usize,
-        directory: PathBuf,
-    },
+    SaveFileAs { directory: PathBuf },
     /// Close panel (with confirmation if there are unsaved changes)
-    ClosePanel { panel_index: usize },
+    ClosePanel,
     /// Close editor with choice: save, don't save, cancel
-    CloseEditorWithSave { panel_index: usize },
+    CloseEditorWithSave,
     /// Close editor with external changes (file changed on disk)
-    CloseEditorExternal { panel_index: usize },
+    CloseEditorExternal,
     /// Close editor with conflict (local changes + external changes)
-    CloseEditorConflict { panel_index: usize },
+    CloseEditorConflict,
     /// Batch file operation (copy/move)
     BatchFileOperation { operation: BatchOperation },
     /// Continue batch operation after conflict resolution
@@ -82,9 +67,9 @@ pub enum PendingAction {
     /// Change root path of current session
     ChangeRootPath,
     /// File search in file manager
-    FileSearch { panel_index: usize },
+    FileSearch,
     /// Content search in file manager
-    ContentSearch { panel_index: usize },
+    ContentSearch,
     /// Open Git Status panel
     OpenGitStatus,
     /// Open Git Log panel
@@ -117,10 +102,7 @@ pub enum PendingAction {
     /// Add a bookmark
     AddBookmark,
     /// Go to path/URL (supports local paths and remote URLs like sftp://)
-    GoToPath {
-        panel_index: usize,
-        current_directory: PathBuf,
-    },
+    GoToPath { current_directory: PathBuf },
     /// VFS information message (connection cancelled, error, etc.)
     VfsMessage,
     /// Handle cancelled copy/move operation cleanup

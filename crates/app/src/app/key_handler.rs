@@ -168,49 +168,6 @@ impl App {
         mut action: PendingAction,
         mut modal: ActiveModal,
     ) -> Result<()> {
-        // Update panel_index for actions that need it (placeholder value)
-        match &mut action {
-            PendingAction::CreateFile { panel_index, .. }
-            | PendingAction::CreateDirectory { panel_index, .. }
-            | PendingAction::DeletePath { panel_index, .. }
-            | PendingAction::DeleteRemotePath { panel_index, .. }
-            | PendingAction::CopyPath { panel_index, .. }
-            | PendingAction::MovePath { panel_index, .. }
-            | PendingAction::SaveFileAs { panel_index, .. }
-            | PendingAction::ClosePanel { panel_index }
-            | PendingAction::CloseEditorWithSave { panel_index }
-            | PendingAction::CloseEditorExternal { panel_index }
-            | PendingAction::CloseEditorConflict { panel_index }
-            | PendingAction::FileSearch { panel_index }
-            | PendingAction::ContentSearch { panel_index }
-            | PendingAction::GoToPath { panel_index, .. } => {
-                *panel_index = 0; // Placeholder value, not used with LayoutManager
-            }
-            PendingAction::BatchFileOperation { .. }
-            | PendingAction::ContinueBatchOperation { .. }
-            | PendingAction::RenameWithPattern { .. }
-            | PendingAction::Search
-            | PendingAction::Replace
-            | PendingAction::NextPanel
-            | PendingAction::PrevPanel
-            | PendingAction::QuitApplication
-            | PendingAction::SwitchSession
-            | PendingAction::NewSession
-            | PendingAction::ChangeRootPath
-            | PendingAction::OpenGitStatus
-            | PendingAction::OpenGitLog
-            | PendingAction::GitFileAction { .. }
-            | PendingAction::GitCommit { .. }
-            | PendingAction::GitRevertFile { .. }
-            | PendingAction::SwitchDirectory
-            | PendingAction::AddBookmark
-            | PendingAction::VfsMessage
-            | PendingAction::CancelCopyCleanup { .. }
-            | PendingAction::ResolveOperationConflict { .. } => {
-                // These actions don't require panel_index update
-            }
-        }
-
         // For Copy/Move - find all other FM panels and create suggestions
         let is_copy = matches!(action, PendingAction::CopyPath { .. });
 

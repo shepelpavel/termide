@@ -177,7 +177,7 @@ impl FileManager {
 
                 let modal = termide_modal::InfoModal::new(modal_title, data);
                 self.modal_request = Some((
-                    PendingAction::ClosePanel { panel_index: 0 },
+                    PendingAction::ClosePanel,
                     ActiveModal::Info(Box::new(modal)),
                 ));
 
@@ -327,7 +327,7 @@ impl FileManager {
                 } else {
                     let modal = termide_modal::InfoModal::new(modal_title, data);
                     self.modal_request = Some((
-                        PendingAction::ClosePanel { panel_index: 0 },
+                        PendingAction::ClosePanel,
                         ActiveModal::Info(Box::new(modal)),
                     ));
                 }

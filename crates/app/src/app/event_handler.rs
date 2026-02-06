@@ -63,7 +63,7 @@ impl App {
 
             PanelEvent::ClosePanel => {
                 // Request close of current panel (with confirmation if needed)
-                self.handle_close_panel_request(0)?;
+                self.handle_close_panel_request()?;
             }
 
             // === Status messages ===
@@ -140,7 +140,7 @@ impl App {
 
             PanelEvent::CloseFile => {
                 // Same as ClosePanel for now
-                self.handle_close_panel_request(0)?;
+                self.handle_close_panel_request()?;
             }
 
             PanelEvent::NavigateTo(path) => {
@@ -786,9 +786,7 @@ impl App {
                 // Encoding selection is handled differently
                 return;
             }
-            termide_core::SelectAction::CloseEditorChoice => {
-                PendingAction::CloseEditorWithSave { panel_index: 0 }
-            }
+            termide_core::SelectAction::CloseEditorChoice => PendingAction::CloseEditorWithSave,
             termide_core::SelectAction::Custom(_) => {
                 // Custom actions not yet supported
                 return;
@@ -839,17 +837,14 @@ impl App {
         // Map InputAction to PendingAction
         let pending_action = match &on_submit {
             termide_core::InputAction::RenameFile { from } => PendingAction::MovePath {
-                panel_index: 0,
                 sources: vec![from.clone()],
                 target_directory: from.parent().map(|p| p.to_path_buf()),
             },
             termide_core::InputAction::CreateFile { in_dir } => PendingAction::CreateFile {
-                panel_index: 0,
                 directory: in_dir.clone(),
             },
             termide_core::InputAction::CreateDirectory { in_dir } => {
                 PendingAction::CreateDirectory {
-                    panel_index: 0,
                     directory: in_dir.clone(),
                 }
             }
@@ -860,16 +855,13 @@ impl App {
                 return;
             }
             termide_core::InputAction::SaveFileAs { directory } => PendingAction::SaveFileAs {
-                panel_index: 0,
                 directory: directory.clone(),
             },
             termide_core::InputAction::CopyTo { sources } => PendingAction::CopyPath {
-                panel_index: 0,
                 sources: sources.clone(),
                 target_directory: None,
             },
             termide_core::InputAction::MoveTo { sources } => PendingAction::MovePath {
-                panel_index: 0,
                 sources: sources.clone(),
                 target_directory: None,
             },
@@ -888,24 +880,15 @@ impl App {
 
         // Map ConfirmAction to PendingAction
         let pending_action = match on_confirm {
-            termide_core::ConfirmAction::DeleteFile(path) => PendingAction::DeletePath {
-                panel_index: 0,
-                paths: vec![path],
-            },
-            termide_core::ConfirmAction::DeletePaths(paths) => PendingAction::DeletePath {
-                panel_index: 0,
-                paths,
-            },
-            termide_core::ConfirmAction::DeleteDirectory(path) => PendingAction::DeletePath {
-                panel_index: 0,
-                paths: vec![path],
-            },
-            termide_core::ConfirmAction::DiscardChanges(_path) => {
-                PendingAction::ClosePanel { panel_index: 0 }
+            termide_core::ConfirmAction::DeleteFile(path) => {
+                PendingAction::DeletePath { paths: vec![path] }
             }
-            termide_core::ConfirmAction::CloseWithoutSaving => {
-                PendingAction::CloseEditorWithSave { panel_index: 0 }
+            termide_core::ConfirmAction::DeletePaths(paths) => PendingAction::DeletePath { paths },
+            termide_core::ConfirmAction::DeleteDirectory(path) => {
+                PendingAction::DeletePath { paths: vec![path] }
             }
+            termide_core::ConfirmAction::DiscardChanges(_path) => PendingAction::ClosePanel,
+            termide_core::ConfirmAction::CloseWithoutSaving => PendingAction::CloseEditorWithSave,
             termide_core::ConfirmAction::QuitApplication => PendingAction::QuitApplication,
         };
 

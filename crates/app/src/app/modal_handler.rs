@@ -243,59 +243,44 @@ impl App {
 
         if let Some(action) = self.state.take_pending_action() {
             match action {
-                PendingAction::CreateFile {
-                    panel_index,
-                    directory,
-                } => {
-                    self.handle_create_file(panel_index, directory, value)?;
+                PendingAction::CreateFile { directory } => {
+                    self.handle_create_file(directory, value)?;
                 }
-                PendingAction::CreateDirectory {
-                    panel_index,
-                    directory,
-                } => {
-                    self.handle_create_directory(panel_index, directory, value)?;
+                PendingAction::CreateDirectory { directory } => {
+                    self.handle_create_directory(directory, value)?;
                 }
-                PendingAction::DeletePath { panel_index, paths } => {
-                    self.handle_delete_path(panel_index, paths, value)?;
+                PendingAction::DeletePath { paths } => {
+                    self.handle_delete_path(paths, value)?;
                 }
-                PendingAction::DeleteRemotePath {
-                    panel_index,
-                    paths,
-                    vfs_manager,
-                } => {
-                    self.handle_delete_remote_path(panel_index, paths, vfs_manager, value)?;
+                PendingAction::DeleteRemotePath { paths, vfs_manager } => {
+                    self.handle_delete_remote_path(paths, vfs_manager, value)?;
                 }
-                PendingAction::SaveFileAs {
-                    panel_index,
-                    directory,
-                } => {
-                    self.handle_save_file_as(panel_index, directory, value)?;
+                PendingAction::SaveFileAs { directory } => {
+                    self.handle_save_file_as(directory, value)?;
                 }
-                PendingAction::ClosePanel { panel_index } => {
-                    self.handle_close_panel(panel_index, value)?;
+                PendingAction::ClosePanel => {
+                    self.handle_close_panel(value)?;
                 }
-                PendingAction::CloseEditorWithSave { panel_index } => {
-                    self.handle_close_editor_with_save(panel_index, value)?;
+                PendingAction::CloseEditorWithSave => {
+                    self.handle_close_editor_with_save(value)?;
                 }
-                PendingAction::CloseEditorExternal { panel_index } => {
-                    self.handle_close_editor_external(panel_index, value)?;
+                PendingAction::CloseEditorExternal => {
+                    self.handle_close_editor_external(value)?;
                 }
-                PendingAction::CloseEditorConflict { panel_index } => {
-                    self.handle_close_editor_conflict(panel_index, value)?;
+                PendingAction::CloseEditorConflict => {
+                    self.handle_close_editor_conflict(value)?;
                 }
                 PendingAction::CopyPath {
-                    panel_index,
                     sources,
                     target_directory,
                 } => {
-                    self.handle_copy_path(panel_index, sources, target_directory, value)?;
+                    self.handle_copy_path(sources, target_directory, value)?;
                 }
                 PendingAction::MovePath {
-                    panel_index,
                     sources,
                     target_directory,
                 } => {
-                    self.handle_move_path(panel_index, sources, target_directory, value)?;
+                    self.handle_move_path(sources, target_directory, value)?;
                 }
                 PendingAction::BatchFileOperation { operation } => {
                     self.process_batch_operation(operation);
@@ -330,11 +315,11 @@ impl App {
                 PendingAction::ChangeRootPath => {
                     self.handle_change_root_path_result(value)?;
                 }
-                PendingAction::FileSearch { panel_index } => {
-                    self.handle_file_search(panel_index, value)?;
+                PendingAction::FileSearch => {
+                    self.handle_file_search(value)?;
                 }
-                PendingAction::ContentSearch { panel_index } => {
-                    self.handle_content_search(panel_index, value)?;
+                PendingAction::ContentSearch => {
+                    self.handle_content_search(value)?;
                 }
                 // Navigation actions are handled in key_handler, should not get here
                 PendingAction::NextPanel | PendingAction::PrevPanel => {}
@@ -370,7 +355,6 @@ impl App {
                 }
                 // Go to path/URL
                 PendingAction::GoToPath {
-                    panel_index: _,
                     current_directory: _,
                 } => {
                     self.handle_goto_path(value)?;
