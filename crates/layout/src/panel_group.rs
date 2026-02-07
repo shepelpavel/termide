@@ -62,6 +62,7 @@ impl PanelGroup {
     pub fn next_panel(&mut self) {
         if !self.panels.is_empty() {
             self.expanded_index = (self.expanded_index + 1) % self.panels.len();
+            self.panels[self.expanded_index].handle_command(PanelCommand::RefreshIfStale);
         }
     }
 
@@ -73,6 +74,7 @@ impl PanelGroup {
             } else {
                 self.expanded_index - 1
             };
+            self.panels[self.expanded_index].handle_command(PanelCommand::RefreshIfStale);
         }
     }
 
