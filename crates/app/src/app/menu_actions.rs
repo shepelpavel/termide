@@ -941,6 +941,21 @@ impl App {
 
     /// Lightweight check for live editing — only compare edit_version, debounced 1s.
     pub(super) fn check_outline_live_edit(&mut self) {
+        let needs_repopulate = self
+            .layout_manager
+            .panel_groups
+            .iter_mut()
+            .flat_map(|g| g.panels_mut())
+            .find_map(|p| {
+                p.as_any_mut()
+                    .downcast_mut::<termide_panel_outline::OutlinePanel>()
+            })
+            .is_some_and(|outline| outline.needs_repopulate());
+        if needs_repopulate {
+            self.populate_outline_from_any_editor();
+            return;
+        }
+
         let Some(panel) = self.layout_manager.active_panel_mut() else {
             return;
         };

@@ -58,6 +58,9 @@ pub struct OutlinePanel {
     /// Whether the panel is stale (collapsed, awaiting refresh).
     is_stale: bool,
 
+    /// Whether the panel needs the app to re-push content after unstale.
+    needs_repopulate: bool,
+
     /// Reusable tree-sitter parser (avoids allocation on every parse).
     parser: tree_sitter::Parser,
 
@@ -79,6 +82,7 @@ impl OutlinePanel {
             vim_mode: false,
             pending_navigation: None,
             is_stale: false,
+            needs_repopulate: false,
             parser: tree_sitter::Parser::new(),
             tree_prefixes: Vec::new(),
         }
@@ -95,6 +99,15 @@ impl OutlinePanel {
         language: Option<&str>,
     ) {
         if self.is_stale {
+            let file_changed = self.tracked_file != file_path;
+            self.tracked_file = file_path;
+            self.tracked_language = language.map(|s| s.to_string());
+            if file_changed {
+                self.symbols.clear();
+                self.tree_prefixes.clear();
+                self.selected_index = 0;
+                self.scroll_offset = 0;
+            }
             return;
         }
 
@@ -188,6 +201,12 @@ impl OutlinePanel {
         self.tree_prefixes.clear();
         self.selected_index = 0;
         self.scroll_offset = 0;
+        self.needs_repopulate = false;
+    }
+
+    /// Check and clear the repopulate flag (called by app tick handler).
+    pub fn needs_repopulate(&mut self) -> bool {
+        std::mem::take(&mut self.needs_repopulate)
     }
 
     /// Ensure selected item is visible.
@@ -266,6 +285,9 @@ impl Panel for OutlinePanel {
             PanelCommand::RefreshIfStale => {
                 if self.is_stale {
                     self.is_stale = false;
+                    if self.tracked_file.is_some() && self.symbols.is_empty() {
+                        self.needs_repopulate = true;
+                    }
                     CommandResult::NeedsRedraw(true)
                 } else {
                     CommandResult::None
