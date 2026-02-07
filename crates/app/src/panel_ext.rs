@@ -128,6 +128,9 @@ impl PanelExt for dyn Panel {
         if let Some(git_status) = self.as_git_status_mut() {
             return git_status.take_modal_request();
         }
+        if let Some(journal) = (self as &mut dyn Any).downcast_mut::<JournalPanel>() {
+            return journal.editor_mut().take_modal_request();
+        }
         None
     }
 

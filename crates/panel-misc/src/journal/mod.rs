@@ -91,6 +91,11 @@ impl JournalPanel {
         }
     }
 
+    /// Access the inner editor (for search, modal requests, etc.).
+    pub fn editor_mut(&mut self) -> &mut Editor {
+        &mut self.editor
+    }
+
     /// Scroll to the end of the log (word-wrap aware).
     fn scroll_to_end(&mut self) {
         self.editor.scroll_to_document_end();

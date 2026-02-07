@@ -183,7 +183,10 @@ fn handle_normal_mode(state: &mut VimState, key: KeyEvent) -> VimKeyResult {
                 state.clear_pending();
                 return VimKeyResult::Redo;
             }
-            _ => {}
+            _ => {
+                state.clear_pending();
+                return VimKeyResult::PassThrough;
+            }
         }
     }
 
@@ -536,6 +539,12 @@ fn handle_normal_mode(state: &mut VimState, key: KeyEvent) -> VimKeyResult {
         KeyCode::Esc => {
             state.clear_pending();
             VimKeyResult::Consumed
+        }
+
+        // F-keys pass through (F3/Shift+F3 for search next/prev, etc.)
+        KeyCode::F(_) => {
+            state.clear_pending();
+            VimKeyResult::PassThrough
         }
 
         _ => {

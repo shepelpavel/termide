@@ -553,12 +553,24 @@ impl App {
     // ===== Panel downcast helpers =====
     // These helper methods reduce boilerplate for accessing specific panel types
 
-    /// Get mutable reference to active editor panel
-    /// Helper to avoid nested if-let chains: `if let Some(panel) = ... { if let Some(editor) = ... }`
-    fn active_editor_mut(&mut self) -> Option<&mut termide_panel_editor::Editor> {
-        self.layout_manager
-            .active_panel_mut()
-            .and_then(|panel| panel.as_editor_mut())
+    /// Get mutable reference to editor for search operations.
+    /// Also checks JournalPanel's inner editor.
+    fn active_searchable_editor_mut(&mut self) -> Option<&mut termide_panel_editor::Editor> {
+        let panel = self.layout_manager.active_panel_mut()?;
+        let is_editor = panel.as_any().is::<termide_panel_editor::Editor>();
+        let is_journal = panel.as_any().is::<termide_panel_misc::JournalPanel>();
+        if is_editor {
+            panel
+                .as_any_mut()
+                .downcast_mut::<termide_panel_editor::Editor>()
+        } else if is_journal {
+            panel
+                .as_any_mut()
+                .downcast_mut::<termide_panel_misc::JournalPanel>()
+                .map(|j| j.editor_mut())
+        } else {
+            None
+        }
     }
 
     /// Get reference to AppState

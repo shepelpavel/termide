@@ -395,7 +395,7 @@ impl App {
     fn handle_search(&mut self, value: Box<dyn std::any::Any>) -> Result<()> {
         if let Some(query) = value.downcast_ref::<String>() {
             // Start search in active editor (case insensitive by default)
-            if let Some(editor) = self.active_editor_mut() {
+            if let Some(editor) = self.active_searchable_editor_mut() {
                 editor.start_search(query.clone(), false);
             }
         }
@@ -405,7 +405,7 @@ impl App {
     /// Handle replace action from ReplaceModal
     fn handle_replace_action(&mut self, replace_result: &ReplaceModalResult) -> Result<()> {
         // Get active editor
-        if let Some(editor) = self.active_editor_mut() {
+        if let Some(editor) = self.active_searchable_editor_mut() {
             match replace_result.action {
                 ReplaceAction::Search => {
                     // Perform new search/replace (or update existing)
@@ -453,7 +453,7 @@ impl App {
     /// Handle search action from SearchModal
     fn handle_search_action(&mut self, search_result: &SearchModalResult) -> Result<()> {
         // Get active editor
-        if let Some(editor) = self.active_editor_mut() {
+        if let Some(editor) = self.active_searchable_editor_mut() {
             match search_result.action {
                 SearchAction::Search => {
                     // Perform new search (or update existing)
@@ -490,7 +490,7 @@ impl App {
 
                 // Get match info from active editor
                 let match_info = self
-                    .active_editor_mut()
+                    .active_searchable_editor_mut()
                     .and_then(|editor| editor.get_search_match_info());
 
                 // Check if we should close modal
@@ -527,7 +527,7 @@ impl App {
 
                 // Get match info from active editor
                 let match_info = self
-                    .active_editor_mut()
+                    .active_searchable_editor_mut()
                     .and_then(|editor| editor.get_search_match_info());
 
                 // Check if we should close modal
@@ -618,7 +618,7 @@ impl App {
                 }
                 SearchReplaceResult::Cancelled => {
                     self.state.close_modal();
-                    if let Some(editor) = self.active_editor_mut() {
+                    if let Some(editor) = self.active_searchable_editor_mut() {
                         editor.close_search();
                     }
                     return Some(());
@@ -636,7 +636,7 @@ impl App {
                 }
                 SearchReplaceResult::Cancelled => {
                     self.state.close_modal();
-                    if let Some(editor) = self.active_editor_mut() {
+                    if let Some(editor) = self.active_searchable_editor_mut() {
                         editor.close_search();
                     }
                     return Some(());
