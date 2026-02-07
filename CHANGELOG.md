@@ -5,6 +5,22 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-02-07
+
+### Added
+- **Outline Panel**: Structural code navigation using tree-sitter queries with regex fallback for markdown/HTML; tree-drawing prefixes, cursor sync, and keyboard/mouse navigation
+- **Global Hotkeys**: Keyboard shortcuts for Outline, Diagnostics, and Git Log panels
+- **File Manager Edit Button**: Replaced Git Status button with Edit in file info modal
+
+### Changed
+- **Code Quality**: Eliminated unsafe unwraps across app and git crates, deduplicated batch operations
+- **Modal Handlers**: Deduplicated modal handlers, added path traversal guard and RwLock recovery
+- **Panel Index Cleanup**: Removed obsolete panel_index field, fixed related clippy warnings
+
+### Fixed
+- **Outline Sync**: Outline panel now syncs on panel navigation and debounces live edits
+- **Outline Resync on Close**: Outline panel rebinds to another editor (or clears) when tracked editor is closed
+
 ## [0.11.3] - 2026-02-06
 
 ### Added
