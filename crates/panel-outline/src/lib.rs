@@ -180,6 +180,16 @@ impl OutlinePanel {
         self.tracked_file.as_deref()
     }
 
+    /// Clear the outline (no editor is tracking).
+    pub fn clear(&mut self) {
+        self.tracked_file = None;
+        self.tracked_language = None;
+        self.symbols.clear();
+        self.tree_prefixes.clear();
+        self.selected_index = 0;
+        self.scroll_offset = 0;
+    }
+
     /// Ensure selected item is visible.
     fn ensure_visible(&mut self) {
         let content_height = self.last_height;

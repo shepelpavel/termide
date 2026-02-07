@@ -890,6 +890,36 @@ impl App {
         }
     }
 
+    /// Re-sync outline after a panel close: rebind to another editor or clear.
+    pub(super) fn resync_outline_after_close(&mut self) {
+        // 1. Try the now-active panel (may be the next editor in stack)
+        if self.collect_editor_info_for_outline().is_some() {
+            self.notify_outline_file_opened();
+            return;
+        }
+        // 2. Try any editor remaining in layout
+        let has_editor = self
+            .layout_manager
+            .iter_all_panels_mut()
+            .any(|p| p.as_editor().is_some());
+        if has_editor {
+            self.populate_outline_from_any_editor();
+            return;
+        }
+        // 3. No editors — clear outline
+        for group in &mut self.layout_manager.panel_groups {
+            for panel in group.panels_mut() {
+                if let Some(outline) = panel
+                    .as_any_mut()
+                    .downcast_mut::<termide_panel_outline::OutlinePanel>()
+                {
+                    outline.clear();
+                    return;
+                }
+            }
+        }
+    }
+
     /// Collect editor data for outline (extracted for reuse).
     ///
     /// Only returns data when the active panel is an editor.
