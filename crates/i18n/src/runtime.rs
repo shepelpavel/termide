@@ -513,6 +513,10 @@ impl Translation for RuntimeTranslation {
         self.get_string("help_desc_refresh")
     }
 
+    fn help_desc_toggle_hidden(&self) -> &str {
+        self.get_string("help_desc_toggle_hidden")
+    }
+
     fn help_desc_open_external(&self) -> &str {
         self.get_string("help_desc_open_external")
     }

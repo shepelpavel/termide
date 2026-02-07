@@ -63,6 +63,7 @@ pub enum FmCommand {
     // Misc
     ShowFileInfo,
     Refresh,
+    ToggleHidden,
     NextPanel,
     PrevPanel,
     /// Go to path/URL (Ctrl+G) - opens modal to enter path directly
@@ -260,6 +261,16 @@ impl FmCommand {
             ],
         ) {
             return Self::MoveFiles;
+        }
+
+        // Toggle hidden files
+        if matches_binding_or_default(
+            &keybindings.toggle_hidden,
+            &key,
+            KeyCode::Char('.'),
+            KeyModifiers::NONE,
+        ) {
+            return Self::ToggleHidden;
         }
 
         // =================================================================
@@ -477,6 +488,16 @@ mod tests {
         assert_eq!(
             FmCommand::from_key_event(key(KeyCode::BackTab, KeyModifiers::SHIFT), &kb, false),
             FmCommand::PrevPanel
+        );
+    }
+
+    #[test]
+    fn test_toggle_hidden() {
+        let kb = default_keybindings();
+
+        assert_eq!(
+            FmCommand::from_key_event(key(KeyCode::Char('.'), KeyModifiers::NONE), &kb, false),
+            FmCommand::ToggleHidden
         );
     }
 

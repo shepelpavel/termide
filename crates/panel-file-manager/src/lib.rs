@@ -358,6 +358,8 @@ pub struct FileManager {
     vfs: VfsState,
     /// Whether panel is stale (collapsed, skipping background work)
     is_stale: bool,
+    /// Whether to show hidden (dot) files
+    show_hidden: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -426,6 +428,7 @@ impl FileManager {
             cached_vfs_timeout_secs: 60, // Default, will be updated from config
             vfs,
             is_stale: false,
+            show_hidden: true,
         };
         let _ = fm.load_directory();
         fm
@@ -459,6 +462,7 @@ impl FileManager {
             cached_vfs_timeout_secs: 60,
             vfs,
             is_stale: false,
+            show_hidden: true,
         };
 
         // Start the directory listing operation for remote paths
@@ -707,6 +711,7 @@ impl FileManager {
         let mut file_entries: Vec<FileEntry> = vfs_entries
             .into_iter()
             .map(FileEntry::from_vfs_entry)
+            .filter(|e| self.show_hidden || !e.name.starts_with('.'))
             .collect();
 
         // Sort: directories first, then alphabetically by name (case-insensitive)
@@ -841,6 +846,10 @@ impl FileManager {
             for entry in read_dir.flatten() {
                 if let Ok(metadata) = entry.metadata() {
                     let name = entry.file_name().to_string_lossy().to_string();
+
+                    if !self.show_hidden && name.starts_with('.') {
+                        continue;
+                    }
 
                     // Check if this is a symlink (use symlink_metadata to not follow links)
                     let is_symlink = if let Ok(link_metadata) = fs::symlink_metadata(entry.path()) {
@@ -1985,6 +1994,10 @@ impl FileManager {
             // Misc
             FmCommand::ShowFileInfo => self.show_file_info(),
             FmCommand::Refresh => {
+                let _ = self.reload_directory();
+            }
+            FmCommand::ToggleHidden => {
+                self.show_hidden = !self.show_hidden;
                 let _ = self.reload_directory();
             }
             FmCommand::NextPanel => {

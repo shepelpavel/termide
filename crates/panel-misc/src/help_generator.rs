@@ -248,6 +248,10 @@ impl HelpGenerator {
                 description: t.help_desc_refresh().to_string(),
             },
             HelpEntry {
+                keys: Self::format_keys(&kb.toggle_hidden),
+                description: t.help_desc_toggle_hidden().to_string(),
+            },
+            HelpEntry {
                 keys: Self::format_keys(&kb.toggle_selection),
                 description: t.help_desc_select().to_string(),
             },

@@ -277,6 +277,7 @@ pub struct FileManagerKeybindings {
 
     // Other
     pub open_external: Option<KeyBinding>,
+    pub toggle_hidden: Option<KeyBinding>,
 }
 
 /// Git status panel keybindings (git_status.keybindings section).
@@ -460,6 +461,7 @@ impl FileManagerKeybindings {
 
         // Other
         set_default_single!(open_external, "Shift+Enter");
+        set_default_single!(toggle_hidden, ".");
     }
 }
 

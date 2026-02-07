@@ -172,6 +172,7 @@ pub trait Translation: Send + Sync {
     fn help_desc_search_content(&self) -> &str;
     fn help_desc_go_home(&self) -> &str;
     fn help_desc_refresh(&self) -> &str;
+    fn help_desc_toggle_hidden(&self) -> &str;
     fn help_desc_open_external(&self) -> &str;
     fn help_desc_stage_file(&self) -> &str;
     fn help_desc_unstage_file(&self) -> &str;
