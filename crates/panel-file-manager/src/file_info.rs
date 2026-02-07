@@ -311,7 +311,7 @@ impl FileManager {
                 if let (true, Some(ref status), Some(repo)) =
                     (has_git_actions, &git_status, repo_path)
                 {
-                    let buttons = Self::build_git_action_buttons(status);
+                    let buttons = Self::build_git_action_buttons(status, is_dir);
                     let selected_button = buttons.len().saturating_sub(1); // Select [Close]
                     let modal =
                         termide_modal::InfoActionModal::new(modal_title, data.clone(), buttons)
@@ -347,15 +347,18 @@ impl FileManager {
     }
 
     /// Build action buttons for git info modal
-    fn build_git_action_buttons(_git_status: &termide_git::GitRepoStatus) -> Vec<ActionButton> {
+    fn build_git_action_buttons(
+        _git_status: &termide_git::GitRepoStatus,
+        is_dir: bool,
+    ) -> Vec<ActionButton> {
         let t = termide_i18n::t();
 
-        // Show Git Status button to navigate to Git Status panel
-        // where user can perform all git operations (commit, push, pull, etc.)
-        vec![
-            ActionButton::new(t.git_action_git_status(), "git_status"),
-            ActionButton::new(t.git_action_close(), "close"),
-        ]
+        let mut buttons = Vec::new();
+        if !is_dir {
+            buttons.push(ActionButton::new(t.git_action_edit(), "edit"));
+        }
+        buttons.push(ActionButton::new(t.git_action_close(), "close"));
+        buttons
     }
 
     /// Get disk space information for the current directory.
