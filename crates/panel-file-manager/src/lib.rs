@@ -842,8 +842,26 @@ impl FileManager {
                 if let Ok(metadata) = entry.metadata() {
                     let name = entry.file_name().to_string_lossy().to_string();
 
+                    // Check if this is a symlink (use symlink_metadata to not follow links)
+                    let is_symlink = if let Ok(link_metadata) = fs::symlink_metadata(entry.path()) {
+                        link_metadata.is_symlink()
+                    } else {
+                        false
+                    };
+
+                    // For symlinks, follow the link to determine if target is a directory.
+                    // DirEntry::metadata() on Unix uses lstat() which doesn't follow symlinks,
+                    // so we need fs::metadata() (stat()) to resolve the target type.
+                    let is_dir = if is_symlink {
+                        fs::metadata(entry.path())
+                            .map(|m| m.is_dir())
+                            .unwrap_or(false)
+                    } else {
+                        metadata.is_dir()
+                    };
+
                     // Determine git status for this entry
-                    let git_status = if metadata.is_dir() {
+                    let git_status = if is_dir {
                         // For directories: check recursively for nested changes
                         self.git_status_cache
                             .as_ref()
@@ -855,13 +873,6 @@ impl FileManager {
                             .as_ref()
                             .map(|cache| cache.get_status(&name))
                             .unwrap_or(GitStatus::Unmodified)
-                    };
-
-                    // Check if this is a symlink (use symlink_metadata to not follow links)
-                    let is_symlink = if let Ok(link_metadata) = fs::symlink_metadata(entry.path()) {
-                        link_metadata.is_symlink()
-                    } else {
-                        false
                     };
 
                     // Check if file is executable (Unix permissions)
@@ -893,7 +904,7 @@ impl FileManager {
 
                     self.entries.push(FileEntry {
                         name,
-                        is_dir: metadata.is_dir(),
+                        is_dir,
                         is_symlink,
                         is_executable,
                         is_readonly,
