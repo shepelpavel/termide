@@ -75,6 +75,12 @@ impl App {
             HotkeyAction::OpenOutline => {
                 self.handle_open_outline()?;
             }
+            HotkeyAction::OpenDiagnostics => {
+                self.handle_open_diagnostics()?;
+            }
+            HotkeyAction::OpenGitLog => {
+                self.handle_open_git_log()?;
+            }
             HotkeyAction::OpenDirectorySwitcher => {
                 self.handle_open_directory_switcher()?;
             }

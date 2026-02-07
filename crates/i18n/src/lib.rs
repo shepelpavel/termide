@@ -137,6 +137,9 @@ pub trait Translation: Send + Sync {
     fn help_desc_open_preferences(&self) -> &str;
     fn help_desc_open_sessions(&self) -> &str;
     fn help_desc_open_git_status(&self) -> &str;
+    fn help_desc_open_outline(&self) -> &str;
+    fn help_desc_open_diagnostics(&self) -> &str;
+    fn help_desc_open_git_log(&self) -> &str;
     fn help_desc_toggle_stack(&self) -> &str;
     fn help_desc_swap_left(&self) -> &str;
     fn help_desc_swap_right(&self) -> &str;

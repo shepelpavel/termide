@@ -255,6 +255,9 @@ For detailed documentation, see:
 - `Alt+E` - Editor
 - `Alt+L` - Log viewer
 - `Alt+G` - Git Status
+- `Alt+O` - Outline
+- `Alt+I` - Diagnostics
+- `Alt+C` - Git Log
 - `Alt+P` - Open config
 
 **File Manager:**

@@ -106,6 +106,18 @@ impl HelpGenerator {
                 keys: Self::format_keys(&kb.open_git_status),
                 description: t.help_desc_open_git_status().to_string(),
             },
+            HelpEntry {
+                keys: Self::format_keys(&kb.open_outline),
+                description: t.help_desc_open_outline().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.open_diagnostics),
+                description: t.help_desc_open_diagnostics().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.open_git_log),
+                description: t.help_desc_open_git_log().to_string(),
+            },
         ];
 
         HelpSection {

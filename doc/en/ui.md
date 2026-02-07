@@ -93,6 +93,9 @@ The device name is automatically detected from the filesystem:
 | `Alt+T`           | Open terminal panel                        |
 | `Alt+E`           | Open new file editor panel                 |
 | `Alt+G`           | Open git status panel                      |
+| `Alt+O`           | Open outline panel                         |
+| `Alt+I`           | Open diagnostics panel                     |
+| `Alt+C`           | Open git log panel                         |
 | `Alt+L`           | Open log panel                             |
 | `Alt+P`           | Open configuration file in editor          |
 | `Alt+H`           | Open help window                           |

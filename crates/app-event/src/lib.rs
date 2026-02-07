@@ -135,6 +135,10 @@ pub enum HotkeyAction {
     OpenBookmarkAdd,
     /// Open or focus the Outline panel
     OpenOutline,
+    /// Open or focus the Diagnostics panel
+    OpenDiagnostics,
+    /// Open or focus the Git Log panel
+    OpenGitLog,
 }
 
 impl HotkeyAction {
@@ -182,6 +186,8 @@ impl HotkeyAction {
             | HotkeyAction::OpenSessions
             | HotkeyAction::OpenGitStatus
             | HotkeyAction::OpenOutline
+            | HotkeyAction::OpenDiagnostics
+            | HotkeyAction::OpenGitLog
             | HotkeyAction::OpenDirectorySwitcher
             | HotkeyAction::OpenBookmarkAdd
             | HotkeyAction::PrevInGroup
@@ -368,6 +374,26 @@ impl DefaultHotkeyProcessor {
             HotkeyAction::OpenOutline,
         );
 
+        // Diagnostics panel
+        bindings.insert(
+            KeyBinding::alt(KeyCode::Char('i')),
+            HotkeyAction::OpenDiagnostics,
+        );
+        bindings.insert(
+            KeyBinding::alt(KeyCode::Char('I')),
+            HotkeyAction::OpenDiagnostics,
+        );
+
+        // Git Log panel
+        bindings.insert(
+            KeyBinding::alt(KeyCode::Char('c')),
+            HotkeyAction::OpenGitLog,
+        );
+        bindings.insert(
+            KeyBinding::alt(KeyCode::Char('C')),
+            HotkeyAction::OpenGitLog,
+        );
+
         // Git Status panel
         bindings.insert(
             KeyBinding::alt(KeyCode::Char('g')),
@@ -549,6 +575,16 @@ impl DefaultHotkeyProcessor {
             &mut processor,
             &config.open_outline,
             HotkeyAction::OpenOutline,
+        );
+        add_binding(
+            &mut processor,
+            &config.open_diagnostics,
+            HotkeyAction::OpenDiagnostics,
+        );
+        add_binding(
+            &mut processor,
+            &config.open_git_log,
+            HotkeyAction::OpenGitLog,
         );
 
         // Panel management

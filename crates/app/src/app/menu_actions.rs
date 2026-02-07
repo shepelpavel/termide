@@ -1146,7 +1146,7 @@ impl App {
     }
 
     /// Open Git Log panel
-    fn handle_open_git_log(&mut self) -> Result<()> {
+    pub(super) fn handle_open_git_log(&mut self) -> Result<()> {
         log::debug!("Opening Git Log panel");
         self.close_welcome_panels();
 

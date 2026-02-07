@@ -376,6 +376,18 @@ impl Translation for RuntimeTranslation {
         self.get_string("help_desc_open_git_status")
     }
 
+    fn help_desc_open_outline(&self) -> &str {
+        self.get_string("help_desc_open_outline")
+    }
+
+    fn help_desc_open_diagnostics(&self) -> &str {
+        self.get_string("help_desc_open_diagnostics")
+    }
+
+    fn help_desc_open_git_log(&self) -> &str {
+        self.get_string("help_desc_open_git_log")
+    }
+
     fn help_desc_toggle_stack(&self) -> &str {
         self.get_string("help_desc_toggle_stack")
     }
