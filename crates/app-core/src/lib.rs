@@ -253,8 +253,8 @@ pub enum PanelType {
     },
     /// Journal panel
     Journal,
-    /// Welcome screen panel
-    Welcome,
+    /// Help panel
+    Help,
 }
 
 /// Command type for explicit state mutations.

@@ -92,9 +92,9 @@ impl App {
         Ok(())
     }
 
-    /// Close all Welcome panels (called before opening new panel)
-    pub(super) fn close_welcome_panels(&mut self) {
-        log::debug!("Closing Welcome panel(s)");
+    /// Close all Help panels (called before opening new panel)
+    pub(super) fn close_help_panels(&mut self) {
+        log::debug!("Closing Help panel(s)");
         let mut groups_to_remove = Vec::new();
 
         for group_idx in (0..self.layout_manager.panel_groups.len()).rev() {
@@ -454,8 +454,8 @@ impl App {
             let file_path = result.full_path.clone();
             let line_number = result.line_number; // 1-based
 
-            // Close welcome panels if any
-            self.close_welcome_panels();
+            // Close help panels if any
+            self.close_help_panels();
 
             let filename = file_path
                 .file_name()

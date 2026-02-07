@@ -253,7 +253,7 @@ impl App {
     /// Create new terminal
     pub(super) fn handle_new_terminal(&mut self) -> Result<()> {
         log::debug!("Opening new Terminal panel");
-        self.close_welcome_panels();
+        self.close_help_panels();
         // Get working directory from current active panel
         let working_dir = self
             .layout_manager
@@ -276,7 +276,7 @@ impl App {
     /// Create new file manager
     pub(super) fn handle_new_file_manager(&mut self) -> Result<()> {
         log::debug!("Opening new FileManager panel");
-        self.close_welcome_panels();
+        self.close_help_panels();
 
         // Check if active panel is a remote FileManager and clone it
         let remote_info = self
@@ -307,7 +307,7 @@ impl App {
     /// Create new editor
     pub(super) fn handle_new_editor(&mut self) -> Result<()> {
         log::debug!("Opening new Editor panel");
-        self.close_welcome_panels();
+        self.close_help_panels();
 
         // Get working directory from current active panel (e.g., FileManager)
         let initial_directory = self
@@ -334,7 +334,7 @@ impl App {
 
         // No existing Journal panel found, create new one
         log::debug!("Opening new Journal panel");
-        self.close_welcome_panels();
+        self.close_help_panels();
         let journal_panel = Journal::new(self.state.theme);
         self.add_panel(Box::new(journal_panel));
         self.auto_save_session();
@@ -360,11 +360,11 @@ impl App {
         false
     }
 
-    /// Open or switch to help panel (Welcome)
+    /// Open or switch to help panel
     pub(super) fn handle_new_help(&mut self) -> Result<()> {
-        log::debug!("Opening new Help/Welcome panel");
-        let welcome = Help::new(&self.state.config);
-        self.add_panel(Box::new(welcome));
+        log::debug!("Opening Help panel");
+        let help = Help::new(&self.state.config);
+        self.add_panel(Box::new(help));
         self.auto_save_session();
         Ok(())
     }
@@ -374,7 +374,7 @@ impl App {
         use termide_config::get_data_dir;
 
         log::debug!("Opening scripts folder in File Manager");
-        self.close_welcome_panels();
+        self.close_help_panels();
 
         // Get the scripts directory path
         let scripts_dir = match get_data_dir() {
@@ -416,7 +416,7 @@ impl App {
             }
         };
 
-        self.close_welcome_panels();
+        self.close_help_panels();
 
         let _ = self.open_editor_for_file(config_path);
         Ok(())
@@ -870,7 +870,7 @@ impl App {
     /// Open or focus the Outline panel (singleton).
     pub(super) fn handle_open_outline(&mut self) -> Result<()> {
         log::debug!("Opening Outline panel");
-        self.close_welcome_panels();
+        self.close_help_panels();
 
         if !self.find_and_focus_panel_by_name("outline") {
             let outline = termide_panel_outline::OutlinePanel::new(*self.state.theme);
@@ -1159,7 +1159,7 @@ impl App {
     /// Open Diagnostics panel
     pub(super) fn handle_open_diagnostics(&mut self) -> Result<()> {
         log::debug!("Opening Diagnostics panel");
-        self.close_welcome_panels();
+        self.close_help_panels();
 
         if !self.find_and_focus_panel_by_name("diagnostics") {
             let mut diagnostics_panel =
@@ -1179,7 +1179,7 @@ impl App {
     /// Open Git Status panel
     pub(super) fn handle_open_git_status(&mut self) -> Result<()> {
         log::debug!("Opening Git Status panel");
-        self.close_welcome_panels();
+        self.close_help_panels();
 
         if !self.find_and_focus_panel_by_name("git_status") {
             let paths = self.collect_panel_paths();
@@ -1193,7 +1193,7 @@ impl App {
     /// Open Git Log panel
     pub(super) fn handle_open_git_log(&mut self) -> Result<()> {
         log::debug!("Opening Git Log panel");
-        self.close_welcome_panels();
+        self.close_help_panels();
 
         let paths = self.collect_panel_paths();
         let git_log_panel = termide_panel_git_log::GitLogPanel::new(&paths);
@@ -1357,7 +1357,7 @@ impl App {
             // Run in new terminal panel
             log::info!("Running script '{}' in {:?}", script.name, cwd);
 
-            self.close_welcome_panels();
+            self.close_help_panels();
 
             let width = self.state.terminal.width;
             let height = self.state.terminal.height;
@@ -1606,7 +1606,7 @@ impl App {
     pub(super) fn handle_manage_bookmarks(&mut self) -> Result<()> {
         use termide_config::BookmarksConfig;
 
-        self.close_welcome_panels();
+        self.close_help_panels();
 
         // Get the bookmarks file path
         let bookmarks_path = match BookmarksConfig::config_file_path() {
@@ -1660,7 +1660,7 @@ impl App {
                     }
                 }
                 // No active file manager - create new panel
-                self.close_welcome_panels();
+                self.close_help_panels();
                 let fm_panel = FileManager::new_with_path(PathBuf::from(path));
                 self.add_panel(Box::new(fm_panel));
                 self.auto_save_session();
@@ -1713,7 +1713,7 @@ impl App {
                 let term_height = height.saturating_sub(3);
                 let term_width = width.saturating_sub(2);
 
-                self.close_welcome_panels();
+                self.close_help_panels();
                 if let Ok(terminal) = Terminal::new_with_command(term_height, term_width, &ssh_cmd)
                 {
                     self.add_panel(Box::new(terminal));
@@ -1733,7 +1733,7 @@ impl App {
                     }
                 }
                 // No active file manager - create new panel and navigate
-                self.close_welcome_panels();
+                self.close_help_panels();
                 let mut fm_panel = FileManager::new();
                 let _ = fm_panel.navigate_to_url(path);
                 self.add_panel(Box::new(fm_panel));

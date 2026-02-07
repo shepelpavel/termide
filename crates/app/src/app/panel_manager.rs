@@ -79,13 +79,12 @@ impl App {
         // Note: FileManager reload removed - FS watcher handles git status updates
         // when files change. Cascade reload caused O(n*m) delays on panel close.
 
-        // Add Welcome panel if needed
-        // Check if no panel groups remain (all panels closed)
-        let should_add_welcome = self.layout_manager.panel_groups.is_empty();
+        // Add Help panel if no panels remain
+        let should_add_help = self.layout_manager.panel_groups.is_empty();
 
-        if should_add_welcome {
-            let welcome = Help::new(&self.state.config);
-            self.add_panel(Box::new(welcome));
+        if should_add_help {
+            let help = Help::new(&self.state.config);
+            self.add_panel(Box::new(help));
         }
 
         // Active panel tracking is handled by LayoutManager

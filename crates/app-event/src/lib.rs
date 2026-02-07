@@ -173,7 +173,7 @@ impl HotkeyAction {
                 panel_type: PanelType::Journal,
             }),
             HotkeyAction::OpenHelp => Some(AppCommand::CreatePanel {
-                panel_type: PanelType::Welcome,
+                panel_type: PanelType::Help,
             }),
 
             // Panel management

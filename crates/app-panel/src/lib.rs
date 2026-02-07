@@ -55,8 +55,8 @@ pub enum PanelCreationConfig {
     FileManager(FileManagerCreationConfig),
     /// Create journal panel (no config needed)
     Journal,
-    /// Create welcome panel (no config needed)
-    Welcome,
+    /// Create help panel (no config needed)
+    Help,
 }
 
 impl From<PanelType> for PanelCreationConfig {
@@ -77,7 +77,7 @@ impl From<PanelType> for PanelCreationConfig {
                 })
             }
             PanelType::Journal => PanelCreationConfig::Journal,
-            PanelType::Welcome => PanelCreationConfig::Welcome,
+            PanelType::Help => PanelCreationConfig::Help,
         }
     }
 }
@@ -316,9 +316,9 @@ mod tests {
         let config: PanelCreationConfig = log_type.into();
         assert!(matches!(config, PanelCreationConfig::Journal));
 
-        let welcome_type = PanelType::Welcome;
-        let config: PanelCreationConfig = welcome_type.into();
-        assert!(matches!(config, PanelCreationConfig::Welcome));
+        let help_type = PanelType::Help;
+        let config: PanelCreationConfig = help_type.into();
+        assert!(matches!(config, PanelCreationConfig::Help));
     }
 
     #[test]

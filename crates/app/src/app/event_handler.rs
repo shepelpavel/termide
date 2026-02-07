@@ -296,7 +296,7 @@ impl App {
 
     /// Handle OpenFile event - open file in editor
     fn event_open_file(&mut self, file_path: PathBuf) -> Result<()> {
-        self.close_welcome_panels();
+        self.close_help_panels();
         let filename = file_path
             .file_name()
             .and_then(|n| n.to_str())
@@ -328,7 +328,7 @@ impl App {
 
     /// Handle OpenFileAt event - open file in editor at specific location (for go-to-definition)
     fn event_open_file_at(&mut self, file_path: PathBuf, line: usize, column: usize) -> Result<()> {
-        self.close_welcome_panels();
+        self.close_help_panels();
         let filename = file_path
             .file_name()
             .and_then(|n| n.to_str())
@@ -394,7 +394,7 @@ impl App {
 
     /// Handle ExecuteFile event - run executable in a new terminal
     fn event_execute_file(&mut self, file_path: PathBuf) -> Result<()> {
-        self.close_welcome_panels();
+        self.close_help_panels();
 
         let filename = file_path
             .file_name()
@@ -424,7 +424,7 @@ impl App {
 
     /// Handle RunCommand event - run command in a new terminal
     fn event_run_command(&mut self, command: String, cwd: Option<PathBuf>) -> Result<()> {
-        self.close_welcome_panels();
+        self.close_help_panels();
 
         match self.create_terminal_panel(cwd) {
             Ok(mut terminal) => {
@@ -475,7 +475,7 @@ impl App {
             }
 
             // No existing panel - create new one without changing focus
-            self.close_welcome_panels();
+            self.close_help_panels();
             match ImagePanel::new(file_path.clone()) {
                 Ok(panel) => {
                     self.add_panel_without_focus(Box::new(panel));
@@ -526,7 +526,7 @@ impl App {
 
     /// Handle OpenRemoteFile event - open remote file via VFS
     fn event_open_remote_file(&mut self, url: String) -> Result<()> {
-        self.close_welcome_panels();
+        self.close_help_panels();
 
         // Parse URL to VfsPath
         let vfs_path = match termide_vfs::parse_vfs_url(&url) {
@@ -1108,7 +1108,7 @@ impl App {
             repo_path,
             commit_hash
         );
-        self.close_welcome_panels();
+        self.close_help_panels();
 
         let panel = match commit_hash {
             Some(hash) => GitDiffPanel::new_for_commit(repo_path, hash),

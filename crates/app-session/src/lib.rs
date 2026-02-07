@@ -60,8 +60,8 @@ pub enum SessionPanelData {
     },
     /// Journal panel data
     Journal,
-    /// Welcome panel data
-    Welcome,
+    /// Help panel data
+    Help,
 }
 
 /// Panel group session data.
