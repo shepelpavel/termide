@@ -133,6 +133,8 @@ pub enum HotkeyAction {
     OpenDirectorySwitcher,
     /// Open bookmark add dialog
     OpenBookmarkAdd,
+    /// Open or focus the Outline panel
+    OpenOutline,
 }
 
 impl HotkeyAction {
@@ -179,6 +181,7 @@ impl HotkeyAction {
             | HotkeyAction::OpenPreferences
             | HotkeyAction::OpenSessions
             | HotkeyAction::OpenGitStatus
+            | HotkeyAction::OpenOutline
             | HotkeyAction::OpenDirectorySwitcher
             | HotkeyAction::OpenBookmarkAdd
             | HotkeyAction::PrevInGroup
@@ -353,6 +356,16 @@ impl DefaultHotkeyProcessor {
         bindings.insert(
             KeyBinding::alt(KeyCode::Char('>')),
             HotkeyAction::OpenSessions,
+        );
+
+        // Outline panel
+        bindings.insert(
+            KeyBinding::alt(KeyCode::Char('o')),
+            HotkeyAction::OpenOutline,
+        );
+        bindings.insert(
+            KeyBinding::alt(KeyCode::Char('O')),
+            HotkeyAction::OpenOutline,
         );
 
         // Git Status panel
@@ -531,6 +544,11 @@ impl DefaultHotkeyProcessor {
             &mut processor,
             &config.open_bookmark_add,
             HotkeyAction::OpenBookmarkAdd,
+        );
+        add_binding(
+            &mut processor,
+            &config.open_outline,
+            HotkeyAction::OpenOutline,
         );
 
         // Panel management

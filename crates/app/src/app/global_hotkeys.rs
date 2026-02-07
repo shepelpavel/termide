@@ -72,6 +72,9 @@ impl App {
             HotkeyAction::OpenGitStatus => {
                 self.handle_open_git_status()?;
             }
+            HotkeyAction::OpenOutline => {
+                self.handle_open_outline()?;
+            }
             HotkeyAction::OpenDirectorySwitcher => {
                 self.handle_open_directory_switcher()?;
             }

@@ -37,6 +37,7 @@ use termide_panel_editor::Editor;
 use termide_panel_file_manager::FileManager;
 use termide_panel_git_status::GitStatusPanel;
 use termide_panel_misc::JournalPanel;
+use termide_panel_outline::OutlinePanel;
 use termide_panel_terminal::Terminal;
 use termide_state::PendingAction;
 
@@ -65,6 +66,8 @@ pub trait PanelExt {
     fn as_git_status_mut(&mut self) -> Option<&mut GitStatusPanel>;
     /// Downcast to DiagnosticsPanel (mutable)
     fn as_diagnostics_panel_mut(&mut self) -> Option<&mut DiagnosticsPanel>;
+    /// Downcast to OutlinePanel (mutable)
+    fn as_outline_panel_mut(&mut self) -> Option<&mut OutlinePanel>;
     /// Check if panel is a Journal panel
     fn is_journal(&self) -> bool;
     /// Take modal request from FileManager, Editor, or GitStatusPanel.
@@ -105,6 +108,10 @@ impl PanelExt for dyn Panel {
 
     fn as_diagnostics_panel_mut(&mut self) -> Option<&mut DiagnosticsPanel> {
         (self as &mut dyn Any).downcast_mut::<DiagnosticsPanel>()
+    }
+
+    fn as_outline_panel_mut(&mut self) -> Option<&mut OutlinePanel> {
+        (self as &mut dyn Any).downcast_mut::<OutlinePanel>()
     }
 
     fn is_journal(&self) -> bool {
@@ -162,6 +169,10 @@ impl PanelExt for Box<dyn Panel> {
 
     fn as_diagnostics_panel_mut(&mut self) -> Option<&mut DiagnosticsPanel> {
         (**self).as_diagnostics_panel_mut()
+    }
+
+    fn as_outline_panel_mut(&mut self) -> Option<&mut OutlinePanel> {
+        (**self).as_outline_panel_mut()
     }
 
     fn is_journal(&self) -> bool {

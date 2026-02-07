@@ -909,6 +909,16 @@ impl Editor {
 
     // ===== LogViewer support methods =====
 
+    /// Get current cursor line (0-based).
+    pub fn cursor_line(&self) -> usize {
+        self.cursor.line
+    }
+
+    /// Get all buffer text as a string.
+    pub fn content_string(&self) -> String {
+        self.buffer.text()
+    }
+
     /// Get immutable reference to buffer.
     pub fn buffer(&self) -> &TextBuffer {
         &self.buffer
@@ -944,7 +954,8 @@ impl Editor {
         self.scroll_follows_cursor = true;
     }
 
-    /// Go to specific position (for go-to-definition).
+    /// Go to specific position (for go-to-definition, outline navigation, etc.).
+    /// Places the target line at the top of the viewport.
     pub fn goto_position(&mut self, line: usize, column: usize) {
         let max_line = self.buffer.line_count().saturating_sub(1);
         let target_line = line.min(max_line);
@@ -955,7 +966,9 @@ impl Editor {
         self.cursor = Cursor::at(target_line, target_col);
         self.selection = None;
 
-        // Center the view on the target line
+        // Place the target line at the top of the viewport
+        self.viewport.top_line = target_line;
+        self.viewport.top_visual_row_offset = 0;
         self.scroll_follows_cursor = true;
     }
 

@@ -180,6 +180,7 @@ pub struct GlobalKeybindings {
     pub open_git_status: Option<KeyBinding>,
     pub open_directory_switcher: Option<KeyBinding>,
     pub open_bookmark_add: Option<KeyBinding>,
+    pub open_outline: Option<KeyBinding>,
 
     // Panel management
     pub close_panel: Option<KeyBinding>,

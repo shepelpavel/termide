@@ -455,6 +455,12 @@ impl App {
                         // Sync active operations data to the operations panel
                         self.update_operations_panel();
 
+                        // Update outline panel with active editor content
+                        self.update_outline_panel();
+
+                        // Apply pending outline navigation to editor
+                        self.apply_outline_navigation();
+
                         // Check pending local batch operation (start after modal rendered)
                         self.check_pending_batch_operation();
                     }

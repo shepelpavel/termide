@@ -2903,6 +2903,7 @@ dependencies = [
  "termide-core",
  "termide-file-ops",
  "termide-git",
+ "termide-highlight",
  "termide-i18n",
  "termide-keyboard",
  "termide-layout",
@@ -2918,6 +2919,7 @@ dependencies = [
  "termide-panel-image",
  "termide-panel-misc",
  "termide-panel-operations",
+ "termide-panel-outline",
  "termide-panel-terminal",
  "termide-session",
  "termide-state",
@@ -3337,6 +3339,41 @@ dependencies = [
  "termide-state",
  "termide-theme",
  "termide-ui",
+]
+
+[[package]]
+name = "termide-panel-outline"
+version = "0.11.3"
+dependencies = [
+ "crossterm 0.28.1",
+ "log",
+ "ratatui",
+ "regex",
+ "streaming-iterator",
+ "termide-config",
+ "termide-core",
+ "termide-highlight",
+ "termide-i18n",
+ "termide-theme",
+ "termide-ui",
+ "tree-sitter",
+ "tree-sitter-bash",
+ "tree-sitter-c",
+ "tree-sitter-cpp",
+ "tree-sitter-css",
+ "tree-sitter-go",
+ "tree-sitter-haskell",
+ "tree-sitter-html",
+ "tree-sitter-java",
+ "tree-sitter-javascript",
+ "tree-sitter-md",
+ "tree-sitter-nix",
+ "tree-sitter-php",
+ "tree-sitter-python",
+ "tree-sitter-ruby",
+ "tree-sitter-rust",
+ "tree-sitter-typescript",
+ "unicode-width",
 ]
 
 [[package]]

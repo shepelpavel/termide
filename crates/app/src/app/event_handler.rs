@@ -248,6 +248,10 @@ impl App {
             PanelEvent::OpenOperationsPanel => {
                 self.open_operations_panel()?;
             }
+
+            PanelEvent::OpenOutlinePanel => {
+                self.handle_open_outline()?;
+            }
         }
         Ok(())
     }
@@ -341,8 +345,6 @@ impl App {
                 if editor.file_path() == Some(&file_path) {
                     // File is already open - just move cursor to position
                     editor.goto_position(line, column);
-                    // Focus this panel
-                    // Note: This doesn't change focus, but the cursor will move
                     log::info!(
                         "Jumped to {}:{} in already-open file '{}'",
                         line + 1,

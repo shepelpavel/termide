@@ -344,6 +344,9 @@ pub enum PanelEvent {
 
     /// Open or focus the operations panel
     OpenOperationsPanel,
+
+    /// Open or focus the outline panel
+    OpenOutlinePanel,
 }
 
 /// Direction for Vim panel navigation (Ctrl+w h/j/k/l).

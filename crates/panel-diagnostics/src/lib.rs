@@ -614,8 +614,7 @@ impl Panel for DiagnosticsPanel {
     }
 
     fn to_session(&self, _session_dir: &std::path::Path) -> Option<termide_core::SessionPanel> {
-        // Diagnostics panel doesn't persist to session (it's dynamic)
-        None
+        Some(termide_core::SessionPanel::Diagnostics)
     }
 
     fn as_any(&self) -> &dyn Any {

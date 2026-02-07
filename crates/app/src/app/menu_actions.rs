@@ -857,9 +857,165 @@ impl App {
                 self.state.close_menu();
                 self.open_operations_panel()?;
             }
+            8 => {
+                // Outline - open outline panel
+                self.state.close_menu();
+                self.handle_open_outline()?;
+            }
             _ => {}
         }
         Ok(())
+    }
+
+    /// Open or focus the Outline panel (singleton).
+    pub(super) fn handle_open_outline(&mut self) -> Result<()> {
+        log::debug!("Opening Outline panel");
+        self.close_welcome_panels();
+
+        if !self.find_and_focus_panel_by_name("outline") {
+            let outline = termide_panel_outline::OutlinePanel::new(*self.state.theme);
+            self.add_panel(Box::new(outline));
+        }
+        // On first open: populate from any available editor
+        self.populate_outline_from_any_editor();
+        self.auto_save_session();
+        Ok(())
+    }
+
+    /// Tick-based outline update.
+    ///
+    /// Only updates when the active (focused) panel is an editor.
+    /// When focus is on terminal, outline, or any other panel the outline
+    /// keeps its last content unchanged.
+    pub(super) fn update_outline_panel(&mut self) {
+        // Only react when the focused panel is an editor
+        let editor_info: Option<(Option<std::path::PathBuf>, String, Option<String>, usize)> = {
+            if let Some(panel) = self.layout_manager.active_panel_mut() {
+                if let Some(editor) = panel.as_editor_mut() {
+                    let path = editor.file_path().map(|p| p.to_path_buf());
+                    let content = editor.content_string();
+                    let cursor_line = editor.cursor_line();
+                    let language = path
+                        .as_ref()
+                        .and_then(|p| termide_highlight::detect_language(p))
+                        .map(|s| s.to_string());
+                    Some((path, content, language, cursor_line))
+                } else {
+                    None // active panel is not an editor — keep current outline
+                }
+            } else {
+                None
+            }
+        };
+
+        if let Some((path, content, language, cursor_line)) = editor_info {
+            self.push_to_outline(path, &content, language.as_deref(), Some(cursor_line));
+        }
+    }
+
+    /// Populate the outline panel from any editor found in the layout.
+    /// Used on first open when the outline itself may already be focused.
+    fn populate_outline_from_any_editor(&mut self) {
+        let editor_info: Option<(Option<std::path::PathBuf>, String, Option<String>)> = {
+            let mut info = None;
+            for panel in self.layout_manager.iter_all_panels_mut() {
+                if let Some(editor) = panel.as_editor_mut() {
+                    let path = editor.file_path().map(|p| p.to_path_buf());
+                    let content = editor.content_string();
+                    let language = path
+                        .as_ref()
+                        .and_then(|p| termide_highlight::detect_language(p))
+                        .map(|s| s.to_string());
+                    info = Some((path, content, language));
+                    break;
+                }
+            }
+            info
+        };
+
+        if let Some((path, content, language)) = editor_info {
+            self.push_to_outline(path, &content, language.as_deref(), None);
+        }
+    }
+
+    /// Apply pending outline navigation to the editor (called from tick).
+    pub(super) fn apply_outline_navigation(&mut self) {
+        // Collect pending navigation from outline panel
+        let nav: Option<termide_panel_outline::OutlineNavigation> = {
+            let mut result = None;
+            for group in &mut self.layout_manager.panel_groups {
+                for panel in group.panels_mut() {
+                    if let Some(outline) = panel
+                        .as_any_mut()
+                        .downcast_mut::<termide_panel_outline::OutlinePanel>()
+                    {
+                        result = outline.take_pending_navigation();
+                        break;
+                    }
+                }
+                if result.is_some() {
+                    break;
+                }
+            }
+            result
+        };
+
+        // Find the matching editor, expand it if collapsed, and navigate
+        if let Some(nav) = nav {
+            let mut target: Option<(usize, usize)> = None;
+            for (gi, group) in self.layout_manager.panel_groups.iter().enumerate() {
+                for (pi, panel) in group.panels().iter().enumerate() {
+                    if let Some(editor) = panel.as_editor() {
+                        if editor.file_path() == Some(&nav.path) {
+                            target = Some((gi, pi));
+                            break;
+                        }
+                    }
+                }
+                if target.is_some() {
+                    break;
+                }
+            }
+
+            if let Some((gi, pi)) = target {
+                // Expand the editor panel if it's collapsed
+                if let Some(group) = self.layout_manager.panel_groups.get_mut(gi) {
+                    group.set_expanded(pi);
+                }
+                // Now navigate
+                if let Some(group) = self.layout_manager.panel_groups.get_mut(gi) {
+                    if let Some(panel) = group.panels_mut().get_mut(pi) {
+                        if let Some(editor) = panel.as_editor_mut() {
+                            editor.goto_position(nav.line, nav.column);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Push collected editor data into the outline panel (if it exists).
+    fn push_to_outline(
+        &mut self,
+        path: Option<std::path::PathBuf>,
+        content: &str,
+        language: Option<&str>,
+        cursor_line: Option<usize>,
+    ) {
+        for group in &mut self.layout_manager.panel_groups {
+            for panel in group.panels_mut() {
+                if let Some(outline) = panel
+                    .as_any_mut()
+                    .downcast_mut::<termide_panel_outline::OutlinePanel>()
+                {
+                    outline.update_content(path, content, language);
+                    if let Some(line) = cursor_line {
+                        outline.sync_cursor_line(line);
+                    }
+                    return;
+                }
+            }
+        }
     }
 
     /// Open Diagnostics panel

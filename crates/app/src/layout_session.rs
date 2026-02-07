@@ -16,6 +16,7 @@ use termide_panel_terminal::Terminal;
 use termide_session::{
     cleanup_unsaved_buffer, load_unsaved_buffer, Session, SessionPanel, SessionPanelGroup,
 };
+use termide_theme::Theme;
 
 /// Extension trait for session serialization.
 pub trait LayoutManagerSession {
@@ -170,6 +171,12 @@ impl LayoutManagerSession for LayoutManager {
                         }
                         None => termide_panel_git_diff::GitDiffPanel::new(repo_path),
                     })),
+                    SessionPanel::Outline => Some(Box::new(
+                        termide_panel_outline::OutlinePanel::new(Theme::default()),
+                    )),
+                    SessionPanel::Diagnostics => Some(Box::new(
+                        termide_panel_diagnostics::DiagnosticsPanel::new(&Theme::default()),
+                    )),
                 };
 
                 if let Some(p) = panel {

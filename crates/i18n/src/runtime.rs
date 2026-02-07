@@ -811,6 +811,10 @@ impl Translation for RuntimeTranslation {
         self.get_string("tools_operations")
     }
 
+    fn tools_outline(&self) -> &str {
+        self.get_string("tools_outline")
+    }
+
     fn options_help(&self) -> &str {
         self.get_string("options_help")
     }
@@ -1489,6 +1493,18 @@ impl Translation for RuntimeTranslation {
             "git_diff_title_fmt",
             &[("repo", repo), ("count", &count.to_string())],
         )
+    }
+
+    fn outline_title(&self) -> &str {
+        self.get_string("outline_title")
+    }
+
+    fn outline_no_symbols(&self) -> &str {
+        self.get_string("outline_no_symbols")
+    }
+
+    fn outline_title_count_fmt(&self, count: usize) -> String {
+        self.format("outline_title_count_fmt", &[("count", &count.to_string())])
     }
 
     fn diagnostics_title(&self) -> &str {

@@ -85,6 +85,12 @@ pub enum SessionPanel {
         #[serde(skip_serializing_if = "Option::is_none")]
         commit_hash: Option<String>,
     },
+    /// Outline panel (symbol navigator)
+    #[serde(rename = "outline")]
+    Outline,
+    /// Diagnostics panel
+    #[serde(rename = "diagnostics")]
+    Diagnostics,
     // Note: Welcome panels are NOT saved (they auto-close)
 }
 
@@ -755,6 +761,8 @@ panels = []
                         repo_path: PathBuf::from("/tmp/repo"),
                         commit_hash: Some("abc123".to_string()),
                     },
+                    SessionPanel::Outline,
+                    SessionPanel::Diagnostics,
                 ],
                 expanded_index: 0,
                 width: None,
@@ -764,7 +772,7 @@ panels = []
 
         let toml_str = toml::to_string_pretty(&session).unwrap();
         let restored: Session = toml::from_str(&toml_str).unwrap();
-        assert_eq!(restored.panel_groups[0].panels.len(), 8);
+        assert_eq!(restored.panel_groups[0].panels.len(), 10);
     }
 
     // =========================================================================

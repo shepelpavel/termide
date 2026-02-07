@@ -258,6 +258,7 @@ pub trait Translation: Send + Sync {
     fn tools_journal(&self) -> &str;
     fn tools_diagnostics(&self) -> &str;
     fn tools_operations(&self) -> &str;
+    fn tools_outline(&self) -> &str;
 
     // Options submenu
     fn options_help(&self) -> &str;
@@ -455,6 +456,11 @@ pub trait Translation: Send + Sync {
     fn git_log_title_fmt(&self, repo: &str, branch: &str) -> String;
     fn git_diff_title_commit_fmt(&self, repo: &str, hash: &str, count: usize) -> String;
     fn git_diff_title_fmt(&self, repo: &str, count: usize) -> String;
+
+    // Outline panel strings
+    fn outline_title(&self) -> &str;
+    fn outline_no_symbols(&self) -> &str;
+    fn outline_title_count_fmt(&self, count: usize) -> String;
 
     // Diagnostics panel strings
     fn diagnostics_title(&self) -> &str;

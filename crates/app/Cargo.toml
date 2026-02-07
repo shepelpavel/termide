@@ -46,6 +46,7 @@ termide-logger = { path = "../logger" }
 termide-system-monitor = { path = "../system-monitor" }
 termide-ui = { path = "../ui" }
 termide-ui-render = { path = "../ui-render" }
+termide-highlight = { path = "../highlight" }
 
 # Panel crates
 termide-panel-editor = { path = "../panel-editor" }
@@ -58,6 +59,7 @@ termide-panel-git-diff = { path = "../panel-git-diff" }
 termide-panel-diagnostics = { path = "../panel-diagnostics" }
 termide-panel-misc = { path = "../panel-misc" }
 termide-panel-operations = { path = "../panel-operations" }
+termide-panel-outline = { path = "../panel-outline" }
 
 [features]
 vendored-openssl = ["termide-vfs/vendored-openssl"]
