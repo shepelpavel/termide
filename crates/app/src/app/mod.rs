@@ -47,6 +47,13 @@ pub struct App {
     project_root: std::path::PathBuf,
     /// Global hotkey processor
     hotkey_processor: DefaultHotkeyProcessor,
+
+    /// Last seen editor edit_version (for debounced outline sync).
+    outline_last_version: u64,
+    /// Last seen editor cursor line (for outline cursor sync).
+    outline_last_cursor: usize,
+    /// Timestamp of last outline content update (debounce 1s).
+    outline_last_edit_time: Option<std::time::Instant>,
 }
 
 impl App {
@@ -114,6 +121,9 @@ impl App {
             )),
             project_root,
             hotkey_processor,
+            outline_last_version: 0,
+            outline_last_cursor: 0,
+            outline_last_edit_time: None,
         }
     }
 
@@ -455,8 +465,8 @@ impl App {
                         // Sync active operations data to the operations panel
                         self.update_operations_panel();
 
-                        // Update outline panel with active editor content
-                        self.update_outline_panel();
+                        // Debounced outline sync for live editing (cheap: u64 compare only)
+                        self.check_outline_live_edit();
 
                         // Apply pending outline navigation to editor
                         self.apply_outline_navigation();

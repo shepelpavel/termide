@@ -882,35 +882,128 @@ impl App {
         Ok(())
     }
 
-    /// Tick-based outline update.
-    ///
-    /// Only updates when the active (focused) panel is an editor.
-    /// When focus is on terminal, outline, or any other panel the outline
-    /// keeps its last content unchanged.
-    pub(super) fn update_outline_panel(&mut self) {
-        // Only react when the focused panel is an editor
-        let editor_info: Option<(Option<std::path::PathBuf>, String, Option<String>, usize)> = {
-            if let Some(panel) = self.layout_manager.active_panel_mut() {
-                if let Some(editor) = panel.as_editor_mut() {
-                    let path = editor.file_path().map(|p| p.to_path_buf());
-                    let content = editor.content_string();
-                    let cursor_line = editor.cursor_line();
-                    let language = path
-                        .as_ref()
-                        .and_then(|p| termide_highlight::detect_language(p))
-                        .map(|s| s.to_string());
-                    Some((path, content, language, cursor_line))
-                } else {
-                    None // active panel is not an editor — keep current outline
-                }
-            } else {
-                None
-            }
-        };
-
+    /// Notify outline panel that a file was opened/switched.
+    pub(crate) fn notify_outline_file_opened(&mut self) {
+        let editor_info = self.collect_editor_info_for_outline();
         if let Some((path, content, language, cursor_line)) = editor_info {
             self.push_to_outline(path, &content, language.as_deref(), Some(cursor_line));
         }
+    }
+
+    /// Collect editor data for outline (extracted for reuse).
+    ///
+    /// Only returns data when the active panel is an editor.
+    /// Switching to non-editor panels keeps the outline bound to the last editor.
+    fn collect_editor_info_for_outline(
+        &mut self,
+    ) -> Option<(Option<std::path::PathBuf>, String, Option<String>, usize)> {
+        let panel = self.layout_manager.active_panel_mut()?;
+        let editor = panel.as_editor_mut()?;
+        let path = editor.file_path().map(|p| p.to_path_buf());
+        let content = editor.content_string();
+        let cursor_line = editor.cursor_line();
+        let language = path
+            .as_ref()
+            .and_then(|p| termide_highlight::detect_language(p))
+            .map(|s| s.to_string());
+        Some((path, content, language, cursor_line))
+    }
+
+    /// Lightweight check for live editing — only compare edit_version, debounced 1s.
+    pub(super) fn check_outline_live_edit(&mut self) {
+        let Some(panel) = self.layout_manager.active_panel_mut() else {
+            return;
+        };
+        let Some(editor) = panel.as_editor_mut() else {
+            return;
+        };
+
+        let version = editor.edit_version();
+        if version == self.outline_last_version {
+            // No edits — also sync cursor cheaply
+            let cursor = editor.cursor_line();
+            if cursor != self.outline_last_cursor {
+                self.outline_last_cursor = cursor;
+                self.sync_outline_cursor(cursor);
+            }
+            return;
+        }
+
+        // Version changed — check debounce (1 second since last update)
+        let now = std::time::Instant::now();
+        if let Some(last) = self.outline_last_edit_time {
+            if now.duration_since(last) < std::time::Duration::from_secs(1) {
+                return; // Too soon, wait
+            }
+        }
+
+        self.outline_last_version = version;
+        self.outline_last_cursor = editor.cursor_line();
+        self.outline_last_edit_time = Some(now);
+
+        // Only now clone content
+        let content = editor.content_string();
+        let path = editor.file_path().map(|p| p.to_path_buf());
+        let language = path
+            .as_ref()
+            .and_then(|p| termide_highlight::detect_language(p))
+            .map(|s| s.to_string());
+        self.push_to_outline(
+            path,
+            &content,
+            language.as_deref(),
+            Some(self.outline_last_cursor),
+        );
+    }
+
+    /// Sync only cursor position to outline (no content extraction).
+    fn sync_outline_cursor(&mut self, cursor_line: usize) {
+        for group in &mut self.layout_manager.panel_groups {
+            for panel in group.panels_mut() {
+                if let Some(outline) = panel
+                    .as_any_mut()
+                    .downcast_mut::<termide_panel_outline::OutlinePanel>()
+                {
+                    outline.sync_cursor_line(cursor_line);
+                    return;
+                }
+            }
+        }
+    }
+
+    /// Re-extract outline symbols when the tracked file changed on disk.
+    pub(super) fn notify_outline_on_fs_change(
+        &mut self,
+        changed_paths: &std::collections::HashSet<std::path::PathBuf>,
+    ) {
+        if changed_paths.is_empty() {
+            return;
+        }
+        // Check if outline tracks one of the changed files
+        let tracked: Option<std::path::PathBuf> = self.find_outline_tracked_file();
+        let Some(tracked_path) = tracked else {
+            return;
+        };
+        if !changed_paths.contains(&tracked_path) {
+            return;
+        }
+        // File changed on disk — re-extract from editor's current content
+        self.notify_outline_file_opened();
+    }
+
+    /// Find the file path currently tracked by the outline panel.
+    fn find_outline_tracked_file(&self) -> Option<std::path::PathBuf> {
+        for group in &self.layout_manager.panel_groups {
+            for panel in group.panels() {
+                if let Some(outline) = panel
+                    .as_any()
+                    .downcast_ref::<termide_panel_outline::OutlinePanel>()
+                {
+                    return outline.tracked_file().map(|p| p.to_path_buf());
+                }
+            }
+        }
+        None
     }
 
     /// Populate the outline panel from any editor found in the layout.

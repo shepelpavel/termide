@@ -9,8 +9,6 @@ mod symbols;
 mod treesitter;
 
 use std::any::Any;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 
 use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
@@ -18,7 +16,9 @@ use ratatui::{buffer::Buffer, layout::Rect, style::Style};
 use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up};
 use unicode_width::UnicodeWidthStr;
 
-use termide_core::{Panel, PanelEvent, RenderContext, ThemeColors, WidthPreference};
+use termide_core::{
+    CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, ThemeColors, WidthPreference,
+};
 use termide_theme::Theme;
 use termide_ui::ScrollBar;
 
@@ -37,8 +37,6 @@ pub struct OutlinePanel {
     symbols: Vec<SymbolInfo>,
     /// Path of the file currently being tracked.
     tracked_file: Option<PathBuf>,
-    /// Hash of the content to avoid redundant re-parsing.
-    content_hash: u64,
     /// Language of the tracked file.
     tracked_language: Option<String>,
 
@@ -56,6 +54,15 @@ pub struct OutlinePanel {
 
     /// Pending navigation: the app tick handler reads and clears this.
     pending_navigation: Option<OutlineNavigation>,
+
+    /// Whether the panel is stale (collapsed, awaiting refresh).
+    is_stale: bool,
+
+    /// Reusable tree-sitter parser (avoids allocation on every parse).
+    parser: tree_sitter::Parser,
+
+    /// Cached tree-drawing prefixes, computed once per symbol update.
+    tree_prefixes: Vec<String>,
 }
 
 impl OutlinePanel {
@@ -64,7 +71,6 @@ impl OutlinePanel {
         Self {
             symbols: Vec::new(),
             tracked_file: None,
-            content_hash: 0,
             tracked_language: None,
             selected_index: 0,
             scroll_offset: 0,
@@ -72,12 +78,15 @@ impl OutlinePanel {
             cached_theme: theme,
             vim_mode: false,
             pending_navigation: None,
+            is_stale: false,
+            parser: tree_sitter::Parser::new(),
+            tree_prefixes: Vec::new(),
         }
     }
 
     /// Update content from the active editor.
     ///
-    /// Computes a hash of the content and skips re-parsing if unchanged.
+    /// Skips re-parsing if the panel is stale (collapsed).
     /// Resets selection when the tracked file changes.
     pub fn update_content(
         &mut self,
@@ -85,22 +94,21 @@ impl OutlinePanel {
         content: &str,
         language: Option<&str>,
     ) {
-        // Compute content hash
-        let mut hasher = DefaultHasher::new();
-        content.hash(&mut hasher);
-        file_path.hash(&mut hasher);
-        let hash = hasher.finish();
-
-        if hash == self.content_hash {
-            return; // Nothing changed
+        if self.is_stale {
+            return;
         }
 
         let file_changed = self.tracked_file != file_path;
-        self.content_hash = hash;
         self.tracked_file = file_path.clone();
         self.tracked_language = language.map(|s| s.to_string());
 
-        self.symbols = symbols::extract_symbols(content, language, file_path.as_deref());
+        self.symbols =
+            symbols::extract_symbols(content, language, file_path.as_deref(), &mut self.parser);
+
+        // Precompute tree-drawing prefixes
+        self.tree_prefixes = (0..self.symbols.len())
+            .map(|i| compute_tree_prefix(&self.symbols, i))
+            .collect();
 
         // Reset selection when file changes
         if file_changed {
@@ -138,15 +146,11 @@ impl OutlinePanel {
         if self.symbols.is_empty() {
             return;
         }
-        // Find the last symbol whose line <= cursor_line
-        let mut best = 0;
-        for (i, sym) in self.symbols.iter().enumerate() {
-            if sym.line <= cursor_line {
-                best = i;
-            } else {
-                break;
-            }
-        }
+        // Binary search: find the last symbol whose line <= cursor_line
+        let best = self
+            .symbols
+            .partition_point(|s| s.line <= cursor_line)
+            .saturating_sub(1);
         if self.selected_index != best {
             self.selected_index = best;
             self.ensure_visible();
@@ -169,6 +173,11 @@ impl OutlinePanel {
     /// Take pending navigation request (called by app tick handler).
     pub fn take_pending_navigation(&mut self) -> Option<OutlineNavigation> {
         self.pending_navigation.take()
+    }
+
+    /// Get the path of the currently tracked file.
+    pub fn tracked_file(&self) -> Option<&std::path::Path> {
+        self.tracked_file.as_deref()
     }
 
     /// Ensure selected item is visible.
@@ -238,6 +247,24 @@ impl Panel for OutlinePanel {
         }
     }
 
+    fn handle_command(&mut self, cmd: PanelCommand<'_>) -> CommandResult {
+        match cmd {
+            PanelCommand::MarkStale => {
+                self.is_stale = true;
+                CommandResult::None
+            }
+            PanelCommand::RefreshIfStale => {
+                if self.is_stale {
+                    self.is_stale = false;
+                    CommandResult::NeedsRedraw(true)
+                } else {
+                    CommandResult::None
+                }
+            }
+            _ => CommandResult::None,
+        }
+    }
+
     fn prepare_render(&mut self, theme: &Theme, config: &termide_config::Config) {
         self.cached_theme = *theme;
         self.vim_mode = config.general.vim_mode;
@@ -276,7 +303,7 @@ impl Panel for OutlinePanel {
                 }
             }
         } else {
-            let wide_mode = area.width >= 50;
+            let wide_mode = area.width >= 35;
 
             // Render symbol entries
             for display_idx in 0..content_height {
@@ -290,13 +317,13 @@ impl Panel for OutlinePanel {
 
                 // Determine styles
                 let line_style = if is_selected {
-                    Style::default().bg(theme.selected_bg).fg(theme.selected_fg)
+                    Style::default().bg(theme.fg).fg(theme.bg)
                 } else {
                     bg_style
                 };
 
                 let icon_style = if is_selected {
-                    Style::default().bg(theme.selected_bg).fg(theme.accented_fg)
+                    Style::default().bg(theme.accented_fg).fg(theme.bg)
                 } else {
                     Style::default().bg(theme.bg).fg(theme.accented_fg)
                 };
@@ -307,11 +334,14 @@ impl Panel for OutlinePanel {
                     buf[(x, y)].set_char(' ');
                 }
 
-                // Compute tree prefix (wide mode only, depth > 0)
+                // Use cached tree prefix (wide mode only, depth > 0)
                 let prefix = if wide_mode && symbol.depth > 0 {
-                    compute_tree_prefix(&self.symbols, sym_idx)
+                    self.tree_prefixes
+                        .get(sym_idx)
+                        .map(|s| s.as_str())
+                        .unwrap_or("")
                 } else {
-                    String::new()
+                    ""
                 };
 
                 // Render: [1 space][prefix][icon] [name]  :[line]
@@ -319,7 +349,7 @@ impl Panel for OutlinePanel {
 
                 // Render tree prefix characters
                 let prefix_style = if is_selected {
-                    Style::default().bg(theme.selected_bg).fg(theme.disabled)
+                    Style::default().bg(theme.fg).fg(theme.disabled)
                 } else {
                     Style::default().bg(theme.bg).fg(theme.disabled)
                 };
@@ -350,11 +380,7 @@ impl Panel for OutlinePanel {
                     line_style
                 } else {
                     Style::default()
-                        .bg(if is_selected {
-                            theme.selected_bg
-                        } else {
-                            theme.bg
-                        })
+                        .bg(if is_selected { theme.fg } else { theme.bg })
                         .fg(theme.disabled)
                 };
 
@@ -376,7 +402,7 @@ impl Panel for OutlinePanel {
                 let line_str = format!(":{}", symbol.line + 1);
                 let line_num_x = area.right().saturating_sub(line_str.width() as u16 + 1);
                 let line_num_style = if is_selected {
-                    Style::default().bg(theme.selected_bg).fg(theme.disabled)
+                    Style::default().bg(theme.fg).fg(theme.bg)
                 } else {
                     Style::default().bg(theme.bg).fg(theme.disabled)
                 };

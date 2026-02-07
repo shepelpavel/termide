@@ -347,14 +347,19 @@ fn register(
 }
 
 /// Extract symbols from source using tree-sitter queries.
-pub fn extract_symbols_treesitter(source: &str, language: &str) -> Vec<SymbolInfo> {
+///
+/// Accepts a `&mut Parser` so callers can reuse it across invocations.
+pub fn extract_symbols_treesitter(
+    source: &str,
+    language: &str,
+    parser: &mut Parser,
+) -> Vec<SymbolInfo> {
     let queries = queries();
     let (ts_language, query, capture_kinds) = match queries.get(language) {
         Some(entry) => entry,
         None => return Vec::new(),
     };
 
-    let mut parser = Parser::new();
     if parser.set_language(ts_language).is_err() {
         return Vec::new();
     }
@@ -473,7 +478,8 @@ struct Config {}
 enum Color { Red, Blue }
 trait Panel {}
 "#;
-        let symbols = extract_symbols_treesitter(source, "rust");
+        let mut parser = Parser::new();
+        let symbols = extract_symbols_treesitter(source, "rust", &mut parser);
         eprintln!("Rust symbols: {:#?}", symbols);
         assert!(!symbols.is_empty(), "Should find Rust symbols");
     }
@@ -481,7 +487,8 @@ trait Panel {}
     #[test]
     fn test_markdown_symbols() {
         let source = "# Hello\n\n## World\n\nSome text\n\n### Sub heading\n";
-        let symbols = extract_symbols_treesitter(source, "markdown");
+        let mut parser = Parser::new();
+        let symbols = extract_symbols_treesitter(source, "markdown", &mut parser);
         eprintln!("Markdown symbols: {:#?}", symbols);
         assert_eq!(symbols.len(), 3);
         assert_eq!(symbols[0].kind, SymbolKind::Heading1);

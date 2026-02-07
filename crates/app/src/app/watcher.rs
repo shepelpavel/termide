@@ -146,5 +146,8 @@ impl App {
                 self.state.needs_redraw = true;
             }
         }
+
+        // Update outline panel if tracked file changed on disk
+        self.notify_outline_on_fs_change(&fs_paths);
     }
 }

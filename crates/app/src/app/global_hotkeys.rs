@@ -169,6 +169,7 @@ impl App {
     fn navigate_to_prev_group(&mut self) {
         self.close_completion_popup_before_focus_change();
         self.layout_manager.prev_group();
+        self.notify_outline_file_opened();
         self.check_and_save_session();
     }
 
@@ -176,6 +177,7 @@ impl App {
     fn navigate_to_next_group(&mut self) {
         self.close_completion_popup_before_focus_change();
         self.layout_manager.next_group();
+        self.notify_outline_file_opened();
         self.check_and_save_session();
     }
 
@@ -183,6 +185,7 @@ impl App {
     fn navigate_to_prev_panel_in_group(&mut self) {
         self.close_completion_popup_before_focus_change();
         self.layout_manager.prev_panel_in_group();
+        self.notify_outline_file_opened();
         self.check_and_save_session();
     }
 
@@ -190,6 +193,7 @@ impl App {
     fn navigate_to_next_panel_in_group(&mut self) {
         self.close_completion_popup_before_focus_change();
         self.layout_manager.next_panel_in_group();
+        self.notify_outline_file_opened();
         self.check_and_save_session();
     }
 
@@ -199,6 +203,7 @@ impl App {
         // Convert from 1-indexed (user-facing) to 0-indexed (internal)
         let index = group_num.saturating_sub(1);
         self.layout_manager.set_focus(index);
+        self.notify_outline_file_opened();
         self.check_and_save_session();
     }
 

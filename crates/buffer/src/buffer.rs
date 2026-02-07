@@ -19,6 +19,9 @@ pub struct TextBuffer {
     line_ending: LineEnding,
     /// Edit history for undo/redo
     history: History,
+    /// Monotonic counter incremented on every mutation (insert/delete/backspace/undo/redo).
+    /// Used by outline panel to detect content changes without hashing.
+    edit_version: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,6 +40,7 @@ impl TextBuffer {
             modified: false,
             line_ending: LineEnding::LF,
             history: History::new(),
+            edit_version: 0,
         }
     }
 
@@ -48,6 +52,7 @@ impl TextBuffer {
             modified: false,
             line_ending: LineEnding::LF,
             history: History::new(),
+            edit_version: 0,
         }
     }
 
@@ -59,6 +64,7 @@ impl TextBuffer {
             modified: false,
             line_ending: LineEnding::LF,
             history: History::new(),
+            edit_version: 0,
         }
     }
 
@@ -84,6 +90,7 @@ impl TextBuffer {
             modified: false,
             line_ending,
             history: History::new(),
+            edit_version: 0,
         })
     }
 
@@ -203,6 +210,7 @@ impl TextBuffer {
         let char_idx = self.cursor_to_char_idx(cursor)?;
         self.rope.insert(char_idx, text);
         self.modified = true;
+        self.edit_version += 1;
 
         // Record to history
         self.history.push(Action::Insert {
@@ -230,6 +238,7 @@ impl TextBuffer {
         // Delete one character
         self.rope.remove(char_idx..char_idx + 1);
         self.modified = true;
+        self.edit_version += 1;
 
         // Record to history
         self.history.push(Action::Delete {
@@ -267,6 +276,7 @@ impl TextBuffer {
         // Delete character before cursor
         self.rope.remove(char_idx - 1..char_idx);
         self.modified = true;
+        self.edit_version += 1;
 
         // Record to history (position is the new cursor position after deletion)
         self.history.push(Action::Delete {
@@ -289,6 +299,7 @@ impl TextBuffer {
             // Delete text
             self.rope.remove(start_idx..end_idx);
             self.modified = true;
+            self.edit_version += 1;
 
             // Record to history
             self.history.push(Action::Delete {
@@ -369,7 +380,13 @@ impl TextBuffer {
     pub fn append(&mut self, text: &str) {
         let len = self.rope.len_chars();
         self.rope.insert(len, text);
+        self.edit_version += 1;
         // Don't mark as modified - this is for internal use (log viewer)
+    }
+
+    /// Monotonic edit version counter. Incremented on every mutation.
+    pub fn edit_version(&self) -> u64 {
+        self.edit_version
     }
 
     /// Undo last action
@@ -398,6 +415,7 @@ impl TextBuffer {
 
     /// Apply action to buffer (for undo/redo)
     fn apply_action(&mut self, action: &Action) -> Result<Cursor> {
+        self.edit_version += 1;
         match action {
             Action::Insert { position, text } => {
                 let char_idx = self.cursor_to_char_idx(position)?;

@@ -919,6 +919,11 @@ impl Editor {
         self.buffer.text()
     }
 
+    /// Monotonic edit version counter (delegates to buffer).
+    pub fn edit_version(&self) -> u64 {
+        self.buffer.edit_version()
+    }
+
     /// Get immutable reference to buffer.
     pub fn buffer(&self) -> &TextBuffer {
         &self.buffer

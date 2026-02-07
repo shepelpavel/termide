@@ -90,10 +90,12 @@ impl App {
             // === Panel navigation ===
             PanelEvent::NextPanel => {
                 self.layout_manager.next_group();
+                self.notify_outline_file_opened();
             }
 
             PanelEvent::PrevPanel => {
                 self.layout_manager.prev_group();
+                self.notify_outline_file_opened();
             }
 
             PanelEvent::VimPanelNavigation { direction } => {
@@ -102,14 +104,13 @@ impl App {
                     VimPanelDirection::Left => self.layout_manager.prev_group(),
                     VimPanelDirection::Right => self.layout_manager.next_group(),
                     VimPanelDirection::Up => {
-                        // In a stacked layout, move to panel above in same group
                         self.layout_manager.prev_panel_in_group();
                     }
                     VimPanelDirection::Down => {
-                        // In a stacked layout, move to panel below in same group
                         self.layout_manager.next_panel_in_group();
                     }
                 }
+                self.notify_outline_file_opened();
             }
 
             // === Open panels ===
@@ -311,6 +312,7 @@ impl App {
                 }
 
                 self.add_panel(Box::new(editor_panel));
+                self.notify_outline_file_opened();
                 self.auto_save_session();
                 log::info!("File '{}' opened in editor", filename);
                 self.state.set_info(t.editor_file_opened(filename));
@@ -340,6 +342,7 @@ impl App {
         );
 
         // First check if the file is already open in an editor
+        let mut found_existing = false;
         for panel in self.layout_manager.iter_all_panels_mut() {
             if let Some(editor) = panel.as_editor_mut() {
                 if editor.file_path() == Some(&file_path) {
@@ -351,11 +354,16 @@ impl App {
                         column,
                         filename
                     );
-                    self.state
-                        .set_info(format!("{}:{}:{}", filename, line + 1, column));
-                    return Ok(());
+                    found_existing = true;
+                    break;
                 }
             }
+        }
+        if found_existing {
+            self.state
+                .set_info(format!("{}:{}:{}", filename, line + 1, column));
+            self.notify_outline_file_opened();
+            return Ok(());
         }
 
         // File not open - open it and move to position
@@ -370,6 +378,7 @@ impl App {
                 }
 
                 self.add_panel(Box::new(editor_panel));
+                self.notify_outline_file_opened();
                 self.auto_save_session();
                 log::info!("File '{}' opened at {}:{}", filename, line + 1, column);
                 self.state.set_info(t.editor_file_opened(filename));
@@ -943,6 +952,7 @@ impl App {
                 group.set_expanded(panel_idx);
             }
             self.layout_manager.focus = group_idx;
+            self.notify_outline_file_opened();
             log::debug!("Focused panel: {}", title);
         } else {
             log::debug!("Panel not found: {}", name);

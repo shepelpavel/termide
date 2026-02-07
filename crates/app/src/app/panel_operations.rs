@@ -517,6 +517,7 @@ impl App {
                 }
 
                 self.add_panel(Box::new(editor_panel));
+                self.notify_outline_file_opened();
                 self.auto_save_session();
 
                 let t = i18n::t();

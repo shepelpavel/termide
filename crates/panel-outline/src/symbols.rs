@@ -80,10 +80,13 @@ pub struct SymbolInfo {
 }
 
 /// Extract symbols from source code, dispatching to tree-sitter or regex fallback.
+///
+/// Accepts a `&mut Parser` so the caller can reuse it across invocations.
 pub fn extract_symbols(
     source: &str,
     language: Option<&str>,
     file_path: Option<&std::path::Path>,
+    parser: &mut tree_sitter::Parser,
 ) -> Vec<SymbolInfo> {
     let lang = language.or_else(|| file_path.and_then(termide_highlight::detect_language));
 
@@ -93,7 +96,7 @@ pub fn extract_symbols(
     };
 
     // Try tree-sitter extraction first
-    let symbols = crate::treesitter::extract_symbols_treesitter(source, lang);
+    let symbols = crate::treesitter::extract_symbols_treesitter(source, lang, parser);
     if !symbols.is_empty() {
         return symbols;
     }
