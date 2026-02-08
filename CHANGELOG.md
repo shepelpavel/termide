@@ -5,6 +5,21 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.1] - 2026-02-08
+
+### Added
+- **File Manager**: Toggle hidden files visibility with `.` key
+
+### Changed
+- **InfoModal**: Colored segments, multiline support and truncation
+- **Codebase**: Rename Welcome remnants to Help across codebase
+
+### Fixed
+- **Layout**: Refresh stale panels on next/prev switch in group — fixes Outline going empty after panel switching
+- **File Manager**: Treat directory symlinks as directories
+- **App**: Enable search in vim normal mode and JournalPanel
+- **Outline**: Repopulate outline after expanding collapsed panel
+
 ## [0.12.0] - 2026-02-07
 
 ### Added
