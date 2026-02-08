@@ -422,12 +422,16 @@ impl Panel for OutlinePanel {
                 } else {
                     &symbol.name
                 };
-                for (i, ch) in display_name.chars().enumerate() {
-                    let x = name_x + i as u16;
-                    if x < area.right().saturating_sub(6) {
-                        buf[(x, y)].set_char(ch);
-                        buf[(x, y)].set_style(name_style);
+                let mut x_offset: u16 = 0;
+                for ch in display_name.chars() {
+                    let ch_width = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+                    let x = name_x + x_offset;
+                    if x + ch_width as u16 > area.right().saturating_sub(6) {
+                        break;
                     }
+                    buf[(x, y)].set_char(ch);
+                    buf[(x, y)].set_style(name_style);
+                    x_offset += ch_width as u16;
                 }
 
                 // Render line number (right-aligned)
