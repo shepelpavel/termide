@@ -234,7 +234,7 @@ Proceed? [yes/no]
 
 ### Step 5: Update Version in All Files
 
-Update version `NEW_VERSION` in these 8 files using Edit tool:
+Update version `NEW_VERSION` in these 10 files using Edit tool:
 
 #### 1. Cargo.toml
 ```toml
@@ -267,13 +267,19 @@ download/NEW_VERSION/
 
 Pattern: `download/\d+\.\d+\.\d+/` → `download/NEW_VERSION/`
 
-#### 4. doc/en/installation.md (4 occurrences)
+#### 4. README.zh.md (8 occurrences)
 Same pattern as README.md for download URLs.
 
-#### 5. doc/ru/installation.md (4 occurrences)
+#### 5. doc/en/installation.md (4 occurrences)
 Same pattern as README.md for download URLs.
 
-#### 6. packaging/homebrew/termide.rb (5 occurrences)
+#### 6. doc/ru/installation.md (4 occurrences)
+Same pattern as README.md for download URLs.
+
+#### 7. doc/zh/installation.md (4 occurrences)
+Same pattern as README.md for download URLs.
+
+#### 8. packaging/homebrew/termide.rb (5 occurrences)
 ```ruby
 version "NEW_VERSION"
 url "https://github.com/termide/termide/archive/refs/tags/NEW_VERSION.tar.gz"
@@ -282,13 +288,13 @@ sha256 "..."  # This will need to be updated AFTER release
 
 Update version and URL, note that sha256 will be wrong until after release.
 
-#### 7. packaging/aur/PKGBUILD
+#### 9. packaging/aur/PKGBUILD
 ```bash
 pkgver=NEW_VERSION
 ```
 Line 4, simple replacement.
 
-#### 8. packaging/aur/PKGBUILD-bin
+#### 10. packaging/aur/PKGBUILD-bin
 ```bash
 pkgver=NEW_VERSION
 ```
@@ -312,20 +318,25 @@ After version updates, prompt user to review documentation:
 
 Version numbers have been updated in:
 - README.md
+- README.zh.md
 - doc/en/installation.md
 - doc/ru/installation.md
+- doc/zh/installation.md
 
 Please review these files for content accuracy:
 
 Required reviews (version-critical):
 ✅ README.md - Download links updated
+✅ README.zh.md - Download links updated
 ✅ doc/en/installation.md - Installation steps updated
 ✅ doc/ru/installation.md - Installation steps updated
+✅ doc/zh/installation.md - Installation steps updated
 
 Optional reviews (feature changes):
 ⚠️  README.md - Features list (check if new features added)
 ⚠️  doc/en/*.md - Feature documentation (check if needs updates)
 ⚠️  doc/ru/*.md - Russian translations (check if needs updates)
+⚠️  doc/zh/*.md - Chinese translations (check if needs updates)
 
 Based on the changes analysis:
 - FileManager refactoring: May need architecture.md updates (DONE)
@@ -517,8 +528,10 @@ Files changed:
 - Cargo.toml
 - flake.nix
 - README.md
+- README.zh.md
 - doc/en/installation.md
 - doc/ru/installation.md
+- doc/zh/installation.md
 - src/i18n/en.rs
 - src/i18n/ru.rs
 - packaging/*

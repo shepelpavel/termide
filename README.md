@@ -277,6 +277,7 @@ For detailed documentation, see:
 - `Delete` / `F8` - Delete
 - `F3` - Preview file
 - `Shift+Enter` - Open with system app
+- `.` - Toggle hidden files
 
 **Editor:**
 - `Ctrl+S` - Save
@@ -328,45 +329,28 @@ TermIDE follows the [XDG Base Directory Specification](https://specifications.fr
 ### Example Configuration
 
 ```toml
-# Theme name - choose from built-in themes or use a custom theme
+[general]
 theme = "windows-xp"
+language = "auto"  # auto, bn, de, en, es, fr, hi, id, ja, ko, pt, ru, th, tr, vi, zh
+vim_mode = false
+session_retention_days = 30
+bell_on_operation_complete = true
 
-# Tab size (number of spaces per tab)
+[editor]
 tab_size = 4
-
-# Language (auto, de, en, es, fr, hi, pt, ru, th, zh)
-# "auto" detects from environment variables (TERMIDE_LANG, LANG, LC_ALL)
-language = "auto"
-
-# System resource monitor update interval in milliseconds (default: 1000)
-resource_monitor_interval = 1000
-
-# Minimum panel width for horizontal layout (default: 80)
-# Panels narrower than this will stack vertically
-min_panel_width = 80
-
-# Show git diff colors on line numbers in editor (default: true)
 show_git_diff = true
-
-# Enable word wrap in editor (default: true)
 word_wrap = true
 
-# Enable Vim-style editing in editor (default: false)
-vim_mode = false
+[file_manager]
+extended_view_width = 50
 
-# Minimum log level: debug, info, warn, error (default: info)
-min_log_level = "info"
+[lsp]
+enabled = true
+auto_completion = true
 
-# Session retention period in days (default: 30)
-# Sessions older than this will be automatically deleted on startup
-session_retention_days = 30
-
-# File manager extended view width (default: 50)
-# Minimum width to display size and time columns
-fm_extended_view_width = 50
-
-# Optional: Custom log file path
-# log_file_path = "/custom/path/to/termide.log"
+[logging]
+min_level = "info"
+resource_monitor_interval = 1000
 ```
 
 ### Available Themes
@@ -496,7 +480,7 @@ crates/
 ├── panel-git-log/    # Git log panel
 ├── panel-git-status/ # Git status panel
 ├── panel-image/      # Image viewer panel
-├── panel-misc/       # Welcome and Log panels
+├── panel-misc/       # Help and Log panels
 ├── panel-operations/ # Background operations panel
 ├── panel-terminal/   # Terminal emulator panel
 ├── session/          # Session persistence

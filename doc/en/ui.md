@@ -37,6 +37,11 @@ Menu activation/deactivation and each item can be accessed by mouse click or [ke
 - `Editor` opens a panel with new file editor
 - `Git` opens a git status panel
 - `Log` opens a log panel
+- `Sessions` session management (save, restore, delete)
+- `Windows` panel management
+- `Scripts` user-defined scripts
+- `Bookmarks` saved locations
+- `Options` themes, language settings
 - `Preferences` opens configuration file in editor
 - `Help` opens help window
 - `Quit` exits the application
@@ -51,10 +56,18 @@ The area fills the vertical space between the menu bar and status bar from left 
 By default, the area shows a two-panel file manager (like Midnight Commander). Other panels (terminal, editor, git) can be opened and will be placed alongside.
 
 **Possible openable panel types:**
-- [file manager](file-manager.md)
-- [terminal](terminal.md)
-- [text editor](editor.md)
-- [git status](git-status.md)
+- [file manager](file-manager.md) — `Alt+F`
+- [terminal](terminal.md) — `Alt+T`
+- [text editor](editor.md) — `Alt+E`
+- [git status](git-status.md) — `Alt+G`
+- outline — `Alt+O`
+- diagnostics — `Alt+I`
+- git log — `Alt+C`
+- git diff
+- operations
+- image viewer
+- help — `Alt+H`
+- journal — `Alt+L`
 
 **Features of closeable panels:**
 - Have `[X]` close button in panel title (clickable with mouse)

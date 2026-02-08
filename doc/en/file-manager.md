@@ -12,6 +12,9 @@ The file manager panel provides an intuitive interface for navigating the file s
 | `~`               | Go to home directory                       |
 | `PageUp` / `PageDown` | Scroll list by one page                |
 | `Home` / `End`    | Go to beginning/end of list                |
+| `.`               | Toggle hidden files visibility             |
+| `Ctrl+P`          | Open directory switcher                    |
+| `Ctrl+B`          | Add bookmark                               |
 | `Tab`             | Go to next panel                           |
 | `Shift+Tab`       | Go to previous panel                       |
 
