@@ -1228,8 +1228,12 @@ impl Panel for Terminal {
                 }
             }
             KeyCode::Enter => {
-                if key.modifiers.contains(KeyModifiers::SHIFT) {
-                    // Shift+Enter sends newline for multi-line input
+                if key.modifiers.contains(KeyModifiers::SHIFT)
+                    || key.modifiers.contains(KeyModifiers::ALT)
+                {
+                    // Shift+Enter or Alt+Enter sends newline for multi-line input.
+                    // Alt+Enter works on VTE terminals (gnome-terminal, etc.) where
+                    // Shift+Enter is indistinguishable from Enter without kitty protocol.
                     let _ = self.send_input(b"\n");
                 } else {
                     let _ = self.send_input(b"\r");
