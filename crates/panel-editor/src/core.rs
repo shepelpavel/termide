@@ -5,7 +5,7 @@ use std::any::Any;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use termide_buffer::{Cursor, Selection, TextBuffer, Viewport};
+use termide_buffer::{Cursor, LineEnding, Selection, TextBuffer, Viewport};
 use termide_config::Config;
 use termide_core::{
     CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel, WidthPreference,
@@ -894,6 +894,10 @@ impl Editor {
             column: self.cursor.column + 1, // 1-based
             tab_size: self.config.tab_size,
             encoding: "UTF-8".to_string(),
+            line_ending: match self.buffer.line_ending() {
+                LineEnding::LF => "LF".to_string(),
+                LineEnding::CRLF => "CRLF".to_string(),
+            },
             file_type,
             read_only: self.config.read_only,
             syntax_highlighting: self.config.syntax_highlighting,

@@ -58,6 +58,7 @@ pub struct EditorInfo {
     pub column: usize,                  // Current column (1-based)
     pub tab_size: usize,                // Tab size
     pub encoding: String,               // Encoding (UTF-8)
+    pub line_ending: String,            // Line ending type ("LF" or "CRLF")
     pub file_type: String,              // File type / syntax language
     pub read_only: bool,                // Read-only mode
     pub syntax_highlighting: bool,      // Syntax highlighting enabled

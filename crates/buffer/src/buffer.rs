@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use unicode_segmentation::UnicodeSegmentation;
 
 use super::{Action, Cursor, History};
+use crate::LineEnding;
 
 /// Text buffer based on Rope for efficient work with large files
 #[derive(Debug, Clone)]
@@ -22,13 +23,6 @@ pub struct TextBuffer {
     /// Monotonic counter incremented on every mutation (insert/delete/backspace/undo/redo).
     /// Used by outline panel to detect content changes without hashing.
     edit_version: u64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(clippy::upper_case_acronyms)]
-pub enum LineEnding {
-    LF,   // Unix \n
-    CRLF, // Windows \r\n
 }
 
 impl TextBuffer {
@@ -390,6 +384,11 @@ impl TextBuffer {
         self.rope.insert(len, text);
         self.edit_version += 1;
         // Don't mark as modified - this is for internal use (log viewer)
+    }
+
+    /// Line ending type detected on file load.
+    pub fn line_ending(&self) -> LineEnding {
+        self.line_ending
     }
 
     /// Monotonic edit version counter. Incremented on every mutation.

@@ -302,6 +302,10 @@ impl StatusBar {
             ));
             spans.push(Span::styled(format!("{}", info.tab_size), highlight_style));
 
+            // Line ending
+            spans.push(Span::styled(t.ui_hint_separator(), base_style));
+            spans.push(Span::styled(info.line_ending.as_str(), highlight_style));
+
             // Encoding
             spans.push(Span::styled(t.ui_hint_separator(), base_style));
             spans.push(Span::styled(info.encoding.as_str(), highlight_style));
