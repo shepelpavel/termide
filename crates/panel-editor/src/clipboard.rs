@@ -87,9 +87,11 @@ pub fn paste_from_clipboard(
     // Read from system clipboard via arboard
     if let Some(text) = termide_clipboard::paste() {
         if !text.is_empty() {
+            // Normalize line endings (some terminals/clipboards use \r\n or \r)
+            let text = text.replace("\r\n", "\n").replace('\r', "\n");
+
             let start_line = cursor.line;
             let new_cursor = buffer.insert(cursor, &text)?;
-
             let is_multiline = text.contains('\n');
             return Ok(Some((new_cursor, start_line, is_multiline)));
         }

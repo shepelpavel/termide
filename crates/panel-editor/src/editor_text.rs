@@ -97,6 +97,10 @@ impl Editor {
             return Ok(());
         }
 
+        // Normalize line endings: some terminals (VTE/gnome-terminal) send \r
+        // for newlines in bracketed paste instead of \n
+        let text = text.replace("\r\n", "\n").replace('\r', "\n");
+
         // Close search mode when editing begins
         self.close_search();
 
@@ -105,7 +109,7 @@ impl Editor {
 
         // Insert text at cursor position
         let start_line = self.cursor.line;
-        let new_cursor = self.buffer.insert(&self.cursor, text)?;
+        let new_cursor = self.buffer.insert(&self.cursor, &text)?;
         let is_multiline = text.contains('\n');
 
         self.cursor = new_cursor;
