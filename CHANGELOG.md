@@ -5,6 +5,20 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.3] - 2026-02-09
+
+### Added
+- **Status Bar**: Display LF/CRLF line ending indicator before encoding (UTF-8) in editor status bar
+
+### Changed
+- **Codebase**: Deduplicate `LineEnding` enum — single definition in buffer crate root, reused internally
+
+### Fixed
+- **Buffer**: Normalize CRLF line endings to LF on file load, preserving original type for save
+- **Editor**: Normalize line endings on paste for VTE-based terminals
+- **Terminal**: Add Alt+Enter as fallback for newline input on VTE terminals
+- **Codebase**: Reduce duplication and improve safety across VFS and rendering modules
+
 ## [0.12.2] - 2026-02-08
 
 ### Added
