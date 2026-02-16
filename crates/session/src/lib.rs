@@ -311,7 +311,7 @@ fn walk_and_cleanup(
                     // Check file modification time
                     if let Ok(metadata) = session_file.metadata() {
                         if let Ok(modified) = metadata.modified() {
-                            if modified < cutoff_time {
+                            if modified < cutoff_time && !has_non_empty_unsaved_buffers(&path) {
                                 // Remove entire session directory
                                 if let Err(e) = fs::remove_dir_all(&path) {
                                     eprintln!(
@@ -361,15 +361,42 @@ fn is_same_session(session_dir: &Path, project_path: &Path) -> bool {
     reconstructed_canonical == project_canonical
 }
 
-/// Clean up orphaned unsaved buffer files (not referenced in session.toml)
+/// Check if an unsaved buffer file is empty or contains only whitespace
+fn is_buffer_file_empty(path: &Path) -> bool {
+    match fs::read_to_string(path) {
+        Ok(content) => content.trim().is_empty(),
+        Err(_) => false, // Can't read — assume non-empty, don't delete
+    }
+}
+
+/// Check if a session directory contains any non-empty unsaved buffer files
+fn has_non_empty_unsaved_buffers(session_dir: &Path) -> bool {
+    let entries = match fs::read_dir(session_dir) {
+        Ok(e) => e,
+        Err(_) => return false,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
+            if filename.starts_with("unsaved-")
+                && filename.ends_with(".txt")
+                && !is_buffer_file_empty(&path)
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Restore orphaned unsaved buffer files (not referenced in session.toml)
 ///
-/// This removes temporary files that are no longer needed because:
-/// - The editor was closed
-/// - The buffer was saved to a real file
-/// - The session was corrupted or manually edited
-pub fn cleanup_orphaned_buffers(session_dir: &Path) -> Result<()> {
+/// Empty orphaned files are deleted. Non-empty ones are returned
+/// for the caller to add as editor panels (they contain user data
+/// that may have been lost due to a crash).
+pub fn restore_orphaned_buffers(session_dir: &Path) -> Result<Vec<String>> {
     if !session_dir.exists() {
-        return Ok(()); // Nothing to clean
+        return Ok(Vec::new());
     }
 
     // Load session to get list of active buffer files
@@ -403,8 +430,10 @@ pub fn cleanup_orphaned_buffers(session_dir: &Path) -> Result<()> {
     // Find all unsaved-*.txt files in session directory
     let entries = match fs::read_dir(session_dir) {
         Ok(e) => e,
-        Err(_) => return Ok(()), // Can't read directory, skip cleanup
+        Err(_) => return Ok(Vec::new()),
     };
+
+    let mut restored = Vec::new();
 
     for entry in entries.flatten() {
         let path = entry.path();
@@ -412,21 +441,19 @@ pub fn cleanup_orphaned_buffers(session_dir: &Path) -> Result<()> {
         if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
             // Check if this is an unsaved buffer file
             if filename.starts_with("unsaved-") && filename.ends_with(".txt") {
-                // If not in active list, delete it
+                // If not in active list, handle it
                 if !active_buffers.contains(filename) {
-                    if let Err(e) = fs::remove_file(&path) {
-                        eprintln!(
-                            "Warning: Failed to remove orphaned buffer file {}: {}",
-                            path.display(),
-                            e
-                        );
+                    if is_buffer_file_empty(&path) {
+                        let _ = fs::remove_file(&path); // empty → delete
+                    } else {
+                        restored.push(filename.to_string()); // non-empty → restore
                     }
                 }
             }
         }
     }
 
-    Ok(())
+    Ok(restored)
 }
 
 /// Delete a temporary unsaved buffer file from the session directory

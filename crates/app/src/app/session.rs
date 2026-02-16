@@ -4,6 +4,7 @@
 
 use anyhow::Result;
 use termide_layout::LayoutManager;
+use termide_panel_editor::Editor;
 
 use crate::LayoutManagerSession;
 use crate::PanelExt;
@@ -68,9 +69,22 @@ impl App {
             }
         }
 
-        // Clean up orphaned buffer files (not referenced in session anymore)
-        if let Err(e) = termide_session::cleanup_orphaned_buffers(&session_dir) {
-            log::warn!("Failed to cleanup orphaned buffers: {}", e);
+        // Restore orphaned buffer files (not referenced in session anymore)
+        match termide_session::restore_orphaned_buffers(&session_dir) {
+            Ok(orphaned_files) => {
+                for buffer_file in orphaned_files {
+                    if let Ok(content) =
+                        termide_session::load_unsaved_buffer(&session_dir, &buffer_file)
+                    {
+                        let mut editor = Editor::with_config(self.state.editor_config());
+                        if editor.insert_text(&content).is_ok() {
+                            editor.set_unsaved_buffer_file(Some(buffer_file));
+                            self.add_panel(Box::new(editor));
+                        }
+                    }
+                }
+            }
+            Err(e) => log::warn!("Failed to restore orphaned buffers: {}", e),
         }
 
         Ok(())
