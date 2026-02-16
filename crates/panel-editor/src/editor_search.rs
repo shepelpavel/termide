@@ -158,10 +158,9 @@ impl Editor {
             search::replace_at_position(&mut self.buffer, &match_cursor, query_len, &replace_with)?;
         self.cursor = result.new_cursor;
 
-        // Invalidate highlighting cache for changed line
-        self.render_cache
-            .highlight
-            .invalidate_line(result.start_line);
+        // Invalidate caches (highlight + wrap) for changed lines
+        let is_multiline = replace_with.contains('\n');
+        self.invalidate_cache_after_edit(result.start_line, is_multiline);
 
         // Update search_state
         if let Some(ref mut search_state) = self.search.state {
@@ -195,9 +194,6 @@ impl Editor {
             }
         }
 
-        // Schedule git diff update
-        self.schedule_git_diff_update();
-
         Ok(())
     }
 
@@ -222,15 +218,10 @@ impl Editor {
             replace_with,
         )?;
 
-        // Invalidate highlighting cache for all affected lines
-        for match_cursor in &search_state.matches {
-            self.render_cache
-                .highlight
-                .invalidate_line(match_cursor.line);
+        // Invalidate caches (highlight + wrap) for all affected lines
+        if count > 0 {
+            self.invalidate_cache_after_edit(0, true);
         }
-
-        // Schedule git diff update
-        self.schedule_git_diff_update();
 
         Ok(count)
     }

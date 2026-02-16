@@ -195,6 +195,7 @@ impl Editor {
         };
         use termide_core::VimPanelDirection;
 
+        let version_before = self.buffer.edit_version();
         let mut events = Vec::new();
 
         match result {
@@ -488,6 +489,16 @@ impl Editor {
         // Ensure cursor is valid after operations
         self.clamp_cursor();
 
+        // Catch-all: invalidate wrap cache if buffer was modified by any VIM operation
+        if self.buffer.edit_version() != version_before {
+            self.render_cache.invalidate_wrap_cache();
+            self.render_cache
+                .highlight
+                .invalidate_range(0, self.buffer.line_count());
+            self.schedule_git_diff_update();
+            self.mark_lsp_changed();
+        }
+
         if events.is_empty() {
             None
         } else {
@@ -731,6 +742,7 @@ impl Editor {
     pub fn insert_text(&mut self, text: &str) -> Result<()> {
         let cursor_at_start = Cursor::new();
         self.cursor = self.buffer.insert(&cursor_at_start, text)?;
+        self.invalidate_cache_after_edit(0, text.contains('\n'));
         Ok(())
     }
 
@@ -1844,6 +1856,8 @@ impl Editor {
             self.render_cache
                 .highlight
                 .invalidate_range(0, self.buffer.line_count());
+            // Invalidate wrap cache - undo/redo can affect any lines
+            self.render_cache.invalidate_wrap_cache();
             // Schedule git diff update
             self.schedule_git_diff_update();
             // Mark for LSP notification
