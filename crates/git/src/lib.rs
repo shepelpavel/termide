@@ -698,7 +698,13 @@ pub fn get_ahead_behind(repo: &Path) -> (usize, usize) {
             None
         }
     })
-    .unwrap_or((0, 0))
+    .unwrap_or_else(|| {
+        // No upstream tracking branch — count all local commits as ahead
+        let ahead = git_command_stdout(repo, &["rev-list", "--count", "HEAD"])
+            .and_then(|s| s.trim().parse().ok())
+            .unwrap_or(0);
+        (ahead, 0)
+    })
 }
 
 #[cfg(test)]
