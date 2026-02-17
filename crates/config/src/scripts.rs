@@ -7,6 +7,10 @@ use std::path::PathBuf;
 
 use super::get_data_dir;
 
+/// Unix permission bits indicating any execute permission (owner, group, other).
+#[cfg(unix)]
+const EXECUTABLE_MASK: u32 = 0o111;
+
 /// A single script item (script file).
 #[derive(Debug, Clone)]
 pub struct ScriptItem {
@@ -134,7 +138,7 @@ impl ScriptsRegistry {
         use std::os::unix::fs::PermissionsExt;
 
         std::fs::metadata(path)
-            .map(|m| m.permissions().mode() & 0o111 != 0)
+            .map(|m| m.permissions().mode() & EXECUTABLE_MASK != 0)
             .unwrap_or(false)
     }
 

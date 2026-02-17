@@ -22,8 +22,8 @@ const DEFAULT_PORT: u16 = 21;
 
 /// Acquire FTP stream mutex lock, converting poison error to VfsError.
 fn lock_ftp(stream: &Arc<Mutex<FtpStream>>) -> VfsResult<std::sync::MutexGuard<'_, FtpStream>> {
-    stream.lock().map_err(|_| VfsError::RemoteError {
-        message: "Failed to acquire FTP stream lock".to_string(),
+    stream.lock().map_err(|e| VfsError::RemoteError {
+        message: format!("Failed to acquire FTP stream lock: {e}"),
     })
 }
 
@@ -222,9 +222,8 @@ impl VfsProvider for FtpProvider {
                 let mut ftp = lock_ftp(&stream)?;
 
                 // Change to directory
-                ftp.cwd(&remote_path).map_err(|_| VfsError::NotFound {
-                    path: PathBuf::from(&remote_path),
-                })?;
+                ftp.cwd(&remote_path)
+                    .map_err(|e| VfsError::Ftp(format!("cwd to {remote_path}: {e}")))?;
 
                 // Get directory listing
                 let listing = ftp.list(None).map_err(|e| VfsError::RemoteError {
@@ -395,11 +394,9 @@ impl VfsProvider for FtpProvider {
                 let mut ftp = lock_ftp(&stream)?;
 
                 let mut data = Vec::new();
-                let mut reader =
-                    ftp.retr_as_buffer(&remote_path)
-                        .map_err(|_| VfsError::NotFound {
-                            path: PathBuf::from(&remote_path),
-                        })?;
+                let mut reader = ftp
+                    .retr_as_buffer(&remote_path)
+                    .map_err(|e| VfsError::Ftp(format!("retr {remote_path}: {e}")))?;
 
                 reader.read_to_end(&mut data).map_err(VfsError::Io)?;
 
@@ -546,11 +543,9 @@ impl VfsProvider for FtpProvider {
                 let mut ftp = lock_ftp(&stream)?;
 
                 let mut data = Vec::new();
-                let mut reader =
-                    ftp.retr_as_buffer(&remote_path)
-                        .map_err(|_| VfsError::NotFound {
-                            path: PathBuf::from(&remote_path),
-                        })?;
+                let mut reader = ftp
+                    .retr_as_buffer(&remote_path)
+                    .map_err(|e| VfsError::Ftp(format!("retr {remote_path}: {e}")))?;
 
                 reader.read_to_end(&mut data).map_err(VfsError::Io)?;
 

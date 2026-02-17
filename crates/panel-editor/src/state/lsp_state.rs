@@ -17,6 +17,21 @@ use termide_lsp::{CompletionTriggerKind, LspManager};
 use crate::completion_popup::CompletionPopup;
 use crate::hover_popup::HoverPopup;
 
+/// Poll an optional receiver, returning the value on success.
+/// Clears the receiver on completion, `None` response, or disconnect.
+fn poll_receiver<T>(rx: &mut Option<mpsc::Receiver<Option<T>>>) -> Option<T> {
+    let result = match rx.as_ref()?.try_recv() {
+        Ok(Some(value)) => {
+            *rx = None;
+            return Some(value);
+        }
+        Ok(None) | Err(mpsc::TryRecvError::Disconnected) => None,
+        Err(mpsc::TryRecvError::Empty) => return None,
+    };
+    *rx = None;
+    result
+}
+
 /// LSP state for a single editor instance.
 pub struct LspState {
     /// Language ID for current file (e.g., "rust", "python")
@@ -311,71 +326,29 @@ impl LspState {
 
     /// Poll for completion response (non-blocking).
     pub fn poll_completion(&mut self) -> Option<CompletionResponse> {
-        if let Some(ref rx) = self.completion_rx {
-            match rx.try_recv() {
-                Ok(Some(response)) => {
-                    self.completion_rx = None;
-                    self.server_loading = false; // Server is ready since it responded
-                    return Some(response);
-                }
-                Ok(None) => {
-                    self.completion_rx = None;
-                }
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    self.completion_rx = None;
-                }
-                Err(mpsc::TryRecvError::Empty) => {
-                    // Still waiting
-                }
-            }
+        let result = poll_receiver(&mut self.completion_rx);
+        if result.is_some() {
+            self.server_loading = false;
         }
-        None
+        result
     }
 
     /// Poll for hover response (non-blocking).
     pub fn poll_hover(&mut self) -> Option<Hover> {
-        if let Some(ref rx) = self.hover_rx {
-            match rx.try_recv() {
-                Ok(Some(response)) => {
-                    self.hover_rx = None;
-                    self.server_loading = false; // Server is ready since it responded
-                    return Some(response);
-                }
-                Ok(None) => {
-                    self.hover_rx = None;
-                }
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    self.hover_rx = None;
-                }
-                Err(mpsc::TryRecvError::Empty) => {
-                    // Still waiting
-                }
-            }
+        let result = poll_receiver(&mut self.hover_rx);
+        if result.is_some() {
+            self.server_loading = false;
         }
-        None
+        result
     }
 
     /// Poll for definition response (non-blocking).
     pub fn poll_definition(&mut self) -> Option<GotoDefinitionResponse> {
-        if let Some(ref rx) = self.definition_rx {
-            match rx.try_recv() {
-                Ok(Some(response)) => {
-                    self.definition_rx = None;
-                    self.server_loading = false; // Server is ready since it responded
-                    return Some(response);
-                }
-                Ok(None) => {
-                    self.definition_rx = None;
-                }
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    self.definition_rx = None;
-                }
-                Err(mpsc::TryRecvError::Empty) => {
-                    // Still waiting
-                }
-            }
+        let result = poll_receiver(&mut self.definition_rx);
+        if result.is_some() {
+            self.server_loading = false;
         }
-        None
+        result
     }
 
     /// Update diagnostics for this file.

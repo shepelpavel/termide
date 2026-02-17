@@ -49,7 +49,7 @@ pub fn get_device_for_path(path: &str) -> Option<String> {
                 if canonical_path.starts_with(&canonical_mount) {
                     let mount_len = canonical_mount.as_os_str().len();
                     // Keep track of the longest matching mount point
-                    if best_match.is_none() || mount_len > best_match.as_ref().unwrap().1 {
+                    if best_match.as_ref().is_none_or(|b| mount_len > b.1) {
                         best_match = Some((device.to_string(), mount_len));
                     }
                 }

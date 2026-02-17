@@ -7,6 +7,9 @@ use std::sync::mpsc;
 use std::time::Instant;
 
 use super::{ConflictAction, ConflictContext, OperationWorker, CHUNK_SIZE};
+
+/// Number of files between progress updates during scanning phase.
+const PROGRESS_THROTTLE_FILES: usize = 50;
 use crate::types::{
     OperationControl, OperationError, OperationPhase, OperationProgress, OperationResult,
 };
@@ -61,8 +64,7 @@ impl LocalCopyWorker {
                     *accumulated_bytes += metadata.len();
                 }
 
-                // Throttle: send progress every 50 files
-                if (*accumulated_files).is_multiple_of(50) {
+                if (*accumulated_files).is_multiple_of(PROGRESS_THROTTLE_FILES) {
                     let _ = progress_tx.send(OperationProgress::scanning_details(
                         *accumulated_files,
                         *accumulated_bytes,

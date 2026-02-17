@@ -274,10 +274,13 @@ impl OperationManager {
             }
 
             OperationType::Delete => {
-                let all_local = request.sources.iter().all(|p| p.is_local());
-                let all_remote = request.sources.iter().all(|p| p.is_remote());
+                let first_is_local = request.sources.first().is_none_or(|p| p.is_local());
+                let all_same = request
+                    .sources
+                    .iter()
+                    .all(|p| p.is_local() == first_is_local);
 
-                if all_local {
+                if first_is_local && all_same {
                     let paths: Vec<PathBuf> = request
                         .sources
                         .iter()
@@ -288,7 +291,7 @@ impl OperationManager {
                         .collect();
 
                     Ok(Box::new(LocalDeleteWorker::new(paths)))
-                } else if all_remote {
+                } else if !first_is_local && all_same {
                     let paths: Vec<termide_vfs::VfsPath> = request
                         .sources
                         .iter()

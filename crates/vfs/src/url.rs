@@ -60,7 +60,7 @@ pub fn parse_vfs_url(url: &str) -> VfsResult<VfsPath> {
     if protocol == VfsProtocol::Local {
         let path = parsed
             .to_file_path()
-            .map_err(|_| VfsError::InvalidUrl("Invalid file URL".to_string()))?;
+            .map_err(|()| VfsError::InvalidUrl("Invalid file URL".to_string()))?;
         return Ok(VfsPath::local(path));
     }
 

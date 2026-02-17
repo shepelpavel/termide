@@ -452,8 +452,8 @@ impl<T> VfsOperation<T> {
 
     /// Block until the result is available.
     pub fn recv(self) -> VfsResult<T> {
-        self.receiver.recv().map_err(|_| VfsError::RemoteError {
-            message: "Operation channel closed".to_string(),
+        self.receiver.recv().map_err(|e| VfsError::RemoteError {
+            message: format!("Operation channel closed: {e}"),
         })?
     }
 

@@ -28,8 +28,8 @@ const CHUNK_SIZE: usize = 64 * 1024;
 
 /// Acquire SFTP mutex lock, converting poison error to VfsError.
 fn lock_sftp(sftp: &Arc<Mutex<Sftp>>) -> VfsResult<std::sync::MutexGuard<'_, Sftp>> {
-    sftp.lock().map_err(|_| VfsError::RemoteError {
-        message: "Failed to acquire SFTP lock".to_string(),
+    sftp.lock().map_err(|e| VfsError::RemoteError {
+        message: format!("Failed to acquire SFTP lock: {e}"),
     })
 }
 
