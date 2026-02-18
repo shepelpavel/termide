@@ -10,11 +10,17 @@ use std::sync::{Mutex, OnceLock};
 use arboard::{GetExtLinux, LinuxClipboardKind, SetExtLinux};
 
 /// Global clipboard instance that persists for the application lifetime.
-static CLIPBOARD: OnceLock<Mutex<Clipboard>> = OnceLock::new();
+/// `None` when clipboard is unavailable (e.g. headless servers).
+static CLIPBOARD: OnceLock<Option<Mutex<Clipboard>>> = OnceLock::new();
 
 /// Get or initialize the global clipboard instance.
-fn get_clipboard() -> &'static Mutex<Clipboard> {
-    CLIPBOARD.get_or_init(|| Mutex::new(Clipboard::new().expect("Failed to initialize clipboard")))
+///
+/// Returns an error on systems without clipboard support (e.g. headless servers).
+fn get_clipboard() -> Result<&'static Mutex<Clipboard>, String> {
+    CLIPBOARD
+        .get_or_init(|| Clipboard::new().ok().map(Mutex::new))
+        .as_ref()
+        .ok_or_else(|| "Clipboard unavailable (no display server?)".to_string())
 }
 
 /// Copy text to system clipboard.
@@ -30,7 +36,7 @@ pub fn copy(text: &str) -> Result<(), String> {
 
     #[cfg(target_os = "linux")]
     {
-        let mut clipboard = get_clipboard()
+        let mut clipboard = get_clipboard()?
             .lock()
             .map_err(|e| format!("Failed to lock clipboard: {}", e))?;
 
@@ -55,7 +61,7 @@ pub fn copy(text: &str) -> Result<(), String> {
 
     #[cfg(not(target_os = "linux"))]
     {
-        let mut clipboard = get_clipboard()
+        let mut clipboard = get_clipboard()?
             .lock()
             .map_err(|e| format!("Failed to lock clipboard: {}", e))?;
         clipboard
@@ -71,7 +77,7 @@ pub fn copy(text: &str) -> Result<(), String> {
 /// On Linux, tries CLIPBOARD selection first, then falls back to PRIMARY.
 /// Returns None if clipboard is empty or inaccessible.
 pub fn paste() -> Option<String> {
-    let mut clipboard = get_clipboard().lock().ok()?;
+    let mut clipboard = get_clipboard().ok()?.lock().ok()?;
 
     #[cfg(target_os = "linux")]
     {

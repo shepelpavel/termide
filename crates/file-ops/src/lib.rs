@@ -91,5 +91,5 @@ pub use types::{
 };
 pub use worker::{
     ConflictContext, DownloadWorker, LocalCopyWorker, LocalDeleteWorker, OperationWorker,
-    UploadWorker,
+    SpeedTracker, UploadWorker,
 };

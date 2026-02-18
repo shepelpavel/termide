@@ -44,11 +44,24 @@ pub(super) fn poll_vfs_delete(
     }
 }
 
+/// Smoothing factor for exponential moving average (alpha = 0.3).
+const EMA_ALPHA: f64 = 0.3;
+
+/// Minimum interval (seconds) between speed recalculations.
+const SPEED_UPDATE_INTERVAL: f64 = 0.2;
+
 /// Tracks transfer speed using exponential moving average.
-pub(super) struct SpeedTracker {
+#[derive(Debug)]
+pub struct SpeedTracker {
     last_bytes: u64,
     last_time: Instant,
     current_speed: f64,
+}
+
+impl Default for SpeedTracker {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SpeedTracker {
@@ -64,12 +77,12 @@ impl SpeedTracker {
     pub fn update(&mut self, bytes_transferred: u64) -> f64 {
         let now = Instant::now();
         let elapsed = now.duration_since(self.last_time).as_secs_f64();
-        if elapsed >= 0.2 {
+        if elapsed >= SPEED_UPDATE_INTERVAL {
             let delta = bytes_transferred.saturating_sub(self.last_bytes);
             if elapsed > 0.0 {
                 let instant_speed = delta as f64 / elapsed;
                 self.current_speed = if self.current_speed > 0.0 {
-                    self.current_speed * 0.7 + instant_speed * 0.3
+                    (1.0 - EMA_ALPHA) * self.current_speed + EMA_ALPHA * instant_speed
                 } else {
                     instant_speed
                 };
@@ -78,6 +91,18 @@ impl SpeedTracker {
             self.last_time = now;
         }
         self.current_speed
+    }
+
+    /// Get current speed in bytes per second.
+    pub fn speed(&self) -> f64 {
+        self.current_speed
+    }
+
+    /// Reset speed tracker (e.g., when operation is paused).
+    pub fn reset(&mut self) {
+        self.current_speed = 0.0;
+        self.last_bytes = 0;
+        self.last_time = Instant::now();
     }
 
     /// Calculate ETA in seconds based on remaining bytes.

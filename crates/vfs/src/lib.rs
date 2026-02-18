@@ -69,6 +69,9 @@ pub use types::{
 };
 pub use url::{is_vfs_url, parse_vfs_url, UrlComponents};
 
+/// Maximum directory nesting depth for recursive operations (safety guard).
+pub const MAX_RECURSION_DEPTH: usize = 100;
+
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, RwLock};

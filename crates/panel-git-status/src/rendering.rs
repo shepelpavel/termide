@@ -34,7 +34,7 @@ impl GitStatusPanel {
         let content_area = area;
 
         // Auto-switch tree/flat view based on panel width (same threshold as outline panel)
-        self.tree_view = content_area.width >= 35;
+        self.tree_view = content_area.width >= termide_config::defaults::TREE_VIEW_MIN_WIDTH;
 
         // Clamp cursor after mode switch (item count may change)
         let max_cursor = self.total_virtual_lines().saturating_sub(1);

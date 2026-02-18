@@ -2,6 +2,8 @@
 
 use std::time::Instant;
 
+pub use termide_file_ops::SpeedTracker;
+
 /// Type of file operation (for display in Operations panel)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OperationType {
@@ -58,68 +60,6 @@ impl OperationProgress {
         } else {
             0
         }
-    }
-}
-
-/// Tracker for calculating transfer speed
-#[derive(Debug)]
-pub struct SpeedTracker {
-    /// Last known bytes transferred
-    last_bytes: u64,
-    /// Last update time
-    last_time: Instant,
-    /// Current speed in bytes per second
-    current_speed: f64,
-}
-
-impl Default for SpeedTracker {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl SpeedTracker {
-    /// Create new speed tracker
-    pub fn new() -> Self {
-        Self {
-            last_bytes: 0,
-            last_time: Instant::now(),
-            current_speed: 0.0,
-        }
-    }
-
-    /// Update speed calculation with new bytes transferred
-    pub fn update(&mut self, bytes_transferred: u64) {
-        let now = Instant::now();
-        let elapsed = now.duration_since(self.last_time).as_secs_f64();
-
-        // Update speed every 0.5 seconds for smoother display
-        if elapsed >= 0.5 {
-            let bytes_delta = bytes_transferred.saturating_sub(self.last_bytes);
-            let instant_speed = bytes_delta as f64 / elapsed;
-
-            // Exponential moving average for smoother values
-            if self.current_speed > 0.0 {
-                self.current_speed = 0.3 * instant_speed + 0.7 * self.current_speed;
-            } else {
-                self.current_speed = instant_speed;
-            }
-
-            self.last_bytes = bytes_transferred;
-            self.last_time = now;
-        }
-    }
-
-    /// Get current speed in bytes per second
-    pub fn speed(&self) -> f64 {
-        self.current_speed
-    }
-
-    /// Reset speed tracker (e.g., when operation is paused)
-    pub fn reset(&mut self) {
-        self.current_speed = 0.0;
-        self.last_bytes = 0;
-        self.last_time = Instant::now();
     }
 }
 

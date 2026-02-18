@@ -193,11 +193,10 @@ impl LocalCopyWorker {
         start_time: Instant,
         depth: usize,
     ) -> Result<(), OperationError> {
-        const MAX_DEPTH: usize = 100;
-        if depth > MAX_DEPTH {
+        if depth > termide_vfs::MAX_RECURSION_DEPTH {
             return Err(OperationError::Invalid(format!(
                 "Directory nesting too deep (> {})",
-                MAX_DEPTH
+                termide_vfs::MAX_RECURSION_DEPTH
             )));
         }
 

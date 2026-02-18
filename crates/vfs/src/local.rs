@@ -14,8 +14,7 @@ use crate::types::{
     VfsMetadata, VfsOperation, VfsPath,
 };
 
-/// Maximum directory nesting depth for recursive operations.
-const MAX_DEPTH: usize = 100;
+use crate::MAX_RECURSION_DEPTH;
 
 /// Map an `io::Error` to a `VfsError`, using `NotFound` / `PermissionDenied`
 /// variants when the error kind matches.
@@ -95,9 +94,9 @@ impl LocalFileSystem {
 
     /// Copy directory recursively (internal helper).
     fn copy_dir_recursive(src: &Path, dst: &Path, depth: usize) -> VfsResult<()> {
-        if depth > MAX_DEPTH {
+        if depth > MAX_RECURSION_DEPTH {
             return Err(VfsError::RemoteError {
-                message: format!("Directory nesting too deep (> {})", MAX_DEPTH),
+                message: format!("Directory nesting too deep (> {})", MAX_RECURSION_DEPTH),
             });
         }
 
@@ -139,9 +138,9 @@ impl LocalFileSystem {
 
     /// Count files and total size in a directory (internal helper).
     fn count_directory_contents(path: &Path, depth: usize) -> VfsResult<(usize, u64)> {
-        if depth > MAX_DEPTH {
+        if depth > MAX_RECURSION_DEPTH {
             return Err(VfsError::RemoteError {
-                message: format!("Directory nesting too deep (> {})", MAX_DEPTH),
+                message: format!("Directory nesting too deep (> {})", MAX_RECURSION_DEPTH),
             });
         }
 
@@ -247,9 +246,9 @@ impl LocalFileSystem {
         total_files: usize,
         depth: usize,
     ) -> VfsResult<()> {
-        if depth > MAX_DEPTH {
+        if depth > MAX_RECURSION_DEPTH {
             return Err(VfsError::RemoteError {
-                message: format!("Directory nesting too deep (> {})", MAX_DEPTH),
+                message: format!("Directory nesting too deep (> {})", MAX_RECURSION_DEPTH),
             });
         }
 

@@ -43,6 +43,8 @@ pub mod defaults {
     pub const MIN_LOG_LEVEL: &str = "info";
     pub const RESOURCE_MONITOR_INTERVAL: u64 = 1000;
     pub const BELL_ON_OPERATION_COMPLETE: bool = true;
+    /// Minimum panel width (columns) to enable tree/wide view in list panels
+    pub const TREE_VIEW_MIN_WIDTH: u16 = 35;
     // LSP defaults
     pub const LSP_ENABLED: bool = true;
     pub const LSP_AUTO_COMPLETION: bool = true;

@@ -163,43 +163,63 @@ pub fn collect_files_under(tree: &[TreeNode], dir_index: usize) -> Vec<PathBuf> 
     files
 }
 
-/// Compute tree-drawing prefixes for visible nodes.
+/// Compute tree-drawing prefixes for visible nodes in O(n) time.
 ///
-/// Adapted from `panel-outline`'s `compute_tree_prefix()`.
+/// Scans visible nodes in reverse to pre-compute which depth levels
+/// have a subsequent sibling, avoiding the O(n²) forward scan.
 pub fn compute_tree_prefixes(tree: &[TreeNode], visible: &[usize]) -> Vec<String> {
-    visible
+    let max_depth = visible
         .iter()
-        .enumerate()
-        .map(|(vi, &tree_idx)| {
-            let depth = tree[tree_idx].depth;
-            if depth == 0 {
-                return String::new();
-            }
+        .map(|&idx| tree[idx].depth)
+        .max()
+        .unwrap_or(0);
 
-            let mut prefix = String::with_capacity(depth * 3);
-            for lvl in 1..=depth {
-                // Check if there's a next sibling at this level among subsequent visible nodes
-                let has_next = visible[vi + 1..]
-                    .iter()
-                    .map(|&idx| &tree[idx])
-                    .find(|n| n.depth <= lvl)
-                    .is_some_and(|n| n.depth == lvl);
+    // has_next_at_level[lvl] is true when a later visible node exists at that depth
+    // (before being "cut off" by a shallower node).
+    let mut has_next_at_level = vec![false; max_depth + 1];
 
-                if lvl == depth {
-                    if has_next {
-                        prefix.push_str("├─ ");
-                    } else {
-                        prefix.push_str("└─ ");
-                    }
-                } else if has_next {
-                    prefix.push_str("│  ");
+    // Build prefixes in reverse, then reverse the result
+    let mut prefixes: Vec<String> = Vec::with_capacity(visible.len());
+
+    for &tree_idx in visible.iter().rev() {
+        let depth = tree[tree_idx].depth;
+
+        if depth == 0 {
+            // Clear all levels — root node resets everything
+            has_next_at_level.fill(false);
+            // Mark this level as having a node for nodes processed earlier
+            has_next_at_level[0] = true;
+            prefixes.push(String::new());
+            continue;
+        }
+
+        let mut prefix = String::with_capacity(depth * 3);
+        for (lvl, has_next) in has_next_at_level[1..=depth].iter().enumerate() {
+            let lvl = lvl + 1; // offset since we sliced from index 1
+            if lvl == depth {
+                if *has_next {
+                    prefix.push_str("├─ ");
                 } else {
-                    prefix.push_str("   ");
+                    prefix.push_str("└─ ");
                 }
+            } else if *has_next {
+                prefix.push_str("│  ");
+            } else {
+                prefix.push_str("   ");
             }
-            prefix
-        })
-        .collect()
+        }
+        prefixes.push(prefix);
+
+        // This node "occupies" its depth: deeper levels no longer have siblings
+        for val in &mut has_next_at_level[(depth + 1)..=max_depth] {
+            *val = false;
+        }
+        // Nodes processed earlier (which appear before this one) will see this as a sibling
+        has_next_at_level[depth] = true;
+    }
+
+    prefixes.reverse();
+    prefixes
 }
 
 /// Get the aggregate "worst" status for files under a directory.

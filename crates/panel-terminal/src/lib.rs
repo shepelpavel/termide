@@ -92,42 +92,12 @@ pub struct Terminal {
 }
 
 impl Terminal {
-    /// Create new terminal with specified working directory
-    pub fn new_with_cwd(rows: u16, cols: u16, cwd: Option<std::path::PathBuf>) -> Result<Self> {
-        let pty_system = native_pty_system();
-
-        let size = PtySize {
-            rows,
-            cols,
-            pixel_width: 0,
-            pixel_height: 0,
-        };
-
-        let pair = pty_system.openpty(size)?;
-
-        // Detect shell
-        let shell = shell_utils::detect_shell();
-        let shell_args = shell_utils::get_shell_args(&shell);
-
-        let mut cmd = CommandBuilder::new(&shell);
-
-        // Add arguments for interactive mode
-        for arg in shell_args {
-            cmd.arg(arg);
-        }
-
-        // Set working directory: passed or current
-        let working_dir =
-            cwd.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| "/".into()));
-        cmd.cwd(&working_dir);
-
-        // Set TERM based on detected terminal capabilities
-        // Linux console (TTY) needs "linux" or "linux-16color", otherwise use xterm-256color
+    /// Set common environment variables for a terminal command.
+    fn set_env(cmd: &mut CommandBuilder, working_dir: &std::path::Path) {
         let term_value = get_terminal_caps()
             .map(|caps| caps.term_for_child())
             .unwrap_or("xterm-256color");
         cmd.env("TERM", term_value);
-        cmd.env("SHELL", &shell);
         cmd.env(
             "HOME",
             std::env::var("HOME").unwrap_or_else(|_| "/".to_string()),
@@ -144,185 +114,23 @@ impl Terminal {
             cmd.env("LC_ALL", lc_all);
         }
         cmd.env("PWD", working_dir.display().to_string());
-        // PATH is critical for NixOS - without it bash-interactive won't be found
         cmd.env(
             "PATH",
             std::env::var("PATH")
                 .unwrap_or_else(|_| "/run/current-system/sw/bin:/usr/bin:/bin".to_string()),
         );
-
-        let child = pair.slave.spawn_command(cmd)?;
-        let shell_pid = child.process_id();
-
-        let screen = Arc::new(RwLock::new(TerminalScreen::new(
-            rows as usize,
-            cols as usize,
-        )));
-
-        // Create reader and writer BEFORE placing PTY in Arc<Mutex>
-        let mut reader = pair.master.try_clone_reader()?;
-        let writer = pair.master.take_writer()?;
-
-        let pty = Arc::new(Mutex::new(pair.master));
-        let is_alive = Arc::new(Mutex::new(true));
-        let has_new_data = Arc::new(AtomicBool::new(false));
-
-        // Start thread for reading from PTY
-        let screen_clone = Arc::clone(&screen);
-        let is_alive_clone = Arc::clone(&is_alive);
-        let has_new_data_clone = Arc::clone(&has_new_data);
-        thread::spawn(move || {
-            let mut parser = Parser::new();
-            // Increased buffer from 4KB to 16KB for better throughput with intensive output
-            let mut buf = [0u8; 16384];
-            // Reuse performer across reads to maintain state
-            let mut performer = terminal::VtPerformer {
-                screen: Arc::clone(&screen_clone),
-                pending_backslash: false,
-                pending_ops: Vec::with_capacity(8192),
-            };
-
-            loop {
-                match reader.read(&mut buf) {
-                    Ok(n) if n > 0 => {
-                        for byte in &buf[..n] {
-                            parser.advance(&mut performer, *byte);
-                        }
-                        // Flush all batched operations with a single lock
-                        // This reduces mutex contention significantly
-                        performer.flush();
-                        // Signal main thread that new data is available for rendering
-                        has_new_data_clone.store(true, Ordering::Release);
-                    }
-                    Ok(_) => {
-                        // EOF - shell terminated
-                        break;
-                    }
-                    Err(_) => {
-                        // Read error - exit
-                        break;
-                    }
-                }
-            }
-
-            // Set process termination flag
-            if let Ok(mut alive) = is_alive_clone.lock() {
-                *alive = false;
-            }
-        });
-
-        // Get information for terminal title
-        let username = std::env::var("USER").unwrap_or_else(|_| "user".to_string());
-        let hostname = std::env::var("HOSTNAME")
-            .or_else(|_| std::env::var("HOST"))
-            .unwrap_or_else(|_| "localhost".to_string());
-        let current_dir = std::env::current_dir()
-            .ok()
-            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
-            .unwrap_or_else(|| "~".to_string());
-
-        let title_prefix = format!("{}@{}//{}", username, hostname, current_dir);
-
-        Ok(Self {
-            pty,
-            writer,
-            child,
-            shell_pid,
-            screen,
-            size,
-            is_alive,
-            title_prefix,
-            initial_cwd: working_dir,
-            cached_theme: Theme::default(),
-            keybindings: TerminalKeybindings::default(),
-            has_new_data,
-            cached_lines: None,
-            cached_cursor: (0, 0),
-            cached_cursor_shown: false,
-            cached_focus: false,
-            cached_use_alt_screen: false,
-            hovered_link: None,
-            ctrl_pressed: false,
-            selection_drag_active: false,
-            last_mouse_position: None,
-            panel_bounds: None,
-        })
     }
 
-    /// Create new terminal that runs a specific command (e.g., ssh user@host)
-    pub fn new_with_command(rows: u16, cols: u16, command: &str) -> Result<Self> {
-        let pty_system = native_pty_system();
-
-        let size = PtySize {
-            rows,
-            cols,
-            pixel_width: 0,
-            pixel_height: 0,
-        };
-
-        let pair = pty_system.openpty(size)?;
-
-        // Parse command and arguments
-        let parts: Vec<&str> = command.split_whitespace().collect();
-        if parts.is_empty() {
-            anyhow::bail!("Empty command");
-        }
-
-        let mut cmd = CommandBuilder::new(parts[0]);
-        for arg in &parts[1..] {
-            cmd.arg(*arg);
-        }
-
-        // Set working directory to current
-        let working_dir = std::env::current_dir().unwrap_or_else(|_| "/".into());
-        cmd.cwd(&working_dir);
-
-        // Set TERM based on detected terminal capabilities
-        let term_value = get_terminal_caps()
-            .map(|caps| caps.term_for_child())
-            .unwrap_or("xterm-256color");
-        cmd.env("TERM", term_value);
-        cmd.env(
-            "HOME",
-            std::env::var("HOME").unwrap_or_else(|_| "/".to_string()),
-        );
-        cmd.env(
-            "USER",
-            std::env::var("USER").unwrap_or_else(|_| "user".to_string()),
-        );
-        cmd.env(
-            "LANG",
-            std::env::var("LANG").unwrap_or_else(|_| "en_US.UTF-8".to_string()),
-        );
-        if let Ok(lc_all) = std::env::var("LC_ALL") {
-            cmd.env("LC_ALL", lc_all);
-        }
-        cmd.env("PWD", working_dir.display().to_string());
-        cmd.env(
-            "PATH",
-            std::env::var("PATH")
-                .unwrap_or_else(|_| "/run/current-system/sw/bin:/usr/bin:/bin".to_string()),
-        );
-
-        let child = pair.slave.spawn_command(cmd)?;
-        let shell_pid = child.process_id();
-
-        let screen = Arc::new(RwLock::new(TerminalScreen::new(
-            rows as usize,
-            cols as usize,
-        )));
-
-        let mut reader = pair.master.try_clone_reader()?;
-        let writer = pair.master.take_writer()?;
-
-        let pty = Arc::new(Mutex::new(pair.master));
-        let is_alive = Arc::new(Mutex::new(true));
-        let has_new_data = Arc::new(AtomicBool::new(false));
-
-        // Start thread for reading from PTY
-        let screen_clone = Arc::clone(&screen);
-        let is_alive_clone = Arc::clone(&is_alive);
-        let has_new_data_clone = Arc::clone(&has_new_data);
+    /// Spawn a PTY reader thread that feeds output into the terminal screen.
+    fn spawn_reader(
+        mut reader: Box<dyn std::io::Read + Send>,
+        screen: &Arc<RwLock<TerminalScreen>>,
+        is_alive: &Arc<Mutex<bool>>,
+        has_new_data: &Arc<AtomicBool>,
+    ) {
+        let screen_clone = Arc::clone(screen);
+        let is_alive_clone = Arc::clone(is_alive);
+        let has_new_data_clone = Arc::clone(has_new_data);
         thread::spawn(move || {
             let mut parser = Parser::new();
             let mut buf = [0u8; 16384];
@@ -350,11 +158,21 @@ impl Terminal {
                 *alive = false;
             }
         });
+    }
 
-        // Title prefix based on command
-        let title_prefix = command.to_string();
-
-        Ok(Self {
+    /// Finalize terminal construction from spawned PTY components.
+    #[allow(clippy::too_many_arguments)]
+    fn build(
+        pty: Arc<Mutex<Box<dyn MasterPty + Send>>>,
+        writer: Box<dyn std::io::Write + Send>,
+        child: Box<dyn portable_pty::Child + Send + Sync>,
+        shell_pid: Option<u32>,
+        screen: Arc<RwLock<TerminalScreen>>,
+        size: PtySize,
+        is_alive: Arc<Mutex<bool>>,
+        has_new_data: Arc<AtomicBool>,
+    ) -> Self {
+        Self {
             pty,
             writer,
             child,
@@ -362,8 +180,8 @@ impl Terminal {
             screen,
             size,
             is_alive,
-            title_prefix,
-            initial_cwd: working_dir,
+            title_prefix: String::new(),
+            initial_cwd: std::path::PathBuf::new(),
             cached_theme: Theme::default(),
             keybindings: TerminalKeybindings::default(),
             has_new_data,
@@ -377,7 +195,126 @@ impl Terminal {
             selection_drag_active: false,
             last_mouse_position: None,
             panel_bounds: None,
-        })
+        }
+    }
+
+    /// Create new terminal with specified working directory
+    pub fn new_with_cwd(rows: u16, cols: u16, cwd: Option<std::path::PathBuf>) -> Result<Self> {
+        let pty_system = native_pty_system();
+        let size = PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        };
+        let pair = pty_system.openpty(size)?;
+
+        // Detect shell
+        let shell = shell_utils::detect_shell();
+        let shell_args = shell_utils::get_shell_args(&shell);
+
+        let mut cmd = CommandBuilder::new(&shell);
+        for arg in shell_args {
+            cmd.arg(arg);
+        }
+
+        let working_dir =
+            cwd.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| "/".into()));
+        cmd.cwd(&working_dir);
+        Self::set_env(&mut cmd, &working_dir);
+        cmd.env("SHELL", &shell);
+
+        let child = pair.slave.spawn_command(cmd)?;
+        let shell_pid = child.process_id();
+        let screen = Arc::new(RwLock::new(TerminalScreen::new(
+            rows as usize,
+            cols as usize,
+        )));
+        let reader = pair.master.try_clone_reader()?;
+        let writer = pair.master.take_writer()?;
+        let pty = Arc::new(Mutex::new(pair.master));
+        let is_alive = Arc::new(Mutex::new(true));
+        let has_new_data = Arc::new(AtomicBool::new(false));
+
+        Self::spawn_reader(reader, &screen, &is_alive, &has_new_data);
+
+        let username = std::env::var("USER").unwrap_or_else(|_| "user".to_string());
+        let hostname = std::env::var("HOSTNAME")
+            .or_else(|_| std::env::var("HOST"))
+            .unwrap_or_else(|_| "localhost".to_string());
+        let current_dir = std::env::current_dir()
+            .ok()
+            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
+            .unwrap_or_else(|| "~".to_string());
+        let title_prefix = format!("{}@{}//{}", username, hostname, current_dir);
+
+        let mut term = Self::build(
+            pty,
+            writer,
+            child,
+            shell_pid,
+            screen,
+            size,
+            is_alive,
+            has_new_data,
+        );
+        term.title_prefix = title_prefix;
+        term.initial_cwd = working_dir;
+        Ok(term)
+    }
+
+    /// Create new terminal that runs a specific command (e.g., ssh user@host)
+    pub fn new_with_command(rows: u16, cols: u16, command: &str) -> Result<Self> {
+        let pty_system = native_pty_system();
+        let size = PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        };
+        let pair = pty_system.openpty(size)?;
+
+        let parts: Vec<&str> = command.split_whitespace().collect();
+        if parts.is_empty() {
+            anyhow::bail!("Empty command");
+        }
+
+        let mut cmd = CommandBuilder::new(parts[0]);
+        for arg in &parts[1..] {
+            cmd.arg(*arg);
+        }
+
+        let working_dir = std::env::current_dir().unwrap_or_else(|_| "/".into());
+        cmd.cwd(&working_dir);
+        Self::set_env(&mut cmd, &working_dir);
+
+        let child = pair.slave.spawn_command(cmd)?;
+        let shell_pid = child.process_id();
+        let screen = Arc::new(RwLock::new(TerminalScreen::new(
+            rows as usize,
+            cols as usize,
+        )));
+        let reader = pair.master.try_clone_reader()?;
+        let writer = pair.master.take_writer()?;
+        let pty = Arc::new(Mutex::new(pair.master));
+        let is_alive = Arc::new(Mutex::new(true));
+        let has_new_data = Arc::new(AtomicBool::new(false));
+
+        Self::spawn_reader(reader, &screen, &is_alive, &has_new_data);
+
+        let mut term = Self::build(
+            pty,
+            writer,
+            child,
+            shell_pid,
+            screen,
+            size,
+            is_alive,
+            has_new_data,
+        );
+        term.title_prefix = command.to_string();
+        term.initial_cwd = working_dir;
+        Ok(term)
     }
 
     /// Resize terminal

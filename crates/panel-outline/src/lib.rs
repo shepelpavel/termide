@@ -335,7 +335,7 @@ impl Panel for OutlinePanel {
                 }
             }
         } else {
-            let wide_mode = area.width >= 35;
+            let wide_mode = area.width >= termide_config::defaults::TREE_VIEW_MIN_WIDTH;
 
             // Render symbol entries
             for display_idx in 0..content_height {

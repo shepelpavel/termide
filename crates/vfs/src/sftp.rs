@@ -1377,11 +1377,12 @@ impl VfsProvider for SftpProvider {
 
         thread::spawn(move || {
             fn delete_recursive_inner(sftp: &Sftp, path: &Path, depth: usize) -> VfsResult<()> {
-                const MAX_DEPTH: usize = 100;
-
-                if depth > MAX_DEPTH {
+                if depth > crate::MAX_RECURSION_DEPTH {
                     return Err(VfsError::RemoteError {
-                        message: format!("Directory nesting too deep (> {})", MAX_DEPTH),
+                        message: format!(
+                            "Directory nesting too deep (> {})",
+                            crate::MAX_RECURSION_DEPTH
+                        ),
                     });
                 }
 
