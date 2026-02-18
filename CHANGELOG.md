@@ -5,6 +5,22 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.5] - 2026-02-18
+
+### Added
+- **Git Status**: Auto-switch between tree and flat view based on panel width (>= 35 columns)
+
+### Changed
+- **Codebase**: Extract `TREE_VIEW_MIN_WIDTH` and `MAX_RECURSION_DEPTH` shared constants
+- **Codebase**: Consolidate `SpeedTracker` into `file-ops` crate, re-export from `state`
+- **Terminal**: Deduplicate constructor code via `set_env`/`spawn_reader`/`build` helpers
+- **Git Status**: Optimize tree prefix computation from O(n²) to O(n) reverse scan
+- **Clipboard**: Graceful fallback on headless systems instead of panic
+
+### Fixed
+- **Editor**: Correct cursor positioning with wide characters at wrap boundary and in no-wrap mode
+- **Session**: Prevent duplicate unsaved buffer files on auto-save
+
 ## [0.12.4] - 2026-02-17
 
 ### Added
