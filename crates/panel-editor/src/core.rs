@@ -753,6 +753,18 @@ impl Editor {
         self.file_state.unsaved_buffer_file = filename;
     }
 
+    /// Assign a filename to this unsaved buffer if it doesn't have one yet.
+    /// Called before session save so that to_session() has a stable name.
+    pub fn ensure_unsaved_buffer_file(&mut self) {
+        if self.file_path().is_none()
+            && self.buffer_is_modified()
+            && self.file_state.unsaved_buffer_file.is_none()
+        {
+            self.file_state.unsaved_buffer_file =
+                Some(termide_session::generate_unsaved_filename());
+        }
+    }
+
     /// Update git diff cache for this file (async - non-blocking)
     ///
     /// Spawns a background thread to load original content from HEAD.
@@ -1872,15 +1884,8 @@ impl Panel for Editor {
             })
         } else if self.buffer_is_modified() {
             // Unnamed buffer with unsaved content - save to session dir
-            let filename = self
-                .unsaved_buffer_file()
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| {
-                    format!(
-                        "unsaved-{}.txt",
-                        chrono::Local::now().format("%Y%m%d-%H%M%S-%3f")
-                    )
-                });
+            // ensure_unsaved_buffer_file() must be called before to_session()
+            let filename = self.unsaved_buffer_file()?.to_string();
 
             let content = self.buffer.text();
             if content.trim().is_empty() {

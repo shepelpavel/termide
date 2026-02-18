@@ -17,11 +17,24 @@ impl App {
         // Get session directory for this project
         let session_dir = termide_session::Session::get_session_dir(&self.project_root)?;
 
+        // Ensure all modified unnamed buffers have stable filenames
+        for group in &mut self.layout_manager.panel_groups {
+            for panel in group.panels_mut() {
+                if let Some(editor) = panel.as_editor_mut() {
+                    editor.ensure_unsaved_buffer_file();
+                }
+            }
+        }
+
         // Serialize layout to session (may save temporary buffers)
         let session = self.layout_manager.to_session(&session_dir);
 
         // Save session to file
         session.save(&self.project_root)?;
+
+        // Remove stale unsaved buffer files not referenced by current session
+        termide_session::cleanup_stale_buffers(&session_dir, &session);
+
         log::info!("Session saved");
         Ok(())
     }

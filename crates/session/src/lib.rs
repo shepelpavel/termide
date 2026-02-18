@@ -251,6 +251,33 @@ pub fn cleanup_unsaved_buffer(session_dir: &Path, filename: &str) -> Result<()> 
     Ok(())
 }
 
+/// Remove unsaved-*.txt files not referenced in the given session.
+pub fn cleanup_stale_buffers(session_dir: &Path, session: &Session) {
+    let active: HashSet<&str> = session
+        .panel_groups
+        .iter()
+        .flat_map(|g| &g.panels)
+        .filter_map(|p| match p {
+            SessionPanel::Editor {
+                unsaved_buffer_file,
+                ..
+            } => unsaved_buffer_file.as_deref(),
+            _ => None,
+        })
+        .collect();
+
+    let Ok(entries) = fs::read_dir(session_dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        if let Some(name) = entry.file_name().to_str() {
+            if name.starts_with("unsaved-") && name.ends_with(".txt") && !active.contains(name) {
+                let _ = fs::remove_file(entry.path());
+            }
+        }
+    }
+}
+
 /// Clean up old sessions (excluding the current project's session)
 ///
 /// Removes sessions older than `retention_days` from the sessions directory
