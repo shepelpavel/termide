@@ -6,11 +6,13 @@
 
 mod actions;
 mod rendering;
+pub mod tree;
 mod types;
 
 pub use types::{Button, Section, Selection};
 
 use std::any::Any;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
@@ -107,6 +109,24 @@ pub struct GitStatusPanel {
     vim_mode: bool,
     /// Whether panel missed updates while collapsed (stale-on-collapse)
     is_stale: bool,
+    /// Whether tree view mode is active (files grouped by directory)
+    tree_view: bool,
+    /// Full tree for unstaged files
+    unstaged_tree: Vec<tree::TreeNode>,
+    /// Indices of visible nodes in unstaged_tree
+    unstaged_visible: Vec<usize>,
+    /// Tree-drawing prefixes for visible unstaged nodes
+    unstaged_tree_prefixes: Vec<String>,
+    /// Full tree for staged files
+    staged_tree: Vec<tree::TreeNode>,
+    /// Indices of visible nodes in staged_tree
+    staged_visible: Vec<usize>,
+    /// Tree-drawing prefixes for visible staged nodes
+    staged_tree_prefixes: Vec<String>,
+    /// Collapsed directories in unstaged tree
+    unstaged_collapsed: HashSet<PathBuf>,
+    /// Collapsed directories in staged tree
+    staged_collapsed: HashSet<PathBuf>,
 }
 
 impl GitStatusPanel {
@@ -150,6 +170,15 @@ impl GitStatusPanel {
             initial_paths: paths.to_vec(),
             vim_mode: false,
             is_stale: false,
+            tree_view: false,
+            unstaged_tree: Vec::new(),
+            unstaged_visible: Vec::new(),
+            unstaged_tree_prefixes: Vec::new(),
+            staged_tree: Vec::new(),
+            staged_visible: Vec::new(),
+            staged_tree_prefixes: Vec::new(),
+            unstaged_collapsed: HashSet::new(),
+            staged_collapsed: HashSet::new(),
         };
 
         panel.refresh();
@@ -197,6 +226,15 @@ impl GitStatusPanel {
             initial_paths,
             vim_mode: false,
             is_stale: false,
+            tree_view: false,
+            unstaged_tree: Vec::new(),
+            unstaged_visible: Vec::new(),
+            unstaged_tree_prefixes: Vec::new(),
+            staged_tree: Vec::new(),
+            staged_visible: Vec::new(),
+            staged_tree_prefixes: Vec::new(),
+            unstaged_collapsed: HashSet::new(),
+            staged_collapsed: HashSet::new(),
         };
 
         panel.refresh();
@@ -243,6 +281,8 @@ impl GitStatusPanel {
         // Sort by path
         self.unstaged_files.sort_by(|a, b| a.path.cmp(&b.path));
         self.staged_files.sort_by(|a, b| a.path.cmp(&b.path));
+
+        self.rebuild_trees();
 
         // Adjust cursor to stay within bounds (cursor is virtual line)
         let max_cursor = self.total_virtual_lines().saturating_sub(1);
@@ -308,23 +348,70 @@ impl GitStatusPanel {
         };
     }
 
+    /// Number of items in unstaged section (visible tree nodes or flat file count)
+    fn unstaged_item_count(&self) -> usize {
+        if self.tree_view {
+            self.unstaged_visible.len()
+        } else {
+            self.unstaged_files.len()
+        }
+    }
+
+    /// Number of items in staged section (visible tree nodes or flat file count)
+    fn staged_item_count(&self) -> usize {
+        if self.tree_view {
+            self.staged_visible.len()
+        } else {
+            self.staged_files.len()
+        }
+    }
+
     /// Get current selection based on cursor position (virtual line)
     fn get_selection(&self) -> Option<Selection> {
         let unstaged_header = 0;
         let unstaged_start = 1;
-        let unstaged_end = unstaged_start + self.unstaged_files.len();
+        let unstaged_end = unstaged_start + self.unstaged_item_count();
         let staged_header = unstaged_end;
         let staged_start = staged_header + 1;
 
         if self.cursor == unstaged_header && !self.unstaged_files.is_empty() {
             Some(Selection::UnstagedHeader)
         } else if self.cursor >= unstaged_start && self.cursor < unstaged_end {
-            Some(Selection::UnstagedFile(self.cursor - unstaged_start))
+            let idx = self.cursor - unstaged_start;
+            if self.tree_view {
+                if let Some(&tree_idx) = self.unstaged_visible.get(idx) {
+                    match self.unstaged_tree[tree_idx].kind {
+                        tree::TreeNodeKind::Directory { .. } => {
+                            Some(Selection::UnstagedDir(tree_idx))
+                        }
+                        tree::TreeNodeKind::File { file_index, .. } => {
+                            Some(Selection::UnstagedFile(file_index))
+                        }
+                    }
+                } else {
+                    None
+                }
+            } else {
+                Some(Selection::UnstagedFile(idx))
+            }
         } else if self.cursor == staged_header && !self.staged_files.is_empty() {
             Some(Selection::StagedHeader)
         } else if self.cursor >= staged_start {
             let idx = self.cursor - staged_start;
-            if idx < self.staged_files.len() {
+            if self.tree_view {
+                if let Some(&tree_idx) = self.staged_visible.get(idx) {
+                    match self.staged_tree[tree_idx].kind {
+                        tree::TreeNodeKind::Directory { .. } => {
+                            Some(Selection::StagedDir(tree_idx))
+                        }
+                        tree::TreeNodeKind::File { file_index, .. } => {
+                            Some(Selection::StagedFile(file_index))
+                        }
+                    }
+                } else {
+                    None
+                }
+            } else if idx < self.staged_files.len() {
                 Some(Selection::StagedFile(idx))
             } else {
                 None
@@ -337,9 +424,9 @@ impl GitStatusPanel {
     /// Check if a virtual line is selectable (files and headers with buttons)
     fn is_selectable_line(&self, vline: usize) -> bool {
         let unstaged_header = 0;
-        let unstaged_end = 1 + self.unstaged_files.len();
+        let unstaged_end = 1 + self.unstaged_item_count();
         let staged_header = unstaged_end;
-        let staged_end = staged_header + 1 + self.staged_files.len();
+        let staged_end = staged_header + 1 + self.staged_item_count();
 
         if vline == unstaged_header {
             !self.unstaged_files.is_empty() // Has [Stage all] button
@@ -416,12 +503,12 @@ impl GitStatusPanel {
         }
     }
 
-    /// Get total virtual lines count (headers + files)
+    /// Get total virtual lines count (headers + items)
     fn total_virtual_lines(&self) -> usize {
-        2 + self.unstaged_files.len() + self.staged_files.len()
+        2 + self.unstaged_item_count() + self.staged_item_count()
     }
 
-    /// Get file at cursor from unstaged section (for backward compatibility)
+    /// Get file at cursor from unstaged section
     fn get_selected_unstaged(&self) -> Vec<PathBuf> {
         match self.get_selection() {
             Some(Selection::UnstagedFile(idx)) => self
@@ -430,11 +517,14 @@ impl GitStatusPanel {
                 .map(|f| f.path.clone())
                 .into_iter()
                 .collect(),
+            Some(Selection::UnstagedDir(idx)) => {
+                tree::collect_files_under(&self.unstaged_tree, idx)
+            }
             _ => vec![],
         }
     }
 
-    /// Get file at cursor from staged section (for backward compatibility)
+    /// Get file at cursor from staged section
     fn get_selected_staged(&self) -> Vec<PathBuf> {
         match self.get_selection() {
             Some(Selection::StagedFile(idx)) => self
@@ -443,7 +533,83 @@ impl GitStatusPanel {
                 .map(|f| f.path.clone())
                 .into_iter()
                 .collect(),
+            Some(Selection::StagedDir(idx)) => tree::collect_files_under(&self.staged_tree, idx),
             _ => vec![],
+        }
+    }
+
+    /// Rebuild tree data structures from current file lists.
+    fn rebuild_trees(&mut self) {
+        // Build unstaged tree
+        let unstaged_entries: Vec<tree::FileEntry> = self
+            .unstaged_files
+            .iter()
+            .enumerate()
+            .map(|(i, f)| tree::FileEntry {
+                path: f.path.clone(),
+                index: i,
+                status: f.status,
+                untracked: f.untracked,
+            })
+            .collect();
+        self.unstaged_tree = tree::build_tree(&unstaged_entries, &self.unstaged_collapsed);
+        self.unstaged_visible = tree::compute_visible_nodes(&self.unstaged_tree);
+        self.unstaged_tree_prefixes =
+            tree::compute_tree_prefixes(&self.unstaged_tree, &self.unstaged_visible);
+
+        // Build staged tree
+        let staged_entries: Vec<tree::FileEntry> = self
+            .staged_files
+            .iter()
+            .enumerate()
+            .map(|(i, f)| tree::FileEntry {
+                path: f.path.clone(),
+                index: i,
+                status: f.status,
+                untracked: false,
+            })
+            .collect();
+        self.staged_tree = tree::build_tree(&staged_entries, &self.staged_collapsed);
+        self.staged_visible = tree::compute_visible_nodes(&self.staged_tree);
+        self.staged_tree_prefixes =
+            tree::compute_tree_prefixes(&self.staged_tree, &self.staged_visible);
+    }
+
+    /// Toggle expand/collapse for a directory node.
+    fn toggle_dir_expand(&mut self, is_unstaged: bool, tree_idx: usize) {
+        let (tree, collapsed) = if is_unstaged {
+            (&mut self.unstaged_tree, &mut self.unstaged_collapsed)
+        } else {
+            (&mut self.staged_tree, &mut self.staged_collapsed)
+        };
+
+        if matches!(tree[tree_idx].kind, tree::TreeNodeKind::Directory { .. }) {
+            let path = tree[tree_idx].full_path.clone();
+            if let tree::TreeNodeKind::Directory { ref mut expanded } = tree[tree_idx].kind {
+                *expanded = !*expanded;
+                if *expanded {
+                    collapsed.remove(&path);
+                } else {
+                    collapsed.insert(path);
+                }
+            }
+        }
+
+        // Recompute visible nodes and prefixes
+        if is_unstaged {
+            self.unstaged_visible = tree::compute_visible_nodes(&self.unstaged_tree);
+            self.unstaged_tree_prefixes =
+                tree::compute_tree_prefixes(&self.unstaged_tree, &self.unstaged_visible);
+        } else {
+            self.staged_visible = tree::compute_visible_nodes(&self.staged_tree);
+            self.staged_tree_prefixes =
+                tree::compute_tree_prefixes(&self.staged_tree, &self.staged_visible);
+        }
+
+        // Clamp cursor
+        let max_cursor = self.total_virtual_lines().saturating_sub(1);
+        if self.cursor > max_cursor {
+            self.cursor = max_cursor;
         }
     }
 
@@ -557,6 +723,8 @@ impl GitStatusPanel {
                     Some(Selection::StagedHeader) => self.do_unstage_all(),
                     Some(Selection::UnstagedFile(_)) => self.do_stage(),
                     Some(Selection::StagedFile(_)) => self.do_unstage(),
+                    Some(Selection::UnstagedDir(idx)) => self.toggle_dir_expand(true, idx),
+                    Some(Selection::StagedDir(idx)) => self.toggle_dir_expand(false, idx),
                     None => {}
                 }
                 vec![]
@@ -759,7 +927,10 @@ impl Panel for GitStatusPanel {
             ],
         ) {
             if self.current_section == Section::Files
-                && matches!(self.get_selection(), Some(Selection::UnstagedFile(_)))
+                && matches!(
+                    self.get_selection(),
+                    Some(Selection::UnstagedFile(_)) | Some(Selection::UnstagedDir(_))
+                )
             {
                 self.do_stage();
             }
@@ -776,7 +947,10 @@ impl Panel for GitStatusPanel {
             ],
         ) {
             if self.current_section == Section::Files
-                && matches!(self.get_selection(), Some(Selection::StagedFile(_)))
+                && matches!(
+                    self.get_selection(),
+                    Some(Selection::StagedFile(_)) | Some(Selection::StagedDir(_))
+                )
             {
                 self.do_unstage();
             }
@@ -931,11 +1105,55 @@ impl Panel for GitStatusPanel {
                         self.selected_button -= 1;
                     }
                 }
+                Section::Files if self.tree_view => {
+                    // Collapse expanded directory
+                    match self.get_selection() {
+                        Some(Selection::UnstagedDir(idx)) => {
+                            if matches!(
+                                self.unstaged_tree[idx].kind,
+                                tree::TreeNodeKind::Directory { expanded: true }
+                            ) {
+                                self.toggle_dir_expand(true, idx);
+                            }
+                        }
+                        Some(Selection::StagedDir(idx)) => {
+                            if matches!(
+                                self.staged_tree[idx].kind,
+                                tree::TreeNodeKind::Directory { expanded: true }
+                            ) {
+                                self.toggle_dir_expand(false, idx);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
                 _ => {}
             },
             KeyCode::Right => match self.current_section {
                 Section::RepoSelector => {
                     self.current_section = Section::BranchSelector;
+                }
+                Section::Files if self.tree_view => {
+                    // Expand collapsed directory
+                    match self.get_selection() {
+                        Some(Selection::UnstagedDir(idx)) => {
+                            if matches!(
+                                self.unstaged_tree[idx].kind,
+                                tree::TreeNodeKind::Directory { expanded: false }
+                            ) {
+                                self.toggle_dir_expand(true, idx);
+                            }
+                        }
+                        Some(Selection::StagedDir(idx)) => {
+                            if matches!(
+                                self.staged_tree[idx].kind,
+                                tree::TreeNodeKind::Directory { expanded: false }
+                            ) {
+                                self.toggle_dir_expand(false, idx);
+                            }
+                        }
+                        _ => {}
+                    }
                 }
                 Section::Buttons => {
                     let max = self.get_visible_buttons().len().saturating_sub(1);
@@ -1060,10 +1278,10 @@ impl Panel for GitStatusPanel {
 
                     // Virtual layout constants
                     let unstaged_files_start = 1;
-                    let unstaged_files_end = unstaged_files_start + self.unstaged_files.len();
+                    let unstaged_files_end = unstaged_files_start + self.unstaged_item_count();
                     let staged_header_line = unstaged_files_end;
                     let staged_files_start = staged_header_line + 1;
-                    let staged_files_end = staged_files_start + self.staged_files.len();
+                    let staged_files_end = staged_files_start + self.staged_item_count();
 
                     // Determine what was clicked
                     let unstaged_header_line = 0;
@@ -1074,17 +1292,20 @@ impl Panel for GitStatusPanel {
                         self.cursor = vline;
                         self.record_click(now, vline);
                     } else if vline >= unstaged_files_start && vline < unstaged_files_end {
-                        // Clicked on unstaged file
+                        // Clicked on unstaged item
+                        self.current_section = Section::Files;
+                        self.cursor = vline;
                         if self.check_double_click(now, vline) {
-                            // Double-click on unstaged = stage file
-                            self.cursor = vline;
-                            self.current_section = Section::Files;
-                            self.do_stage();
+                            // Double-click: toggle dir or stage file
+                            if matches!(self.get_selection(), Some(Selection::UnstagedDir(_))) {
+                                if let Some(Selection::UnstagedDir(idx)) = self.get_selection() {
+                                    self.toggle_dir_expand(true, idx);
+                                }
+                            } else {
+                                self.do_stage();
+                            }
                             self.reset_click_state();
                         } else {
-                            // Single click - select item
-                            self.current_section = Section::Files;
-                            self.cursor = vline;
                             self.record_click(now, vline);
                         }
                     } else if vline == staged_header_line && !self.staged_files.is_empty() {
@@ -1093,17 +1314,20 @@ impl Panel for GitStatusPanel {
                         self.cursor = vline;
                         self.record_click(now, vline);
                     } else if vline >= staged_files_start && vline < staged_files_end {
-                        // Clicked on staged file
+                        // Clicked on staged item
+                        self.current_section = Section::Files;
+                        self.cursor = vline;
                         if self.check_double_click(now, vline) {
-                            // Double-click on staged = unstage file
-                            self.cursor = vline;
-                            self.current_section = Section::Files;
-                            self.do_unstage();
+                            // Double-click: toggle dir or unstage file
+                            if matches!(self.get_selection(), Some(Selection::StagedDir(_))) {
+                                if let Some(Selection::StagedDir(idx)) = self.get_selection() {
+                                    self.toggle_dir_expand(false, idx);
+                                }
+                            } else {
+                                self.do_unstage();
+                            }
                             self.reset_click_state();
                         } else {
-                            // Single click - select item
-                            self.current_section = Section::Files;
-                            self.cursor = vline;
                             self.record_click(now, vline);
                         }
                     }

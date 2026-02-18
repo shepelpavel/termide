@@ -33,6 +33,15 @@ impl GitStatusPanel {
         let theme = self.cached_theme.clone();
         let content_area = area;
 
+        // Auto-switch tree/flat view based on panel width (same threshold as outline panel)
+        self.tree_view = content_area.width >= 35;
+
+        // Clamp cursor after mode switch (item count may change)
+        let max_cursor = self.total_virtual_lines().saturating_sub(1);
+        if self.cursor > max_cursor {
+            self.cursor = max_cursor;
+        }
+
         // Layout constants
         let selector_height: u16 = 1;
         let separator_height: u16 = 1;
@@ -46,7 +55,7 @@ impl GitStatusPanel {
         // Virtual content layout
         let unstaged_header_line = 0;
         let unstaged_files_start = 1;
-        let unstaged_files_end = unstaged_files_start + self.unstaged_files.len();
+        let unstaged_files_end = unstaged_files_start + self.unstaged_item_count();
         let staged_header_line = unstaged_files_end;
         let staged_files_start = staged_header_line + 1;
         let total_virtual_lines = self.total_virtual_lines();
@@ -139,19 +148,32 @@ impl GitStatusPanel {
                     &theme,
                 );
             } else if vline >= unstaged_files_start && vline < unstaged_files_end {
-                // Unstaged file
-                let file_idx = vline - unstaged_files_start;
+                let item_idx = vline - unstaged_files_start;
                 let is_selected = self.cursor == vline && files_active;
-                self.render_unstaged_file_line(
-                    file_idx,
-                    is_selected,
-                    content_area.x,
-                    line_y,
-                    files_width,
-                    buf,
-                    &theme,
-                    files_active,
-                );
+                if self.tree_view {
+                    self.render_tree_node_line(
+                        true,
+                        item_idx,
+                        is_selected,
+                        content_area.x,
+                        line_y,
+                        files_width,
+                        buf,
+                        &theme,
+                        files_active,
+                    );
+                } else {
+                    self.render_unstaged_file_line(
+                        item_idx,
+                        is_selected,
+                        content_area.x,
+                        line_y,
+                        files_width,
+                        buf,
+                        &theme,
+                        files_active,
+                    );
+                }
             } else if vline == staged_header_line {
                 // Staged header
                 let title = format!("{} ({})", t.git_staged_header(), self.staged_files.len());
@@ -173,19 +195,32 @@ impl GitStatusPanel {
                     &theme,
                 );
             } else if vline >= staged_files_start {
-                // Staged file
-                let file_idx = vline - staged_files_start;
+                let item_idx = vline - staged_files_start;
                 let is_selected = self.cursor == vline && files_active;
-                self.render_staged_file_line(
-                    file_idx,
-                    is_selected,
-                    content_area.x,
-                    line_y,
-                    files_width,
-                    buf,
-                    &theme,
-                    files_active,
-                );
+                if self.tree_view {
+                    self.render_tree_node_line(
+                        false,
+                        item_idx,
+                        is_selected,
+                        content_area.x,
+                        line_y,
+                        files_width,
+                        buf,
+                        &theme,
+                        files_active,
+                    );
+                } else {
+                    self.render_staged_file_line(
+                        item_idx,
+                        is_selected,
+                        content_area.x,
+                        line_y,
+                        files_width,
+                        buf,
+                        &theme,
+                        files_active,
+                    );
+                }
             }
         }
 
@@ -529,6 +564,88 @@ impl GitStatusPanel {
                 is_focused,
             );
         }
+    }
+
+    /// Render a tree node line (directory or file) in tree view mode
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn render_tree_node_line(
+        &self,
+        is_unstaged: bool,
+        visible_idx: usize,
+        is_selected: bool,
+        x: u16,
+        y: u16,
+        width: u16,
+        buf: &mut Buffer,
+        theme: &ThemeColors,
+        is_focused: bool,
+    ) {
+        let (tree_nodes, visible, prefixes) = if is_unstaged {
+            (
+                &self.unstaged_tree,
+                &self.unstaged_visible,
+                &self.unstaged_tree_prefixes,
+            )
+        } else {
+            (
+                &self.staged_tree,
+                &self.staged_visible,
+                &self.staged_tree_prefixes,
+            )
+        };
+
+        let Some(&tree_idx) = visible.get(visible_idx) else {
+            return;
+        };
+        let node = &tree_nodes[tree_idx];
+        let prefix = prefixes.get(visible_idx).map(|s| s.as_str()).unwrap_or("");
+
+        // Determine style based on node kind
+        let (fg_color, extra_modifier, label) = match node.kind {
+            crate::tree::TreeNodeKind::Directory { expanded } => {
+                let (status, untracked) = crate::tree::aggregate_dir_status(tree_nodes, tree_idx);
+                let (color, _modifier) = Self::get_file_style(status, untracked, theme);
+                let arrow = if expanded { "▼" } else { "▶" };
+                (
+                    color,
+                    Modifier::empty(),
+                    format!("{}{}/", arrow, node.label),
+                )
+            }
+            crate::tree::TreeNodeKind::File {
+                status, untracked, ..
+            } => {
+                let (color, modifier) = Self::get_file_style(status, untracked, theme);
+                (color, modifier, node.label.clone())
+            }
+        };
+
+        let style = if is_selected && is_focused {
+            Style::default()
+                .fg(theme.bg)
+                .bg(fg_color)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(fg_color).add_modifier(extra_modifier)
+        };
+
+        // Fill background when selected
+        if is_selected && is_focused {
+            for dx in 0..width {
+                buf[(x + dx, y)].set_symbol(" ").set_style(style);
+            }
+        }
+
+        // Build the display line: " [prefix][label]"
+        let wide_mode = width >= 30;
+        let line = if wide_mode {
+            format!(" {}{}", prefix, label)
+        } else {
+            format!(" {}", label)
+        };
+
+        let truncated = truncate_left(&line, width as usize);
+        buf.set_string(x, y, &truncated, style);
     }
 
     /// Render action buttons

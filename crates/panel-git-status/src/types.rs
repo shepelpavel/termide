@@ -20,10 +20,14 @@ pub enum Selection {
     UnstagedHeader,
     /// Cursor on an unstaged file at given index
     UnstagedFile(usize),
+    /// Cursor on an unstaged directory node (index into unstaged full tree)
+    UnstagedDir(usize),
     /// Cursor on Staged header (selecting [Unstage all] button)
     StagedHeader,
     /// Cursor on a staged file at given index
     StagedFile(usize),
+    /// Cursor on a staged directory node (index into staged full tree)
+    StagedDir(usize),
 }
 
 /// Button in the Git Status panel

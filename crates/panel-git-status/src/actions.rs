@@ -70,7 +70,7 @@ impl GitStatusPanel {
         let (is_staged, idx) = match self.get_selection() {
             Some(Selection::UnstagedFile(idx)) => (false, idx),
             Some(Selection::StagedFile(idx)) => (true, idx),
-            _ => return vec![], // Headers or nothing selected
+            _ => return vec![], // Headers, directories, or nothing selected
         };
 
         let (file_path, status_str) = if is_staged {
