@@ -290,7 +290,16 @@ impl Editor {
                 .take(visual_line_len)
                 .collect();
             let grapheme_in_segment = screen_col_to_grapheme_idx(&segment, rel_x);
-            wrapped_offset + grapheme_in_segment
+            // For intermediate wrapped rows (not the last visual row of the line),
+            // clamp to visual_line_len - 1 to keep cursor on this visual row.
+            // Position chunk_end belongs to the NEXT visual row.
+            let total_graphemes = line_text.graphemes(true).count();
+            let clamped = if chunk_end < total_graphemes && grapheme_in_segment >= visual_line_len {
+                visual_line_len.saturating_sub(1)
+            } else {
+                grapheme_in_segment
+            };
+            wrapped_offset + clamped
         } else {
             // Without wrap: convert absolute screen col to grapheme idx
             let visual_col = self.viewport.left_column + rel_x;

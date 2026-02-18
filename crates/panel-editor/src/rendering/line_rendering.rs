@@ -824,12 +824,38 @@ pub fn render_content_no_wrap<H: LineHighlighter>(
         .position(|vline| matches!(vline, git::VirtualLine::Real(idx) if *idx == cursor.line));
 
     if let Some(viewport_row) = cursor_viewport_row {
-        if cursor.column >= viewport.left_column {
-            let viewport_col = cursor.column - viewport.left_column;
+        // cursor.column is a grapheme index — convert to display width for correct
+        // positioning with wide characters (CJK, emoji).
+        let cursor_display_col = if let Some(line_text) = buffer.line(cursor.line) {
+            use unicode_segmentation::UnicodeSegmentation;
+            use unicode_width::UnicodeWidthStr;
+            let trimmed = line_text.trim_end_matches('\n');
+            trimmed
+                .graphemes(true)
+                .take(cursor.column)
+                .map(|g| g.width())
+                .sum::<usize>()
+        } else {
+            cursor.column
+        };
 
+        let left_display_col = if let Some(line_text) = buffer.line(cursor.line) {
+            use unicode_segmentation::UnicodeSegmentation;
+            use unicode_width::UnicodeWidthStr;
+            let trimmed = line_text.trim_end_matches('\n');
+            trimmed
+                .graphemes(true)
+                .take(viewport.left_column)
+                .map(|g| g.width())
+                .sum::<usize>()
+        } else {
+            viewport.left_column
+        };
+
+        if cursor_display_col >= left_display_col {
+            let viewport_col = cursor_display_col - left_display_col;
             let cursor_x = area.x + line_number_width + viewport_col as u16;
             let cursor_y = area.y + viewport_row as u16;
-
             if viewport_col < content_width {
                 super::cursor_renderer::render_cursor_at(buf, cursor_x, cursor_y, area, theme);
             }
