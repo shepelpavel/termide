@@ -130,63 +130,18 @@ pub struct GitStatusPanel {
 impl GitStatusPanel {
     /// Create a new Git Status panel from a list of paths (from panels/session)
     pub fn new(paths: &[PathBuf]) -> Self {
-        let mut panel = Self {
-            repo_manager: RepoManager::new(paths),
-            branch: None,
-            branches: Vec::new(),
-            ahead: 0,
-            behind: 0,
-            unstaged_files: Vec::new(),
-            staged_files: Vec::new(),
-            current_section: Section::RepoSelector,
-            cursor: 0,
-            selected_button: 0,
-            scroll_offset: 0,
-            viewport_height: 0,
-            cached_theme: ThemeColors::default(),
-            keybindings: GitStatusKeybindings::default(),
-            last_area: Rect::default(),
-            status_message: None,
-            repo_dropdown_open: false,
-            branch_dropdown_open: false,
-            dropdown_cursor: 0,
-            selector_y: 0,
-            branch_selector_x: 0,
-            files_area: Rect::default(),
-            buttons_y: 0,
-            repo_dropdown_area: None,
-            branch_dropdown_area: None,
-            dropdown_scroll: 0,
-            stage_all_btn_area: None,
-            unstage_all_btn_area: None,
-            click_tracker: IndexClickTracker::new(),
-            modal_request: None,
-            is_loading: false,
-            git_operation_in_progress: false,
-            current_operation: None,
-            spinner_frame: 0,
-            initial_paths: paths.to_vec(),
-            vim_mode: false,
-            is_stale: false,
-            unstaged_tree: Vec::new(),
-            unstaged_visible: Vec::new(),
-            unstaged_tree_prefixes: Vec::new(),
-            staged_tree: Vec::new(),
-            staged_visible: Vec::new(),
-            staged_tree_prefixes: Vec::new(),
-            unstaged_collapsed: HashSet::new(),
-            staged_collapsed: HashSet::new(),
-        };
-
-        panel.refresh();
-        panel
+        Self::create(RepoManager::new(paths), paths.to_vec())
     }
 
     /// Create panel for a specific repository
     pub fn new_for_repo(repo_path: PathBuf) -> Self {
         let initial_paths = vec![repo_path.clone()];
+        Self::create(RepoManager::for_repo(repo_path), initial_paths)
+    }
+
+    fn create(repo_manager: RepoManager, initial_paths: Vec<PathBuf>) -> Self {
         let mut panel = Self {
-            repo_manager: RepoManager::for_repo(repo_path),
+            repo_manager,
             branch: None,
             branches: Vec::new(),
             ahead: 0,
@@ -1271,10 +1226,8 @@ impl Panel for GitStatusPanel {
                         self.cursor = vline;
                         if self.check_double_click(now, vline) {
                             // Double-click: toggle dir or stage file
-                            if matches!(self.get_selection(), Some(Selection::UnstagedDir(_))) {
-                                if let Some(Selection::UnstagedDir(idx)) = self.get_selection() {
-                                    self.toggle_dir_expand(true, idx);
-                                }
+                            if let Some(Selection::UnstagedDir(idx)) = self.get_selection() {
+                                self.toggle_dir_expand(true, idx);
                             } else {
                                 self.do_stage();
                             }
@@ -1293,10 +1246,8 @@ impl Panel for GitStatusPanel {
                         self.cursor = vline;
                         if self.check_double_click(now, vline) {
                             // Double-click: toggle dir or unstage file
-                            if matches!(self.get_selection(), Some(Selection::StagedDir(_))) {
-                                if let Some(Selection::StagedDir(idx)) = self.get_selection() {
-                                    self.toggle_dir_expand(false, idx);
-                                }
+                            if let Some(Selection::StagedDir(idx)) = self.get_selection() {
+                                self.toggle_dir_expand(false, idx);
                             } else {
                                 self.do_unstage();
                             }

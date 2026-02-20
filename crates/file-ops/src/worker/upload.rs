@@ -181,7 +181,7 @@ impl OperationWorker for UploadWorker {
         // For multiple sources, dest_base is the target directory and we need to join file names
         let single_source = self.sources.len() == 1;
 
-        for (idx, source) in self.sources.clone().iter().enumerate() {
+        for (idx, source) in self.sources.iter().enumerate() {
             if control.is_cancelled() {
                 return OperationResult::Cancelled;
             }

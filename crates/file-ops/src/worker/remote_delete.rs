@@ -61,7 +61,7 @@ impl OperationWorker for RemoteDeleteWorker {
         let mut files_deleted: usize = 0;
         let mut failed_files: Vec<String> = Vec::new();
 
-        for path in &self.paths.clone() {
+        for path in &self.paths {
             if control.is_cancelled() {
                 return OperationResult::Cancelled;
             }

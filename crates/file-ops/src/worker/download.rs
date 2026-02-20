@@ -109,7 +109,7 @@ impl OperationWorker for DownloadWorker {
         let mut bytes_transferred = 0u64;
         let mut total_bytes_known = 0u64;
 
-        for (idx, source) in self.sources.clone().iter().enumerate() {
+        for (idx, source) in self.sources.iter().enumerate() {
             if control.is_cancelled() {
                 return OperationResult::Cancelled;
             }

@@ -273,8 +273,8 @@ impl RenderingCache {
     ///
     /// Returns `None` if the cumulative cache is not valid.
     pub fn get_total_visual_rows(&self) -> Option<usize> {
-        if self.cumulative_valid && !self.cumulative_visual_rows.is_empty() {
-            Some(*self.cumulative_visual_rows.last().unwrap())
+        if self.cumulative_valid {
+            self.cumulative_visual_rows.last().copied()
         } else {
             None
         }
