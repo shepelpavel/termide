@@ -109,8 +109,6 @@ pub struct GitStatusPanel {
     vim_mode: bool,
     /// Whether panel missed updates while collapsed (stale-on-collapse)
     is_stale: bool,
-    /// Whether tree view mode is active (files grouped by directory)
-    tree_view: bool,
     /// Full tree for unstaged files
     unstaged_tree: Vec<tree::TreeNode>,
     /// Indices of visible nodes in unstaged_tree
@@ -170,7 +168,6 @@ impl GitStatusPanel {
             initial_paths: paths.to_vec(),
             vim_mode: false,
             is_stale: false,
-            tree_view: false,
             unstaged_tree: Vec::new(),
             unstaged_visible: Vec::new(),
             unstaged_tree_prefixes: Vec::new(),
@@ -226,7 +223,6 @@ impl GitStatusPanel {
             initial_paths,
             vim_mode: false,
             is_stale: false,
-            tree_view: false,
             unstaged_tree: Vec::new(),
             unstaged_visible: Vec::new(),
             unstaged_tree_prefixes: Vec::new(),
@@ -348,22 +344,14 @@ impl GitStatusPanel {
         };
     }
 
-    /// Number of items in unstaged section (visible tree nodes or flat file count)
+    /// Number of items in unstaged section (visible tree nodes)
     fn unstaged_item_count(&self) -> usize {
-        if self.tree_view {
-            self.unstaged_visible.len()
-        } else {
-            self.unstaged_files.len()
-        }
+        self.unstaged_visible.len()
     }
 
-    /// Number of items in staged section (visible tree nodes or flat file count)
+    /// Number of items in staged section (visible tree nodes)
     fn staged_item_count(&self) -> usize {
-        if self.tree_view {
-            self.staged_visible.len()
-        } else {
-            self.staged_files.len()
-        }
+        self.staged_visible.len()
     }
 
     /// Get current selection based on cursor position (virtual line)
@@ -378,41 +366,27 @@ impl GitStatusPanel {
             Some(Selection::UnstagedHeader)
         } else if self.cursor >= unstaged_start && self.cursor < unstaged_end {
             let idx = self.cursor - unstaged_start;
-            if self.tree_view {
-                if let Some(&tree_idx) = self.unstaged_visible.get(idx) {
-                    match self.unstaged_tree[tree_idx].kind {
-                        tree::TreeNodeKind::Directory { .. } => {
-                            Some(Selection::UnstagedDir(tree_idx))
-                        }
-                        tree::TreeNodeKind::File { file_index, .. } => {
-                            Some(Selection::UnstagedFile(file_index))
-                        }
+            if let Some(&tree_idx) = self.unstaged_visible.get(idx) {
+                match self.unstaged_tree[tree_idx].kind {
+                    tree::TreeNodeKind::Directory { .. } => Some(Selection::UnstagedDir(tree_idx)),
+                    tree::TreeNodeKind::File { file_index, .. } => {
+                        Some(Selection::UnstagedFile(file_index))
                     }
-                } else {
-                    None
                 }
             } else {
-                Some(Selection::UnstagedFile(idx))
+                None
             }
         } else if self.cursor == staged_header && !self.staged_files.is_empty() {
             Some(Selection::StagedHeader)
         } else if self.cursor >= staged_start {
             let idx = self.cursor - staged_start;
-            if self.tree_view {
-                if let Some(&tree_idx) = self.staged_visible.get(idx) {
-                    match self.staged_tree[tree_idx].kind {
-                        tree::TreeNodeKind::Directory { .. } => {
-                            Some(Selection::StagedDir(tree_idx))
-                        }
-                        tree::TreeNodeKind::File { file_index, .. } => {
-                            Some(Selection::StagedFile(file_index))
-                        }
+            if let Some(&tree_idx) = self.staged_visible.get(idx) {
+                match self.staged_tree[tree_idx].kind {
+                    tree::TreeNodeKind::Directory { .. } => Some(Selection::StagedDir(tree_idx)),
+                    tree::TreeNodeKind::File { file_index, .. } => {
+                        Some(Selection::StagedFile(file_index))
                     }
-                } else {
-                    None
                 }
-            } else if idx < self.staged_files.len() {
-                Some(Selection::StagedFile(idx))
             } else {
                 None
             }
@@ -1105,7 +1079,7 @@ impl Panel for GitStatusPanel {
                         self.selected_button -= 1;
                     }
                 }
-                Section::Files if self.tree_view => {
+                Section::Files => {
                     // Collapse expanded directory
                     match self.get_selection() {
                         Some(Selection::UnstagedDir(idx)) => {
@@ -1133,7 +1107,7 @@ impl Panel for GitStatusPanel {
                 Section::RepoSelector => {
                     self.current_section = Section::BranchSelector;
                 }
-                Section::Files if self.tree_view => {
+                Section::Files => {
                     // Expand collapsed directory
                     match self.get_selection() {
                         Some(Selection::UnstagedDir(idx)) => {

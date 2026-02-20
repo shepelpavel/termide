@@ -1,7 +1,5 @@
 //! Rendering functions for Git Status Panel.
 
-use std::path::Path;
-
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -32,15 +30,6 @@ impl GitStatusPanel {
 
         let theme = self.cached_theme.clone();
         let content_area = area;
-
-        // Auto-switch tree/flat view based on panel width (same threshold as outline panel)
-        self.tree_view = content_area.width >= termide_config::defaults::TREE_VIEW_MIN_WIDTH;
-
-        // Clamp cursor after mode switch (item count may change)
-        let max_cursor = self.total_virtual_lines().saturating_sub(1);
-        if self.cursor > max_cursor {
-            self.cursor = max_cursor;
-        }
 
         // Layout constants
         let selector_height: u16 = 1;
@@ -150,30 +139,17 @@ impl GitStatusPanel {
             } else if vline >= unstaged_files_start && vline < unstaged_files_end {
                 let item_idx = vline - unstaged_files_start;
                 let is_selected = self.cursor == vline && files_active;
-                if self.tree_view {
-                    self.render_tree_node_line(
-                        true,
-                        item_idx,
-                        is_selected,
-                        content_area.x,
-                        line_y,
-                        files_width,
-                        buf,
-                        &theme,
-                        files_active,
-                    );
-                } else {
-                    self.render_unstaged_file_line(
-                        item_idx,
-                        is_selected,
-                        content_area.x,
-                        line_y,
-                        files_width,
-                        buf,
-                        &theme,
-                        files_active,
-                    );
-                }
+                self.render_tree_node_line(
+                    true,
+                    item_idx,
+                    is_selected,
+                    content_area.x,
+                    line_y,
+                    files_width,
+                    buf,
+                    &theme,
+                    files_active,
+                );
             } else if vline == staged_header_line {
                 // Staged header
                 let title = format!("{} ({})", t.git_staged_header(), self.staged_files.len());
@@ -197,30 +173,17 @@ impl GitStatusPanel {
             } else if vline >= staged_files_start {
                 let item_idx = vline - staged_files_start;
                 let is_selected = self.cursor == vline && files_active;
-                if self.tree_view {
-                    self.render_tree_node_line(
-                        false,
-                        item_idx,
-                        is_selected,
-                        content_area.x,
-                        line_y,
-                        files_width,
-                        buf,
-                        &theme,
-                        files_active,
-                    );
-                } else {
-                    self.render_staged_file_line(
-                        item_idx,
-                        is_selected,
-                        content_area.x,
-                        line_y,
-                        files_width,
-                        buf,
-                        &theme,
-                        files_active,
-                    );
-                }
+                self.render_tree_node_line(
+                    false,
+                    item_idx,
+                    is_selected,
+                    content_area.x,
+                    line_y,
+                    files_width,
+                    buf,
+                    &theme,
+                    files_active,
+                );
             }
         }
 
@@ -474,98 +437,6 @@ impl GitStatusPanel {
         }
     }
 
-    /// Render a single file line (works for both staged and unstaged files)
-    pub(crate) fn render_file_line(
-        path: &Path,
-        status: char,
-        untracked: bool,
-        is_selected: bool,
-        x: u16,
-        y: u16,
-        width: u16,
-        buf: &mut Buffer,
-        theme: &ThemeColors,
-        is_focused: bool,
-    ) {
-        let (fg_color, extra_modifier) = Self::get_file_style(status, untracked, theme);
-
-        let style = if is_selected && is_focused {
-            Style::default()
-                .fg(theme.bg)
-                .bg(fg_color)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(fg_color).add_modifier(extra_modifier)
-        };
-
-        if is_selected && is_focused {
-            for dx in 0..width {
-                buf[(x + dx, y)].set_symbol(" ").set_style(style);
-            }
-        }
-
-        let path_str = path.to_string_lossy();
-        let line = format!(" {}", path_str);
-        let truncated = truncate_left(&line, width as usize);
-        buf.set_string(x, y, &truncated, style);
-    }
-
-    /// Render a single unstaged file line
-    pub(crate) fn render_unstaged_file_line(
-        &self,
-        file_idx: usize,
-        is_selected: bool,
-        x: u16,
-        y: u16,
-        width: u16,
-        buf: &mut Buffer,
-        theme: &ThemeColors,
-        is_focused: bool,
-    ) {
-        if let Some(file) = self.unstaged_files.get(file_idx) {
-            Self::render_file_line(
-                &file.path,
-                file.status,
-                file.untracked,
-                is_selected,
-                x,
-                y,
-                width,
-                buf,
-                theme,
-                is_focused,
-            );
-        }
-    }
-
-    /// Render a single staged file line
-    pub(crate) fn render_staged_file_line(
-        &self,
-        file_idx: usize,
-        is_selected: bool,
-        x: u16,
-        y: u16,
-        width: u16,
-        buf: &mut Buffer,
-        theme: &ThemeColors,
-        is_focused: bool,
-    ) {
-        if let Some(file) = self.staged_files.get(file_idx) {
-            Self::render_file_line(
-                &file.path,
-                file.status,
-                false, // staged files are never untracked
-                is_selected,
-                x,
-                y,
-                width,
-                buf,
-                theme,
-                is_focused,
-            );
-        }
-    }
-
     /// Render a tree node line (directory or file) in tree view mode
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn render_tree_node_line(
@@ -620,7 +491,8 @@ impl GitStatusPanel {
             }
         };
 
-        let style = if is_selected && is_focused {
+        // Style for the file label (with CROSSED_OUT for deleted files)
+        let label_style = if is_selected && is_focused {
             Style::default()
                 .fg(theme.bg)
                 .bg(fg_color)
@@ -629,23 +501,31 @@ impl GitStatusPanel {
             Style::default().fg(fg_color).add_modifier(extra_modifier)
         };
 
+        // Style for the tree prefix (no CROSSED_OUT, just color)
+        let prefix_style = if is_selected && is_focused {
+            label_style // selection style has no CROSSED_OUT
+        } else {
+            Style::default().fg(fg_color)
+        };
+
         // Fill background when selected
         if is_selected && is_focused {
             for dx in 0..width {
-                buf[(x + dx, y)].set_symbol(" ").set_style(style);
+                buf[(x + dx, y)].set_symbol(" ").set_style(label_style);
             }
         }
 
-        // Build the display line: " [prefix][label]"
-        let wide_mode = width >= 30;
-        let line = if wide_mode {
-            format!(" {}{}", prefix, label)
-        } else {
-            format!(" {}", label)
-        };
+        // Render prefix and label separately so CROSSED_OUT only applies to file name
+        let prefix_part = format!(" {}", prefix);
+        let prefix_len = prefix_part.width() as u16;
+        buf.set_string(x, y, &prefix_part, prefix_style);
 
-        let truncated = truncate_left(&line, width as usize);
-        buf.set_string(x, y, &truncated, style);
+        // File name — with strikethrough if deleted
+        let remaining = width.saturating_sub(prefix_len) as usize;
+        if remaining > 0 {
+            let truncated_label = truncate_left(&label, remaining);
+            buf.set_string(x + prefix_len, y, &truncated_label, label_style);
+        }
     }
 
     /// Render action buttons
