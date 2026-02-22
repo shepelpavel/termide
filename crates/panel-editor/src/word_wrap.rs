@@ -637,9 +637,11 @@ pub(crate) fn calculate_total_visual_rows_cached(
     // Update wrap settings (invalidates cache if changed)
     cache.update_wrap_settings(content_width, use_smart_wrap);
 
-    // Try to use cumulative cache
-    if let Some(total) = cache.get_total_visual_rows() {
-        return total;
+    // Try to use cumulative cache (verify it covers all buffer lines)
+    if cache.cumulative_covers_line_count(buffer.line_count()) {
+        if let Some(total) = cache.get_total_visual_rows() {
+            return total;
+        }
     }
 
     // Build cumulative cache

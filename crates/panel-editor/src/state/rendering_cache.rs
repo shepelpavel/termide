@@ -162,10 +162,6 @@ impl RenderingCache {
         };
 
         if should_invalidate {
-            log::debug!(
-                "set_wrap_data: invalidating cumulative cache for line {} (width={}, smart={}, cache_width={}, cache_smart={})",
-                line, content_width, use_smart_wrap, self.content_width, self.use_smart_wrap
-            );
             self.cumulative_valid = false;
         }
     }
@@ -184,7 +180,6 @@ impl RenderingCache {
 
     /// Invalidate entire wrap cache (e.g., when content width changes).
     pub fn invalidate_wrap_cache(&mut self) {
-        log::debug!("invalidate_wrap_cache called");
         self.wrap_cache.clear();
         self.cumulative_visual_rows.clear();
         self.cumulative_valid = false;
@@ -217,12 +212,6 @@ impl RenderingCache {
     /// - Total visual rows in the buffer
     /// - Visual row offset for any given buffer line
     pub fn build_cumulative_cache(&mut self, buffer: &termide_buffer::TextBuffer) {
-        log::debug!(
-            "build_cumulative_cache called for {} lines (content_width={}, use_smart_wrap={})",
-            buffer.line_count(),
-            self.content_width,
-            self.use_smart_wrap
-        );
         let line_count = buffer.line_count();
         self.cumulative_visual_rows.clear();
         self.cumulative_visual_rows.reserve(line_count);
@@ -313,6 +302,11 @@ impl RenderingCache {
     /// Check if cumulative cache is valid.
     pub fn is_cumulative_valid(&self) -> bool {
         self.cumulative_valid
+    }
+
+    /// Check if cumulative cache covers the given number of buffer lines.
+    pub fn cumulative_covers_line_count(&self, line_count: usize) -> bool {
+        self.cumulative_valid && self.cumulative_visual_rows.len() >= line_count
     }
 
     // =========================================================================

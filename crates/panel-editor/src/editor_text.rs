@@ -25,6 +25,11 @@ impl Editor {
 
     /// Delete selected text
     pub(crate) fn delete_selection(&mut self) -> Result<()> {
+        let is_multiline = self
+            .selection
+            .as_ref()
+            .is_some_and(|s| s.start().line != s.end().line);
+
         if let Some(new_cursor) =
             selection::delete_selection(&mut self.buffer, self.selection.as_ref())?
         {
@@ -32,15 +37,8 @@ impl Editor {
             self.selection = None;
             self.input.preferred_column = None; // Reset preferred column on text edit
 
-            // Invalidate highlighting cache
-            selection::invalidate_cache_after_deletion(
-                &mut self.render_cache.highlight,
-                new_cursor.line,
-                self.buffer.line_count(),
-            );
-
-            // Schedule git diff update
-            self.schedule_git_diff_update();
+            // Invalidate highlighting + wrap caches and schedule git diff update
+            self.invalidate_cache_after_edit(new_cursor.line, is_multiline);
         }
         Ok(())
     }
