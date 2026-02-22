@@ -543,15 +543,17 @@ impl TerminalScreen {
     }
 
     /// Get line by absolute index (from scrollback or active buffer)
-    pub fn get_line_by_absolute(&self, abs_row: usize) -> Option<&Vec<Cell>> {
+    pub fn get_line_by_absolute(&self, abs_row: usize) -> Option<&[Cell]> {
         if self.use_alt_screen {
-            self.alt_lines.get(abs_row)
+            self.alt_lines.get(abs_row).map(|v| v.as_slice())
         } else {
             let scrollback_len = self.scrollback.len();
             if abs_row < scrollback_len {
-                self.scrollback.get(abs_row)
+                self.scrollback.get(abs_row).map(|v| v.as_slice())
             } else {
-                self.lines.get(abs_row - scrollback_len)
+                self.lines
+                    .get(abs_row - scrollback_len)
+                    .map(|v| v.as_slice())
             }
         }
     }

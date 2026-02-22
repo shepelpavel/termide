@@ -70,8 +70,8 @@ pub struct ProgressModal {
 }
 
 impl ProgressModal {
-    /// Create a new progress modal
-    pub fn new(title: impl Into<String>, total: usize) -> Self {
+    /// Base constructor with all defaults zeroed out.
+    fn base(title: impl Into<String>, total: usize) -> Self {
         Self {
             title: title.into(),
             current: 0,
@@ -103,102 +103,34 @@ impl ProgressModal {
         }
     }
 
+    /// Create a new progress modal
+    pub fn new(title: impl Into<String>, total: usize) -> Self {
+        Self::base(title, total)
+    }
+
     /// Create a new cancellable progress modal
     pub fn new_cancellable(title: impl Into<String>, total: usize) -> Self {
         Self {
-            title: title.into(),
-            current: 0,
-            total,
-            current_item: None,
-            spinner_frame: 0,
             can_cancel: true,
-            show_buttons: false,
-            pause_enabled: false,
-            paused: false,
-            selected_button: 0,
-            button_areas: Vec::new(),
-            source_display: None,
-            dest_display: None,
-            current_file_bytes: 0,
-            total_file_bytes: 0,
-            transfer_speed_bps: 0.0,
-            last_update: None,
-            last_bytes: 0,
-            scanning_mode: false,
-            scan_files_count: 0,
-            scan_total_bytes: 0,
-            scan_current_dir: None,
-            individual_file_bytes: 0,
-            individual_file_total: 0,
-            eta_seconds: None,
-            operation_start: None,
-            target_title: None,
+            ..Self::base(title, total)
         }
     }
 
     /// Create an indeterminate progress modal (for operations without known total)
     pub fn indeterminate(title: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
-            title: title.into(),
-            current: 0,
-            total: 0, // 0 means indeterminate
             current_item: Some(message.into()),
-            spinner_frame: 0,
-            can_cancel: false,
-            show_buttons: false,
-            pause_enabled: false,
-            paused: false,
-            selected_button: 0,
-            button_areas: Vec::new(),
-            source_display: None,
-            dest_display: None,
-            current_file_bytes: 0,
-            total_file_bytes: 0,
-            transfer_speed_bps: 0.0,
-            last_update: None,
-            last_bytes: 0,
-            scanning_mode: false,
-            scan_files_count: 0,
-            scan_total_bytes: 0,
-            scan_current_dir: None,
-            individual_file_bytes: 0,
-            individual_file_total: 0,
-            eta_seconds: None,
-            operation_start: None,
-            target_title: None,
+            ..Self::base(title, 0)
         }
     }
 
     /// Create progress modal with visible Pause/Cancel buttons
     pub fn new_with_controls(title: impl Into<String>, total: usize, pause_enabled: bool) -> Self {
         Self {
-            title: title.into(),
-            current: 0,
-            total,
-            current_item: None,
-            spinner_frame: 0,
             can_cancel: true,
             show_buttons: true,
             pause_enabled,
-            paused: false,
-            selected_button: 0,
-            button_areas: Vec::new(),
-            source_display: None,
-            dest_display: None,
-            current_file_bytes: 0,
-            total_file_bytes: 0,
-            transfer_speed_bps: 0.0,
-            last_update: None,
-            last_bytes: 0,
-            scanning_mode: false,
-            scan_files_count: 0,
-            scan_total_bytes: 0,
-            scan_current_dir: None,
-            individual_file_bytes: 0,
-            individual_file_total: 0,
-            eta_seconds: None,
-            operation_start: None,
-            target_title: None,
+            ..Self::base(title, total)
         }
     }
 
@@ -211,33 +143,13 @@ impl ProgressModal {
         pause_enabled: bool,
     ) -> Self {
         Self {
-            title: title.into(),
-            current: 0,
-            total,
-            current_item: None,
-            spinner_frame: 0,
             can_cancel: true,
             show_buttons: true,
             pause_enabled,
-            paused: false,
-            selected_button: 0,
-            button_areas: Vec::new(),
             source_display: Some(source_display),
             dest_display: Some(dest_display),
-            current_file_bytes: 0,
-            total_file_bytes: 0,
-            transfer_speed_bps: 0.0,
-            last_update: None,
-            last_bytes: 0,
-            scanning_mode: false,
-            scan_files_count: 0,
-            scan_total_bytes: 0,
-            scan_current_dir: None,
-            individual_file_bytes: 0,
-            individual_file_total: 0,
-            eta_seconds: None,
             operation_start: Some(std::time::Instant::now()),
-            target_title: None,
+            ..Self::base(title, total)
         }
     }
 
@@ -250,66 +162,22 @@ impl ProgressModal {
     pub fn new_scanning_with_title(source_path: String, target_title: Option<String>) -> Self {
         let t = termide_i18n::t();
         Self {
-            title: t.progress_scanning().to_string(),
-            current: 0,
-            total: 0,
-            current_item: None,
-            spinner_frame: 0,
             can_cancel: true,
             show_buttons: true,
-            pause_enabled: false,
-            paused: false,
-            selected_button: 0,
-            button_areas: Vec::new(),
             source_display: Some(source_path),
-            dest_display: None,
-            current_file_bytes: 0,
-            total_file_bytes: 0,
-            transfer_speed_bps: 0.0,
-            last_update: None,
-            last_bytes: 0,
             scanning_mode: true,
-            scan_files_count: 0,
-            scan_total_bytes: 0,
-            scan_current_dir: None,
-            individual_file_bytes: 0,
-            individual_file_total: 0,
-            eta_seconds: None,
-            operation_start: None,
             target_title,
+            ..Self::base(t.progress_scanning().to_string(), 0)
         }
     }
 
     /// Create a delete progress modal
     pub fn new_delete_progress(total: usize, source_path: String) -> Self {
         Self {
-            title: termide_i18n::t().progress_delete_title().into(),
-            current: 0,
-            total,
-            current_item: None,
-            spinner_frame: 0,
             can_cancel: true,
             show_buttons: true,
-            pause_enabled: false,
-            paused: false,
-            selected_button: 0,
-            button_areas: Vec::new(),
             source_display: Some(source_path),
-            dest_display: None, // No destination for delete
-            current_file_bytes: 0,
-            total_file_bytes: 0, // No byte tracking for delete
-            transfer_speed_bps: 0.0,
-            last_update: None,
-            last_bytes: 0,
-            scanning_mode: false,
-            scan_files_count: 0,
-            scan_total_bytes: 0,
-            scan_current_dir: None,
-            individual_file_bytes: 0,
-            individual_file_total: 0,
-            eta_seconds: None,
-            operation_start: None,
-            target_title: None,
+            ..Self::base(termide_i18n::t().progress_delete_title(), total)
         }
     }
 
@@ -533,16 +401,14 @@ impl ProgressModal {
 
 /// Format bytes to human-readable string (MB, GB, etc.)
 fn format_bytes(bytes: u64) -> String {
-    const KB: u64 = 1024;
-    const MB: u64 = KB * 1024;
-    const GB: u64 = MB * 1024;
+    use termide_config::constants::{GIGABYTE, KILOBYTE, MEGABYTE};
 
-    if bytes >= GB {
-        format!("{:.1} GB", bytes as f64 / GB as f64)
-    } else if bytes >= MB {
-        format!("{:.1} MB", bytes as f64 / MB as f64)
-    } else if bytes >= KB {
-        format!("{:.1} KB", bytes as f64 / KB as f64)
+    if bytes >= GIGABYTE {
+        format!("{:.1} GB", bytes as f64 / GIGABYTE as f64)
+    } else if bytes >= MEGABYTE {
+        format!("{:.1} MB", bytes as f64 / MEGABYTE as f64)
+    } else if bytes >= KILOBYTE {
+        format!("{:.1} KB", bytes as f64 / KILOBYTE as f64)
     } else {
         format!("{} B", bytes)
     }
@@ -550,16 +416,14 @@ fn format_bytes(bytes: u64) -> String {
 
 /// Format bytes per second to human-readable string
 fn format_speed(bytes_per_sec: f64) -> String {
-    const KB: f64 = 1024.0;
-    const MB: f64 = KB * 1024.0;
-    const GB: f64 = MB * 1024.0;
+    use termide_config::constants::{GIGABYTE, KILOBYTE, MEGABYTE};
 
-    if bytes_per_sec >= GB {
-        format!("{:.1} GB/s", bytes_per_sec / GB)
-    } else if bytes_per_sec >= MB {
-        format!("{:.1} MB/s", bytes_per_sec / MB)
-    } else if bytes_per_sec >= KB {
-        format!("{:.1} KB/s", bytes_per_sec / KB)
+    if bytes_per_sec >= GIGABYTE as f64 {
+        format!("{:.1} GB/s", bytes_per_sec / GIGABYTE as f64)
+    } else if bytes_per_sec >= MEGABYTE as f64 {
+        format!("{:.1} MB/s", bytes_per_sec / MEGABYTE as f64)
+    } else if bytes_per_sec >= KILOBYTE as f64 {
+        format!("{:.1} KB/s", bytes_per_sec / KILOBYTE as f64)
     } else {
         format!("{:.0} B/s", bytes_per_sec)
     }

@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use lsp_types::{Diagnostic, DiagnosticSeverity};
-use termide_buffer::{Cursor, SearchState, Selection, TextBuffer};
+use termide_buffer::{Cursor, SearchState, Selection};
 
 /// Pre-computed rendering context.
 ///
@@ -45,7 +45,6 @@ impl RenderContext {
         search_state: &Option<SearchState>,
         selection: &Option<Selection>,
         diagnostics: &[Diagnostic],
-        buffer: &TextBuffer,
     ) -> Self {
         // Pre-extract match information
         let search_matches: Vec<(usize, usize, usize)> = if let Some(ref search) = search_state {
@@ -67,8 +66,7 @@ impl RenderContext {
         let selection_range = selection.as_ref().map(|s| (s.start(), s.end()));
 
         // Build diagnostic maps for gutter markers and inline underlines
-        let (diagnostic_line_severity, diagnostic_ranges) =
-            build_diagnostic_maps(diagnostics, buffer);
+        let (diagnostic_line_severity, diagnostic_ranges) = build_diagnostic_maps(diagnostics);
 
         Self {
             search_match_map,
@@ -117,7 +115,6 @@ fn build_search_match_map(
 /// 2. Empty map (inline underlines disabled - virtual diagnostic lines are used instead)
 fn build_diagnostic_maps(
     diagnostics: &[Diagnostic],
-    _buffer: &TextBuffer,
 ) -> (
     HashMap<usize, DiagnosticSeverity>,
     HashMap<(usize, usize), DiagnosticSeverity>,

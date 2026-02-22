@@ -106,8 +106,7 @@ pub fn render_editor_content<H: LineHighlighter>(
     let selection_style = Style::default().bg(theme.selected_bg).fg(theme.selected_fg);
 
     // Prepare rendering context
-    let mut render_context =
-        context::RenderContext::prepare(search_state, selection, diagnostics, buffer);
+    let mut render_context = context::RenderContext::prepare(search_state, selection, diagnostics);
 
     // Select rendering mode
     if word_wrap_enabled && content_width > 0 {

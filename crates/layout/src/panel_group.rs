@@ -89,12 +89,12 @@ impl PanelGroup {
     }
 
     /// Get mutable reference to panels.
-    pub fn panels_mut(&mut self) -> &mut Vec<Box<dyn Panel>> {
+    pub fn panels_mut(&mut self) -> &mut [Box<dyn Panel>] {
         &mut self.panels
     }
 
     /// Get reference to panels.
-    pub fn panels(&self) -> &Vec<Box<dyn Panel>> {
+    pub fn panels(&self) -> &[Box<dyn Panel>] {
         &self.panels
     }
 

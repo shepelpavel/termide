@@ -27,9 +27,6 @@ pub const KILOBYTE: u64 = 1024;
 pub const MEGABYTE: u64 = KILOBYTE * 1024;
 pub const GIGABYTE: u64 = MEGABYTE * 1024;
 
-/// Maximum file size to open in editor (100 MB).
-pub const MAX_EDITOR_FILE_SIZE: u64 = 100 * MEGABYTE;
-
 /// Default file size threshold in MB for enabling smart features (5 MB).
 pub const DEFAULT_LARGE_FILE_THRESHOLD_MB: u64 = 5;
 
