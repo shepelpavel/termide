@@ -16,6 +16,9 @@ use termide_app_event::DefaultHotkeyProcessor;
 use termide_core::event::{Event, EventHandler};
 use termide_layout::{LayoutManager, PanelGroup};
 
+use termide_config::Config;
+use termide_theme::Theme;
+
 use crate::state::AppState;
 use crate::PanelExt;
 
@@ -134,6 +137,74 @@ impl App {
         let mut app = Self::new();
         app.state.update_terminal_size(width, height);
         app
+    }
+
+    /// Create a new application with a pre-loaded config and specified terminal size.
+    /// This avoids double config loading by accepting an already-configured Config.
+    pub fn new_with_config(config: Config, width: u16, height: u16) -> Self {
+        let theme = Theme::get_by_name(&config.general.theme);
+        let mut state = AppState::with_config_and_theme(config, theme);
+        state.update_terminal_size(width, height);
+
+        // Get project root from current working directory
+        let project_root = std::env::current_dir()
+            .unwrap_or_else(|_| dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("/")));
+
+        // Initialize logger in session directory
+        let log_file_path = if let Some(ref path) = state.config.logging.file_path {
+            std::path::PathBuf::from(path)
+        } else {
+            termide_session::Session::get_session_dir(&project_root)
+                .map(|dir| {
+                    let _ = termide_session::cleanup_old_logs(&dir);
+                    dir.join(termide_session::generate_log_filename())
+                })
+                .unwrap_or_else(|_| {
+                    std::env::temp_dir().join(termide_session::generate_log_filename())
+                })
+        };
+        let min_log_level = termide_logger::LogLevel::from_str(&state.config.logging.min_level)
+            .ok()
+            .unwrap_or(termide_logger::LogLevel::Info);
+        termide_logger::init(
+            log_file_path,
+            termide_config::constants::MAX_LOG_ENTRIES,
+            min_log_level,
+        );
+        log::info!("Application started");
+
+        // Initialize unified watcher for filesystem and git events
+        match termide_watcher::create_watcher() {
+            Ok(watcher) => {
+                state.watcher = Some(watcher);
+                log::info!("Unified watcher initialized");
+            }
+            Err(e) => {
+                log::error!("Failed to initialize watcher: {}", e);
+            }
+        }
+
+        // Clean up old sessions
+        let retention_days = state.config.general.session_retention_days;
+        if let Err(e) = termide_session::cleanup_old_sessions(&project_root, retention_days) {
+            log::warn!("Failed to cleanup old sessions: {}", e);
+        }
+
+        let hotkey_processor =
+            DefaultHotkeyProcessor::from_config(&state.config.general.keybindings);
+
+        Self {
+            state,
+            layout_manager: LayoutManager::new(),
+            event_handler: EventHandler::new(Duration::from_millis(
+                termide_config::constants::EVENT_HANDLER_INTERVAL_MS,
+            )),
+            project_root,
+            hotkey_processor,
+            outline_last_version: 0,
+            outline_last_cursor: 0,
+            outline_last_edit_time: None,
+        }
     }
 
     /// Log git availability status to journal

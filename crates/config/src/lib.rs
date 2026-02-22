@@ -104,6 +104,17 @@ impl Config {
         }
     }
 
+    /// Load configuration from a specific file path.
+    ///
+    /// Unlike `load()`, this does not create the file if it doesn't exist
+    /// and does not auto-save normalized content back.
+    pub fn load_from(path: &std::path::Path) -> Result<Self> {
+        let content = std::fs::read_to_string(path)?;
+        let mut config: Self = toml::from_str(&content)?;
+        config.normalize();
+        Ok(config)
+    }
+
     /// Save configuration to file.
     pub fn save(&self) -> Result<()> {
         let config_path = Self::config_file_path()?;

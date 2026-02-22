@@ -1,6 +1,7 @@
 mod ui;
 
 use anyhow::Result;
+use clap::Parser;
 use crossterm::{
     event::{
         DisableBracketedPaste, DisableFocusChange, DisableMouseCapture, EnableBracketedPaste,
@@ -23,7 +24,26 @@ use termide_git::is_available as check_git_available;
 use termide_i18n::init_with_language;
 use termide_theme::{set_ansi16_mode, set_themes_dir};
 
+#[derive(Parser)]
+#[command(name = "termide", version, about = "Terminal IDE")]
+struct Cli {
+    /// Override minimum log level (trace, debug, info, warn, error)
+    #[arg(long)]
+    log_level: Option<String>,
+
+    /// Disable LSP support
+    #[arg(long)]
+    no_lsp: bool,
+
+    /// Path to config file (default: ~/.config/termide/config.toml)
+    #[arg(long, value_name = "PATH")]
+    config: Option<std::path::PathBuf>,
+}
+
 fn main() -> Result<()> {
+    // Parse CLI arguments
+    let cli = Cli::parse();
+
     // Detect terminal capabilities first (before loading themes)
     let caps = init_terminal_caps();
 
@@ -32,8 +52,20 @@ fn main() -> Result<()> {
         set_ansi16_mode(true);
     }
 
-    // Load config first to get language setting
-    let config = Config::load().unwrap_or_default();
+    // Load config: from custom path if specified, otherwise default
+    let mut config = if let Some(ref path) = cli.config {
+        Config::load_from(path)?
+    } else {
+        Config::load().unwrap_or_default()
+    };
+
+    // Apply CLI overrides
+    if let Some(ref level) = cli.log_level {
+        config.logging.min_level = level.clone();
+    }
+    if cli.no_lsp {
+        config.lsp.enabled = false;
+    }
 
     // Initialize theme system with themes directory from config
     if let Ok(themes_dir) = Config::get_themes_dir() {
@@ -81,8 +113,8 @@ fn main() -> Result<()> {
     // Get terminal size and use it to initialize app with correct dimensions
     let size = terminal.size()?;
 
-    // Create application with terminal size to ensure proper panel layout
-    let mut app = App::new_with_size(size.width, size.height);
+    // Create application with pre-loaded config (avoids double config loading)
+    let mut app = App::new_with_config(config, size.width, size.height);
 
     // Log git availability to journal (not to stderr)
     app.log_git_status(git_available);

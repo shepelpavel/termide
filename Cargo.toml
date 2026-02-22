@@ -103,6 +103,7 @@ anyhow = "1.0"
 arboard = "3.4"
 base64 = "0.22"
 chrono = "0.4"
+clap = { version = "4", features = ["derive"] }
 crossterm = "0.28"
 dirs = "6.0"
 libc = "0.2"
