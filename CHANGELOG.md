@@ -5,6 +5,27 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.6] - 2026-02-23
+
+### Added
+- **CLI**: `--log-level`, `--no-lsp`, `--config` command-line arguments
+- **CLI**: Set terminal window/tab title to "Termide: <cwd>" on startup
+- **Logger**: TRACE log level and trace user input events
+
+### Changed
+- **Git Status**: Remove flat view mode, always use tree view
+- **ProgressModal**: Deduplicate 8 constructors via shared base + struct update syntax (-166 LOC)
+- **API**: Return `&[T]` instead of `&Vec<T>` in `PanelGroup::panels()` and `TerminalScreen::get_line_by_absolute()`
+- **Constants**: Centralize `MEGABYTE` in `termide-config`, remove duplicates from `panel-editor` and `modal`
+- **Codebase**: Remove unused `_buffer` parameter from `build_diagnostic_maps`
+- **Codebase**: Remove redundant clones, deduplicate constructors, fix unwrap
+
+### Fixed
+- **Editor**: Invalidate wrap cache on selection delete
+- **Journal**: Account for trailing empty line in auto-scroll check
+- **Journal**: Bind auto-scroll to cursor position instead of key codes
+- **Terminal**: Update cursor position on arrow key movement
+
 ## [0.12.5] - 2026-02-18
 
 ### Added
