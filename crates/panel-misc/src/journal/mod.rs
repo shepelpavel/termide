@@ -8,7 +8,7 @@
 
 pub mod highlighting;
 
-use crossterm::event::{KeyCode, KeyEvent, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyEvent, MouseEvent, MouseEventKind};
 use ratatui::{buffer::Buffer, layout::Rect};
 use std::any::Any;
 
@@ -150,25 +150,12 @@ impl Panel for JournalPanel {
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
-        // Check for auto-scroll toggle keys
-        match key.code {
-            // Disable auto-scroll on scroll up
-            KeyCode::Up
-            | KeyCode::Char('k')
-            | KeyCode::PageUp
-            | KeyCode::Home
-            | KeyCode::Char('g') => {
-                self.auto_scroll = false;
-            }
-            // Enable auto-scroll on scroll to end
-            KeyCode::End | KeyCode::Char('G') => {
-                self.auto_scroll = true;
-            }
-            _ => {}
-        }
-
-        // Delegate to editor for actual handling
         let _ = self.editor.handle_key(key);
+
+        // Auto-scroll when cursor is on the last line
+        let last_line = self.editor.buffer().line_count().saturating_sub(1);
+        self.auto_scroll = self.editor.cursor_line() >= last_line;
+
         vec![]
     }
 
@@ -193,6 +180,10 @@ impl Panel for JournalPanel {
                 if self.is_at_end(content_height) {
                     self.auto_scroll = true;
                 }
+            }
+            MouseEventKind::Down(_) => {
+                let last_line = self.editor.buffer().line_count().saturating_sub(1);
+                self.auto_scroll = self.editor.cursor_line() >= last_line;
             }
             _ => {}
         }
