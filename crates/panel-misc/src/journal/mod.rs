@@ -74,6 +74,7 @@ impl JournalPanel {
             // Append new entries
             for entry in &new_entries {
                 let level_text = match entry.level {
+                    LogLevel::Trace => "TRACE",
                     LogLevel::Debug => "DEBUG",
                     LogLevel::Info => "INFO ",
                     LogLevel::Warn => "WARN ",

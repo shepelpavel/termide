@@ -20,6 +20,14 @@ use termide_ui_render::{
 impl App {
     /// Handle mouse event
     pub(super) fn handle_mouse_event(&mut self, mouse: crossterm::event::MouseEvent) -> Result<()> {
+        log::trace!(
+            "Mouse event: kind={:?}, col={}, row={}, modifiers={:?}",
+            mouse.kind,
+            mouse.column,
+            mouse.row,
+            mouse.modifiers
+        );
+
         // Handle divider drag first (highest priority for smooth resize)
         if self.state.ui.drag.is_dragging() {
             match mouse.kind {
@@ -975,6 +983,13 @@ impl App {
         mouse: crossterm::event::MouseEvent,
         delta: i32,
     ) -> Result<()> {
+        log::trace!(
+            "Scroll event: delta={}, col={}, row={}",
+            delta,
+            mouse.column,
+            mouse.row
+        );
+
         // Track scroll timing for throttling heavy operations in Event::Tick
         self.state.last_mouse_scroll = Some(std::time::Instant::now());
 

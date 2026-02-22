@@ -83,7 +83,9 @@ impl LogHighlightCache {
 
         // Determine log level and style for the rest of the line
         // Note: level_text must match EXACTLY what strip_prefix removes (no extra spaces)
-        let (level_text, message, level_style) = if let Some(msg) = rest.strip_prefix("DEBUG") {
+        let (level_text, message, level_style) = if let Some(msg) = rest.strip_prefix("TRACE") {
+            ("TRACE", msg, Style::default().fg(Color::DarkGray))
+        } else if let Some(msg) = rest.strip_prefix("DEBUG") {
             ("DEBUG", msg, Style::default().fg(Color::DarkGray))
         } else if let Some(msg) = rest.strip_prefix("INFO ") {
             ("INFO ", msg, Style::default().fg(self.theme.fg))

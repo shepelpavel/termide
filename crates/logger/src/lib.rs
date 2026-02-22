@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 
 // Re-export log macros for convenient use
-pub use log::{debug, error, info, warn};
+pub use log::{debug, error, info, trace, warn};
 
 /// Log entry
 #[derive(Debug, Clone)]
@@ -31,6 +31,7 @@ pub struct LogEntry {
 /// Log level
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum LogLevel {
+    Trace,
     Debug,
     Info,
     Warn,
@@ -41,6 +42,7 @@ impl LogLevel {
     /// Convert log level to string
     pub fn to_str(self) -> &'static str {
         match self {
+            LogLevel::Trace => "TRACE",
             LogLevel::Debug => "DEBUG",
             LogLevel::Info => "INFO",
             LogLevel::Warn => "WARN",
@@ -54,6 +56,7 @@ impl std::str::FromStr for LogLevel {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
+            "trace" => Ok(LogLevel::Trace),
             "debug" => Ok(LogLevel::Debug),
             "info" => Ok(LogLevel::Info),
             "warn" | "warning" => Ok(LogLevel::Warn),
@@ -69,7 +72,8 @@ fn level_to_log_level(level: Level) -> LogLevel {
         Level::Error => LogLevel::Error,
         Level::Warn => LogLevel::Warn,
         Level::Info => LogLevel::Info,
-        Level::Debug | Level::Trace => LogLevel::Debug,
+        Level::Debug => LogLevel::Debug,
+        Level::Trace => LogLevel::Trace,
     }
 }
 
@@ -80,6 +84,7 @@ fn log_level_to_level(level: LogLevel) -> Level {
         LogLevel::Warn => Level::Warn,
         LogLevel::Info => Level::Info,
         LogLevel::Debug => Level::Debug,
+        LogLevel::Trace => Level::Trace,
     }
 }
 
@@ -90,6 +95,7 @@ fn log_level_to_filter(level: LogLevel) -> LevelFilter {
         LogLevel::Warn => LevelFilter::Warn,
         LogLevel::Info => LevelFilter::Info,
         LogLevel::Debug => LevelFilter::Debug,
+        LogLevel::Trace => LevelFilter::Trace,
     }
 }
 

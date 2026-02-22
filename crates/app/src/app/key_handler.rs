@@ -20,7 +20,7 @@ impl App {
         let key = termide_keyboard::translate_hotkey(key);
 
         // Log key event for debugging
-        log::debug!(
+        log::trace!(
             "Key event: code={:?}, modifiers={:?}",
             key.code,
             key.modifiers
