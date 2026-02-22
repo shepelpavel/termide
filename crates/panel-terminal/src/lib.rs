@@ -566,6 +566,7 @@ impl Terminal {
             sync_output_ended,
             use_alt_screen,
             force_invalidation,
+            current_cursor,
         ) = {
             let screen = self.read_screen();
             (
@@ -575,6 +576,7 @@ impl Terminal {
                 screen.sync_output_ended,
                 screen.use_alt_screen,
                 screen.force_cache_invalidation,
+                screen.cursor,
             )
         };
 
@@ -646,9 +648,14 @@ impl Terminal {
         // Return cached if:
         // - Screen is not dirty (no new PTY output)
         // - Focus state hasn't changed (cursor visibility depends on focus)
+        // - Cursor position hasn't changed (BS/CR move cursor without dirty flag)
         // - No active selection (selection changes without dirty flag)
         // - We have cached lines
-        if !is_dirty && self.cached_focus == show_cursor && !has_selection {
+        if !is_dirty
+            && self.cached_focus == show_cursor
+            && !has_selection
+            && current_cursor == self.cached_cursor
+        {
             if let Some(ref cached) = self.cached_lines {
                 // O(1) Arc clone - no data copying!
                 return (
