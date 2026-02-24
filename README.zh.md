@@ -64,23 +64,23 @@
 
 ```bash
 # Linux x86_64（也适用于 WSL）
-wget https://github.com/termide/termide/releases/latest/download/termide-0.12.6-x86_64-unknown-linux-gnu.tar.gz
-tar xzf termide-0.12.6-x86_64-unknown-linux-gnu.tar.gz
+wget https://github.com/termide/termide/releases/latest/download/termide-0.13.0-x86_64-unknown-linux-gnu.tar.gz
+tar xzf termide-0.13.0-x86_64-unknown-linux-gnu.tar.gz
 ./termide
 
 # macOS Intel (x86_64)
-curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.12.6-x86_64-apple-darwin.tar.gz
-tar xzf termide-0.12.6-x86_64-apple-darwin.tar.gz
+curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.13.0-x86_64-apple-darwin.tar.gz
+tar xzf termide-0.13.0-x86_64-apple-darwin.tar.gz
 ./termide
 
 # macOS Apple Silicon (ARM64)
-curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.12.6-aarch64-apple-darwin.tar.gz
-tar xzf termide-0.12.6-aarch64-apple-darwin.tar.gz
+curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.13.0-aarch64-apple-darwin.tar.gz
+tar xzf termide-0.13.0-aarch64-apple-darwin.tar.gz
 ./termide
 
 # Linux ARM64（树莓派、ARM 服务器）
-wget https://github.com/termide/termide/releases/latest/download/termide-0.12.6-aarch64-unknown-linux-gnu.tar.gz
-tar xzf termide-0.12.6-aarch64-unknown-linux-gnu.tar.gz
+wget https://github.com/termide/termide/releases/latest/download/termide-0.13.0-aarch64-unknown-linux-gnu.tar.gz
+tar xzf termide-0.13.0-aarch64-unknown-linux-gnu.tar.gz
 ./termide
 ```
 
@@ -93,8 +93,8 @@ tar xzf termide-0.12.6-aarch64-unknown-linux-gnu.tar.gz
 
 ```bash
 # 仅限 x86_64（ARM64 请使用上面的 tar.gz）
-wget https://github.com/termide/termide/releases/latest/download/termide_0.12.6-1_amd64.deb
-sudo dpkg -i termide_0.12.6-1_amd64.deb
+wget https://github.com/termide/termide/releases/latest/download/termide_0.13.0-1_amd64.deb
+sudo dpkg -i termide_0.13.0-1_amd64.deb
 ```
 
 </details>
@@ -106,8 +106,8 @@ sudo dpkg -i termide_0.12.6-1_amd64.deb
 
 ```bash
 # 仅限 x86_64（ARM64 请使用上面的 tar.gz）
-wget https://github.com/termide/termide/releases/latest/download/termide-0.12.6-1.x86_64.rpm
-sudo rpm -i termide-0.12.6-1.x86_64.rpm
+wget https://github.com/termide/termide/releases/latest/download/termide-0.13.0-1.x86_64.rpm
+sudo rpm -i termide-0.13.0-1.x86_64.rpm
 ```
 
 </details>

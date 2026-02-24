@@ -5,6 +5,20 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-02-24
+
+### Added
+- **Editor**: Auto-closing brackets and quotes with context-aware logic (don't close apostrophes mid-word)
+- **Editor**: Ctrl+Left/Right word navigation and Ctrl+Shift+Left/Right word selection
+- **Editor**: Split-bracket indent on Enter between matching pairs (`{|}` → three lines with proper indentation)
+- **Editor**: `auto_indent` and `auto_close_brackets` configuration options
+
+### Changed
+- **VFS**: Deduplicate SFTP operations via `spawn_op`/`spawn_op2` helpers (-224 LOC)
+- **I18n**: Replace unsafe pointer cast in `t()` with safe `Box::leak` approach
+- **I18n**: Use fallback instead of guard-checked `expect` in pluralization
+- **Editor**: Extract word boundary logic from vim motions into shared `word_boundary` module
+
 ## [0.12.6] - 2026-02-23
 
 ### Added
