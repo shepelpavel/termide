@@ -190,6 +190,56 @@ impl SftpProvider {
             .and_then(|guard| guard.home_dir.clone())
     }
 
+    /// Run an SFTP operation in a background thread.
+    ///
+    /// Handles the common boilerplate: acquire SFTP handle, convert path,
+    /// spawn thread, send result through channel.
+    fn spawn_op<T: Send + 'static>(
+        &self,
+        path: &VfsPath,
+        f: impl FnOnce(Arc<Mutex<Sftp>>, PathBuf) -> VfsResult<T> + Send + 'static,
+    ) -> VfsOperation<T> {
+        let sftp = match self.get_sftp() {
+            Some(s) => s,
+            None => return VfsOperation::error(VfsError::NotConnected),
+        };
+        let remote_path = match Self::to_remote_path(path) {
+            Ok(p) => p,
+            Err(e) => return VfsOperation::error(e),
+        };
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            let _ = tx.send(f(sftp, remote_path));
+        });
+        VfsOperation::new(rx)
+    }
+
+    /// Like [`spawn_op`] but for operations with two paths (rename, copy).
+    fn spawn_op2<T: Send + 'static>(
+        &self,
+        from: &VfsPath,
+        to: &VfsPath,
+        f: impl FnOnce(Arc<Mutex<Sftp>>, PathBuf, PathBuf) -> VfsResult<T> + Send + 'static,
+    ) -> VfsOperation<T> {
+        let sftp = match self.get_sftp() {
+            Some(s) => s,
+            None => return VfsOperation::error(VfsError::NotConnected),
+        };
+        let from_path = match Self::to_remote_path(from) {
+            Ok(p) => p,
+            Err(e) => return VfsOperation::error(e),
+        };
+        let to_path = match Self::to_remote_path(to) {
+            Ok(p) => p,
+            Err(e) => return VfsOperation::error(e),
+        };
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            let _ = tx.send(f(sftp, from_path, to_path));
+        });
+        VfsOperation::new(rx)
+    }
+
     /// Attempt authentication with available methods.
     fn authenticate(
         session: &Session,
@@ -1112,249 +1162,105 @@ impl VfsProvider for SftpProvider {
     }
 
     fn list_dir(&self, path: &VfsPath) -> VfsOperation<Vec<VfsEntry>> {
-        let sftp = match self.get_sftp() {
-            Some(s) => s,
-            None => return VfsOperation::error(VfsError::NotConnected),
-        };
-
-        let remote_path = match Self::to_remote_path(path) {
-            Ok(p) => p,
-            Err(e) => return VfsOperation::error(e),
-        };
-
         let base_path = path.clone();
-        let (tx, rx) = mpsc::channel();
+        self.spawn_op(path, move |sftp, remote_path| {
+            let sftp = lock_sftp(&sftp)?;
 
-        thread::spawn(move || {
-            let result = (|| -> VfsResult<Vec<VfsEntry>> {
-                let sftp = lock_sftp(&sftp)?;
+            let mut entries = Vec::new();
+            let dir = sftp
+                .readdir(&remote_path)
+                .map_err(|e| VfsError::Sftp(format!("readdir failed: {}", e)))?;
 
-                let mut entries = Vec::new();
-                let dir = sftp
-                    .readdir(&remote_path)
-                    .map_err(|e| VfsError::Sftp(format!("readdir failed: {}", e)))?;
+            for (entry_path, stat) in dir {
+                let name = entry_path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default();
 
-                for (entry_path, stat) in dir {
-                    let name = entry_path
-                        .file_name()
-                        .map(|n| n.to_string_lossy().to_string())
-                        .unwrap_or_default();
-
-                    if name.is_empty() {
-                        continue;
-                    }
-
-                    let entry_vfs_path = base_path.join(&name);
-                    let metadata = Self::stat_to_metadata(&stat);
-
-                    entries.push(VfsEntry::new(name, entry_vfs_path, metadata));
+                if name.is_empty() {
+                    continue;
                 }
 
-                // Sort: directories first, then by name
-                entries.sort_by(|a, b| match (a.is_dir(), b.is_dir()) {
-                    (true, false) => std::cmp::Ordering::Less,
-                    (false, true) => std::cmp::Ordering::Greater,
-                    _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-                });
+                let entry_vfs_path = base_path.join(&name);
+                let metadata = Self::stat_to_metadata(&stat);
+                entries.push(VfsEntry::new(name, entry_vfs_path, metadata));
+            }
 
-                Ok(entries)
-            })();
+            entries.sort_by(|a, b| match (a.is_dir(), b.is_dir()) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+            });
 
-            let _ = tx.send(result);
-        });
-
-        VfsOperation::new(rx)
+            Ok(entries)
+        })
     }
 
     fn create_dir(&self, path: &VfsPath) -> VfsOperation<()> {
-        let sftp = match self.get_sftp() {
-            Some(s) => s,
-            None => return VfsOperation::error(VfsError::NotConnected),
-        };
-
-        let remote_path = match Self::to_remote_path(path) {
-            Ok(p) => p,
-            Err(e) => return VfsOperation::error(e),
-        };
-
-        let (tx, rx) = mpsc::channel();
-
-        thread::spawn(move || {
-            let result = (|| -> VfsResult<()> {
-                let sftp = lock_sftp(&sftp)?;
-
-                sftp.mkdir(&remote_path, 0o755)
-                    .map_err(|e| VfsError::Sftp(format!("mkdir failed: {}", e)))?;
-
-                Ok(())
-            })();
-
-            let _ = tx.send(result);
-        });
-
-        VfsOperation::new(rx)
+        self.spawn_op(path, |sftp, remote_path| {
+            let sftp = lock_sftp(&sftp)?;
+            sftp.mkdir(&remote_path, 0o755)
+                .map_err(|e| VfsError::Sftp(format!("mkdir failed: {}", e)))?;
+            Ok(())
+        })
     }
 
     fn create_dir_all(&self, path: &VfsPath) -> VfsOperation<()> {
         // SFTP doesn't have native mkdir -p, so we create directories one by one
-        let sftp = match self.get_sftp() {
-            Some(s) => s,
-            None => return VfsOperation::error(VfsError::NotConnected),
-        };
-
-        let remote_path = match Self::to_remote_path(path) {
-            Ok(p) => p,
-            Err(e) => return VfsOperation::error(e),
-        };
-
-        let (tx, rx) = mpsc::channel();
-
-        thread::spawn(move || {
-            let result = (|| -> VfsResult<()> {
-                let sftp = lock_sftp(&sftp)?;
-
-                let mut current = PathBuf::new();
-                for component in remote_path.components() {
-                    current.push(component);
-
-                    // Check if exists
-                    if sftp.stat(&current).is_err() {
-                        // Doesn't exist, create it
-                        sftp.mkdir(&current, 0o755).map_err(|e| {
-                            VfsError::Sftp(format!("mkdir failed for {:?}: {}", current, e))
-                        })?;
-                    }
+        self.spawn_op(path, |sftp, remote_path| {
+            let sftp = lock_sftp(&sftp)?;
+            let mut current = PathBuf::new();
+            for component in remote_path.components() {
+                current.push(component);
+                if sftp.stat(&current).is_err() {
+                    sftp.mkdir(&current, 0o755).map_err(|e| {
+                        VfsError::Sftp(format!("mkdir failed for {:?}: {}", current, e))
+                    })?;
                 }
-
-                Ok(())
-            })();
-
-            let _ = tx.send(result);
-        });
-
-        VfsOperation::new(rx)
+            }
+            Ok(())
+        })
     }
 
     fn exists(&self, path: &VfsPath) -> VfsOperation<bool> {
-        let sftp = match self.get_sftp() {
-            Some(s) => s,
-            None => return VfsOperation::error(VfsError::NotConnected),
-        };
-
-        let remote_path = match Self::to_remote_path(path) {
-            Ok(p) => p,
-            Err(e) => return VfsOperation::error(e),
-        };
-
-        let (tx, rx) = mpsc::channel();
-
-        thread::spawn(move || {
-            let result = (|| -> VfsResult<bool> {
-                let sftp = lock_sftp(&sftp)?;
-
-                Ok(sftp.stat(&remote_path).is_ok())
-            })();
-
-            let _ = tx.send(result);
-        });
-
-        VfsOperation::new(rx)
+        self.spawn_op(path, |sftp, remote_path| {
+            let sftp = lock_sftp(&sftp)?;
+            Ok(sftp.stat(&remote_path).is_ok())
+        })
     }
 
     fn metadata(&self, path: &VfsPath) -> VfsOperation<VfsMetadata> {
-        let sftp = match self.get_sftp() {
-            Some(s) => s,
-            None => return VfsOperation::error(VfsError::NotConnected),
-        };
-
-        let remote_path = match Self::to_remote_path(path) {
-            Ok(p) => p,
-            Err(e) => return VfsOperation::error(e),
-        };
-
-        let (tx, rx) = mpsc::channel();
-
-        thread::spawn(move || {
-            let result = (|| -> VfsResult<VfsMetadata> {
-                let sftp = lock_sftp(&sftp)?;
-
-                let stat = sftp
-                    .stat(&remote_path)
-                    .map_err(|e| VfsError::Sftp(format!("stat failed: {}", e)))?;
-
-                Ok(Self::stat_to_metadata(&stat))
-            })();
-
-            let _ = tx.send(result);
-        });
-
-        VfsOperation::new(rx)
+        self.spawn_op(path, |sftp, remote_path| {
+            let sftp = lock_sftp(&sftp)?;
+            let stat = sftp
+                .stat(&remote_path)
+                .map_err(|e| VfsError::Sftp(format!("stat failed: {}", e)))?;
+            Ok(Self::stat_to_metadata(&stat))
+        })
     }
 
     fn read_file(&self, path: &VfsPath) -> VfsOperation<Vec<u8>> {
-        let sftp = match self.get_sftp() {
-            Some(s) => s,
-            None => return VfsOperation::error(VfsError::NotConnected),
-        };
-
-        let remote_path = match Self::to_remote_path(path) {
-            Ok(p) => p,
-            Err(e) => return VfsOperation::error(e),
-        };
-
-        let (tx, rx) = mpsc::channel();
-
-        thread::spawn(move || {
-            let result = (|| -> VfsResult<Vec<u8>> {
-                let sftp = lock_sftp(&sftp)?;
-
-                let mut file = sftp
-                    .open(&remote_path)
-                    .map_err(|e| VfsError::Sftp(format!("open failed: {}", e)))?;
-
-                let mut contents = Vec::new();
-                file.read_to_end(&mut contents).map_err(VfsError::Io)?;
-
-                Ok(contents)
-            })();
-
-            let _ = tx.send(result);
-        });
-
-        VfsOperation::new(rx)
+        self.spawn_op(path, |sftp, remote_path| {
+            let sftp = lock_sftp(&sftp)?;
+            let mut file = sftp
+                .open(&remote_path)
+                .map_err(|e| VfsError::Sftp(format!("open failed: {}", e)))?;
+            let mut contents = Vec::new();
+            file.read_to_end(&mut contents).map_err(VfsError::Io)?;
+            Ok(contents)
+        })
     }
 
     fn write_file(&self, path: &VfsPath, data: &[u8]) -> VfsOperation<()> {
-        let sftp = match self.get_sftp() {
-            Some(s) => s,
-            None => return VfsOperation::error(VfsError::NotConnected),
-        };
-
-        let remote_path = match Self::to_remote_path(path) {
-            Ok(p) => p,
-            Err(e) => return VfsOperation::error(e),
-        };
-
         let data = data.to_vec();
-        let (tx, rx) = mpsc::channel();
-
-        thread::spawn(move || {
-            let result = (|| -> VfsResult<()> {
-                let sftp = lock_sftp(&sftp)?;
-
-                let mut file = sftp
-                    .create(&remote_path)
-                    .map_err(|e| VfsError::Sftp(format!("create failed: {}", e)))?;
-
-                file.write_all(&data).map_err(VfsError::Io)?;
-
-                Ok(())
-            })();
-
-            let _ = tx.send(result);
-        });
-
-        VfsOperation::new(rx)
+        self.spawn_op(path, move |sftp, remote_path| {
+            let sftp = lock_sftp(&sftp)?;
+            let mut file = sftp
+                .create(&remote_path)
+                .map_err(|e| VfsError::Sftp(format!("create failed: {}", e)))?;
+            file.write_all(&data).map_err(VfsError::Io)?;
+            Ok(())
+        })
     }
 
     fn delete(&self, path: &VfsPath) -> VfsOperation<()> {
@@ -1363,19 +1269,7 @@ impl VfsProvider for SftpProvider {
     }
 
     fn delete_recursive(&self, path: &VfsPath) -> VfsOperation<()> {
-        let sftp = match self.get_sftp() {
-            Some(s) => s,
-            None => return VfsOperation::error(VfsError::NotConnected),
-        };
-
-        let remote_path = match Self::to_remote_path(path) {
-            Ok(p) => p,
-            Err(e) => return VfsOperation::error(e),
-        };
-
-        let (tx, rx) = mpsc::channel();
-
-        thread::spawn(move || {
+        self.spawn_op(path, |sftp, remote_path| {
             fn delete_recursive_inner(sftp: &Sftp, path: &Path, depth: usize) -> VfsResult<()> {
                 if depth > crate::MAX_RECURSION_DEPTH {
                     return Err(VfsError::RemoteError {
@@ -1391,7 +1285,6 @@ impl VfsProvider for SftpProvider {
                     .map_err(|e| VfsError::Sftp(format!("stat failed: {}", e)))?;
 
                 if stat.is_dir() {
-                    // List and delete contents first
                     let entries = sftp
                         .readdir(path)
                         .map_err(|e| VfsError::Sftp(format!("readdir failed: {}", e)))?;
@@ -1410,184 +1303,76 @@ impl VfsProvider for SftpProvider {
                 Ok(())
             }
 
-            let result = (|| -> VfsResult<()> {
-                let sftp = lock_sftp(&sftp)?;
-
-                delete_recursive_inner(&sftp, &remote_path, 0)
-            })();
-
-            let _ = tx.send(result);
-        });
-
-        VfsOperation::new(rx)
+            let sftp = lock_sftp(&sftp)?;
+            delete_recursive_inner(&sftp, &remote_path, 0)
+        })
     }
 
     fn rename(&self, from: &VfsPath, to: &VfsPath) -> VfsOperation<()> {
-        let sftp = match self.get_sftp() {
-            Some(s) => s,
-            None => return VfsOperation::error(VfsError::NotConnected),
-        };
-
-        let from_path = match Self::to_remote_path(from) {
-            Ok(p) => p,
-            Err(e) => return VfsOperation::error(e),
-        };
-        let to_path = match Self::to_remote_path(to) {
-            Ok(p) => p,
-            Err(e) => return VfsOperation::error(e),
-        };
-
-        let (tx, rx) = mpsc::channel();
-
-        thread::spawn(move || {
-            let result = (|| -> VfsResult<()> {
-                let sftp = lock_sftp(&sftp)?;
-
-                sftp.rename(&from_path, &to_path, None)
-                    .map_err(|e| VfsError::Sftp(format!("rename failed: {}", e)))?;
-
-                Ok(())
-            })();
-
-            let _ = tx.send(result);
-        });
-
-        VfsOperation::new(rx)
+        self.spawn_op2(from, to, |sftp, from_path, to_path| {
+            let sftp = lock_sftp(&sftp)?;
+            sftp.rename(&from_path, &to_path, None)
+                .map_err(|e| VfsError::Sftp(format!("rename failed: {}", e)))?;
+            Ok(())
+        })
     }
 
     fn copy(&self, from: &VfsPath, to: &VfsPath) -> VfsOperation<()> {
         // SFTP doesn't have native copy - we need to read and write
-        let sftp = match self.get_sftp() {
-            Some(s) => s,
-            None => return VfsOperation::error(VfsError::NotConnected),
-        };
-
-        let from_path = match Self::to_remote_path(from) {
-            Ok(p) => p,
-            Err(e) => return VfsOperation::error(e),
-        };
-        let to_path = match Self::to_remote_path(to) {
-            Ok(p) => p,
-            Err(e) => return VfsOperation::error(e),
-        };
-
-        let (tx, rx) = mpsc::channel();
-
-        thread::spawn(move || {
-            let result = (|| -> VfsResult<()> {
-                let sftp = lock_sftp(&sftp)?;
-
-                // Read source file
-                let mut src_file = sftp
-                    .open(&from_path)
-                    .map_err(|e| VfsError::Sftp(format!("open source failed: {}", e)))?;
-
-                let mut contents = Vec::new();
-                src_file.read_to_end(&mut contents).map_err(VfsError::Io)?;
-
-                // Write to destination
-                let mut dst_file = sftp
-                    .create(&to_path)
-                    .map_err(|e| VfsError::Sftp(format!("create destination failed: {}", e)))?;
-
-                dst_file.write_all(&contents).map_err(VfsError::Io)?;
-
-                Ok(())
-            })();
-
-            let _ = tx.send(result);
-        });
-
-        VfsOperation::new(rx)
+        self.spawn_op2(from, to, |sftp, from_path, to_path| {
+            let sftp = lock_sftp(&sftp)?;
+            let mut src_file = sftp
+                .open(&from_path)
+                .map_err(|e| VfsError::Sftp(format!("open source failed: {}", e)))?;
+            let mut contents = Vec::new();
+            src_file.read_to_end(&mut contents).map_err(VfsError::Io)?;
+            let mut dst_file = sftp
+                .create(&to_path)
+                .map_err(|e| VfsError::Sftp(format!("create destination failed: {}", e)))?;
+            dst_file.write_all(&contents).map_err(VfsError::Io)?;
+            Ok(())
+        })
     }
 
     fn download(&self, remote: &VfsPath, local: &Path) -> VfsOperation<PathBuf> {
-        let sftp = match self.get_sftp() {
-            Some(s) => s,
-            None => return VfsOperation::error(VfsError::NotConnected),
-        };
-
-        let remote_path = match Self::to_remote_path(remote) {
-            Ok(p) => p,
-            Err(e) => return VfsOperation::error(e),
-        };
-
         let local_path = local.to_path_buf();
-        let (tx, rx) = mpsc::channel();
+        self.spawn_op(remote, move |sftp, remote_path| {
+            let stat = {
+                let sftp_guard = lock_sftp(&sftp)?;
+                sftp_guard
+                    .stat(&remote_path)
+                    .map_err(|e| VfsError::Sftp(format!("stat failed: {}", e)))?
+            };
 
-        thread::spawn(move || {
-            let result = (|| -> VfsResult<PathBuf> {
-                // Stat with brief lock to check if directory or file
-                let stat = {
-                    let sftp_guard = lock_sftp(&sftp)?;
-                    sftp_guard
-                        .stat(&remote_path)
-                        .map_err(|e| VfsError::Sftp(format!("stat failed: {}", e)))?
-                };
+            if stat.is_dir() {
+                Self::download_directory_recursive(&sftp, &remote_path, &local_path)?;
+            } else {
+                let sftp_guard = lock_sftp(&sftp)?;
+                let mut remote_file = sftp_guard
+                    .open(&remote_path)
+                    .map_err(|e| VfsError::Sftp(format!("open remote failed: {}", e)))?;
+                let mut contents = Vec::new();
+                remote_file
+                    .read_to_end(&mut contents)
+                    .map_err(VfsError::Io)?;
+                std::fs::write(&local_path, contents).map_err(VfsError::Io)?;
+            }
 
-                if stat.is_dir() {
-                    // Recursive directory download (lock managed internally)
-                    Self::download_directory_recursive(&sftp, &remote_path, &local_path)?;
-                } else {
-                    // Read remote file (brief lock for single file)
-                    let sftp_guard = lock_sftp(&sftp)?;
-                    let mut remote_file = sftp_guard
-                        .open(&remote_path)
-                        .map_err(|e| VfsError::Sftp(format!("open remote failed: {}", e)))?;
-
-                    let mut contents = Vec::new();
-                    remote_file
-                        .read_to_end(&mut contents)
-                        .map_err(VfsError::Io)?;
-
-                    // Write to local file
-                    std::fs::write(&local_path, contents).map_err(VfsError::Io)?;
-                }
-
-                Ok(local_path)
-            })();
-
-            let _ = tx.send(result);
-        });
-
-        VfsOperation::new(rx)
+            Ok(local_path)
+        })
     }
 
     fn upload(&self, local: &Path, remote: &VfsPath) -> VfsOperation<()> {
-        let sftp = match self.get_sftp() {
-            Some(s) => s,
-            None => return VfsOperation::error(VfsError::NotConnected),
-        };
-
-        let remote_path = match Self::to_remote_path(remote) {
-            Ok(p) => p,
-            Err(e) => return VfsOperation::error(e),
-        };
-
         let local_path = local.to_path_buf();
-        let (tx, rx) = mpsc::channel();
-
-        thread::spawn(move || {
-            let result = (|| -> VfsResult<()> {
-                // Read local file
-                let contents = std::fs::read(&local_path).map_err(VfsError::Io)?;
-
-                let sftp = lock_sftp(&sftp)?;
-
-                // Write to remote file
-                let mut remote_file = sftp
-                    .create(&remote_path)
-                    .map_err(|e| VfsError::Sftp(format!("create remote failed: {}", e)))?;
-
-                remote_file.write_all(&contents).map_err(VfsError::Io)?;
-
-                Ok(())
-            })();
-
-            let _ = tx.send(result);
-        });
-
-        VfsOperation::new(rx)
+        self.spawn_op(remote, move |sftp, remote_path| {
+            let contents = std::fs::read(&local_path).map_err(VfsError::Io)?;
+            let sftp = lock_sftp(&sftp)?;
+            let mut remote_file = sftp
+                .create(&remote_path)
+                .map_err(|e| VfsError::Sftp(format!("create remote failed: {}", e)))?;
+            remote_file.write_all(&contents).map_err(VfsError::Io)?;
+            Ok(())
+        })
     }
 
     fn upload_with_progress(&self, local: &Path, remote: &VfsPath) -> VfsUploadOperation {

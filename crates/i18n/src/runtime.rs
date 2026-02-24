@@ -49,7 +49,7 @@ impl RuntimeTranslation {
         if let Some(rules) = self.plurals.get(key) {
             match count {
                 1 => &rules.one,
-                2..=4 if rules.few.is_some() => rules.few.as_ref().expect("guard checked is_some"),
+                2..=4 if rules.few.is_some() => rules.few.as_deref().unwrap_or(&rules.other),
                 _ => &rules.other,
             }
         } else if count == 1 {

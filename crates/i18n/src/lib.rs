@@ -35,7 +35,11 @@ pub const SUPPORTED_LANGUAGES: &[(&str, &str)] = &[
 ];
 
 /// Global translation instance (RwLock for runtime switching).
-static TRANSLATION: RwLock<Option<Box<dyn Translation>>> = RwLock::new(None);
+///
+/// Stores a leaked `&'static` reference so that `t()` can return `&'static dyn Translation`
+/// without unsafe pointer casts. Old translations are intentionally leaked on language switch
+/// (a few KB each, happens rarely).
+static TRANSLATION: RwLock<Option<&'static dyn Translation>> = RwLock::new(None);
 
 /// Current language code (RwLock for runtime switching).
 static CURRENT_LANGUAGE: RwLock<String> = RwLock::new(String::new());
@@ -508,7 +512,7 @@ pub fn init_with_language(lang: &str) {
         lang.to_string()
     };
 
-    let translation: Box<dyn Translation> = runtime::RuntimeTranslation::new(&detected)
+    let translation = runtime::RuntimeTranslation::new(&detected)
         .or_else(|e| {
             log::warn!(
                 "Failed to load translations for '{}': {}. Falling back to English",
@@ -517,11 +521,11 @@ pub fn init_with_language(lang: &str) {
             );
             runtime::RuntimeTranslation::new("en")
         })
-        .map(|rt| Box::new(rt) as Box<dyn Translation>)
         .expect("Failed to load translations");
 
+    let leaked: &'static dyn Translation = Box::leak(Box::new(translation));
     if let Ok(mut guard) = TRANSLATION.write() {
-        *guard = Some(translation);
+        *guard = Some(leaked);
     }
     if let Ok(mut guard) = CURRENT_LANGUAGE.write() {
         *guard = detected;
@@ -533,9 +537,10 @@ pub fn init_with_language(lang: &str) {
 /// Returns Ok(()) on success, Err if language loading fails.
 pub fn set_language(lang: &str) -> anyhow::Result<()> {
     let translation = runtime::RuntimeTranslation::new(lang)?;
+    let leaked: &'static dyn Translation = Box::leak(Box::new(translation));
 
     if let Ok(mut guard) = TRANSLATION.write() {
-        *guard = Some(Box::new(translation));
+        *guard = Some(leaked);
     }
     if let Ok(mut guard) = CURRENT_LANGUAGE.write() {
         *guard = lang.to_string();
@@ -548,22 +553,8 @@ pub fn set_language(lang: &str) -> anyhow::Result<()> {
 /// # Panics
 /// Panics if the translation system is not initialized.
 pub fn t() -> &'static dyn Translation {
-    // SAFETY: We use a static reference trick here because the RwLock guard
-    // cannot be returned directly. The translation is never deallocated once set,
-    // so this is safe. We leak the guard to get a 'static reference.
     let guard = TRANSLATION.read().expect("Translation lock poisoned");
-    let translation = guard
-        .as_ref()
-        .expect("Translation system not initialized. Call i18n::init() first.");
-
-    // Leak the reference to get 'static lifetime
-    // This is safe because:
-    // 1. The translation is Box<dyn Translation> which lives for the program's lifetime
-    // 2. We only ever replace it, never deallocate
-    unsafe {
-        let ptr = translation.as_ref() as *const dyn Translation;
-        &*ptr
-    }
+    guard.expect("Translation system not initialized. Call i18n::init() first.")
 }
 
 /// Get the current language code.
