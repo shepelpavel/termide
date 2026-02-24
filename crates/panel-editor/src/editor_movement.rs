@@ -78,6 +78,26 @@ impl Editor {
         }
     }
 
+    /// Move cursor forward by one word
+    pub(crate) fn move_word_forward(&mut self) {
+        let maintain_preferred =
+            cursor::physical::move_word_forward(&mut self.cursor, &self.buffer);
+        if !maintain_preferred {
+            self.input.preferred_column = None;
+        }
+        self.clamp_cursor();
+    }
+
+    /// Move cursor backward by one word
+    pub(crate) fn move_word_backward(&mut self) {
+        let maintain_preferred =
+            cursor::physical::move_word_backward(&mut self.cursor, &self.buffer);
+        if !maintain_preferred {
+            self.input.preferred_column = None;
+        }
+        self.clamp_cursor();
+    }
+
     /// Move cursor to end of document
     pub(crate) fn move_to_document_end(&mut self) {
         let (new_cursor, should_scroll) = cursor::physical::move_to_document_end(&self.buffer);

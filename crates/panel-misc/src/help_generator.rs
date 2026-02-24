@@ -354,6 +354,11 @@ impl HelpGenerator {
                 keys: Self::format_keys(&kb.goto_definition),
                 description: t.help_desc_goto_definition().to_string(),
             },
+            // Word navigation (non-configurable)
+            HelpEntry {
+                keys: "Ctrl+←/→".to_string(),
+                description: t.help_desc_word_nav().to_string(),
+            },
             HelpEntry {
                 keys: "Enter".to_string(),
                 description: t.help_desc_accept_completion().to_string(),

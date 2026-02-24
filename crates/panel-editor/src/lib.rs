@@ -3,6 +3,7 @@
 //! Provides a full-featured text editor with syntax highlighting,
 //! search/replace, git integration, and more.
 
+mod auto_pairs;
 mod click_tracker;
 pub mod clipboard;
 mod completion_popup;
@@ -21,6 +22,7 @@ pub mod selection;
 pub mod state;
 pub mod text_editing;
 pub mod vim;
+pub mod word_boundary;
 pub mod word_wrap;
 
 // Re-export main types

@@ -1572,6 +1572,8 @@ impl Panel for Editor {
         // This ensures runtime config changes are applied to the editor
         self.config.word_wrap = config.editor.word_wrap;
         self.config.tab_size = config.editor.tab_size;
+        self.config.auto_indent = config.editor.auto_indent;
+        self.config.auto_close_brackets = config.editor.auto_close_brackets;
 
         // Sync highlight cache with theme's light/dark mode and default foreground color
         self.render_cache

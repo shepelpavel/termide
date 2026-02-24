@@ -7,6 +7,8 @@ use anyhow::Result;
 
 use termide_buffer::{Cursor, Selection, TextBuffer};
 
+use crate::auto_pairs;
+
 /// Result of a text editing operation.
 ///
 /// Contains information about what changed so the caller can update
@@ -40,6 +42,75 @@ pub fn insert_newline(buffer: &mut TextBuffer, cursor: &Cursor) -> Result<EditRe
 
     Ok(EditResult {
         new_cursor,
+        start_line: old_line,
+        is_multiline: true,
+    })
+}
+
+/// Insert a newline with auto-indentation at the cursor position.
+///
+/// The new line inherits the indentation of the current line. If the text
+/// before the cursor ends with `{`, `(`, `[`, or `:`, an additional level
+/// of indentation is added (smart indent).
+///
+/// Returns EditResult with new cursor position and cache invalidation info.
+pub fn insert_newline_with_indent(
+    buffer: &mut TextBuffer,
+    cursor: &Cursor,
+    tab_size: usize,
+) -> Result<EditResult> {
+    let old_line = cursor.line;
+    let line_content = buffer.line(cursor.line).unwrap_or_default();
+
+    // Collect indentation from the current line
+    let indent: String = line_content
+        .chars()
+        .take_while(|c| c.is_whitespace() && *c != '\n')
+        .collect();
+
+    // Smart indent: check if text before cursor ends with an opener
+    let before_cursor: String = line_content.chars().take(cursor.column).collect();
+    let trimmed = before_cursor.trim_end();
+    let extra_indent = if trimmed.ends_with('{')
+        || trimmed.ends_with('(')
+        || trimmed.ends_with('[')
+        || trimmed.ends_with(':')
+    {
+        " ".repeat(tab_size)
+    } else {
+        String::new()
+    };
+
+    // Split brackets: if cursor is between matching pair like {|}, insert
+    // an extra line for the closing bracket with base indentation.
+    let char_after_cursor = line_content.chars().nth(cursor.column);
+    let last_before = trimmed.chars().last();
+    let split_brackets = match (last_before, char_after_cursor) {
+        (Some(open), Some(close)) => auto_pairs::is_matching_pair(open, close),
+        _ => false,
+    };
+
+    let insert_text = if split_brackets {
+        format!("\n{}{}\n{}", indent, extra_indent, indent)
+    } else {
+        format!("\n{}{}", indent, extra_indent)
+    };
+    let new_cursor = buffer.insert(cursor, &insert_text)?;
+
+    // When splitting brackets, place cursor on the middle line (already done
+    // by buffer.insert returning position after first \n + indent + extra_indent).
+    // We just need to make sure we don't advance past the middle line.
+    let final_cursor = if split_brackets {
+        Cursor {
+            line: old_line + 1,
+            column: indent.len() + extra_indent.len(),
+        }
+    } else {
+        new_cursor
+    };
+
+    Ok(EditResult {
+        new_cursor: final_cursor,
         start_line: old_line,
         is_multiline: true,
     })

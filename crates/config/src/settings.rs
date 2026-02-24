@@ -102,6 +102,14 @@ pub struct EditorSettings {
     #[serde(default, skip_serializing)]
     pub vim_mode: bool,
 
+    /// Auto-indent new lines (inherit indentation from current line)
+    #[serde(default = "default_true")]
+    pub auto_indent: bool,
+
+    /// Auto-close brackets and quotes
+    #[serde(default = "default_true")]
+    pub auto_close_brackets: bool,
+
     /// File size threshold in MB for disabling smart features
     #[serde(default = "default_large_file_threshold_mb")]
     pub large_file_threshold_mb: u64,
@@ -259,6 +267,10 @@ fn default_vim_mode() -> bool {
     defaults::VIM_MODE
 }
 
+fn default_true() -> bool {
+    true
+}
+
 fn default_large_file_threshold_mb() -> u64 {
     defaults::LARGE_FILE_THRESHOLD_MB
 }
@@ -401,6 +413,8 @@ impl From<LegacyConfig> for Config {
                 show_git_diff: legacy.show_git_diff,
                 word_wrap: legacy.word_wrap,
                 vim_mode: false, // deprecated, will be migrated
+                auto_indent: true,
+                auto_close_brackets: true,
                 large_file_threshold_mb: legacy.large_file_threshold_mb,
                 keybindings: EditorKeybindings::default(),
             },
@@ -445,6 +459,8 @@ impl Default for EditorSettings {
             show_git_diff: default_show_git_diff(),
             word_wrap: default_word_wrap(),
             vim_mode: false, // deprecated, use general.vim_mode
+            auto_indent: true,
+            auto_close_brackets: true,
             large_file_threshold_mb: default_large_file_threshold_mb(),
             keybindings: EditorKeybindings::default(),
         }

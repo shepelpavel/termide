@@ -28,6 +28,8 @@ pub enum EditorCommand {
     PageDown,
     MoveToDocumentStart,
     MoveToDocumentEnd,
+    MoveWordForward,
+    MoveWordBackward,
 
     // Navigation with selection (Shift modifier, closes search)
     MoveCursorUpWithSelection,
@@ -44,6 +46,8 @@ pub enum EditorCommand {
     PageDownWithSelection,
     MoveToDocumentStartWithSelection,
     MoveToDocumentEndWithSelection,
+    MoveWordForwardWithSelection,
+    MoveWordBackwardWithSelection,
 
     // Text editing
     InsertChar(char),
@@ -400,12 +404,24 @@ impl EditorCommand {
             (KeyCode::PageDown, KeyModifiers::NONE) => Self::PageDown,
             (KeyCode::Home, KeyModifiers::CONTROL) => Self::MoveToDocumentStart,
             (KeyCode::End, KeyModifiers::CONTROL) => Self::MoveToDocumentEnd,
+            (KeyCode::Left, KeyModifiers::CONTROL) => Self::MoveWordBackward,
+            (KeyCode::Right, KeyModifiers::CONTROL) => Self::MoveWordForward,
 
             // Navigation with selection (Shift) - closes search
             (KeyCode::Up, KeyModifiers::SHIFT) => Self::MoveCursorUpWithSelection,
             (KeyCode::Down, KeyModifiers::SHIFT) => Self::MoveCursorDownWithSelection,
             (KeyCode::Left, KeyModifiers::SHIFT) => Self::MoveCursorLeftWithSelection,
             (KeyCode::Right, KeyModifiers::SHIFT) => Self::MoveCursorRightWithSelection,
+            (KeyCode::Left, mods)
+                if mods.contains(KeyModifiers::CONTROL) && mods.contains(KeyModifiers::SHIFT) =>
+            {
+                Self::MoveWordBackwardWithSelection
+            }
+            (KeyCode::Right, mods)
+                if mods.contains(KeyModifiers::CONTROL) && mods.contains(KeyModifiers::SHIFT) =>
+            {
+                Self::MoveWordForwardWithSelection
+            }
             (KeyCode::Home, mods)
                 if mods.contains(KeyModifiers::SHIFT) && !mods.contains(KeyModifiers::CONTROL) =>
             {
@@ -536,6 +552,14 @@ impl EditorCommand {
                 editor.navigate_simple(Editor::move_to_document_end);
                 Ok(())
             }
+            Self::MoveWordForward => {
+                editor.navigate_simple(Editor::move_word_forward);
+                Ok(())
+            }
+            Self::MoveWordBackward => {
+                editor.navigate_simple(Editor::move_word_backward);
+                Ok(())
+            }
 
             // Navigation with selection
             Self::MoveCursorUpWithSelection => {
@@ -600,6 +624,14 @@ impl EditorCommand {
             }
             Self::MoveToDocumentEndWithSelection => {
                 editor.navigate_with_selection_simple(Editor::move_to_document_end);
+                Ok(())
+            }
+            Self::MoveWordForwardWithSelection => {
+                editor.navigate_with_selection_simple(Editor::move_word_forward);
+                Ok(())
+            }
+            Self::MoveWordBackwardWithSelection => {
+                editor.navigate_with_selection_simple(Editor::move_word_backward);
                 Ok(())
             }
 

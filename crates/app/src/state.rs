@@ -550,6 +550,8 @@ impl AppState {
         config.tab_size = self.config.editor.tab_size;
         config.word_wrap = self.config.editor.word_wrap;
         config.vim_mode = self.config.general.vim_mode;
+        config.auto_indent = self.config.editor.auto_indent;
+        config.auto_close_brackets = self.config.editor.auto_close_brackets;
         config.keybindings = self.config.editor.keybindings.clone();
         config
     }

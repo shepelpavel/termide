@@ -16,6 +16,10 @@ pub struct EditorConfig {
     pub vim_mode: bool,
     /// Tab size (number of spaces)
     pub tab_size: usize,
+    /// Auto-indent new lines
+    pub auto_indent: bool,
+    /// Auto-close brackets and quotes
+    pub auto_close_brackets: bool,
     /// Initial directory for new buffers (used in SaveAs dialog)
     pub initial_directory: Option<PathBuf>,
     /// Keyboard shortcuts configuration
@@ -30,6 +34,8 @@ impl Default for EditorConfig {
             word_wrap: true,
             vim_mode: false,
             tab_size: 4,
+            auto_indent: true,
+            auto_close_brackets: true,
             initial_directory: None,
             keybindings: EditorKeybindings::default(),
         }
@@ -45,6 +51,8 @@ impl EditorConfig {
             word_wrap: true,
             vim_mode: false,
             tab_size: 4,
+            auto_indent: true,
+            auto_close_brackets: true,
             initial_directory: None,
             keybindings: EditorKeybindings::default(),
         }

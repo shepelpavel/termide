@@ -493,6 +493,10 @@ impl Translation for RuntimeTranslation {
         self.get_string("help_desc_goto_definition")
     }
 
+    fn help_desc_word_nav(&self) -> &str {
+        self.get_string("help_desc_word_nav")
+    }
+
     fn help_desc_view_file(&self) -> &str {
         self.get_string("help_desc_view_file")
     }

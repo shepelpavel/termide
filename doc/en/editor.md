@@ -10,6 +10,9 @@ The text editor panel provides a functional editor for working with text files w
 - **Edit History**: Undo and Redo actions
 - **Clipboard**: Copy, cut, and paste via system clipboard
 - **Auto-save**: Prompt to save when closing a file with unsaved changes
+- **Word Navigation**: Move cursor by words with Ctrl+Left/Right, select by words with Ctrl+Shift+Left/Right
+- **Auto-Indentation**: New lines automatically inherit the indentation of the current line; smart indent adds an extra level after `{`, `(`, `[`, `:`
+- **Auto-Close Brackets**: Automatically insert matching closing brackets and quotes (`()`, `[]`, `{}`, `""`, `''`); typing a closing bracket skips over existing one; backspace between a pair deletes both
 
 ## Navigation
 
@@ -22,6 +25,10 @@ The text editor panel provides a functional editor for working with text files w
 | `PageUp` / `PageDown` | Scroll by one page                      |
 | `Ctrl+Home`       | Go to beginning of document                |
 | `Ctrl+End`        | Go to end of document                      |
+| `Ctrl+Left`       | Move cursor to previous word               |
+| `Ctrl+Right`      | Move cursor to next word                   |
+| `Ctrl+Shift+Left` | Select to previous word                    |
+| `Ctrl+Shift+Right`| Select to next word                        |
 
 ## Editing
 
@@ -35,7 +42,7 @@ The text editor panel provides a functional editor for working with text files w
 | `Ctrl+G`          | Go to line number                          |
 | `Backspace`       | Delete character to the left of cursor     |
 | `Delete`          | Delete character to the right of cursor    |
-| `Enter`           | Insert new line                            |
+| `Enter`           | Insert new line (with auto-indentation)    |
 | `Tab`             | Insert indent (configurable, default 4)    |
 
 ## Search and Replace
@@ -135,6 +142,40 @@ Enable/disable word wrap in your configuration file (`~/.config/termide/config.t
 ```toml
 [editor]
 word_wrap = true  # or false
+```
+
+## Auto-Indentation
+
+When auto-indentation is enabled (default), pressing `Enter` creates a new line that inherits the indentation of the current line. Additionally, smart indent adds an extra level of indentation after lines ending with `{`, `(`, `[`, or `:`.
+
+**Example:**
+```
+if condition {|        ← cursor here, press Enter
+    |                  ← new line with extra indent
+```
+
+Enable/disable auto-indentation in your configuration file:
+```toml
+[editor]
+auto_indent = true  # or false (default: true)
+```
+
+## Auto-Close Brackets
+
+When auto-close brackets is enabled (default), typing an opening bracket or quote automatically inserts the matching closing character and places the cursor between them.
+
+**Supported pairs:** `()`, `[]`, `{}`, `""`, `''`
+
+**Behavior:**
+- Typing `(` inserts `()` with cursor between them
+- Typing `)` when the character at cursor is already `)` skips over it instead of inserting a duplicate
+- Pressing `Backspace` between an empty pair (e.g., `()`) deletes both characters
+- Quotes are not auto-closed after alphanumeric characters (to support apostrophes in words like "it's", "don't")
+
+Enable/disable auto-close brackets in your configuration file:
+```toml
+[editor]
+auto_close_brackets = true  # or false (default: true)
 ```
 
 ## Status Bar Information

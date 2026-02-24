@@ -9,7 +9,7 @@
 use anyhow::Result;
 use termide_buffer::Cursor;
 
-use crate::{clipboard, cursor, selection, text_editing};
+use crate::{auto_pairs, clipboard, cursor, selection, text_editing};
 
 use super::Editor;
 
@@ -132,10 +132,42 @@ impl Editor {
         // Delete selected text before insertion
         self.delete_selection()?;
 
+        // Auto-close brackets: if typing a closing char that already exists at cursor, skip over it
+        if self.config.auto_close_brackets && auto_pairs::is_closing(ch) {
+            let char_at_cursor = self.char_at_cursor();
+            if char_at_cursor == Some(ch) {
+                // Skip over the existing closing character
+                self.cursor.column += 1;
+                self.input.preferred_column = None;
+                self.clamp_cursor();
+                self.lsp.last_inserted_char = Some(ch);
+                return Ok(());
+            }
+        }
+
+        // Capture character before cursor before insertion (for auto-close context)
+        let char_before_insert = if self.config.auto_close_brackets {
+            self.char_before_cursor()
+        } else {
+            None
+        };
+
         let result = text_editing::insert_char(&mut self.buffer, &self.cursor, ch)?;
         self.cursor = result.new_cursor;
         self.input.preferred_column = None;
         self.clamp_cursor();
+
+        // Auto-close brackets: insert matching closing character
+        if self.config.auto_close_brackets {
+            if let Some(close) = auto_pairs::closing_char(ch) {
+                if auto_pairs::should_auto_close(ch, char_before_insert) {
+                    // Insert closing char at the current cursor position (after the opening char)
+                    let close_str = close.to_string();
+                    self.buffer.insert(&self.cursor, &close_str)?;
+                    // Don't advance cursor — it stays between the pair
+                }
+            }
+        }
 
         // Track inserted character for auto-completion
         self.lsp.last_inserted_char = Some(ch);
@@ -178,7 +210,15 @@ impl Editor {
         // Delete selected text before insertion
         self.delete_selection()?;
 
-        let result = text_editing::insert_newline(&mut self.buffer, &self.cursor)?;
+        let result = if self.config.auto_indent {
+            text_editing::insert_newline_with_indent(
+                &mut self.buffer,
+                &self.cursor,
+                self.config.tab_size,
+            )?
+        } else {
+            text_editing::insert_newline(&mut self.buffer, &self.cursor)?
+        };
         self.cursor = result.new_cursor;
         self.input.preferred_column = None; // Reset preferred column on text edit
         self.clamp_cursor();
@@ -191,6 +231,26 @@ impl Editor {
 
     /// Delete character (backspace)
     pub(crate) fn backspace(&mut self) -> Result<()> {
+        // Auto-close brackets: if cursor is between a matching pair, delete both
+        if self.config.auto_close_brackets && self.cursor.column > 0 {
+            let char_before = self.char_before_cursor();
+            let char_after = self.char_at_cursor();
+            if let (Some(before), Some(after)) = (char_before, char_after) {
+                if auto_pairs::is_matching_pair(before, after) {
+                    // Delete the closing character first (at cursor position)
+                    self.buffer.delete_char(&self.cursor)?;
+                    // Then backspace the opening character
+                    if let Some(result) = text_editing::backspace(&mut self.buffer, &self.cursor)? {
+                        self.cursor = result.new_cursor;
+                        self.input.preferred_column = None;
+                        self.clamp_cursor();
+                        self.invalidate_cache_after_edit(result.start_line, result.is_multiline);
+                    }
+                    return Ok(());
+                }
+            }
+        }
+
         if let Some(result) = text_editing::backspace(&mut self.buffer, &self.cursor)? {
             self.cursor = result.new_cursor;
             self.input.preferred_column = None; // Reset preferred column on text edit
@@ -349,6 +409,23 @@ impl Editor {
     // =========================================================================
     // Cursor Helpers (Private)
     // =========================================================================
+
+    /// Get the character at the cursor position (the character the cursor is on).
+    fn char_at_cursor(&self) -> Option<char> {
+        let line = self.buffer.line(self.cursor.line)?;
+        let line = line.trim_end_matches('\n');
+        line.chars().nth(self.cursor.column)
+    }
+
+    /// Get the character immediately before the cursor position.
+    fn char_before_cursor(&self) -> Option<char> {
+        if self.cursor.column == 0 {
+            return None;
+        }
+        let line = self.buffer.line(self.cursor.line)?;
+        let line = line.trim_end_matches('\n');
+        line.chars().nth(self.cursor.column - 1)
+    }
 
     /// Clamp cursor position to valid values
     pub(crate) fn clamp_cursor(&mut self) {
