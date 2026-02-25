@@ -5,6 +5,17 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-02-25
+
+### Added
+- **UI**: Replace home directory prefix with `~` in terminal title, FileManager panel titles, sessions modal, and directory switcher
+- **UI**: Update terminal window title when switching or creating sessions
+- **Editor**: Ctrl+Up/Down for paragraph/symbol navigation
+
+### Changed
+- **UI**: Deduplicate dropdown hit-test logic, fix swallowed errors in menu rendering
+- **Panel Operations**: Auto-close operations panel when it becomes empty
+
 ## [0.13.0] - 2026-02-24
 
 ### Added
