@@ -152,9 +152,13 @@ pub trait Panel {
 - 带撤销/重做的文本编辑
 - 通过 tree-sitter 实现语法高亮（15+ 种语言）
 - 带交互式模态框的搜索和替换
-- 行号、光标位置
-- 文件保存
-- 可配置的制表符大小
+- 行号、光标位置、自动换行
+- 单词导航（Ctrl+Left/Right）、段落/符号导航（Ctrl+Up/Down）
+- 带括号分割缩进的自动缩进
+- 自动关闭括号和引号
+- 行号中的 Git 差异可视化
+- LSP 集成（补全、悬停、跳转到定义）
+- 文件保存，支持另存为和可执行复选框
 
 **终端** (`crates/panel-terminal/src/lib.rs`)
 - 完整的 PTY（伪终端）支持
@@ -163,9 +167,8 @@ pub trait Panel {
 - ANSI 颜色支持
 - 调整大小处理
 
-**日志** (`crates/panel-misc/src/log.rs`)
-- 应用状态检查
-- 日志查看器
+**日志查看器** (`crates/panel-misc/src/journal.rs`)
+- 应用日志查看器
 - 面板信息
 - 系统资源监控
 
@@ -192,13 +195,20 @@ pub trait Panel {
 - 后台文件操作跟踪
 - 复制/移动/删除的进度显示
 
+**大纲** (`crates/panel-outline/src/lib.rs`)
+- 基于 tree-sitter 查询的代码结构导航
+- 与活动编辑器同步的符号列表
+- 按 Enter 导航到符号
+- 光标跟踪和实时更新
+
 **图片** (`crates/panel-image/src/lib.rs`)
 - 原生图片渲染（Kitty、iTerm2、Sixel 协议）
 - 回退到 Unicode 块字符
 
-**欢迎界面** (`crates/panel-misc/src/welcome.rs`)
-- 无面板打开时显示
-- 显示帮助文本
+**帮助** (`crates/panel-misc/src/help.rs`)
+- 基于快捷键配置动态生成的帮助内容
+- 带全宽布局的伪图形表格
+- 支持键盘和鼠标滚动
 - 打开其他面板时自动关闭
 
 ### 3. 事件处理

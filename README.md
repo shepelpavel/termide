@@ -27,7 +27,7 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 
 ## Features
 
-- **Terminal-based IDE** - Syntax highlighting for 15+ languages, word navigation (Ctrl+Left/Right), auto-indentation, auto-close brackets
+- **Terminal-based IDE** - Syntax highlighting for 15+ languages, word navigation (Ctrl+Left/Right), paragraph/symbol navigation (Ctrl+Up/Down), auto-indentation, auto-close brackets
 - **LSP Support** - Code completion with rust-analyzer, pylsp, typescript-language-server, and other LSP servers
 - **Smart File Manager** - Git status indicators, batch operations, file search (glob/regex)
 - **Integrated Terminal** - Full PTY support, VT100 escape sequences, mouse tracking
@@ -231,6 +231,7 @@ Use `Alt+←/→` to switch between panel groups, `Alt+↑/↓` to navigate with
 For detailed documentation, see:
 - **English**: [doc/en/README.md](doc/en/README.md)
 - **Russian**: [doc/ru/README.md](doc/ru/README.md)
+- **Chinese**: [doc/zh/README.md](doc/zh/README.md)
 
 ### Keyboard Shortcuts (Quick Reference)
 
@@ -291,6 +292,8 @@ For detailed documentation, see:
 - `Ctrl+C/X/V` - Copy/Cut/Paste
 - `Ctrl+Left/Right` - Move cursor by word
 - `Ctrl+Shift+Left/Right` - Select by word
+- `Ctrl+Up/Down` - Jump to paragraph/symbol boundary
+- `Ctrl+Shift+Up/Down` - Select to paragraph/symbol boundary
 
 **Git Status:**
 - `Tab` - Switch focus
@@ -484,8 +487,9 @@ crates/
 ├── panel-git-log/    # Git log panel
 ├── panel-git-status/ # Git status panel
 ├── panel-image/      # Image viewer panel
-├── panel-misc/       # Help and Log panels
+├── panel-misc/       # Help and Journal panels
 ├── panel-operations/ # Background operations panel
+├── panel-outline/    # Structural code navigation panel
 ├── panel-terminal/   # Terminal emulator panel
 ├── session/          # Session persistence
 ├── state/            # Application state management
@@ -499,7 +503,8 @@ crates/
 themes/               # Built-in theme definitions (TOML files)
 doc/
 ├── en/               # English documentation
-└── ru/               # Russian documentation
+├── ru/               # Russian documentation
+└── zh/               # Chinese documentation
 ```
 
 ### Building

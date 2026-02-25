@@ -100,6 +100,7 @@ help_desc_navigate_completion = "सुझाव नेविगेट करे
 help_desc_show_hover = "दस्तावेज़ दिखाएं"
 help_desc_goto_definition = "परिभाषा पर जाएं"
 help_desc_word_nav = "शब्द अनुसार चलें/चुनें"
+help_desc_paragraph_nav = "पैराग्राफ/प्रतीक सीमा पर जाएं"
 help_desc_view_file = "फ़ाइल देखें (केवल पढ़ें)"
 help_desc_edit_file = "फ़ाइल संपादित करें"
 help_desc_search_content = "सामग्री में खोजें"

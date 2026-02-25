@@ -29,6 +29,10 @@ The text editor panel provides a functional editor for working with text files w
 | `Ctrl+Right`      | Move cursor to next word                   |
 | `Ctrl+Shift+Left` | Select to previous word                    |
 | `Ctrl+Shift+Right`| Select to next word                        |
+| `Ctrl+Up`         | Jump to previous paragraph/symbol boundary |
+| `Ctrl+Down`       | Jump to next paragraph/symbol boundary     |
+| `Ctrl+Shift+Up`   | Select to previous paragraph/symbol boundary |
+| `Ctrl+Shift+Down` | Select to next paragraph/symbol boundary   |
 
 ## Editing
 
@@ -152,6 +156,15 @@ When auto-indentation is enabled (default), pressing `Enter` creates a new line 
 ```
 if condition {|        ← cursor here, press Enter
     |                  ← new line with extra indent
+```
+
+**Split-bracket indent:** When pressing `Enter` between a matching pair of brackets (`{|}`, `(|)`, `[|]`), the editor creates three lines — the opening bracket, a new indented line for the cursor, and the closing bracket on its own line:
+
+```
+fn main() {|}          ← cursor between braces, press Enter
+fn main() {
+    |                  ← cursor here, indented
+}
 ```
 
 Enable/disable auto-indentation in your configuration file:

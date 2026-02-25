@@ -27,7 +27,7 @@
 
 ## 功能特性
 
-- **基于终端的 IDE** - 支持 15+ 种语言的语法高亮（Rust、Python、JavaScript、TypeScript、Go、C/C++、Java、Ruby、PHP、Haskell、Nix、HTML、CSS、JSON、TOML、YAML、Bash、Markdown）
+- **基于终端的 IDE** - 支持 15+ 种语言的语法高亮、单词导航（Ctrl+Left/Right）、段落/符号导航（Ctrl+Up/Down）、自动缩进、自动关闭括号
 - **LSP 支持** - 通过 rust-analyzer、pylsp、typescript-language-server 及其他 LSP 服务器实现代码补全
 - **智能文件管理器** - Git 状态指示器、批量操作、文件搜索（glob/正则表达式）
 - **集成终端** - 完整的 PTY 支持、VT100 转义序列、鼠标跟踪
@@ -232,6 +232,7 @@ cargo build --release
 - **英文**: [doc/en/README.md](doc/en/README.md)
 - **俄文**: [doc/ru/README.md](doc/ru/README.md)
 - **中文**: [doc/zh/README.md](doc/zh/README.md)
+- **中文**: [doc/zh/README.md](doc/zh/README.md)
 
 ### 键盘快捷键（快速参考）
 
@@ -290,6 +291,10 @@ cargo build --release
 - `Ctrl+D` - 复制行
 - `Ctrl+G` - 跳转到行
 - `Ctrl+C/X/V` - 复制/剪切/粘贴
+- `Ctrl+Left/Right` - 按单词移动光标
+- `Ctrl+Shift+Left/Right` - 按单词选择
+- `Ctrl+Up/Down` - 跳转到段落/符号边界
+- `Ctrl+Shift+Up/Down` - 选择到段落/符号边界
 
 **Git 状态：**
 - `Tab` - 切换焦点

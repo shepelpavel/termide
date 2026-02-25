@@ -32,19 +32,30 @@ The menu bar is located at the top of the window and includes: menu items on the
 Menu activation/deactivation and each item can be accessed by mouse click or [keyboard shortcuts](#Keyboard-Navigation-and-Panel-Management).
 
 **Menu items:**
-- `Files` opens a panel with file manager
-- `Terminal` opens a panel with terminal
-- `Editor` opens a panel with new file editor
-- `Git` opens a git status panel
-- `Log` opens a log panel
-- `Sessions` session management (save, restore, delete)
-- `Windows` panel management
-- `Scripts` user-defined scripts
-- `Bookmarks` saved locations
-- `Options` themes, language settings
-- `Preferences` opens configuration file in editor
-- `Help` opens help window
-- `Quit` exits the application
+- `Sessions` — session management submenu:
+  - New session — create session in a new directory
+  - Switch session — open session switcher modal
+  - Change root path — move current session to another directory
+- `Tools` — panel creation submenu:
+  - Files — file manager panel
+  - Terminal — terminal panel
+  - Editor — text editor panel
+  - Git Status — git status panel
+  - Git Log — commit history panel
+  - Journal — application log panel
+  - Diagnostics — LSP diagnostics panel
+  - Operations — background operations panel
+  - Outline — structural code navigation panel
+- `Scripts` — user-defined scripts (with group submenus)
+- `Bookmarks` — saved locations (directories, files, SSH, SFTP)
+- `Options` — settings submenu:
+  - Themes — theme selection with live preview
+  - Language — UI language with live preview
+  - Manage scripts — open scripts folder
+  - Manage bookmarks — open bookmarks file
+  - Edit preferences — open config.toml in editor
+  - Help — open help panel
+  - Quit — exit application
 
 **System Resource Indicators:**
 - `CPU` - CPU usage percentage with color coding (green < 50%, yellow 50-75%, red > 75%)

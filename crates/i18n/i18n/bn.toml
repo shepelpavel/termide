@@ -103,6 +103,7 @@ help_desc_navigate_completion = "সাজেশন নেভিগেট কর
 help_desc_show_hover = "ডকুমেন্টেশন দেখান"
 help_desc_goto_definition = "সংজ্ঞায় যান"
 help_desc_word_nav = "শব্দ অনুযায়ী সরান/নির্বাচন"
+help_desc_paragraph_nav = "অনুচ্ছেদ/প্রতীক সীমানায় যান"
 help_desc_view_file = "ফাইল দেখুন (শুধু পড়া)"
 help_desc_edit_file = "ফাইল সম্পাদনা করুন"
 help_desc_search_content = "ফাইল কন্টেন্টে অনুসন্ধান করুন"

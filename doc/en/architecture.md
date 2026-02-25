@@ -152,9 +152,13 @@ pub trait Panel {
 - Text editing with undo/redo
 - Syntax highlighting via tree-sitter (15+ languages)
 - Search and replace with interactive modals
-- Line numbers, cursor position
-- File saving
-- Configurable tab size
+- Line numbers, cursor position, word wrap
+- Word navigation (Ctrl+Left/Right), paragraph/symbol navigation (Ctrl+Up/Down)
+- Auto-indentation with split-bracket indent
+- Auto-close brackets and quotes
+- Git diff visualization in line numbers
+- LSP integration (completion, hover, go to definition)
+- File saving with Save As and executable checkbox
 
 **Terminal** (`crates/panel-terminal/src/lib.rs`)
 - Full PTY (pseudo-terminal) support
@@ -163,9 +167,8 @@ pub trait Panel {
 - ANSI color support
 - Resize handling
 
-**Log** (`crates/panel-misc/src/log.rs`)
-- Application state inspection
-- Log viewer
+**Journal** (`crates/panel-misc/src/journal.rs`)
+- Application log viewer
 - Panel information
 - System resource monitoring
 
@@ -192,13 +195,20 @@ pub trait Panel {
 - Background file operation tracking
 - Progress display for copy/move/delete
 
+**Outline** (`crates/panel-outline/src/lib.rs`)
+- Structural code navigation with tree-sitter queries
+- Symbol list synced with active editor
+- Navigate to symbol on Enter
+- Cursor tracking and live updates
+
 **Image** (`crates/panel-image/src/lib.rs`)
 - Native image rendering (Kitty, iTerm2, Sixel protocols)
 - Fallback to Unicode block characters
 
-**Welcome** (`crates/panel-misc/src/welcome.rs`)
-- Shows when no panels are open
-- Displays help text
+**Help** (`crates/panel-misc/src/help.rs`)
+- Dynamic help content generated from keybindings config
+- Pseudo-graphic tables with full-width layout
+- Scrollable with keyboard and mouse
 - Auto-closes when other panel opens
 
 ### 3. Event Handling
