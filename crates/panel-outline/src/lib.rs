@@ -193,6 +193,11 @@ impl OutlinePanel {
         self.tracked_file.as_deref()
     }
 
+    /// Return sorted line positions of all symbols (for editor Ctrl+Up/Down navigation).
+    pub fn symbol_lines(&self) -> Vec<usize> {
+        self.symbols.iter().map(|s| s.line).collect()
+    }
+
     /// Clear the outline (no editor is tracking).
     pub fn clear(&mut self) {
         self.tracked_file = None;

@@ -100,6 +100,11 @@ pub struct Editor {
     /// Vim mode state (None if Vim mode is disabled)
     pub(crate) vim: Option<VimState>,
 
+    // === Outline symbol navigation ===
+    /// Sorted line positions of structural symbols (from outline) for Ctrl+Up/Down navigation.
+    /// When empty, paragraph navigation falls back to blank lines.
+    symbol_lines: Vec<usize>,
+
     // === Stale-on-collapse optimization ===
     /// Whether panel is stale (collapsed, skipping background work)
     is_stale: bool,
@@ -143,6 +148,7 @@ impl Editor {
             status_message: None,
             scroll_follows_cursor: true,
             vim,
+            symbol_lines: Vec::new(),
             is_stale: false,
         }
     }
@@ -600,6 +606,7 @@ impl Editor {
             status_message: None,
             scroll_follows_cursor: true,
             vim,
+            symbol_lines: Vec::new(),
             is_stale: false,
         })
     }
@@ -635,6 +642,7 @@ impl Editor {
             status_message: None,
             scroll_follows_cursor: true,
             vim: None, // view_only mode doesn't have vim
+            symbol_lines: Vec::new(),
             is_stale: false,
         }
     }
@@ -647,6 +655,11 @@ impl Editor {
     /// Set the VFS manager (for remote file saves)
     pub fn set_vfs_manager(&mut self, vfs_manager: Arc<VfsManager>) {
         self.vfs_manager = Some(vfs_manager);
+    }
+
+    /// Set outline symbol line positions for Ctrl+Up/Down navigation.
+    pub fn set_symbol_lines(&mut self, lines: Vec<usize>) {
+        self.symbol_lines = lines;
     }
 
     /// Save file

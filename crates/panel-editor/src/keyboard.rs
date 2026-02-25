@@ -48,6 +48,10 @@ pub enum EditorCommand {
     MoveToDocumentEndWithSelection,
     MoveWordForwardWithSelection,
     MoveWordBackwardWithSelection,
+    MoveParagraphUp,
+    MoveParagraphDown,
+    MoveParagraphUpWithSelection,
+    MoveParagraphDownWithSelection,
 
     // Text editing
     InsertChar(char),
@@ -406,6 +410,8 @@ impl EditorCommand {
             (KeyCode::End, KeyModifiers::CONTROL) => Self::MoveToDocumentEnd,
             (KeyCode::Left, KeyModifiers::CONTROL) => Self::MoveWordBackward,
             (KeyCode::Right, KeyModifiers::CONTROL) => Self::MoveWordForward,
+            (KeyCode::Up, KeyModifiers::CONTROL) => Self::MoveParagraphUp,
+            (KeyCode::Down, KeyModifiers::CONTROL) => Self::MoveParagraphDown,
 
             // Navigation with selection (Shift) - closes search
             (KeyCode::Up, KeyModifiers::SHIFT) => Self::MoveCursorUpWithSelection,
@@ -421,6 +427,16 @@ impl EditorCommand {
                 if mods.contains(KeyModifiers::CONTROL) && mods.contains(KeyModifiers::SHIFT) =>
             {
                 Self::MoveWordForwardWithSelection
+            }
+            (KeyCode::Up, mods)
+                if mods.contains(KeyModifiers::CONTROL) && mods.contains(KeyModifiers::SHIFT) =>
+            {
+                Self::MoveParagraphUpWithSelection
+            }
+            (KeyCode::Down, mods)
+                if mods.contains(KeyModifiers::CONTROL) && mods.contains(KeyModifiers::SHIFT) =>
+            {
+                Self::MoveParagraphDownWithSelection
             }
             (KeyCode::Home, mods)
                 if mods.contains(KeyModifiers::SHIFT) && !mods.contains(KeyModifiers::CONTROL) =>
@@ -560,6 +576,14 @@ impl EditorCommand {
                 editor.navigate_simple(Editor::move_word_backward);
                 Ok(())
             }
+            Self::MoveParagraphUp => {
+                editor.navigate_simple(Editor::move_paragraph_up);
+                Ok(())
+            }
+            Self::MoveParagraphDown => {
+                editor.navigate_simple(Editor::move_paragraph_down);
+                Ok(())
+            }
 
             // Navigation with selection
             Self::MoveCursorUpWithSelection => {
@@ -632,6 +656,14 @@ impl EditorCommand {
             }
             Self::MoveWordBackwardWithSelection => {
                 editor.navigate_with_selection_simple(Editor::move_word_backward);
+                Ok(())
+            }
+            Self::MoveParagraphUpWithSelection => {
+                editor.navigate_with_selection_simple(Editor::move_paragraph_up);
+                Ok(())
+            }
+            Self::MoveParagraphDownWithSelection => {
+                editor.navigate_with_selection_simple(Editor::move_paragraph_down);
                 Ok(())
             }
 

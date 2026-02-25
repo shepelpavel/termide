@@ -98,6 +98,61 @@ impl Editor {
         self.clamp_cursor();
     }
 
+    /// Move cursor to previous paragraph/symbol boundary (Ctrl+Up).
+    pub(crate) fn move_paragraph_up(&mut self) {
+        if !self.symbol_lines.is_empty() {
+            let target = self
+                .symbol_lines
+                .iter()
+                .rev()
+                .find(|&&line| line < self.cursor.line);
+            self.cursor.line = target.copied().unwrap_or(0);
+        } else {
+            let mut line = self.cursor.line;
+            while line > 0 && self.is_line_blank(line) {
+                line -= 1;
+            }
+            while line > 0 && !self.is_line_blank(line) {
+                line -= 1;
+            }
+            self.cursor.line = line;
+        }
+        self.cursor.column = 0;
+        self.input.preferred_column = None;
+        self.clamp_cursor();
+    }
+
+    /// Move cursor to next paragraph/symbol boundary (Ctrl+Down).
+    pub(crate) fn move_paragraph_down(&mut self) {
+        let max_line = self.buffer.line_count().saturating_sub(1);
+        if !self.symbol_lines.is_empty() {
+            let target = self
+                .symbol_lines
+                .iter()
+                .find(|&&line| line > self.cursor.line);
+            self.cursor.line = target.copied().unwrap_or(max_line);
+        } else {
+            let mut line = self.cursor.line;
+            while line < max_line && self.is_line_blank(line) {
+                line += 1;
+            }
+            while line < max_line && !self.is_line_blank(line) {
+                line += 1;
+            }
+            self.cursor.line = line;
+        }
+        self.cursor.column = 0;
+        self.input.preferred_column = None;
+        self.clamp_cursor();
+    }
+
+    fn is_line_blank(&self, line: usize) -> bool {
+        self.buffer
+            .line(line)
+            .map(|l| l.trim_end_matches('\n').trim().is_empty())
+            .unwrap_or(true)
+    }
+
     /// Move cursor to end of document
     pub(crate) fn move_to_document_end(&mut self) {
         let (new_cursor, should_scroll) = cursor::physical::move_to_document_end(&self.buffer);

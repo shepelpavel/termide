@@ -1140,7 +1140,8 @@ impl App {
         language: Option<&str>,
         cursor_line: Option<usize>,
     ) {
-        for group in &mut self.layout_manager.panel_groups {
+        let mut symbol_lines_for_editor = Vec::new();
+        'outer: for group in &mut self.layout_manager.panel_groups {
             for panel in group.panels_mut() {
                 if let Some(outline) = panel
                     .as_any_mut()
@@ -1150,8 +1151,14 @@ impl App {
                     if let Some(line) = cursor_line {
                         outline.sync_cursor_line(line);
                     }
-                    return;
+                    symbol_lines_for_editor = outline.symbol_lines();
+                    break 'outer;
                 }
+            }
+        }
+        if let Some(panel) = self.layout_manager.active_panel_mut() {
+            if let Some(editor) = panel.as_editor_mut() {
+                editor.set_symbol_lines(symbol_lines_for_editor);
             }
         }
     }
