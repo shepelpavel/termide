@@ -1164,7 +1164,13 @@ impl App {
         if !has_ops && !self.state.operations_panel_dirty {
             return;
         }
-        self.state.operations_panel_dirty = has_ops;
+        if !has_ops {
+            // All operations finished — close the panel entirely
+            self.state.operations_panel_dirty = false;
+            self.close_operations_panel();
+            return;
+        }
+        self.state.operations_panel_dirty = true;
         // Find operations panel and update its data
         for group in &mut self.layout_manager.panel_groups {
             for panel in group.panels_mut() {
