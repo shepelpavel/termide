@@ -124,7 +124,8 @@ impl App {
             .into_iter()
             .map(|info| {
                 let is_current = info.project_path == current_project;
-                let display_path = info.project_path.display().to_string();
+                let display_path =
+                    termide_core::util::shorten_home_path(&info.project_path.display().to_string());
                 let relative_time = format_relative_time(info.modified);
 
                 SessionItem {
@@ -202,7 +203,7 @@ impl App {
         // Add panel paths first
         for path in panel_paths {
             let is_current = current_dir.as_ref() == Some(&path);
-            let display = path.display().to_string();
+            let display = termide_core::util::shorten_home_path(&path.display().to_string());
             seen_paths.insert(path.clone());
             items.push(DirectoryItem {
                 path,
@@ -217,7 +218,7 @@ impl App {
             let path = PathBuf::from(&bookmark.path);
             if !seen_paths.contains(&path) {
                 // Show path instead of display name for consistency
-                let display = bookmark.path.clone();
+                let display = termide_core::util::shorten_home_path(&bookmark.path);
                 let is_current = current_dir.as_ref() == Some(&path);
                 items.push(DirectoryItem {
                     path,

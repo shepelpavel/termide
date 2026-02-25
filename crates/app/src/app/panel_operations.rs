@@ -355,6 +355,9 @@ impl App {
         // 4. Load new session
         self.load_session()?;
 
+        // 5. Update terminal title to reflect new project root
+        self.update_terminal_title();
+
         Ok(())
     }
 
@@ -405,10 +408,20 @@ impl App {
         // 6. Save the new session
         self.auto_save_session();
 
+        // 7. Update terminal title to reflect new project root
+        self.update_terminal_title();
+
         let t = termide_i18n::t();
         self.state.set_info(t.session_created().to_string());
 
         Ok(())
+    }
+
+    /// Update terminal window title to reflect current project root.
+    fn update_terminal_title(&self) {
+        let path = self.project_root.display().to_string();
+        let title = format!("Termide: {}", termide_core::util::shorten_home_path(&path));
+        let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::SetTitle(title));
     }
 
     /// Handle change root path modal result - move session to new directory

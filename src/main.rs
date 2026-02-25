@@ -88,9 +88,11 @@ fn main() -> Result<()> {
 
     let title = format!(
         "Termide: {}",
-        std::env::current_dir()
-            .map(|p| p.display().to_string())
-            .unwrap_or_default()
+        termide_core::util::shorten_home_path(
+            &std::env::current_dir()
+                .map(|p| p.display().to_string())
+                .unwrap_or_default()
+        )
     );
 
     execute!(

@@ -1222,7 +1222,7 @@ impl Panel for FileManager {
         let path = if self.is_remote() {
             self.display_path()
         } else {
-            self.current_path.display().to_string()
+            termide_core::util::shorten_home_path(&self.current_path.display().to_string())
         };
 
         // Show spinner for VFS loading or git status loading
