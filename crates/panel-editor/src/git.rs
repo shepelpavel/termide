@@ -395,11 +395,9 @@ pub fn group_diagnostics_by_line(
         let line = diag.range.start.line as usize;
 
         // Skip duplicate messages on the same line
-        let key = (line, diag.message.clone());
-        if seen.contains(&key) {
+        if !seen.insert((line, diag.message.clone())) {
             continue;
         }
-        seen.insert(key);
 
         let start_col = diag.range.start.character as usize;
         let end_col = diag.range.end.character as usize;

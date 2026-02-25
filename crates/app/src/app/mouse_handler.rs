@@ -17,6 +17,28 @@ use termide_ui_render::{
     WINDOWS_MENU_INDEX,
 };
 
+/// Hit-test a dropdown menu and return the clicked item index (if any).
+///
+/// `menu_x` is the left edge of the dropdown, `dropdown_y` is the top row.
+/// Returns `Some(index)` if the click is on a valid item, `None` otherwise.
+fn hit_dropdown_item(
+    x: u16,
+    y: u16,
+    menu_x: u16,
+    dropdown_y: u16,
+    items: &[termide_ui_render::DropdownItem],
+) -> Option<usize> {
+    let width = items.iter().map(|i| i.label.width()).max().unwrap_or(10) as u16 + 4;
+    let height = items.len() as u16 + 2; // +2 for borders
+    if x >= menu_x && x < menu_x + width && y >= dropdown_y && y < dropdown_y + height {
+        let item_index = y.saturating_sub(dropdown_y + 1) as usize;
+        if item_index < items.len() {
+            return Some(item_index);
+        }
+    }
+    None
+}
+
 impl App {
     /// Handle mouse event
     pub(super) fn handle_mouse_event(&mut self, mouse: crossterm::event::MouseEvent) -> Result<()> {
@@ -561,37 +583,13 @@ impl App {
     /// Handle click on Sessions submenu dropdown
     /// Returns true if click was handled
     fn handle_sessions_submenu_click(&mut self, x: u16, y: u16) -> Result<bool> {
-        // Get Sessions dropdown position
         let menu_x = get_menu_item_x_position(SESSIONS_MENU_INDEX);
-        let dropdown_y = 1_u16;
-
-        // Calculate Sessions dropdown dimensions
-        let sessions_items = get_sessions_items();
-        let sessions_width = sessions_items
-            .iter()
-            .map(|i| i.label.width())
-            .max()
-            .unwrap_or(10) as u16
-            + 4;
-        let sessions_height = sessions_items.len() as u16 + 2; // +2 for borders
-
-        // Check click on Sessions dropdown
-        if x >= menu_x
-            && x < menu_x + sessions_width
-            && y >= dropdown_y
-            && y < dropdown_y + sessions_height
-        {
-            let item_y = y.saturating_sub(dropdown_y + 1); // -1 for top border
-            let item_index = item_y as usize;
-            if item_index < sessions_items.len() {
-                self.state.ui.sessions_submenu.selected = item_index;
-                // Execute the action for the selected item
-                self.execute_sessions_submenu_action()?;
-                return Ok(true);
-            }
+        let items = get_sessions_items();
+        if let Some(index) = hit_dropdown_item(x, y, menu_x, 1, &items) {
+            self.state.ui.sessions_submenu.selected = index;
+            self.execute_sessions_submenu_action()?;
+            return Ok(true);
         }
-
-        // Click outside dropdown - close menu
         self.state.close_menu();
         Ok(true)
     }
@@ -599,37 +597,13 @@ impl App {
     /// Handle click on Tools submenu dropdown
     /// Returns true if click was handled
     fn handle_tools_submenu_click(&mut self, x: u16, y: u16) -> Result<bool> {
-        // Get Tools dropdown position
         let menu_x = get_menu_item_x_position(WINDOWS_MENU_INDEX);
-        let dropdown_y = 1_u16;
-
-        // Calculate Tools dropdown dimensions
-        let tools_items = get_tools_items();
-        let tools_width = tools_items
-            .iter()
-            .map(|i| i.label.width())
-            .max()
-            .unwrap_or(10) as u16
-            + 4;
-        let tools_height = tools_items.len() as u16 + 2; // +2 for borders
-
-        // Check click on Tools dropdown
-        if x >= menu_x
-            && x < menu_x + tools_width
-            && y >= dropdown_y
-            && y < dropdown_y + tools_height
-        {
-            let item_y = y.saturating_sub(dropdown_y + 1); // -1 for top border
-            let item_index = item_y as usize;
-            if item_index < tools_items.len() {
-                self.state.ui.tools_submenu.selected = item_index;
-                // Execute the action for the selected item
-                self.execute_tools_submenu_action()?;
-                return Ok(true);
-            }
+        let items = get_tools_items();
+        if let Some(index) = hit_dropdown_item(x, y, menu_x, 1, &items) {
+            self.state.ui.tools_submenu.selected = index;
+            self.execute_tools_submenu_action()?;
+            return Ok(true);
         }
-
-        // Click outside dropdown - close menu
         self.state.close_menu();
         Ok(true)
     }
@@ -650,77 +624,35 @@ impl App {
             if let Some(group_name) = &self.state.ui.current_scripts_group.clone() {
                 let nested_items = get_scripts_group_items(&registry, group_name);
                 if !nested_items.is_empty() {
-                    // Calculate nested submenu position (to the right of main dropdown)
                     let menu_x = get_menu_item_x_position(SCRIPTS_MENU_INDEX);
-                    let scripts_items = get_scripts_items(&registry);
-                    let scripts_width = scripts_items
+                    let parent_items = get_scripts_items(&registry);
+                    let parent_width = parent_items
                         .iter()
                         .map(|i| i.label.width())
                         .max()
                         .unwrap_or(10) as u16
                         + 4;
-
-                    let nested_x = menu_x + scripts_width;
-                    let dropdown_y = 1_u16;
-                    // +1 for dropdown border, align with selected item
-                    let nested_y = dropdown_y + 1 + self.state.ui.scripts_submenu.selected as u16;
-                    let nested_width = nested_items
-                        .iter()
-                        .map(|i| i.label.width())
-                        .max()
-                        .unwrap_or(10) as u16
-                        + 4;
-                    let nested_height = nested_items.len() as u16 + 2;
-
-                    // Check click on nested submenu
-                    if x >= nested_x
-                        && x < nested_x + nested_width
-                        && y >= nested_y
-                        && y < nested_y + nested_height
+                    let nested_x = menu_x + parent_width;
+                    let nested_y = 2 + self.state.ui.scripts_submenu.selected as u16;
+                    if let Some(index) = hit_dropdown_item(x, y, nested_x, nested_y, &nested_items)
                     {
-                        let item_y = y.saturating_sub(nested_y + 1);
-                        let item_index = item_y as usize;
-                        if item_index < nested_items.len() {
-                            self.state.ui.scripts_nested.selected = item_index;
-                            self.execute_scripts_nested_action()?;
-                            return Ok(true);
-                        }
+                        self.state.ui.scripts_nested.selected = index;
+                        self.execute_scripts_nested_action()?;
+                        return Ok(true);
                     }
                 }
             }
         }
 
-        // Get Scripts dropdown position
+        // Check click on Scripts main dropdown
         let menu_x = get_menu_item_x_position(SCRIPTS_MENU_INDEX);
-        let dropdown_y = 1_u16;
-
-        // Calculate Scripts dropdown dimensions
         let scripts_items = get_scripts_items(&registry);
-        let scripts_width = scripts_items
-            .iter()
-            .map(|i| i.label.width())
-            .max()
-            .unwrap_or(10) as u16
-            + 4;
-        let scripts_height = scripts_items.len() as u16 + 2;
-
-        // Check click on Scripts dropdown
-        if x >= menu_x
-            && x < menu_x + scripts_width
-            && y >= dropdown_y
-            && y < dropdown_y + scripts_height
-        {
-            let item_y = y.saturating_sub(dropdown_y + 1);
-            let item_index = item_y as usize;
-            if item_index < scripts_items.len() {
-                self.state.ui.scripts_submenu.selected = item_index;
-                // Execute the script (may open nested submenu or run script)
-                self.execute_scripts_submenu_action()?;
-                return Ok(true);
-            }
+        if let Some(index) = hit_dropdown_item(x, y, menu_x, 1, &scripts_items) {
+            self.state.ui.scripts_submenu.selected = index;
+            self.execute_scripts_submenu_action()?;
+            return Ok(true);
         }
 
-        // Click outside dropdown - close menu
         self.state.close_menu();
         Ok(true)
     }
@@ -735,75 +667,33 @@ impl App {
             if let Some(group_name) = &self.state.ui.current_bookmarks_group.clone() {
                 let nested_items = get_bookmarks_group_items(&self.state.bookmarks, group_name);
                 if !nested_items.is_empty() {
-                    // Calculate nested submenu position (to the right of main dropdown)
                     let menu_x = get_menu_item_x_position(BOOKMARKS_MENU_INDEX);
-                    let bookmarks_width = bookmarks_items
+                    let parent_width = bookmarks_items
                         .iter()
                         .map(|i| i.label.width())
                         .max()
                         .unwrap_or(10) as u16
                         + 4;
-
-                    let nested_x = menu_x + bookmarks_width;
-                    let dropdown_y = 1_u16;
-                    // +1 for dropdown border, align with selected item
-                    let nested_y = dropdown_y + 1 + self.state.ui.bookmarks_submenu.selected as u16;
-                    let nested_width = nested_items
-                        .iter()
-                        .map(|i| i.label.width())
-                        .max()
-                        .unwrap_or(10) as u16
-                        + 4;
-                    let nested_height = nested_items.len() as u16 + 2;
-
-                    // Check click on nested submenu
-                    if x >= nested_x
-                        && x < nested_x + nested_width
-                        && y >= nested_y
-                        && y < nested_y + nested_height
+                    let nested_x = menu_x + parent_width;
+                    let nested_y = 2 + self.state.ui.bookmarks_submenu.selected as u16;
+                    if let Some(index) = hit_dropdown_item(x, y, nested_x, nested_y, &nested_items)
                     {
-                        let item_y = y.saturating_sub(nested_y + 1);
-                        let item_index = item_y as usize;
-                        if item_index < nested_items.len() {
-                            self.state.ui.bookmarks_nested.selected = item_index;
-                            self.execute_bookmarks_nested_action()?;
-                            return Ok(true);
-                        }
+                        self.state.ui.bookmarks_nested.selected = index;
+                        self.execute_bookmarks_nested_action()?;
+                        return Ok(true);
                     }
                 }
             }
         }
 
-        // Get Bookmarks dropdown position
+        // Check click on Bookmarks main dropdown
         let menu_x = get_menu_item_x_position(BOOKMARKS_MENU_INDEX);
-        let dropdown_y = 1_u16;
-
-        // Calculate Bookmarks dropdown dimensions
-        let bookmarks_width = bookmarks_items
-            .iter()
-            .map(|i| i.label.width())
-            .max()
-            .unwrap_or(10) as u16
-            + 4;
-        let bookmarks_height = bookmarks_items.len() as u16 + 2;
-
-        // Check click on Bookmarks dropdown
-        if x >= menu_x
-            && x < menu_x + bookmarks_width
-            && y >= dropdown_y
-            && y < dropdown_y + bookmarks_height
-        {
-            let item_y = y.saturating_sub(dropdown_y + 1);
-            let item_index = item_y as usize;
-            if item_index < bookmarks_items.len() {
-                self.state.ui.bookmarks_submenu.selected = item_index;
-                // Execute the action (may open nested submenu or perform action)
-                self.execute_bookmarks_submenu_action()?;
-                return Ok(true);
-            }
+        if let Some(index) = hit_dropdown_item(x, y, menu_x, 1, &bookmarks_items) {
+            self.state.ui.bookmarks_submenu.selected = index;
+            self.execute_bookmarks_submenu_action()?;
+            return Ok(true);
         }
 
-        // Click outside dropdown - close menu
         self.state.close_menu();
         Ok(true)
     }

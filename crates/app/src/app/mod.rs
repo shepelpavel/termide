@@ -470,7 +470,9 @@ impl App {
                         }
                         // Process collected events
                         if !all_panel_events.is_empty() {
-                            let _ = self.process_panel_events(all_panel_events);
+                            if let Err(e) = self.process_panel_events(all_panel_events) {
+                                log::error!("Error processing panel events: {}", e);
+                            }
                         }
                     } else {
                         // During scrolling: only check terminal output (lightweight)
@@ -492,7 +494,9 @@ impl App {
                             .iter_all_panels_mut()
                             .find_map(|panel| panel.take_modal_request());
                         if let Some((action, modal)) = modal_request {
-                            let _ = self.handle_modal_request(action, modal);
+                            if let Err(e) = self.handle_modal_request(action, modal) {
+                                log::error!("Error handling modal request: {}", e);
+                            }
                             self.state.needs_redraw = true;
                         }
 

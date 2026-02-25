@@ -297,32 +297,14 @@ impl App {
     /// Handle OpenFile event - open file in editor
     fn event_open_file(&mut self, file_path: PathBuf) -> Result<()> {
         self.close_help_panels();
-        let filename = file_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("?");
-        let t = i18n::t();
-        log::debug!("Opening file via event: {}", filename);
-
-        match Editor::open_file_with_config(file_path.clone(), self.state.editor_config()) {
-            Ok(mut editor_panel) => {
-                // Initialize LSP for the editor
-                if let Some(ref mut lsp_manager) = self.state.lsp_manager {
-                    editor_panel.init_lsp(lsp_manager);
-                }
-
-                self.add_panel(Box::new(editor_panel));
-                self.notify_outline_file_opened();
-                self.auto_save_session();
-                log::info!("File '{}' opened in editor", filename);
-                self.state.set_info(t.editor_file_opened(filename));
-            }
-            Err(e) => {
-                let error_msg = t.status_error_open_file(filename, &e.to_string());
-                log::error!("Error opening '{}': {}", filename, e);
-                self.state.set_error(error_msg);
-            }
-        }
+        log::debug!(
+            "Opening file via event: {}",
+            file_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("?")
+        );
+        let _ = self.open_editor_for_file(file_path);
         Ok(())
     }
 

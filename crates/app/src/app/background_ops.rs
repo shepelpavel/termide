@@ -363,7 +363,9 @@ impl App {
 
         // Process pending definition event (outside of panel borrow)
         if let Some(event) = pending_definition_event {
-            let _ = self.process_panel_events(vec![event]);
+            if let Err(e) = self.process_panel_events(vec![event]) {
+                log::error!("Error processing definition event: {}", e);
+            }
         }
     }
 

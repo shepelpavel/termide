@@ -57,27 +57,6 @@ impl SmbProvider {
             context: None,
         }
     }
-
-    /// Convert VfsPath to SMB URL.
-    #[allow(dead_code)]
-    fn to_smb_url(&self, path: &VfsPath) -> VfsResult<String> {
-        if !matches!(path.protocol, VfsProtocol::Smb) {
-            return Err(VfsError::InvalidPath(format!(
-                "Expected SMB path, got: {}",
-                path
-            )));
-        }
-
-        // Build SMB URL: smb://server/share/path
-        let mut url = format!("smb://{}", self.host);
-        if let Some(ref share) = self.share {
-            url.push('/');
-            url.push_str(share);
-        }
-        url.push_str(&path.path.display().to_string());
-
-        Ok(url)
-    }
 }
 
 #[cfg(not(feature = "smb"))]

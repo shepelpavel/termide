@@ -571,13 +571,13 @@ pub fn render_diagnostic_virtual_line(
 
     // Render visible portion (accounting for horizontal scroll)
     let visible_start = left_column;
-    let visible_chars: String = full_text
+
+    for (i, ch) in full_text
         .chars()
         .skip(visible_start)
         .take(content_width)
-        .collect();
-
-    for (i, ch) in visible_chars.chars().enumerate() {
+        .enumerate()
+    {
         let x = content_x + i as u16;
         if x < area.x + area.width {
             if let Some(cell) = buf.cell_mut((x, y)) {
