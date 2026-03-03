@@ -8,6 +8,7 @@ use std::process::Command;
 use crate::command::{run_git_simple, run_git_with_stderr};
 
 /// Stage a file (add to index)
+#[must_use = "staging result must be checked"]
 pub fn stage_file(repo: &Path, file: &Path) -> Result<(), String> {
     let file_str = file.to_string_lossy();
     run_git_simple(
@@ -18,6 +19,7 @@ pub fn stage_file(repo: &Path, file: &Path) -> Result<(), String> {
 }
 
 /// Stage multiple files
+#[must_use = "staging result must be checked"]
 pub fn stage_files(repo: &Path, files: &[PathBuf]) -> Result<(), String> {
     if files.is_empty() {
         return Ok(());
@@ -34,6 +36,7 @@ pub fn stage_files(repo: &Path, files: &[PathBuf]) -> Result<(), String> {
 }
 
 /// Unstage a file (remove from index)
+#[must_use = "unstaging result must be checked"]
 pub fn unstage_file(repo: &Path, file: &Path) -> Result<(), String> {
     let file_str = file.to_string_lossy();
     run_git_simple(
@@ -44,6 +47,7 @@ pub fn unstage_file(repo: &Path, file: &Path) -> Result<(), String> {
 }
 
 /// Unstage multiple files
+#[must_use = "unstaging result must be checked"]
 pub fn unstage_files(repo: &Path, files: &[PathBuf]) -> Result<(), String> {
     if files.is_empty() {
         return Ok(());
@@ -60,16 +64,19 @@ pub fn unstage_files(repo: &Path, files: &[PathBuf]) -> Result<(), String> {
 }
 
 /// Stage all changes
+#[must_use = "staging result must be checked"]
 pub fn stage_all(repo: &Path) -> Result<(), String> {
     run_git_simple(repo, &["add", "-A"], "Failed to stage all files")
 }
 
 /// Unstage all changes
+#[must_use = "unstaging result must be checked"]
 pub fn unstage_all(repo: &Path) -> Result<(), String> {
     run_git_simple(repo, &["reset", "HEAD"], "Failed to unstage all files")
 }
 
 /// Create a commit
+#[must_use = "commit result must be checked"]
 pub fn commit(repo: &Path, message: &str) -> Result<String, String> {
     let output = Command::new("git")
         .args(["commit", "-m", message])
@@ -94,6 +101,7 @@ pub fn commit(repo: &Path, message: &str) -> Result<String, String> {
 }
 
 /// Revert changes in a file (restore from HEAD)
+#[must_use = "revert result must be checked"]
 pub fn revert_file(repo: &Path, file: &Path) -> Result<(), String> {
     let file_str = file.to_string_lossy();
     run_git_simple(
@@ -104,21 +112,25 @@ pub fn revert_file(repo: &Path, file: &Path) -> Result<(), String> {
 }
 
 /// Push to remote
+#[must_use = "push result must be checked"]
 pub fn push(repo: &Path) -> Result<(), String> {
     run_git_with_stderr(repo, &["push"], "push")
 }
 
 /// Pull from remote
+#[must_use = "pull result must be checked"]
 pub fn pull(repo: &Path) -> Result<(), String> {
     run_git_with_stderr(repo, &["pull"], "pull")
 }
 
 /// Fetch from remote without merging
+#[must_use = "fetch result must be checked"]
 pub fn fetch(repo: &Path) -> Result<(), String> {
     run_git_with_stderr(repo, &["fetch"], "fetch")
 }
 
 /// Initialize a new git repository
+#[must_use = "init result must be checked"]
 pub fn init_repo(path: &Path) -> Result<(), String> {
     run_git_with_stderr(path, &["init"], "init")
 }

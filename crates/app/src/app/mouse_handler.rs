@@ -662,7 +662,7 @@ impl App {
 
         // If nested submenu is open, handle clicks on it first
         if self.state.ui.scripts_nested.open {
-            if let Some(group_name) = &self.state.ui.current_scripts_group.clone() {
+            if let Some(group_name) = self.state.ui.current_scripts_group.as_ref() {
                 let nested_items = get_scripts_group_items(&registry, group_name);
                 if !nested_items.is_empty() {
                     let menu_x = get_menu_item_x_position(SCRIPTS_MENU_INDEX);
@@ -705,7 +705,7 @@ impl App {
 
         // If nested submenu is open, handle clicks on it first
         if self.state.ui.bookmarks_nested.open {
-            if let Some(group_name) = &self.state.ui.current_bookmarks_group.clone() {
+            if let Some(group_name) = self.state.ui.current_bookmarks_group.as_ref() {
                 let nested_items = get_bookmarks_group_items(&self.state.bookmarks, group_name);
                 if !nested_items.is_empty() {
                     let menu_x = get_menu_item_x_position(BOOKMARKS_MENU_INDEX);

@@ -98,7 +98,7 @@ pub fn parse_keybinding(s: &str) -> Result<ParsedKeyBinding, String> {
     }
 
     let mut modifiers = KeyModifiers::empty();
-    let key_str = parts.last().unwrap().trim();
+    let key_str = parts.last().ok_or("Empty keybinding")?.trim();
 
     // Parse modifiers (all parts except the last one)
     for part in &parts[..parts.len().saturating_sub(1)] {
