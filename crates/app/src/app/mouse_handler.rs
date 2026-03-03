@@ -9,6 +9,9 @@ use super::App;
 use crate::PanelExt;
 use termide_i18n as i18n;
 
+use crate::state::{ActiveModal, PendingAction};
+use termide_modal as modal;
+
 use termide_theme::Theme;
 use termide_ui_render::{
     get_bookmarks_group_items, get_bookmarks_items, get_menu_item_x_position, get_options_items,
@@ -253,8 +256,8 @@ impl App {
         }
     }
 
-    /// Handle click on panel [X] button or [▶]/[▼] expand/collapse button
-    /// Returns true if a button was clicked
+    /// Handle click on panel [X] button, [▶]/[▼] expand/collapse button, or title area.
+    /// Returns true if a button or title was clicked.
     fn handle_panel_close_click(&mut self, click_x: u16, click_y: u16) -> Result<bool> {
         let panel_rects = self.calculate_panel_rects();
 
@@ -303,6 +306,44 @@ impl App {
                     }
                 }
                 return Ok(true);
+            }
+
+            // Calculate title zone boundaries
+            // Format: ─[X][▶] Title ─── (group_size > 1) or ─[X] Title ─── (group_size == 1)
+            let group_size = self
+                .layout_manager
+                .panel_groups
+                .get(group_idx)
+                .map(|g| g.len())
+                .unwrap_or(1);
+
+            // Check for title click (only if buttons didn't handle it)
+            let title_start = if group_size > 1 { 7 } else { 4 };
+
+            if relative_x >= title_start {
+                // Click on title area - activate panel first
+                if let Some(group) = self.layout_manager.panel_groups.get_mut(group_idx) {
+                    group.set_expanded(panel_idx);
+                }
+                self.layout_manager.focus = group_idx;
+
+                // Check if this is a FileManager panel
+                if let Some(panel) = self.layout_manager.active_panel_mut() {
+                    if let Some(fm) = panel.as_file_manager_mut() {
+                        let current_path = fm.current_path().to_path_buf();
+                        let t = i18n::t();
+                        let modal = modal::DirectoryPickerModal::new(
+                            current_path,
+                            t.directory_switcher_title().to_string(),
+                            t.directory_picker_move().to_string(),
+                        );
+                        self.state.set_pending_action(
+                            PendingAction::SwitchDirectory,
+                            ActiveModal::DirectoryPicker(Box::new(modal)),
+                        );
+                        return Ok(true);
+                    }
+                }
             }
         }
 
