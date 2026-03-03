@@ -950,6 +950,10 @@ impl Translation for RuntimeTranslation {
         self.get_string("git_pull_in_progress").to_string()
     }
 
+    fn git_fetch_in_progress(&self) -> String {
+        self.get_string("git_fetch_in_progress").to_string()
+    }
+
     fn git_push_success(&self) -> String {
         self.get_string("git_push_success").to_string()
     }

@@ -125,6 +125,8 @@ pub struct GitStatusPanel {
     unstaged_collapsed: HashSet<PathBuf>,
     /// Collapsed directories in staged tree
     staged_collapsed: HashSet<PathBuf>,
+    /// Pending initial fetch to update ahead/behind counts
+    pending_init_fetch: bool,
 }
 
 impl GitStatusPanel {
@@ -186,6 +188,7 @@ impl GitStatusPanel {
             staged_tree_prefixes: Vec::new(),
             unstaged_collapsed: HashSet::new(),
             staged_collapsed: HashSet::new(),
+            pending_init_fetch: true,
         };
 
         panel.refresh();
@@ -825,6 +828,10 @@ impl Panel for GitStatusPanel {
                 self.refresh_title_data();
                 CommandResult::NeedsRedraw(true)
             }
+            PanelCommand::Reload => {
+                self.refresh();
+                CommandResult::NeedsRedraw(true)
+            }
             PanelCommand::RefreshIfStale => {
                 if self.is_stale {
                     self.is_stale = false;
@@ -1349,5 +1356,20 @@ impl Panel for GitStatusPanel {
 
     fn get_working_directory(&self) -> Option<PathBuf> {
         self.repo_manager.current().map(|p| p.to_path_buf())
+    }
+
+    fn tick(&mut self) -> Vec<PanelEvent> {
+        // Trigger initial fetch once when panel is ready and has a repo
+        if self.pending_init_fetch && !self.repo_manager.is_empty() {
+            self.pending_init_fetch = false;
+            if let Some(repo) = self.repo_manager.current() {
+                use termide_core::event::{GitOperationType, PanelEvent};
+                return vec![PanelEvent::GitOperation {
+                    operation: GitOperationType::Fetch,
+                    repo_path: repo.to_path_buf(),
+                }];
+            }
+        }
+        vec![]
     }
 }

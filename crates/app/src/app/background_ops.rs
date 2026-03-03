@@ -78,7 +78,7 @@ impl App {
         }
     }
 
-    /// Check for background git operation result (push/pull)
+    /// Check for background git operation result (push/pull/fetch)
     pub(super) fn check_git_operation_result(&mut self) {
         let handle = match self.state.git_operation_handle.take() {
             Some(h) => h,
@@ -92,7 +92,17 @@ impl App {
                 // Notify all panels about git operation completed (shows Push/Pull buttons)
                 self.notify_git_operation_state(false, None, 0);
 
-                // Show result modal
+                // Fetch is silent - no modal, just refresh
+                if result.operation == "fetch" {
+                    // Refresh all git panels silently
+                    for panel in self.layout_manager.iter_all_panels_mut() {
+                        panel.handle_command(PanelCommand::Reload);
+                    }
+                    self.state.needs_redraw = true;
+                    return;
+                }
+
+                // Show result modal for push/pull
                 let t = termide_i18n::t();
                 let title = if result.success {
                     if result.operation == "push" {

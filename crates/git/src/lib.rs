@@ -26,8 +26,8 @@ pub use commits::{
 };
 pub use files::{get_staged_files, get_unstaged_files, StagedFile, UnstagedFile};
 pub use operations::{
-    commit, init_repo, pull, push, revert_file, stage_all, stage_file, stage_files, unstage_all,
-    unstage_file, unstage_files,
+    commit, fetch, init_repo, pull, push, revert_file, stage_all, stage_file, stage_files,
+    unstage_all, unstage_file, unstage_files,
 };
 pub use repo_manager::RepoManager;
 pub use utils::{truncate_left, truncate_path_left, truncate_right, truncate_to_width};

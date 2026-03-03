@@ -113,6 +113,11 @@ pub fn pull(repo: &Path) -> Result<(), String> {
     run_git_with_stderr(repo, &["pull"], "pull")
 }
 
+/// Fetch from remote without merging
+pub fn fetch(repo: &Path) -> Result<(), String> {
+    run_git_with_stderr(repo, &["fetch"], "fetch")
+}
+
 /// Initialize a new git repository
 pub fn init_repo(path: &Path) -> Result<(), String> {
     run_git_with_stderr(path, &["init"], "init")

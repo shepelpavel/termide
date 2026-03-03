@@ -961,6 +961,7 @@ impl App {
         let cmd = match operation {
             GitOperationType::Push => "push",
             GitOperationType::Pull => "pull",
+            GitOperationType::Fetch => "fetch",
         };
         let cmd_str = cmd.to_string();
 
@@ -993,6 +994,7 @@ impl App {
         let msg = match operation {
             GitOperationType::Push => t.git_push_in_progress(),
             GitOperationType::Pull => t.git_pull_in_progress(),
+            GitOperationType::Fetch => t.git_fetch_in_progress(),
         };
         self.state.set_info(msg);
 

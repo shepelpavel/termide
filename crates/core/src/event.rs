@@ -163,6 +163,7 @@ impl EventHandler {
 pub enum GitOperationType {
     Push,
     Pull,
+    Fetch,
 }
 
 /// Events emitted by panels to communicate with the application.
