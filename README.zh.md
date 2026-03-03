@@ -245,7 +245,7 @@ cargo build --release
 - `Alt+←/→` 或 `Alt+A/D` - 切换面板组
 - `Alt+↑/↓` 或 `Alt+W/S` - 在组内导航面板
 - `Alt+1-9` - 按编号跳转到面板
-- `Alt+X` / `Esc` - 关闭面板
+- `Alt+X` / `Alt+Delete` - 关闭面板
 - `Alt+Backspace` - 切换面板堆叠
 - `Alt+PgUp/PgDn` - 在组之间移动面板
 - `Alt+=/-` - 调整组宽度
@@ -289,7 +289,6 @@ cargo build --release
 - `Ctrl+H` - 替换
 - `F3` / `Shift+F3` - 下一个/上一个匹配
 - `Ctrl+D` - 复制行
-- `Ctrl+G` - 跳转到行
 - `Ctrl+C/X/V` - 复制/剪切/粘贴
 - `Ctrl+Left/Right` - 按单词移动光标
 - `Ctrl+Shift+Left/Right` - 按单词选择
@@ -298,7 +297,6 @@ cargo build --release
 
 **Git 状态：**
 - `Tab` - 切换焦点
-- `Space` - 暂存/取消暂存文件
 - `Ctrl+S` - 暂存选中
 - `Ctrl+U` - 取消暂存选中
 - `Ctrl+R` - 刷新

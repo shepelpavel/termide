@@ -14,6 +14,7 @@ The file manager panel provides an intuitive interface for navigating the file s
 | `Home` / `End`    | Go to beginning/end of list                |
 | `.`               | Toggle hidden files visibility             |
 | `Ctrl+P`          | Open directory switcher                    |
+| `Ctrl+G`          | Go to path/URL                             |
 | `Ctrl+B`          | Add bookmark                               |
 | `Tab`             | Go to next panel                           |
 | `Shift+Tab`       | Go to previous panel                       |
@@ -31,12 +32,12 @@ The file manager panel provides an intuitive interface for navigating the file s
 
 | Shortcut           | Action                                     |
 |-------------------|--------------------------------------------|
-| `Ctrl+N` / `F`    | Create new file                            |
+| `Ctrl+N`          | Create new file                            |
 | `D` / `F7`        | Create new directory                       |
 | `Delete` / `F8`   | Delete selected files/directories          |
 | `C` / `F5`        | Copy selected files/directories            |
 | `M` / `F6`        | Move/rename files/directories              |
-| `F4`              | Open file in editor                        |
+| `E` / `F4`        | Open file in editor                        |
 | `Ctrl+R`          | Refresh current directory contents         |
 | `Space`           | Show file/directory information            |
 

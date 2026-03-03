@@ -244,7 +244,7 @@ For detailed documentation, see:
 - `Alt+←/→` or `Alt+A/D` - Switch panel groups
 - `Alt+↑/↓` or `Alt+W/S` - Navigate panels in group
 - `Alt+1-9` - Jump to panel by number
-- `Alt+X` / `Esc` - Close panel
+- `Alt+X` / `Alt+Delete` - Close panel
 - `Alt+Backspace` - Toggle panel stacking
 - `Alt+PgUp/PgDn` - Move panel between groups
 - `Alt+=/-` - Resize group width
@@ -288,7 +288,6 @@ For detailed documentation, see:
 - `Ctrl+H` - Replace
 - `F3` / `Shift+F3` - Next/previous match
 - `Ctrl+D` - Duplicate line
-- `Ctrl+G` - Go to line
 - `Ctrl+C/X/V` - Copy/Cut/Paste
 - `Ctrl+Left/Right` - Move cursor by word
 - `Ctrl+Shift+Left/Right` - Select by word
@@ -297,7 +296,6 @@ For detailed documentation, see:
 
 **Git Status:**
 - `Tab` - Switch focus
-- `Space` - Stage/unstage file
 - `Ctrl+S` - Stage selected
 - `Ctrl+U` - Unstage selected
 - `Ctrl+R` - Refresh

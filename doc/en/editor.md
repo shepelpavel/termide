@@ -43,7 +43,6 @@ The text editor panel provides a functional editor for working with text files w
 | `Ctrl+Z`          | Undo last action                           |
 | `Ctrl+Y`          | Redo undone action                         |
 | `Ctrl+D`          | Duplicate current line or selection        |
-| `Ctrl+G`          | Go to line number                          |
 | `Backspace`       | Delete character to the left of cursor     |
 | `Delete`          | Delete character to the right of cursor    |
 | `Enter`           | Insert new line (with auto-indentation)    |
