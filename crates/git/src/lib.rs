@@ -149,10 +149,44 @@ pub fn get_git_status(dir: &Path) -> Option<GitStatusCache> {
     let repo_root_str = git_command_stdout(dir, &["rev-parse", "--show-toplevel"])?;
     let repo_root = PathBuf::from(repo_root_str.trim());
 
-    let relative_path = dir
-        .strip_prefix(&repo_root)
-        .unwrap_or(Path::new(""))
-        .to_path_buf();
+    // Canonicalize both paths to resolve symlinks before strip_prefix
+    // This fixes the issue where FileManager uses symlink paths (e.g., /home/nvn/...)
+    // but git rev-parse returns real paths (e.g., /Data/...)
+    let dir_canonical = dir.canonicalize().ok();
+    let repo_root_canonical = repo_root.canonicalize().ok();
+
+    let relative_path = match (&dir_canonical, &repo_root_canonical) {
+        (Some(d), Some(r)) => d
+            .strip_prefix(r)
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|_| {
+                log::warn!(
+                    "strip_prefix failed after canonicalize: dir={:?}, repo_root={:?}",
+                    d,
+                    r
+                );
+                PathBuf::new()
+            }),
+        _ => {
+            // Fallback to direct strip_prefix if canonicalize fails
+            log::warn!(
+                "canonicalize failed, trying direct strip_prefix: dir={:?}, repo_root={:?}",
+                dir,
+                repo_root
+            );
+            dir.strip_prefix(&repo_root)
+                .map(|p| p.to_path_buf())
+                .unwrap_or_default()
+        }
+    };
+
+    log::debug!(
+        "build_git_status_cache: dir={:?}, repo_root={:?}, relative_path={:?} (is_empty={})",
+        dir,
+        repo_root,
+        relative_path,
+        relative_path.as_os_str().is_empty()
+    );
 
     // Single git status command - parse both status and ignored files
     // Use -c core.quotepath=false to show non-ASCII characters properly
@@ -212,14 +246,12 @@ pub fn get_git_status(dir: &Path) -> Option<GitStatusCache> {
         .collect();
 
     log::debug!(
-        "build_git_status_cache: dir={:?}, relative_path={:?}, status_map entries={}",
-        dir,
-        relative_path,
+        "build_git_status_cache: status_map entries={}, deleted files:",
         status_map.len()
     );
     for (path, status) in &status_map {
         if *status == GitStatus::Deleted {
-            log::debug!("  deleted file in cache: path={:?}", path);
+            log::debug!("  {:?}", path);
         }
     }
 
@@ -345,51 +377,44 @@ impl GitStatusCache {
     }
 
     pub fn get_deleted_files(&self) -> Vec<String> {
-        log::debug!(
-            "get_deleted_files: relative_path={:?} (as_os_str={:?})",
+        log::info!(
+            "get_deleted_files: relative_path={:?} (is_empty={})",
             self.relative_path,
-            self.relative_path.as_os_str()
+            self.relative_path.as_os_str().is_empty()
         );
 
-        let result: Vec<String> = self
-            .status_map
-            .iter()
-            .filter(|(path, status)| {
-                let is_deleted = **status == GitStatus::Deleted;
-                let parent = path.parent();
-                let parent_match = parent
-                    .map(|p| {
-                        let matches = p == self.relative_path;
-                        log::debug!(
-                            "  comparing: path.parent()={:?} (as_os_str={:?}) vs relative_path={:?} (as_os_str={:?}) => {}",
-                            p,
-                            p.as_os_str(),
-                            self.relative_path,
-                            self.relative_path.as_os_str(),
-                            matches
-                        );
-                        matches
-                    })
-                    .unwrap_or_else(|| {
-                        let empty_match = self.relative_path.as_os_str().is_empty();
-                        log::debug!(
-                            "  path.parent()=None for {:?}, checking if relative_path is empty: {}",
-                            path,
-                            empty_match
-                        );
-                        empty_match
-                    });
+        let mut result = Vec::new();
+        for (path, status) in &self.status_map {
+            if *status != GitStatus::Deleted {
+                continue;
+            }
 
-                if is_deleted && !parent_match {
-                    log::debug!("  FILTERED OUT: deleted file {:?} (parent_match=false)", path);
+            let parent = path.parent();
+            let parent_str = parent
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+
+            let parent_match = match parent {
+                Some(p) if p.as_os_str().is_empty() => self.relative_path.as_os_str().is_empty(),
+                Some(p) => p == self.relative_path,
+                None => self.relative_path.as_os_str().is_empty(),
+            };
+
+            log::info!(
+                "  deleted: path={:?}, parent={:?}, match={}",
+                path,
+                parent_str,
+                parent_match
+            );
+
+            if parent_match {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    result.push(name.to_string());
                 }
+            }
+        }
 
-                is_deleted && parent_match
-            })
-            .filter_map(|(path, _)| path.file_name()?.to_str().map(String::from))
-            .collect();
-
-        log::debug!("  returning: {:?}", result);
+        log::info!("  returning: {:?}", result);
         result
     }
 
