@@ -47,6 +47,7 @@ pub enum FmCommand {
     DeleteFiles,
     CopyFiles,
     MoveFiles,
+    RenameFile,
     EditFile,
     ViewFile,
     OpenExternal,
@@ -207,22 +208,41 @@ impl FmCommand {
             return Self::DeleteFiles;
         }
 
-        // Edit file (F4)
-        if matches_binding_or_default(
+        // Rename file (R, F2)
+        if matches_binding_or_defaults(
+            &keybindings.rename_file,
+            &key,
+            &[
+                (KeyCode::Char('r'), KeyModifiers::NONE),
+                (KeyCode::Char('R'), KeyModifiers::NONE),
+                (KeyCode::F(2), KeyModifiers::NONE),
+            ],
+        ) {
+            return Self::RenameFile;
+        }
+
+        // Edit file (E, F4)
+        if matches_binding_or_defaults(
             &keybindings.edit_file,
             &key,
-            KeyCode::F(4),
-            KeyModifiers::NONE,
+            &[
+                (KeyCode::Char('e'), KeyModifiers::NONE),
+                (KeyCode::Char('E'), KeyModifiers::NONE),
+                (KeyCode::F(4), KeyModifiers::NONE),
+            ],
         ) {
             return Self::EditFile;
         }
 
-        // View file (F3)
-        if matches_binding_or_default(
+        // View file (V, F3)
+        if matches_binding_or_defaults(
             &keybindings.view_file,
             &key,
-            KeyCode::F(3),
-            KeyModifiers::NONE,
+            &[
+                (KeyCode::Char('v'), KeyModifiers::NONE),
+                (KeyCode::Char('V'), KeyModifiers::NONE),
+                (KeyCode::F(3), KeyModifiers::NONE),
+            ],
         ) {
             return Self::ViewFile;
         }
@@ -451,25 +471,70 @@ mod tests {
     fn test_file_operations() {
         let kb = default_keybindings();
 
+        // View file (V, F3)
+        assert_eq!(
+            FmCommand::from_key_event(key(KeyCode::Char('v'), KeyModifiers::NONE), &kb, false),
+            FmCommand::ViewFile
+        );
         assert_eq!(
             FmCommand::from_key_event(key(KeyCode::F(3), KeyModifiers::NONE), &kb, false),
             FmCommand::ViewFile
+        );
+
+        // Edit file (E, F4)
+        assert_eq!(
+            FmCommand::from_key_event(key(KeyCode::Char('e'), KeyModifiers::NONE), &kb, false),
+            FmCommand::EditFile
         );
         assert_eq!(
             FmCommand::from_key_event(key(KeyCode::F(4), KeyModifiers::NONE), &kb, false),
             FmCommand::EditFile
         );
+
+        // Rename file (R, F2)
+        assert_eq!(
+            FmCommand::from_key_event(key(KeyCode::Char('r'), KeyModifiers::NONE), &kb, false),
+            FmCommand::RenameFile
+        );
+        assert_eq!(
+            FmCommand::from_key_event(key(KeyCode::F(2), KeyModifiers::NONE), &kb, false),
+            FmCommand::RenameFile
+        );
+
+        // Copy files (C, F5)
+        assert_eq!(
+            FmCommand::from_key_event(key(KeyCode::Char('c'), KeyModifiers::NONE), &kb, false),
+            FmCommand::CopyFiles
+        );
         assert_eq!(
             FmCommand::from_key_event(key(KeyCode::F(5), KeyModifiers::NONE), &kb, false),
             FmCommand::CopyFiles
+        );
+
+        // Move files (M, F6)
+        assert_eq!(
+            FmCommand::from_key_event(key(KeyCode::Char('m'), KeyModifiers::NONE), &kb, false),
+            FmCommand::MoveFiles
         );
         assert_eq!(
             FmCommand::from_key_event(key(KeyCode::F(6), KeyModifiers::NONE), &kb, false),
             FmCommand::MoveFiles
         );
+
+        // New directory (D, F7)
+        assert_eq!(
+            FmCommand::from_key_event(key(KeyCode::Char('d'), KeyModifiers::NONE), &kb, false),
+            FmCommand::NewDirectory
+        );
         assert_eq!(
             FmCommand::from_key_event(key(KeyCode::F(7), KeyModifiers::NONE), &kb, false),
             FmCommand::NewDirectory
+        );
+
+        // Delete files (Delete, F8)
+        assert_eq!(
+            FmCommand::from_key_event(key(KeyCode::Delete, KeyModifiers::NONE), &kb, false),
+            FmCommand::DeleteFiles
         );
         assert_eq!(
             FmCommand::from_key_event(key(KeyCode::F(8), KeyModifiers::NONE), &kb, false),

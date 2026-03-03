@@ -1905,6 +1905,27 @@ impl FileManager {
                     self.modal_request = Some((action, ActiveModal::Input(Box::new(modal))));
                 }
             }
+            FmCommand::RenameFile => {
+                if let Some(entry) = self.entries.get(self.selected) {
+                    // Only allow renaming files and directories (not deleted or special entries)
+                    if entry.git_status == GitStatus::Deleted {
+                        return events;
+                    }
+                    let path = self.current_path.join(&entry.name);
+                    let filename = &entry.name;
+                    let t = termide_i18n::t();
+                    let modal = InputModal::with_default(
+                        t.op_type_rename(),
+                        t.fm_move_prompt(filename),
+                        filename,
+                    );
+                    let action = PendingAction::MovePath {
+                        sources: vec![path.clone()],
+                        target_directory: path.parent().map(|p| p.to_path_buf()),
+                    };
+                    self.modal_request = Some((action, ActiveModal::Input(Box::new(modal))));
+                }
+            }
             FmCommand::EditFile => {
                 if let Some(event) = self.edit_file() {
                     events.push(event);

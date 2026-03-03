@@ -257,6 +257,7 @@ pub struct FileManagerKeybindings {
     pub copy_files: Option<KeyBinding>,
     pub move_files: Option<KeyBinding>,
     pub delete_files: Option<KeyBinding>,
+    pub rename_file: Option<KeyBinding>,
     pub view_file: Option<KeyBinding>,
     pub edit_file: Option<KeyBinding>,
     pub new_file: Option<KeyBinding>,
@@ -447,8 +448,9 @@ impl FileManagerKeybindings {
         set_default_multiple!(copy_files, "C", "F5");
         set_default_multiple!(move_files, "M", "F6");
         set_default_multiple!(delete_files, "Delete", "F8");
-        set_default_single!(view_file, "F3");
-        set_default_single!(edit_file, "F4");
+        set_default_multiple!(rename_file, "R", "F2");
+        set_default_multiple!(view_file, "V", "F3");
+        set_default_multiple!(edit_file, "E", "F4");
         set_default_single!(new_file, "Ctrl+N");
         set_default_multiple!(new_directory, "D", "F7");
 
