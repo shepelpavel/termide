@@ -1238,7 +1238,8 @@ impl App {
     }
 
     /// Open or expand the Operations panel without stealing focus.
-    /// The panel expands in its accordion group but focus stays where it was.
+    /// The panel is inserted right after the currently expanded panel in the accordion,
+    /// so when it closes, the previous panel will naturally be shown again.
     pub(super) fn open_operations_panel(&mut self) -> Result<()> {
         use termide_panel_operations::OperationsPanel;
 
@@ -1254,9 +1255,22 @@ impl App {
             }
         }
 
-        // Create new operations panel without stealing focus
-        let panel = OperationsPanel::new();
-        self.add_panel_without_focus(Box::new(panel));
+        // Find the sidebar group (group 0) where operations panel should go
+        // Insert right after the currently expanded panel so it shows when operations close
+        let insert_position = if let Some(group) = self.layout_manager.panel_groups.first() {
+            group.expanded_index() + 1
+        } else {
+            0
+        };
+
+        // Create and insert operations panel at the calculated position
+        let panel = Box::new(OperationsPanel::new());
+        if let Some(group) = self.layout_manager.panel_groups.first_mut() {
+            group.insert_panel(insert_position, panel);
+            group.set_expanded(insert_position);
+        }
+
+        self.state.needs_watcher_registration = true;
         self.auto_save_session();
         Ok(())
     }

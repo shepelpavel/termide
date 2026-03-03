@@ -25,6 +25,20 @@ impl PanelGroup {
         self.panels.push(panel);
     }
 
+    /// Insert panel at specific position in group.
+    /// Adjusts expanded_index if necessary.
+    pub fn insert_panel(&mut self, index: usize, panel: Box<dyn Panel>) {
+        if index >= self.panels.len() {
+            self.panels.push(panel);
+        } else {
+            self.panels.insert(index, panel);
+            // Adjust expanded_index if we inserted before or at the expanded panel
+            if index <= self.expanded_index {
+                self.expanded_index += 1;
+            }
+        }
+    }
+
     /// Remove panel from group by index.
     pub fn remove_panel(&mut self, index: usize) -> Option<Box<dyn Panel>> {
         if index >= self.panels.len() {
@@ -36,7 +50,14 @@ impl PanelGroup {
         // Adjust expanded_index
         if self.panels.is_empty() {
             self.expanded_index = 0;
+        } else if self.expanded_index == index {
+            // Removed panel was expanded - show previous panel
+            self.expanded_index = index.saturating_sub(1);
+        } else if self.expanded_index > index {
+            // Removed panel was before expanded panel - shift index
+            self.expanded_index -= 1;
         } else if self.expanded_index >= self.panels.len() {
+            // Expanded index out of bounds after removal
             self.expanded_index = self.panels.len() - 1;
         }
 
