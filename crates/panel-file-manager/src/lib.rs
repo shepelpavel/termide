@@ -821,10 +821,9 @@ impl FileManager {
 
         // Start async git status loading (non-blocking)
         // Git status will be applied when check_git_status_async() is called
-        // Only clear cache when navigating to new directory (not when reloading)
-        if !preserve_selection {
-            self.git_status_cache = None;
-        }
+        // Clear cache to ensure we don't use stale data (fixes deleted files
+        // appearing in wrong directories after file deletion)
+        self.git_status_cache = None;
         self.git_status_receiver = Some(get_git_status_async(self.current_path.clone()));
 
         // Add parent directory if not at root

@@ -211,6 +211,18 @@ pub fn get_git_status(dir: &Path) -> Option<GitStatusCache> {
         })
         .collect();
 
+    log::debug!(
+        "build_git_status_cache: dir={:?}, relative_path={:?}, status_map entries={}",
+        dir,
+        relative_path,
+        status_map.len()
+    );
+    for (path, status) in &status_map {
+        if *status == GitStatus::Deleted {
+            log::debug!("  deleted file in cache: path={:?}", path);
+        }
+    }
+
     Some(GitStatusCache {
         status_map,
         ignored_files,
@@ -333,17 +345,52 @@ impl GitStatusCache {
     }
 
     pub fn get_deleted_files(&self) -> Vec<String> {
-        self.status_map
+        log::debug!(
+            "get_deleted_files: relative_path={:?} (as_os_str={:?})",
+            self.relative_path,
+            self.relative_path.as_os_str()
+        );
+
+        let result: Vec<String> = self
+            .status_map
             .iter()
             .filter(|(path, status)| {
-                **status == GitStatus::Deleted
-                    && path
-                        .parent()
-                        .map(|p| p == self.relative_path)
-                        .unwrap_or(self.relative_path.as_os_str().is_empty())
+                let is_deleted = **status == GitStatus::Deleted;
+                let parent = path.parent();
+                let parent_match = parent
+                    .map(|p| {
+                        let matches = p == self.relative_path;
+                        log::debug!(
+                            "  comparing: path.parent()={:?} (as_os_str={:?}) vs relative_path={:?} (as_os_str={:?}) => {}",
+                            p,
+                            p.as_os_str(),
+                            self.relative_path,
+                            self.relative_path.as_os_str(),
+                            matches
+                        );
+                        matches
+                    })
+                    .unwrap_or_else(|| {
+                        let empty_match = self.relative_path.as_os_str().is_empty();
+                        log::debug!(
+                            "  path.parent()=None for {:?}, checking if relative_path is empty: {}",
+                            path,
+                            empty_match
+                        );
+                        empty_match
+                    });
+
+                if is_deleted && !parent_match {
+                    log::debug!("  FILTERED OUT: deleted file {:?} (parent_match=false)", path);
+                }
+
+                is_deleted && parent_match
             })
             .filter_map(|(path, _)| path.file_name()?.to_str().map(String::from))
-            .collect()
+            .collect();
+
+        log::debug!("  returning: {:?}", result);
+        result
     }
 
     /// Check if path (relative to repo root) is ignored or inside an ignored directory.
