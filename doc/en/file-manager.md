@@ -38,6 +38,8 @@ The file manager panel provides an intuitive interface for navigating the file s
 | `C` / `F5`        | Copy selected files/directories            |
 | `M` / `F6`        | Move/rename files/directories              |
 | `E` / `F4`        | Open file in editor                        |
+| `R` / `F2`        | Rename file/directory                      |
+| `V` / `F3`        | View file (preview without executing)      |
 | `Ctrl+R`          | Refresh current directory contents         |
 | `Space`           | Show file/directory information            |
 
