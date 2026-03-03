@@ -355,6 +355,19 @@ impl Terminal {
                     row.resize(new_cols, empty_cell);
                 }
 
+                // Adjust row count for alternate buffer
+                while screen.alt_lines.len() > new_rows {
+                    screen.alt_lines.pop_back();
+                }
+                while screen.alt_lines.len() < new_rows {
+                    screen.alt_lines.push_back(vec![empty_cell; new_cols]);
+                }
+
+                // Adjust column count for each existing row in alternate buffer
+                for row in screen.alt_lines.iter_mut() {
+                    row.resize(new_cols, empty_cell);
+                }
+
                 screen.rows = new_rows;
                 screen.cols = new_cols;
 
