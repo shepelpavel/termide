@@ -914,6 +914,54 @@ impl Panel for GitStatusPanel {
             return vec![];
         }
 
+        // Revert file (Backspace/Delete) - only for files, not headers/directories
+        if matches_binding_or_defaults(
+            &kb.revert_file,
+            &key,
+            &[
+                (KeyCode::Backspace, KeyModifiers::NONE),
+                (KeyCode::Delete, KeyModifiers::NONE),
+            ],
+        ) {
+            if self.current_section == Section::Files
+                && matches!(
+                    self.get_selection(),
+                    Some(Selection::UnstagedFile(_)) | Some(Selection::StagedFile(_))
+                )
+            {
+                return self.initiate_revert();
+            }
+            return vec![];
+        }
+
+        // View file (F3) - only for files, not headers/directories
+        if matches_binding_or_defaults(&kb.view_file, &key, &[(KeyCode::F(3), KeyModifiers::NONE)])
+        {
+            if self.current_section == Section::Files
+                && matches!(
+                    self.get_selection(),
+                    Some(Selection::UnstagedFile(_)) | Some(Selection::StagedFile(_))
+                )
+            {
+                return self.open_file(false);
+            }
+            return vec![];
+        }
+
+        // Edit file (F4) - only for files, not headers/directories
+        if matches_binding_or_defaults(&kb.edit_file, &key, &[(KeyCode::F(4), KeyModifiers::NONE)])
+        {
+            if self.current_section == Section::Files
+                && matches!(
+                    self.get_selection(),
+                    Some(Selection::UnstagedFile(_)) | Some(Selection::StagedFile(_))
+                )
+            {
+                return self.open_file(true);
+            }
+            return vec![];
+        }
+
         // Non-configurable bindings (navigation)
 
         // Vim-aware navigation (j/k/g/G when vim_mode is enabled)

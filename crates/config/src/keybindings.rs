@@ -288,6 +288,12 @@ pub struct GitStatusKeybindings {
     pub refresh: Option<KeyBinding>,
     pub next_section: Option<KeyBinding>,
     pub prev_section: Option<KeyBinding>,
+    /// Revert file (show confirmation)
+    pub revert_file: Option<KeyBinding>,
+    /// Open file for viewing (read-only)
+    pub view_file: Option<KeyBinding>,
+    /// Open file for editing
+    pub edit_file: Option<KeyBinding>,
 }
 
 /// Terminal panel keybindings (terminal.keybindings section).
@@ -489,6 +495,9 @@ impl GitStatusKeybindings {
         set_default_single!(refresh, "Ctrl+R");
         set_default_single!(next_section, "Tab");
         set_default_single!(prev_section, "Shift+Tab");
+        set_default_multiple!(revert_file, "Backspace", "Delete");
+        set_default_single!(view_file, "F3");
+        set_default_single!(edit_file, "F4");
     }
 }
 

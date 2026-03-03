@@ -12,6 +12,80 @@ use crate::types::{Button, Selection};
 use crate::GitStatusPanel;
 
 impl GitStatusPanel {
+    /// Initiate revert action with confirmation modal (Backspace/Delete shortcut)
+    pub(crate) fn initiate_revert(&mut self) -> Vec<PanelEvent> {
+        let t = termide_i18n::t();
+
+        // Get selected file path (staged or unstaged)
+        let (is_staged, file_path) = match self.get_selection() {
+            Some(Selection::UnstagedFile(idx)) => {
+                if let Some(file) = self.unstaged_files.get(idx) {
+                    (false, PathBuf::from(&file.path))
+                } else {
+                    return vec![];
+                }
+            }
+            Some(Selection::StagedFile(idx)) => {
+                if let Some(file) = self.staged_files.get(idx) {
+                    (true, PathBuf::from(&file.path))
+                } else {
+                    return vec![];
+                }
+            }
+            _ => return vec![], // Headers, directories, or nothing selected
+        };
+
+        let Some(repo_path) = self.repo_manager.current().map(|p| p.to_path_buf()) else {
+            return vec![];
+        };
+
+        // Show confirmation modal
+        let confirm_msg = format!("{}\n\n{}", file_path.display(), t.git_revert_confirm());
+        let modal = termide_modal::ConfirmModal::new(t.git_action_revert(), &confirm_msg);
+
+        self.modal_request = Some((
+            PendingAction::GitRevertFile {
+                file_path,
+                repo_path,
+                is_staged,
+            },
+            ActiveModal::Confirm(Box::new(modal)),
+        ));
+
+        vec![]
+    }
+
+    /// Open selected file in editor (F3/F4 shortcut)
+    pub(crate) fn open_file(&mut self, _force_edit: bool) -> Vec<PanelEvent> {
+        // Get selected file path (staged or unstaged)
+        let file_path = match self.get_selection() {
+            Some(Selection::UnstagedFile(idx)) => self
+                .unstaged_files
+                .get(idx)
+                .map(|file| PathBuf::from(&file.path)),
+            Some(Selection::StagedFile(idx)) => self
+                .staged_files
+                .get(idx)
+                .map(|file| PathBuf::from(&file.path)),
+            _ => None, // Headers, directories, or nothing selected
+        };
+
+        let Some(file_path) = file_path else {
+            return vec![];
+        };
+
+        let Some(repo_path) = self.repo_manager.current() else {
+            return vec![];
+        };
+
+        let full_path = repo_path.join(&file_path);
+
+        // Use OpenFile event (same as file manager)
+        vec![PanelEvent::OpenFile(full_path)]
+    }
+}
+
+impl GitStatusPanel {
     /// Execute a git file operation with common error handling
     pub(crate) fn execute_git_op<F>(&mut self, files: Vec<PathBuf>, op: F, action: &str)
     where
