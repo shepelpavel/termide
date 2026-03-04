@@ -322,6 +322,10 @@ impl HelpGenerator {
                 description: t.help_desc_duplicate_line().to_string(),
             },
             HelpEntry {
+                keys: Self::format_keys(&kb.toggle_comment),
+                description: t.help_desc_toggle_comment().to_string(),
+            },
+            HelpEntry {
                 keys: Self::format_keys(&kb.search),
                 description: t.help_desc_search().to_string(),
             },

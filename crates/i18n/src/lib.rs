@@ -160,6 +160,7 @@ pub trait Translation: Send + Sync {
     fn help_desc_save_as(&self) -> &str;
     fn help_desc_reload(&self) -> &str;
     fn help_desc_duplicate_line(&self) -> &str;
+    fn help_desc_toggle_comment(&self) -> &str;
     fn help_desc_search_next(&self) -> &str;
     fn help_desc_search_prev(&self) -> &str;
     fn help_desc_replace(&self) -> &str;

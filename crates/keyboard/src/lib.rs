@@ -98,6 +98,11 @@ pub fn cyrillic_to_latin(ch: char) -> char {
 /// Applies Cyrillic → Latin translation only when modifier
 /// (Ctrl or Alt) is pressed, to not affect regular text input.
 pub fn translate_hotkey(key: KeyEvent) -> KeyEvent {
+    // Normalize Ctrl+/ — legacy terminals send it as 0x1F (Unit Separator)
+    if key.code == KeyCode::Char('\x1f') {
+        return KeyEvent::new(KeyCode::Char('/'), key.modifiers | KeyModifiers::CONTROL);
+    }
+
     // Apply only if modifier is present (Ctrl or Alt)
     if key
         .modifiers
@@ -161,5 +166,20 @@ mod tests {
         let key = KeyEvent::new(KeyCode::Char('Й'), KeyModifiers::SHIFT);
         let translated = translate_hotkey(key);
         assert_eq!(translated.code, KeyCode::Char('Й')); // Unchanged
+    }
+
+    #[test]
+    fn test_translate_ctrl_slash() {
+        // Legacy terminal: sends 0x1F without modifiers
+        let key = KeyEvent::new(KeyCode::Char('\x1f'), KeyModifiers::NONE);
+        let translated = translate_hotkey(key);
+        assert_eq!(translated.code, KeyCode::Char('/'));
+        assert_eq!(translated.modifiers, KeyModifiers::CONTROL);
+
+        // Some terminals: sends 0x1F with CONTROL
+        let key = KeyEvent::new(KeyCode::Char('\x1f'), KeyModifiers::CONTROL);
+        let translated = translate_hotkey(key);
+        assert_eq!(translated.code, KeyCode::Char('/'));
+        assert_eq!(translated.modifiers, KeyModifiers::CONTROL);
     }
 }

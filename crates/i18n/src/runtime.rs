@@ -452,6 +452,10 @@ impl Translation for RuntimeTranslation {
         self.get_string("help_desc_duplicate_line")
     }
 
+    fn help_desc_toggle_comment(&self) -> &str {
+        self.get_string("help_desc_toggle_comment")
+    }
+
     fn help_desc_search_next(&self) -> &str {
         self.get_string("help_desc_search_next")
     }
