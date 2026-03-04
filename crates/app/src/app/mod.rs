@@ -18,6 +18,7 @@ use termide_layout::{LayoutManager, PanelGroup};
 
 use termide_config::Config;
 use termide_theme::Theme;
+use termide_ui::ClickTracker;
 
 use crate::state::AppState;
 use crate::PanelExt;
@@ -57,6 +58,8 @@ pub struct App {
     outline_last_cursor: usize,
     /// Timestamp of last outline content update (debounce 1s).
     outline_last_edit_time: Option<std::time::Instant>,
+    /// Click tracker for double-click on panel title (directory picker).
+    title_click_tracker: ClickTracker<(u16, u16)>,
 }
 
 impl App {
@@ -127,6 +130,7 @@ impl App {
             outline_last_version: 0,
             outline_last_cursor: 0,
             outline_last_edit_time: None,
+            title_click_tracker: ClickTracker::new(),
         }
     }
 
@@ -204,6 +208,7 @@ impl App {
             outline_last_version: 0,
             outline_last_cursor: 0,
             outline_last_edit_time: None,
+            title_click_tracker: ClickTracker::new(),
         }
     }
 

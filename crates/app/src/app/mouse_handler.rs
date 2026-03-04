@@ -321,29 +321,51 @@ impl App {
             let title_start = if group_size > 1 { 7 } else { 4 };
 
             if relative_x >= title_start {
-                // Click on title area - activate panel first
+                // Check if this panel was already active before click
+                let was_active = group_idx == self.layout_manager.focus
+                    && self
+                        .layout_manager
+                        .panel_groups
+                        .get(group_idx)
+                        .map(|g| g.expanded_index() == panel_idx)
+                        .unwrap_or(false);
+
+                // Always activate the clicked panel
                 if let Some(group) = self.layout_manager.panel_groups.get_mut(group_idx) {
                     group.set_expanded(panel_idx);
                 }
                 self.layout_manager.focus = group_idx;
 
-                // Check if this is a FileManager panel
-                if let Some(panel) = self.layout_manager.active_panel_mut() {
-                    if let Some(fm) = panel.as_file_manager_mut() {
-                        let current_path = fm.current_path().to_path_buf();
-                        let t = i18n::t();
-                        let modal = modal::DirectoryPickerModal::new(
-                            current_path,
-                            t.directory_switcher_title().to_string(),
-                            t.directory_picker_move().to_string(),
-                        );
-                        self.state.set_pending_action(
-                            PendingAction::SwitchDirectory,
-                            ActiveModal::DirectoryPicker(Box::new(modal)),
-                        );
-                        return Ok(true);
+                if was_active {
+                    // Panel was already active — check for double-click
+                    if self
+                        .title_click_tracker
+                        .is_double_click(&(click_x, click_y))
+                    {
+                        self.title_click_tracker.reset();
+                        // Double-click on active FileManager title → open directory picker
+                        if let Some(panel) = self.layout_manager.active_panel_mut() {
+                            if let Some(fm) = panel.as_file_manager_mut() {
+                                let current_path = fm.current_path().to_path_buf();
+                                let t = i18n::t();
+                                let modal = modal::DirectoryPickerModal::new(
+                                    current_path,
+                                    t.directory_switcher_title().to_string(),
+                                    t.directory_picker_move().to_string(),
+                                );
+                                self.state.set_pending_action(
+                                    PendingAction::SwitchDirectory,
+                                    ActiveModal::DirectoryPicker(Box::new(modal)),
+                                );
+                                return Ok(true);
+                            }
+                        }
                     }
                 }
+
+                // Record this click for double-click detection
+                self.title_click_tracker.record((click_x, click_y));
+                return Ok(true);
             }
         }
 
