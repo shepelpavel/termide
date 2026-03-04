@@ -503,28 +503,32 @@ pub trait Translation: Send + Sync {
 }
 
 /// Initialize translation system.
-pub fn init() {
-    init_with_language("auto");
+///
+/// Returns Ok(()) on success, Err if translation loading fails completely
+/// (including fallback to English).
+pub fn init() -> anyhow::Result<()> {
+    init_with_language("auto")
 }
 
 /// Initialize translation system with specified language.
-pub fn init_with_language(lang: &str) {
+///
+/// Returns Ok(()) on success, Err if translation loading fails completely
+/// (including fallback to English).
+pub fn init_with_language(lang: &str) -> anyhow::Result<()> {
     let detected = if lang == "auto" || lang.is_empty() {
         detect_language()
     } else {
         lang.to_string()
     };
 
-    let translation = runtime::RuntimeTranslation::new(&detected)
-        .or_else(|e| {
-            log::warn!(
-                "Failed to load translations for '{}': {}. Falling back to English",
-                detected,
-                e
-            );
-            runtime::RuntimeTranslation::new("en")
-        })
-        .expect("Failed to load translations");
+    let translation = runtime::RuntimeTranslation::new(&detected).or_else(|e| {
+        log::warn!(
+            "Failed to load translations for '{}': {}. Falling back to English",
+            detected,
+            e
+        );
+        runtime::RuntimeTranslation::new("en")
+    })?;
 
     let leaked: &'static dyn Translation = Box::leak(Box::new(translation));
     if let Ok(mut guard) = TRANSLATION.write() {
@@ -533,6 +537,7 @@ pub fn init_with_language(lang: &str) {
     if let Ok(mut guard) = CURRENT_LANGUAGE.write() {
         *guard = detected;
     }
+    Ok(())
 }
 
 /// Set language at runtime (for live preview and language switching).

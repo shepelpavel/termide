@@ -373,7 +373,7 @@ fn render_visual_line<H: LineHighlighter>(
     let segments = if syntax_highlighting_enabled && highlight_cache.has_syntax() {
         highlight_cache.get_line_segments(line_idx, line_text)
     } else {
-        &[(line_text.to_string(), style)][..]
+        &[(line_text.to_string(), style)]
     };
 
     // Render graphemes for this visual line

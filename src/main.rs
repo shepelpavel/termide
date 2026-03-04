@@ -73,7 +73,7 @@ fn main() -> Result<()> {
     }
 
     // Initialize translation system with language from config
-    init_with_language(&config.general.language);
+    init_with_language(&config.general.language)?;
 
     // Check for git on the system
     let git_available = check_git_available();
