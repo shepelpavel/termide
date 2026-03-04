@@ -12,22 +12,22 @@
 
 **Linux x86_64**（也适用于 WSL/WSL2）：
 ```bash
-wget https://github.com/termide/termide/releases/latest/download/termide-0.14.0-x86_64-unknown-linux-gnu.tar.gz
+wget https://github.com/termide/termide/releases/latest/download/termide-0.14.1-x86_64-unknown-linux-gnu.tar.gz
 ```
 
 **Linux ARM64**（树莓派、ARM 服务器）：
 ```bash
-wget https://github.com/termide/termide/releases/latest/download/termide-0.14.0-aarch64-unknown-linux-gnu.tar.gz
+wget https://github.com/termide/termide/releases/latest/download/termide-0.14.1-aarch64-unknown-linux-gnu.tar.gz
 ```
 
 **macOS Intel (x86_64)**：
 ```bash
-curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.14.0-x86_64-apple-darwin.tar.gz
+curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.14.1-x86_64-apple-darwin.tar.gz
 ```
 
 **macOS Apple Silicon (M1/M2/M3)**：
 ```bash
-curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.14.0-aarch64-apple-darwin.tar.gz
+curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.14.1-aarch64-apple-darwin.tar.gz
 ```
 
 ### 第 2 步：解压
@@ -130,8 +130,8 @@ TermIDE 可在 Windows Subsystem for Linux（WSL 和 WSL2）中运行：
 1. 如果尚未安装，请先安装 WSL2
 2. 在 WSL 中下载 Linux x86_64 二进制文件：
    ```bash
-   wget https://github.com/termide/termide/releases/latest/download/termide-0.14.0-x86_64-unknown-linux-gnu.tar.gz
-   tar xzf termide-0.14.0-x86_64-unknown-linux-gnu.tar.gz
+   wget https://github.com/termide/termide/releases/latest/download/termide-0.14.1-x86_64-unknown-linux-gnu.tar.gz
+   tar xzf termide-0.14.1-x86_64-unknown-linux-gnu.tar.gz
    ./termide
    ```
 

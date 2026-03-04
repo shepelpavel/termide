@@ -5,6 +5,26 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.1] - 2026-03-04
+
+### Added
+- **File Manager**: F3 opens files in read-only mode (view mode)
+- **File Manager**: Directory picker on title click for quick navigation
+- **File Manager**: Keyboard shortcuts for rename (R/F2), view (V/F3), edit (E/F4), new file (F/Ctrl+N)
+- **Git Status**: Keyboard shortcuts for revert, view, edit
+- **Layout**: Improved accordion panel insertion and removal behavior
+- **Git Status**: Auto-fetch on init to show correct pull button
+
+### Changed
+- **I18n**: `init()` and `init_with_language()` return `Result` instead of panicking
+- **Codebase**: Added `must_use` attributes, fixed unsafe unwrap
+
+### Fixed
+- **Terminal**: Resize alternate screen buffer on window resize
+- **Git**: Canonicalize paths before strip_prefix for symlink repos
+- **File Manager**: Deleted files appearing in wrong directories
+- **Keyboard**: Fixed incorrect and missing keyboard shortcuts in documentation
+
 ## [0.14.0] - 2026-02-25
 
 ### Added
