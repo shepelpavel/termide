@@ -212,6 +212,10 @@ impl HelpGenerator {
                 description: t.help_desc_delete().to_string(),
             },
             HelpEntry {
+                keys: Self::format_keys(&kb.rename_file),
+                description: t.help_desc_rename().to_string(),
+            },
+            HelpEntry {
                 keys: Self::format_keys(&kb.view_file),
                 description: t.help_desc_view_file().to_string(),
             },

@@ -148,12 +148,15 @@ impl FmCommand {
             return Self::GoParent;
         }
 
-        // New file
-        if matches_binding_or_default(
+        // New file (F, Ctrl+N)
+        if matches_binding_or_defaults(
             &keybindings.new_file,
             &key,
-            KeyCode::Char('n'),
-            KeyModifiers::CONTROL,
+            &[
+                (KeyCode::Char('f'), KeyModifiers::NONE),
+                (KeyCode::Char('F'), KeyModifiers::NONE),
+                (KeyCode::Char('n'), KeyModifiers::CONTROL),
+            ],
         ) {
             return Self::NewFile;
         }

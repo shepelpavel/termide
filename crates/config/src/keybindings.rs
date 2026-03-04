@@ -451,7 +451,7 @@ impl FileManagerKeybindings {
         set_default_multiple!(rename_file, "R", "F2");
         set_default_multiple!(view_file, "V", "F3");
         set_default_multiple!(edit_file, "E", "F4");
-        set_default_single!(new_file, "Ctrl+N");
+        set_default_multiple!(new_file, "F", "Ctrl+N");
         set_default_multiple!(new_directory, "D", "F7");
 
         // Search

@@ -83,7 +83,8 @@ fn determine_file_open_event(
             // Force open in editor regardless of type
             Some(PanelEvent::OpenFile(file_path.to_path_buf()))
         }
-        FileOpenMode::Default | FileOpenMode::View => {
+        FileOpenMode::View => {
+            // View mode: open in read-only editor
             // 1. Raster images → ImagePanel
             if is_raster_image(&entry.name) {
                 return Some(PanelEvent::PreviewMedia(file_path.to_path_buf()));
@@ -94,8 +95,28 @@ fn determine_file_open_event(
                 return Some(PanelEvent::OpenExternal(file_path.to_path_buf()));
             }
 
-            // 3. Executable → run in terminal (Default mode only)
-            if mode == FileOpenMode::Default && entry.is_executable {
+            // 3. Binary files → xdg-open
+            if is_binary_file(file_path) {
+                return Some(PanelEvent::OpenExternal(file_path.to_path_buf()));
+            }
+
+            // 4. Text files → read-only editor
+            Some(PanelEvent::ViewFile(file_path.to_path_buf()))
+        }
+        FileOpenMode::Default => {
+            // Default mode: auto-detect action
+            // 1. Raster images → ImagePanel
+            if is_raster_image(&entry.name) {
+                return Some(PanelEvent::PreviewMedia(file_path.to_path_buf()));
+            }
+
+            // 2. Vector images, video → xdg-open
+            if is_vector_image(&entry.name) || is_video(&entry.name) {
+                return Some(PanelEvent::OpenExternal(file_path.to_path_buf()));
+            }
+
+            // 3. Executable → run in terminal
+            if entry.is_executable {
                 return Some(PanelEvent::ExecuteFile(file_path.to_path_buf()));
             }
 
@@ -104,7 +125,7 @@ fn determine_file_open_event(
                 return Some(PanelEvent::OpenExternal(file_path.to_path_buf()));
             }
 
-            // 5. Text files → editor
+            // 5. Text files → editor (editable)
             Some(PanelEvent::OpenFile(file_path.to_path_buf()))
         }
     }

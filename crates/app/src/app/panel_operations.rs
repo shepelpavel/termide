@@ -595,6 +595,45 @@ impl App {
         }
     }
 
+    /// Open a file in read-only (view) mode.
+    ///
+    /// Similar to `open_editor_for_file` but uses `EditorConfig::view_only()`.
+    pub(crate) fn open_editor_for_file_readonly(
+        &mut self,
+        file_path: std::path::PathBuf,
+    ) -> Result<()> {
+        use termide_panel_editor::{Editor, EditorConfig};
+
+        let filename = file_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("?")
+            .to_string();
+
+        match Editor::open_file_with_config(file_path, EditorConfig::view_only()) {
+            Ok(mut editor_panel) => {
+                // Initialize LSP for the editor
+                if let Some(ref mut lsp_manager) = self.state.lsp_manager {
+                    editor_panel.init_lsp(lsp_manager);
+                }
+
+                self.add_panel(Box::new(editor_panel));
+                self.notify_outline_file_opened();
+                self.auto_save_session();
+
+                let t = i18n::t();
+                self.state.set_info(t.editor_file_opened(&filename));
+                Ok(())
+            }
+            Err(e) => {
+                let t = i18n::t();
+                let error_msg = t.status_error_open_file(&filename, &e.to_string());
+                self.state.set_error(error_msg.clone());
+                anyhow::bail!(error_msg)
+            }
+        }
+    }
+
     /// Handle switch directory modal result - change active panel's working directory
     pub(super) fn handle_switch_directory(&mut self, value: Box<dyn std::any::Any>) -> Result<()> {
         use crate::panel_ext::PanelExt;

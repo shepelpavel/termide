@@ -37,6 +37,10 @@ impl App {
                 self.event_open_file(path)?;
             }
 
+            PanelEvent::ViewFile(path) => {
+                self.event_view_file(path)?;
+            }
+
             PanelEvent::OpenFileAt { path, line, column } => {
                 self.event_open_file_at(path, line, column)?;
             }
@@ -305,6 +309,20 @@ impl App {
                 .unwrap_or("?")
         );
         let _ = self.open_editor_for_file(file_path);
+        Ok(())
+    }
+
+    /// Handle ViewFile event - open file in read-only editor mode
+    fn event_view_file(&mut self, file_path: PathBuf) -> Result<()> {
+        self.close_help_panels();
+        log::debug!(
+            "Viewing file via event: {}",
+            file_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("?")
+        );
+        let _ = self.open_editor_for_file_readonly(file_path);
         Ok(())
     }
 

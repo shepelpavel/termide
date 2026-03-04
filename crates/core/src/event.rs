@@ -177,8 +177,11 @@ pub enum PanelEvent {
     Quit,
 
     // === File operations ===
-    /// Open a file in the editor
+    /// Open a file in the editor (editable mode)
     OpenFile(PathBuf),
+
+    /// Open a file in view-only mode (read-only)
+    ViewFile(PathBuf),
 
     /// Open a file at specific location (for go-to-definition)
     OpenFileAt {

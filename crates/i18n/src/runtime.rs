@@ -304,6 +304,10 @@ impl Translation for RuntimeTranslation {
         self.get_string("help_desc_delete")
     }
 
+    fn help_desc_rename(&self) -> &str {
+        self.get_string("help_desc_rename")
+    }
+
     fn help_desc_search(&self) -> &str {
         self.get_string("help_desc_search")
     }

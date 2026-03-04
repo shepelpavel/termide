@@ -120,6 +120,7 @@ pub trait Translation: Send + Sync {
     fn help_desc_copy(&self) -> &str;
     fn help_desc_move(&self) -> &str;
     fn help_desc_delete(&self) -> &str;
+    fn help_desc_rename(&self) -> &str;
     fn help_desc_search(&self) -> &str;
     fn help_desc_save(&self) -> &str;
     fn help_desc_copy_system(&self) -> &str;
