@@ -5,6 +5,16 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.2] - 2026-03-06
+
+### Added
+- **Editor**: Toggle comment with Ctrl+/ (line/block comment support)
+- **Keyboard**: Ctrl+/ added to help panel shortcuts
+
+### Fixed
+- **Keyboard**: Normalize Ctrl+/ for legacy terminals (Ctrl+_ mapping)
+- **App**: Require double-click on title bar to open directory picker (prevents accidental opens)
+
 ## [0.14.1] - 2026-03-04
 
 ### Added
