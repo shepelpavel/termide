@@ -99,6 +99,59 @@ pub fn resource_color(usage: u8, theme: &Theme) -> Color {
     }
 }
 
+/// Compute x-ranges of the CPU and RAM indicators in the menu bar.
+///
+/// Returns `(cpu_range, ram_range)` as `Range<u16>` values relative to the area.
+/// These ranges correspond to the positions computed in `render_menu()`.
+pub fn get_resource_indicator_ranges(
+    area_width: u16,
+    params: &MenuRenderParams,
+) -> (std::ops::Range<u16>, std::ops::Range<u16>) {
+    let t = i18n::t();
+    let menu_items = get_menu_items();
+
+    // Replicate the layout math from render_menu
+    let mut used_width: usize = 1; // initial " " padding
+    for item in &menu_items {
+        used_width += item.width() + 2; // item + "  " separator
+    }
+
+    let ram_unit_str = match params.ram_unit {
+        RamUnit::Gigabytes => t.size_gigabytes(),
+        RamUnit::Megabytes => t.size_megabytes(),
+    };
+
+    let hint: std::borrow::Cow<str> = if params.menu_open {
+        t.menu_navigate_hint().into()
+    } else {
+        format!("{} {}", params.toggle_menu_key, t.menu_open_hint_label()).into()
+    };
+
+    let cpu_text = format!("CPU {}% ", params.cpu_usage);
+    let ram_text = format!("RAM {}{} ", params.ram_value, ram_unit_str);
+    let current_time = chrono::Local::now().format("%H:%M").to_string();
+    let clock_text = format!(" {} ", current_time);
+
+    let hint_with_padding = format!(" {} ", hint);
+
+    // Calculate positions from the right side
+    // Layout order: ... [padding] [hint] [cpu] [ram] [clock]
+    let remaining = (area_width as usize).saturating_sub(
+        used_width + hint.width() + 2 + cpu_text.width() + ram_text.width() + clock_text.width(),
+    );
+
+    let mut x = used_width + remaining;
+    x += hint_with_padding.width(); // skip hint
+
+    let cpu_start = x as u16;
+    let cpu_end = cpu_start + cpu_text.width() as u16;
+
+    let ram_start = cpu_end;
+    let ram_end = ram_start + ram_text.width() as u16;
+
+    (cpu_start..cpu_end, ram_start..ram_end)
+}
+
 /// Render top menu in Midnight Commander style
 pub fn render_menu(frame: &mut Frame, area: Rect, params: &MenuRenderParams) {
     let mut spans = vec![Span::raw(" ")];

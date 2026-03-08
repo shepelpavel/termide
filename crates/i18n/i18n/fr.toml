@@ -302,6 +302,13 @@ git_status_loading = "chargement"
 git_unstage_all_btn = "Tout désindexer"
 git_unstaged_header = "Non indexé"
 panel_image = "Image"
+resource_cpu_top_title = "CPU — Processus principaux"
+resource_disk_title = "Espace disque"
+resource_disk_free = "libre"
+resource_disk_total = "total"
+resource_processes = "proc"
+resource_count = "qté"
+resource_ram_top_title = "RAM — Processus principaux"
 terminal_kill_confirm = "Terminer les processus en cours ?"
 
 [formats]

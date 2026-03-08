@@ -302,6 +302,13 @@ git_status_loading = "đang tải"
 git_unstage_all_btn = "Hủy chuẩn bị tất cả"
 git_unstaged_header = "Chưa chuẩn bị"
 panel_image = "Hình ảnh"
+resource_cpu_top_title = "CPU — Tiến trình hàng đầu"
+resource_disk_title = "Dung lượng đĩa"
+resource_disk_free = "trống"
+resource_disk_total = "tổng"
+resource_processes = "tiến trình"
+resource_count = "sl"
+resource_ram_top_title = "RAM — Tiến trình hàng đầu"
 terminal_kill_confirm = "Dừng các tiến trình đang chạy?"
 
 [formats]

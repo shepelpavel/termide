@@ -2,8 +2,11 @@
 //!
 //! Provides CPU and memory usage information.
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use sysinfo::{CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
+use sysinfo::{
+    CpuRefreshKind, MemoryRefreshKind, ProcessRefreshKind, RefreshKind, System, UpdateKind,
+};
 
 /// System resource statistics.
 #[derive(Debug, Clone, Copy, Default)]
@@ -150,6 +153,96 @@ impl SystemMonitor {
             (format!("{}/{}", used_mb, total_mb), RamUnit::Megabytes)
         }
     }
+
+    /// Get top N processes by CPU usage, grouped by binary name.
+    ///
+    /// Performs an on-demand process refresh (not part of periodic refresh).
+    pub fn top_cpu_processes(&self, n: usize) -> Vec<ProcessInfo> {
+        self.grouped_processes(n, |p| p.cpu_percent, true)
+    }
+
+    /// Get top N processes by memory usage, grouped by binary name.
+    ///
+    /// Performs an on-demand process refresh (not part of periodic refresh).
+    pub fn top_memory_processes(&self, n: usize) -> Vec<ProcessInfo> {
+        self.grouped_processes(n, |p| p.memory_bytes as f32, false)
+    }
+
+    /// Refresh processes and return top N grouped by name, sorted by the given key.
+    fn grouped_processes(
+        &self,
+        n: usize,
+        sort_key: impl Fn(&ProcessInfo) -> f32,
+        is_cpu: bool,
+    ) -> Vec<ProcessInfo> {
+        let Ok(mut sys) = self.system.lock() else {
+            return Vec::new();
+        };
+
+        // One-shot process refresh with CPU, memory, and exe path (to filter kernel threads)
+        let process_refresh = ProcessRefreshKind::new()
+            .with_cpu()
+            .with_memory()
+            .with_exe(UpdateKind::OnlyIfNotSet);
+        sys.refresh_processes_specifics(sysinfo::ProcessesToUpdate::All, process_refresh);
+
+        // Normalize CPU usage to total system capacity (0-100%)
+        let num_cpus = sys.cpus().len().max(1) as f32;
+
+        // Group by process name
+        let mut grouped: HashMap<String, ProcessInfo> = HashMap::new();
+        for process in sys.processes().values() {
+            // Skip threads (they share memory with the main process) and
+            // kernel threads (no executable on disk)
+            if process.thread_kind().is_some() {
+                continue;
+            }
+            if process.exe().is_none_or(|p| p.as_os_str().is_empty()) {
+                continue;
+            }
+            let name = process.name().to_string_lossy().to_string();
+            if name.is_empty() {
+                continue;
+            }
+            let cpu = process.cpu_usage() / num_cpus;
+            let mem = process.memory();
+            let entry = grouped.entry(name.clone()).or_insert_with(|| ProcessInfo {
+                name,
+                cpu_percent: 0.0,
+                memory_bytes: 0,
+                count: 0,
+            });
+            if is_cpu {
+                entry.cpu_percent += cpu;
+            } else {
+                entry.cpu_percent = entry.cpu_percent.max(cpu);
+            }
+            entry.memory_bytes += mem;
+            entry.count += 1;
+        }
+
+        let mut processes: Vec<ProcessInfo> = grouped.into_values().collect();
+        processes.sort_by(|a, b| {
+            sort_key(b)
+                .partial_cmp(&sort_key(a))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        processes.truncate(n);
+        processes
+    }
+}
+
+/// Information about a process (or group of processes with the same name).
+#[derive(Debug, Clone)]
+pub struct ProcessInfo {
+    /// Process binary name.
+    pub name: String,
+    /// CPU usage percentage (summed across all processes with this name).
+    pub cpu_percent: f32,
+    /// Memory usage in bytes (summed across all processes with this name).
+    pub memory_bytes: u64,
+    /// Number of processes with this name.
+    pub count: usize,
 }
 
 /// Disk space information.
@@ -180,19 +273,16 @@ impl DiskSpaceInfo {
     }
 
     /// Get used space in GB.
-    #[cfg(test)]
     pub fn used_gb(&self) -> u64 {
         (self.used() as f64 / BYTES_PER_GB).round() as u64
     }
 
     /// Get total space in GB.
-    #[cfg(test)]
     pub fn total_gb(&self) -> u64 {
         (self.total as f64 / BYTES_PER_GB).round() as u64
     }
 
     /// Get device name (extracted from path).
-    #[cfg(test)]
     pub fn device_name(&self) -> Option<String> {
         self.device
             .as_ref()
@@ -386,6 +476,69 @@ pub fn get_disk_space_info(path: &Path) -> Option<DiskSpaceInfo> {
     }
 }
 
+/// Get disk space information for all real mounted devices.
+///
+/// Parses `/proc/mounts`, filters for real devices (`/dev/`),
+/// deduplicates by device path, and calls `statvfs` for each.
+pub fn get_all_disk_space_info() -> Vec<DiskSpaceInfo> {
+    let Ok(mounts_content) = std::fs::read_to_string("/proc/mounts") else {
+        return Vec::new();
+    };
+
+    let mut seen_devices: HashMap<String, String> = HashMap::new(); // device -> mount_point
+
+    for line in mounts_content.lines() {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() < 2 {
+            continue;
+        }
+        let device = parts[0];
+        let mount_point = parts[1];
+
+        // Only real devices
+        if !device.starts_with("/dev/") {
+            continue;
+        }
+
+        // Skip pseudo-devices
+        if device.starts_with("/dev/loop") || device.starts_with("/dev/ram") {
+            continue;
+        }
+
+        // Resolve device symlinks/dm
+        let resolved = Path::new(device)
+            .canonicalize()
+            .ok()
+            .and_then(|p| p.to_str().map(|s| s.to_string()))
+            .unwrap_or_else(|| device.to_string());
+
+        let resolved = if resolved.contains("/dm-") {
+            resolve_dm_device(&resolved).unwrap_or(resolved)
+        } else {
+            resolved
+        };
+
+        // Keep only first mount point per device (usually the most relevant)
+        seen_devices
+            .entry(resolved)
+            .or_insert_with(|| mount_point.to_string());
+    }
+
+    let mut result = Vec::new();
+    for (device, mount_point) in &seen_devices {
+        if let Some(info) = get_disk_space_info(Path::new(mount_point)) {
+            result.push(DiskSpaceInfo {
+                device: Some(device.clone()),
+                ..info
+            });
+        }
+    }
+
+    // Sort by device name for consistent ordering
+    result.sort_by(|a, b| a.device.cmp(&b.device));
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -517,6 +670,61 @@ mod tests {
     #[test]
     fn test_format_bytes_zero() {
         assert_eq!(format_bytes(0), "0B");
+    }
+
+    // =========================================================================
+    // DiskSpaceInfo GB calculations
+    // =========================================================================
+
+    // =========================================================================
+    // Process info
+    // =========================================================================
+
+    #[test]
+    fn test_top_cpu_processes_sorted() {
+        let monitor = SystemMonitor::new();
+        let procs = monitor.top_cpu_processes(10);
+        // Verify descending CPU order
+        for window in procs.windows(2) {
+            assert!(window[0].cpu_percent >= window[1].cpu_percent);
+        }
+    }
+
+    #[test]
+    fn test_top_memory_processes_sorted() {
+        let monitor = SystemMonitor::new();
+        let procs = monitor.top_memory_processes(10);
+        // Verify descending memory order
+        for window in procs.windows(2) {
+            assert!(window[0].memory_bytes >= window[1].memory_bytes);
+        }
+    }
+
+    #[test]
+    fn test_processes_grouped_by_name() {
+        let monitor = SystemMonitor::new();
+        let procs = monitor.top_cpu_processes(100);
+        // All names should be unique (grouped)
+        let mut names: Vec<&str> = procs.iter().map(|p| p.name.as_str()).collect();
+        let len_before = names.len();
+        names.sort();
+        names.dedup();
+        assert_eq!(names.len(), len_before);
+    }
+
+    #[test]
+    fn test_get_all_disk_space_info() {
+        let disks = get_all_disk_space_info();
+        // Should find at least one real disk on any Linux system
+        assert!(!disks.is_empty());
+        for disk in &disks {
+            assert!(disk.device.is_some());
+            assert!(disk.total > 0);
+            // No virtual filesystems
+            let dev = disk.device.as_ref().unwrap();
+            assert!(dev.starts_with("/dev/"));
+            assert!(!dev.starts_with("/dev/loop"));
+        }
     }
 
     // =========================================================================

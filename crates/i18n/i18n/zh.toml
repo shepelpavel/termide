@@ -302,6 +302,13 @@ git_status_loading = "加载中"
 git_unstage_all_btn = "全部取消暂存"
 git_unstaged_header = "未暂存"
 panel_image = "图片"
+resource_cpu_top_title = "CPU — 进程排行"
+resource_disk_title = "磁盘空间"
+resource_disk_free = "可用"
+resource_disk_total = "总计"
+resource_processes = "进程"
+resource_count = "数量"
+resource_ram_top_title = "RAM — 进程排行"
 terminal_kill_confirm = "终止运行中的进程？"
 
 [formats]

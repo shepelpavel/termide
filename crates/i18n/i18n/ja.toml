@@ -302,6 +302,13 @@ git_status_loading = "読み込み中"
 git_unstage_all_btn = "すべてアンステージ"
 git_unstaged_header = "未ステージ"
 panel_image = "画像"
+resource_cpu_top_title = "CPU — プロセス一覧"
+resource_disk_title = "ディスク容量"
+resource_disk_free = "空き"
+resource_disk_total = "合計"
+resource_processes = "プロセス"
+resource_count = "数"
+resource_ram_top_title = "RAM — プロセス一覧"
 terminal_kill_confirm = "実行中のプロセスを終了しますか？"
 
 [formats]

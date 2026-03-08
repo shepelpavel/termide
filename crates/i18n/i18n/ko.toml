@@ -302,6 +302,13 @@ git_status_loading = "로딩 중"
 git_unstage_all_btn = "모두 언스테이지"
 git_unstaged_header = "언스테이지됨"
 panel_image = "이미지"
+resource_cpu_top_title = "CPU — 상위 프로세스"
+resource_disk_title = "디스크 공간"
+resource_disk_free = "여유"
+resource_disk_total = "전체"
+resource_processes = "프로세스"
+resource_count = "수"
+resource_ram_top_title = "RAM — 상위 프로세스"
 terminal_kill_confirm = "실행 중인 프로세스를 종료하시겠습니까?"
 
 [formats]

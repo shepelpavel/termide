@@ -302,6 +302,13 @@ git_status_loading = "memuat"
 git_unstage_all_btn = "Batalkan semua"
 git_unstaged_header = "Belum disiapkan"
 panel_image = "Gambar"
+resource_cpu_top_title = "CPU — Proses Teratas"
+resource_disk_title = "Ruang Disk"
+resource_disk_free = "bebas"
+resource_disk_total = "total"
+resource_processes = "proses"
+resource_count = "jml"
+resource_ram_top_title = "RAM — Proses Teratas"
 terminal_kill_confirm = "Hentikan proses yang berjalan?"
 
 [formats]

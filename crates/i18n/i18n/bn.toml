@@ -302,6 +302,13 @@ git_status_loading = "লোড হচ্ছে"
 git_unstage_all_btn = "সব আনস্টেজ করুন"
 git_unstaged_header = "আনস্টেজড"
 panel_image = "ছবি"
+resource_cpu_top_title = "CPU — শীর্ষ প্রক্রিয়া"
+resource_disk_title = "ডিস্ক স্থান"
+resource_disk_free = "খালি"
+resource_disk_total = "মোট"
+resource_processes = "প্রক্রিয়া"
+resource_count = "সংখ্যা"
+resource_ram_top_title = "RAM — শীর্ষ প্রক্রিয়া"
 terminal_kill_confirm = "চলমান প্রক্রিয়াগুলো বন্ধ করবেন?"
 
 [formats]

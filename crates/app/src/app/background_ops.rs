@@ -441,5 +441,34 @@ impl App {
             }
             _ => {}
         }
+
+        // Auto-refresh resource modal (CPU/RAM top processes) every 2 seconds
+        self.refresh_resource_modal();
+    }
+
+    /// Refresh resource modal content if one is open and interval has elapsed.
+    fn refresh_resource_modal(&mut self) {
+        const RESOURCE_REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(3);
+
+        let Some(kind) = self.state.resource_modal_kind else {
+            return;
+        };
+
+        let should_refresh = self
+            .state
+            .last_resource_modal_refresh
+            .is_none_or(|t| t.elapsed() >= RESOURCE_REFRESH_INTERVAL);
+
+        if !should_refresh {
+            return;
+        }
+
+        let lines = self.build_process_lines(kind);
+
+        if let Some(ActiveModal::Info(ref mut modal)) = self.state.active_modal {
+            modal.set_lines(lines);
+            self.state.last_resource_modal_refresh = Some(std::time::Instant::now());
+            self.state.needs_redraw = true;
+        }
     }
 }

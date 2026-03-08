@@ -303,6 +303,13 @@ git_status_loading = "загрузка"
 git_unstage_all_btn = "Снять всё"
 git_unstaged_header = "Не подготовлено"
 panel_image = "Изображение"
+resource_cpu_top_title = "CPU — Топ процессов"
+resource_disk_title = "Дисковое пространство"
+resource_disk_free = "свободно"
+resource_disk_total = "всего"
+resource_processes = "прц"
+resource_count = "кол-во"
+resource_ram_top_title = "RAM — Топ процессов"
 terminal_kill_confirm = "Завершить запущенные процессы?"
 
 [formats]

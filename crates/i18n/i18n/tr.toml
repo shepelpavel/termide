@@ -302,6 +302,13 @@ git_status_loading = "yükleniyor"
 git_unstage_all_btn = "Tümünü kaldır"
 git_unstaged_header = "Hazırlanmamış"
 panel_image = "Görüntü"
+resource_cpu_top_title = "CPU — En Çok Kullanan İşlemler"
+resource_disk_title = "Disk Alanı"
+resource_disk_free = "boş"
+resource_disk_total = "toplam"
+resource_processes = "işlem"
+resource_count = "adet"
+resource_ram_top_title = "RAM — En Çok Kullanan İşlemler"
 terminal_kill_confirm = "Çalışan işlemler sonlandırılsın mı?"
 
 [formats]

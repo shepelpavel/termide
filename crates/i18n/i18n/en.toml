@@ -303,6 +303,13 @@ git_status_loading = "loading"
 git_unstage_all_btn = "Unstage all"
 git_unstaged_header = "Unstaged"
 panel_image = "Image"
+resource_cpu_top_title = "CPU — Top Processes"
+resource_ram_top_title = "RAM — Top Processes"
+resource_disk_title = "Disk Space"
+resource_disk_free = "free"
+resource_disk_total = "total"
+resource_processes = "proc"
+resource_count = "qty"
 terminal_kill_confirm = "Kill running processes?"
 
 [formats]

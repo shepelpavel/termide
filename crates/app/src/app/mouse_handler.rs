@@ -15,9 +15,9 @@ use termide_modal as modal;
 use termide_theme::Theme;
 use termide_ui_render::{
     get_bookmarks_group_items, get_bookmarks_items, get_menu_item_x_position, get_options_items,
-    get_scripts_group_items, get_scripts_items, get_sessions_items, get_tools_items,
-    BOOKMARKS_MENU_INDEX, OPTIONS_MENU_INDEX, SCRIPTS_MENU_INDEX, SESSIONS_MENU_INDEX,
-    WINDOWS_MENU_INDEX,
+    get_resource_indicator_ranges, get_scripts_group_items, get_scripts_items, get_sessions_items,
+    get_tools_items, MenuRenderParams, BOOKMARKS_MENU_INDEX, OPTIONS_MENU_INDEX,
+    SCRIPTS_MENU_INDEX, SESSIONS_MENU_INDEX, WINDOWS_MENU_INDEX,
 };
 
 /// Hit-test a dropdown menu and return the clicked item index (if any).
@@ -93,9 +93,18 @@ impl App {
             return Ok(());
         }
 
-        // Click on menu
+        // Click on menu bar (row 0)
         if mouse.row == 0 && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
             self.handle_menu_click(mouse.column)?;
+            return Ok(());
+        }
+
+        // Click on status bar (bottom row)
+        let status_bar_row = self.state.terminal.height.saturating_sub(1);
+        if mouse.row == status_bar_row
+            && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
+        {
+            self.handle_status_bar_click(mouse.column)?;
             return Ok(());
         }
 
@@ -405,7 +414,7 @@ impl App {
         Ok(())
     }
 
-    /// Handle click on menu
+    /// Handle click on menu bar
     fn handle_menu_click(&mut self, x: u16) -> Result<()> {
         let mut current_x = 1_u16;
 
@@ -432,7 +441,292 @@ impl App {
             current_x += item_width + 2; // +2 for spaces
         }
 
+        // Check CPU/RAM indicator clicks (right side of menu bar)
+        let (cpu_range, ram_range) = self.get_indicator_ranges();
+
+        if cpu_range.contains(&x) {
+            self.open_cpu_modal();
+            return Ok(());
+        }
+        if ram_range.contains(&x) {
+            self.open_ram_modal();
+            return Ok(());
+        }
+
         Ok(())
+    }
+
+    /// Compute CPU and RAM indicator x-ranges in the menu bar.
+    fn get_indicator_ranges(&self) -> (std::ops::Range<u16>, std::ops::Range<u16>) {
+        let (ram_value, ram_unit) = self.state.system_monitor.format_ram();
+        let toggle_menu_key = self
+            .state
+            .config
+            .general
+            .keybindings
+            .toggle_menu
+            .as_ref()
+            .map(|k| k.display())
+            .unwrap_or("Alt+M");
+        let params = MenuRenderParams {
+            theme: self.state.theme,
+            selected_menu_item: self.state.ui.selected_menu_item,
+            menu_open: self.state.ui.menu_open,
+            cpu_usage: self.state.system_monitor.cpu_usage(),
+            ram_percent: self.state.system_monitor.ram_usage_percent(),
+            ram_value,
+            ram_unit,
+            toggle_menu_key,
+        };
+        get_resource_indicator_ranges(self.state.terminal.width, &params)
+    }
+
+    /// Handle click on status bar (bottom row)
+    fn handle_status_bar_click(&mut self, x: u16) -> Result<()> {
+        // Check if disk indicator is present (right-aligned in status bar)
+        // Disk indicator text is formatted as " DEVICE: used/totalGB (percent%) "
+        // and is right-aligned, so it occupies the last N columns
+        let disk_info = self.get_active_panel_disk_space();
+        if let Some(disk) = disk_info {
+            use termide_system_monitor::DiskSpaceInfoExt;
+            let disk_text = format!(" {} ", disk.format_space());
+            let disk_start = self
+                .state
+                .terminal
+                .width
+                .saturating_sub(disk_text.len() as u16);
+            if x >= disk_start {
+                self.open_disk_modal();
+                return Ok(());
+            }
+        }
+        Ok(())
+    }
+
+    /// Get disk space info from the active panel (if available).
+    fn get_active_panel_disk_space(&self) -> Option<termide_system_monitor::DiskSpaceInfo> {
+        use std::any::Any;
+        let panel = self.layout_manager.active_panel()?;
+        let panel_any = &**panel as &dyn Any;
+        if let Some(fm) = panel_any.downcast_ref::<termide_panel_file_manager::FileManager>() {
+            return fm.get_disk_space_info();
+        }
+        if let Some(editor) = panel_any.downcast_ref::<termide_panel_editor::Editor>() {
+            return editor.get_disk_space_info();
+        }
+        if let Some(git) = panel_any.downcast_ref::<termide_panel_git_status::GitStatusPanel>() {
+            return git.get_disk_space_info();
+        }
+        if let Some(terminal) = panel_any.downcast_ref::<termide_panel_terminal::Terminal>() {
+            return terminal.get_terminal_info().disk_space;
+        }
+        None
+    }
+
+    /// Open CPU processes modal.
+    fn open_cpu_modal(&mut self) {
+        use crate::state::ResourceModalKind;
+
+        let t = i18n::t();
+        let lines = self.build_process_lines(ResourceModalKind::Cpu);
+        let modal =
+            modal::InfoModal::new_rich(t.resource_cpu_top_title(), lines).with_min_width(57);
+        self.state.active_modal = Some(ActiveModal::Info(Box::new(modal)));
+        self.state.resource_modal_kind = Some(ResourceModalKind::Cpu);
+        self.state.last_resource_modal_refresh = Some(std::time::Instant::now());
+        self.state.needs_redraw = true;
+    }
+
+    /// Open RAM processes modal.
+    fn open_ram_modal(&mut self) {
+        use crate::state::ResourceModalKind;
+
+        let t = i18n::t();
+        let lines = self.build_process_lines(ResourceModalKind::Ram);
+        let modal =
+            modal::InfoModal::new_rich(t.resource_ram_top_title(), lines).with_min_width(57);
+        self.state.active_modal = Some(ActiveModal::Info(Box::new(modal)));
+        self.state.resource_modal_kind = Some(ResourceModalKind::Ram);
+        self.state.last_resource_modal_refresh = Some(std::time::Instant::now());
+        self.state.needs_redraw = true;
+    }
+
+    /// Build process lines for CPU or RAM modal (header + data rows).
+    ///
+    /// Column order is always: Application | CPU | RAM (for both modals).
+    pub(super) fn build_process_lines(
+        &self,
+        kind: crate::state::ResourceModalKind,
+    ) -> Vec<(String, termide_modal::info::ModalValue)> {
+        use crate::state::ResourceModalKind;
+        use termide_modal::info::{ModalValue, SegmentStyle, StyledSegment};
+        use termide_system_monitor::format_bytes;
+        use termide_ui_render::resource_color;
+        use unicode_width::UnicodeWidthChar;
+
+        // Fixed name column width so CPU/RAM columns never shift
+        const NAME_COL: usize = 24;
+
+        /// Pad or truncate `s` to exactly `width` display columns.
+        fn fit_name(s: &str, width: usize) -> String {
+            let w = s.width();
+            if w <= width {
+                // Pad with spaces
+                let mut out = s.to_string();
+                for _ in 0..(width - w) {
+                    out.push(' ');
+                }
+                out
+            } else {
+                // Truncate and add "…"
+                let mut out = String::new();
+                let mut cur = 0;
+                for ch in s.chars() {
+                    let cw = UnicodeWidthChar::width(ch).unwrap_or(0);
+                    if cur + cw > width - 1 {
+                        break;
+                    }
+                    out.push(ch);
+                    cur += cw;
+                }
+                out.push('…');
+                cur += 1;
+                for _ in 0..(width - cur) {
+                    out.push(' ');
+                }
+                out
+            }
+        }
+
+        let t = i18n::t();
+        let processes = match kind {
+            ResourceModalKind::Cpu => self.state.system_monitor.top_cpu_processes(10),
+            ResourceModalKind::Ram => self.state.system_monitor.top_memory_processes(10),
+        };
+        let total_mem = self.state.system_monitor.stats().memory_total;
+
+        // Header row — empty key, all columns in segments
+        // Columns: count(6) + CPU(7) + RAM(10) = 23 chars in segments
+        let mut lines: Vec<(String, ModalValue)> = vec![(
+            fit_name("", NAME_COL),
+            ModalValue::Segments(vec![
+                StyledSegment {
+                    text: format!("{:>6}", t.resource_count()),
+                    style: SegmentStyle::Default,
+                },
+                StyledSegment {
+                    text: format!("{:>7}", "CPU"),
+                    style: SegmentStyle::Default,
+                },
+                StyledSegment {
+                    text: format!("  {:>8}", "RAM"),
+                    style: SegmentStyle::Default,
+                },
+            ]),
+        )];
+
+        // Data rows
+        for p in &processes {
+            // CPU color based on per-process percentage
+            let cpu_pct = p.cpu_percent.round() as u8;
+            let cpu_color = match resource_color(cpu_pct, self.state.theme) {
+                c if c == self.state.theme.error => SegmentStyle::Error,
+                c if c == self.state.theme.warning => SegmentStyle::Warning,
+                _ => SegmentStyle::Success,
+            };
+
+            // RAM color based on share of total memory
+            let mem_pct = if total_mem > 0 {
+                ((p.memory_bytes as f64 / total_mem as f64) * 100.0) as u8
+            } else {
+                0
+            };
+            let ram_color = match resource_color(mem_pct, self.state.theme) {
+                c if c == self.state.theme.error => SegmentStyle::Error,
+                c if c == self.state.theme.warning => SegmentStyle::Warning,
+                _ => SegmentStyle::Success,
+            };
+
+            let count_text = format!("{:>6}", p.count);
+
+            let segments = vec![
+                StyledSegment {
+                    text: count_text,
+                    style: SegmentStyle::Default,
+                },
+                StyledSegment {
+                    text: format!(" {:>5.1}%", p.cpu_percent),
+                    style: cpu_color,
+                },
+                StyledSegment {
+                    text: format!("  {:>8}", format_bytes(p.memory_bytes)),
+                    style: ram_color,
+                },
+            ];
+            lines.push((fit_name(&p.name, NAME_COL), ModalValue::Segments(segments)));
+        }
+
+        lines
+    }
+
+    /// Open disk space modal.
+    fn open_disk_modal(&mut self) {
+        use termide_modal::info::{ModalValue, SegmentStyle, StyledSegment};
+        use termide_system_monitor::{format_bytes, get_all_disk_space_info};
+        use termide_ui_render::resource_color;
+
+        let t = i18n::t();
+        let disks = get_all_disk_space_info();
+
+        // Header row
+        let mut lines: Vec<(String, ModalValue)> = vec![(
+            String::new(),
+            ModalValue::Segments(vec![
+                StyledSegment {
+                    text: "     ".to_string(),
+                    style: SegmentStyle::Default,
+                },
+                StyledSegment {
+                    text: format!("  {:>8}", t.resource_disk_free()),
+                    style: SegmentStyle::Default,
+                },
+                StyledSegment {
+                    text: format!("  {:>8}", t.resource_disk_total()),
+                    style: SegmentStyle::Default,
+                },
+            ]),
+        )];
+
+        // Data rows
+        for d in &disks {
+            let name = d.device_name().unwrap_or_else(|| "???".to_string());
+            let avail_pct = 100_u8.saturating_sub(d.usage_percent());
+            let usage = d.usage_percent();
+            let color = match resource_color(usage, self.state.theme) {
+                c if c == self.state.theme.error => SegmentStyle::Error,
+                c if c == self.state.theme.warning => SegmentStyle::Warning,
+                _ => SegmentStyle::Success,
+            };
+            let segments = vec![
+                StyledSegment {
+                    text: format!("{:>4}%", avail_pct),
+                    style: color,
+                },
+                StyledSegment {
+                    text: format!("  {:>8}", format_bytes(d.available)),
+                    style: color,
+                },
+                StyledSegment {
+                    text: format!("  {:>8}", format_bytes(d.total)),
+                    style: SegmentStyle::Default,
+                },
+            ];
+            lines.push((name, ModalValue::Segments(segments)));
+        }
+
+        let modal = modal::InfoModal::new_rich(t.resource_disk_title(), lines);
+        self.state.active_modal = Some(ActiveModal::Info(Box::new(modal)));
+        self.state.needs_redraw = true;
     }
 
     /// Handle click on Options submenu dropdown

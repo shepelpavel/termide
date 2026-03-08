@@ -1627,4 +1627,32 @@ impl Translation for RuntimeTranslation {
     fn image_error_fmt(&self, error: &str) -> String {
         self.format("image_error_fmt", &[("error", error)])
     }
+
+    fn resource_cpu_top_title(&self) -> &str {
+        self.get_string("resource_cpu_top_title")
+    }
+
+    fn resource_ram_top_title(&self) -> &str {
+        self.get_string("resource_ram_top_title")
+    }
+
+    fn resource_disk_title(&self) -> &str {
+        self.get_string("resource_disk_title")
+    }
+
+    fn resource_disk_free(&self) -> &str {
+        self.get_string("resource_disk_free")
+    }
+
+    fn resource_disk_total(&self) -> &str {
+        self.get_string("resource_disk_total")
+    }
+
+    fn resource_processes(&self) -> &str {
+        self.get_string("resource_processes")
+    }
+
+    fn resource_count(&self) -> &str {
+        self.get_string("resource_count")
+    }
 }

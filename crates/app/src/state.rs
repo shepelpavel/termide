@@ -34,6 +34,13 @@ pub use termide_state::{
 // Re-export ActiveModal from modal crate
 pub use termide_modal::ActiveModal;
 
+/// Which resource modal is open (for auto-refresh in tick handler).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResourceModalKind {
+    Cpu,
+    Ram,
+}
+
 /// Result of background git operation (push/pull)
 #[derive(Debug)]
 pub struct GitOperationResult {
@@ -214,6 +221,10 @@ pub struct AppState {
     pub system_monitor: SystemMonitor,
     /// Last time system resources were updated
     pub last_resource_update: std::time::Instant,
+    /// Currently open resource modal (for auto-refresh in tick)
+    pub resource_modal_kind: Option<ResourceModalKind>,
+    /// Last time resource modal was refreshed
+    pub last_resource_modal_refresh: Option<std::time::Instant>,
     /// Last time session was saved (for debouncing autosave)
     pub last_session_save: Option<std::time::Instant>,
     /// Flag indicating UI needs to be redrawn (for CPU optimization)
@@ -317,6 +328,8 @@ impl AppState {
             config,
             system_monitor: SystemMonitor::new(),
             last_resource_update: std::time::Instant::now(),
+            resource_modal_kind: None,
+            last_resource_modal_refresh: None,
             last_session_save: None,
             needs_redraw: true, // Initial draw needed
             last_spinner_update: None,
@@ -498,6 +511,7 @@ impl AppState {
     /// Close modal window
     pub fn close_modal(&mut self) {
         self.active_modal = None;
+        self.resource_modal_kind = None;
     }
 
     /// Check if modal window is open
@@ -867,6 +881,7 @@ impl ModalManager for AppState {
 
     fn close_modal(&mut self) {
         self.active_modal = None;
+        self.resource_modal_kind = None;
     }
 
     fn take_pending_action(&mut self) -> Option<PendingAction> {

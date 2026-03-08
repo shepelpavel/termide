@@ -501,6 +501,15 @@ pub trait Translation: Send + Sync {
     // Image panel
     fn panel_image(&self) -> &str;
     fn image_error_fmt(&self, error: &str) -> String;
+
+    // Resource modals
+    fn resource_cpu_top_title(&self) -> &str;
+    fn resource_ram_top_title(&self) -> &str;
+    fn resource_disk_title(&self) -> &str;
+    fn resource_disk_free(&self) -> &str;
+    fn resource_disk_total(&self) -> &str;
+    fn resource_processes(&self) -> &str;
+    fn resource_count(&self) -> &str;
 }
 
 /// Initialize translation system.

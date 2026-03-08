@@ -54,6 +54,7 @@ pub struct InfoModal {
     lines: Vec<(String, ModalValue)>, // (key, value) pairs for table
     spinner_frame: usize,             // Frame counter for spinner animation
     last_button_area: Option<Rect>,   // For mouse handling
+    min_width: Option<u16>,           // Optional minimum width to prevent jitter
 }
 
 impl InfoModal {
@@ -68,6 +69,7 @@ impl InfoModal {
             lines,
             spinner_frame: 0,
             last_button_area: None,
+            min_width: None,
         }
     }
 
@@ -78,7 +80,14 @@ impl InfoModal {
             lines,
             spinner_frame: 0,
             last_button_area: None,
+            min_width: None,
         }
+    }
+
+    /// Set a minimum width to prevent modal jitter on content refresh.
+    pub fn with_min_width(mut self, width: u16) -> Self {
+        self.min_width = Some(width);
+        self
     }
 
     /// Update a specific field value by key (sets it to plain text).
@@ -86,6 +95,11 @@ impl InfoModal {
         if let Some(line) = self.lines.iter_mut().find(|(k, _)| k == key) {
             line.1 = ModalValue::Text(new_value);
         }
+    }
+
+    /// Replace all lines (for auto-refreshing modals).
+    pub fn set_lines(&mut self, lines: Vec<(String, ModalValue)>) {
+        self.lines = lines;
     }
 
     /// Advance the spinner frame counter (for animation)
@@ -229,10 +243,13 @@ impl InfoModal {
 
         // Apply constraints
         let max_width = (screen_width as f32 * MODAL_MAX_WIDTH_PERCENTAGE_WIDE) as u16;
-        (content_width as u16)
-            .max(MODAL_MIN_WIDTH_WIDE)
-            .min(max_width)
-            .min(screen_width)
+        let base = (content_width as u16).max(MODAL_MIN_WIDTH_WIDE);
+        let base = if let Some(mw) = self.min_width {
+            base.max(mw)
+        } else {
+            base
+        };
+        base.min(max_width).min(screen_width)
     }
 }
 
@@ -367,7 +384,7 @@ impl Modal for InfoModal {
                     }
                 }
                 ModalValue::Segments(segments) => {
-                    let separator = if key.is_empty() { "  " } else { ": " };
+                    let separator = "  ";
                     let mut spans = vec![
                         Span::styled(format!("  {}{}", key, padding), key_style),
                         Span::raw(separator),
