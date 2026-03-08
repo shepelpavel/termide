@@ -14,6 +14,13 @@ mod vfs_state;
 pub use file_info::FileInfo;
 pub use vfs_state::VfsState;
 
+/// Case-insensitive string comparison without allocation.
+fn cmp_ignore_case(a: &str, b: &str) -> std::cmp::Ordering {
+    a.chars()
+        .flat_map(char::to_lowercase)
+        .cmp(b.chars().flat_map(char::to_lowercase))
+}
+
 use anyhow::Result;
 use crossterm::event::KeyEvent;
 use ratatui::{buffer::Buffer, layout::Rect, prelude::Widget, widgets::Paragraph};
@@ -739,7 +746,7 @@ impl FileManager {
         file_entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
             (true, false) => std::cmp::Ordering::Less,
             (false, true) => std::cmp::Ordering::Greater,
-            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+            _ => cmp_ignore_case(&a.name, &b.name),
         });
 
         self.entries.extend(file_entries);
@@ -953,7 +960,7 @@ impl FileManager {
         self.entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
             (true, false) => std::cmp::Ordering::Less,
             (false, true) => std::cmp::Ordering::Greater,
-            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+            _ => cmp_ignore_case(&a.name, &b.name),
         });
 
         // Restore selection by file names
@@ -1218,7 +1225,7 @@ impl FileManager {
                     self.entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
                         (true, false) => std::cmp::Ordering::Less,
                         (false, true) => std::cmp::Ordering::Greater,
-                        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+                        _ => cmp_ignore_case(&a.name, &b.name),
                     });
                 }
             }

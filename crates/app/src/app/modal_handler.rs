@@ -326,6 +326,7 @@ impl App {
                     log::warn!("Rename resolution not yet supported, skipping file");
                     FileOpsResolution::Skip
                 }
+                ModalResolution::Cancel => FileOpsResolution::Cancel,
             };
 
             // Send resolution to the operation

@@ -456,6 +456,9 @@ pub enum ConflictResolution {
     /// Skip all remaining files
     SkipAll,
 
+    /// Rename all remaining files with auto-generated names
+    RenameAll,
+
     /// Cancel the entire operation
     Cancel,
 }

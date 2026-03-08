@@ -1697,6 +1697,7 @@ impl App {
                         let after_colon = &authority[colon_pos + 1..];
                         if after_colon.chars().all(|c| c.is_ascii_digit())
                             && !after_colon.is_empty()
+                            && after_colon.parse::<u16>().is_ok_and(|p| p > 0)
                         {
                             (&authority[..colon_pos], Some(after_colon))
                         } else {

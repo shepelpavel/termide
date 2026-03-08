@@ -299,7 +299,7 @@ pub struct GitStatusKeybindings {
 }
 
 /// Terminal panel keybindings (terminal.keybindings section).
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct TerminalKeybindings {
     pub copy: Option<KeyBinding>,
     pub paste: Option<KeyBinding>,

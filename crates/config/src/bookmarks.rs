@@ -59,6 +59,7 @@ pub enum BookmarkType {
 
 impl BookmarkType {
     /// Check if this bookmark type is a remote/network path.
+    #[must_use]
     pub fn is_remote(&self) -> bool {
         matches!(
             self,
@@ -70,11 +71,13 @@ impl BookmarkType {
     }
 
     /// Check if this bookmark type is a web link.
+    #[must_use]
     pub fn is_web(&self) -> bool {
         matches!(self, BookmarkType::HttpLink)
     }
 
     /// Check if this bookmark type is a local filesystem path.
+    #[must_use]
     pub fn is_local(&self) -> bool {
         matches!(
             self,
@@ -107,6 +110,7 @@ impl Bookmark {
     }
 
     /// Determine the bookmark type based on path.
+    #[must_use]
     pub fn bookmark_type(&self) -> BookmarkType {
         // Check for HTTP links first
         if self.path.starts_with("http://") || self.path.starts_with("https://") {
@@ -163,6 +167,7 @@ impl Bookmark {
     }
 
     /// Check if this bookmark is a remote/network path.
+    #[must_use]
     pub fn is_remote(&self) -> bool {
         self.bookmark_type().is_remote()
     }
@@ -170,6 +175,7 @@ impl Bookmark {
     /// Get display name for the bookmark.
     ///
     /// Returns description if set, otherwise extracts filename from path.
+    #[must_use]
     pub fn display_name(&self) -> &str {
         self.description.as_deref().unwrap_or_else(|| {
             Path::new(&self.path)
@@ -182,6 +188,7 @@ impl Bookmark {
     /// Get group name for the bookmark.
     ///
     /// Returns group if set, otherwise "Ungrouped".
+    #[must_use]
     pub fn group_name(&self) -> &str {
         self.group.as_deref().unwrap_or("Ungrouped")
     }
@@ -286,6 +293,7 @@ impl BookmarksConfig {
     }
 
     /// Get only directory bookmarks (for Ctrl+P integration).
+    #[must_use]
     pub fn directories(&self) -> Vec<&Bookmark> {
         self.bookmarks
             .iter()
@@ -294,6 +302,7 @@ impl BookmarksConfig {
     }
 
     /// Get all unique group names.
+    #[must_use]
     pub fn group_names(&self) -> Vec<String> {
         let mut names: Vec<String> = self
             .bookmarks
@@ -306,6 +315,7 @@ impl BookmarksConfig {
     }
 
     /// Get ungrouped bookmarks (those without a group).
+    #[must_use]
     pub fn ungrouped(&self) -> Vec<&Bookmark> {
         let mut items: Vec<&Bookmark> = self
             .bookmarks
@@ -317,6 +327,7 @@ impl BookmarksConfig {
     }
 
     /// Get named groups (excluding ungrouped bookmarks).
+    #[must_use]
     pub fn named_groups(&self) -> BTreeMap<String, Vec<&Bookmark>> {
         let mut groups: BTreeMap<String, Vec<&Bookmark>> = BTreeMap::new();
         for bookmark in &self.bookmarks {
@@ -331,11 +342,13 @@ impl BookmarksConfig {
     }
 
     /// Check if there are any bookmarks.
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.bookmarks.is_empty()
     }
 
     /// Get the total number of bookmarks.
+    #[must_use]
     pub fn len(&self) -> usize {
         self.bookmarks.len()
     }

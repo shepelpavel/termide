@@ -1003,7 +1003,9 @@ impl Panel for Terminal {
             self.cached_lines = None;
         }
         self.cached_theme = *theme;
-        self.keybindings = config.terminal.keybindings.clone();
+        if self.keybindings != config.terminal.keybindings {
+            self.keybindings = config.terminal.keybindings.clone();
+        }
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {

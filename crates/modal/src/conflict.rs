@@ -33,6 +33,8 @@ pub enum ConflictResolution {
     SkipAll,
     /// Rename all subsequent files
     RenameAll,
+    /// Cancel the entire operation
+    Cancel,
 }
 
 /// File conflict resolution modal window

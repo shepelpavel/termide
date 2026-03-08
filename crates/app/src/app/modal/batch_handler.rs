@@ -821,6 +821,10 @@ impl App {
                         self.state.active_modal = Some(ActiveModal::RenamePattern(Box::new(modal)));
                     }
                 }
+                ConflictResolution::Cancel => {
+                    // Cancel the entire batch operation
+                    log::info!("Batch operation cancelled by user");
+                }
             }
         }
         Ok(())

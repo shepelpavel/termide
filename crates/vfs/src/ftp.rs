@@ -127,6 +127,18 @@ impl FtpProvider {
     }
 }
 
+impl Drop for FtpProvider {
+    fn drop(&mut self) {
+        // Zero out password bytes in memory before deallocation
+        if let Some(ref mut pw) = self.password {
+            // SAFETY: zeroing owned String bytes that are valid for pw.len()
+            unsafe {
+                std::ptr::write_bytes(pw.as_mut_vec().as_mut_ptr(), 0, pw.len());
+            }
+        }
+    }
+}
+
 impl VfsProvider for FtpProvider {
     fn name(&self) -> &'static str {
         "ftp"
