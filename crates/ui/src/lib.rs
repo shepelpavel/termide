@@ -13,6 +13,7 @@ pub mod textarea;
 pub mod viewport;
 
 pub use click_tracker::{ClickTracker, IndexClickTracker, PositionClickTracker};
+pub use path_utils::expand_tilde;
 pub use scrollbar::ScrollBar;
 pub use selection_style::{
     button_style, cursor_style, item_style, item_style_colored, SelectionColors, SelectionState,

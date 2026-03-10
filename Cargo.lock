@@ -3550,6 +3550,7 @@ version = "0.14.3"
 dependencies = [
  "anyhow",
  "crossterm 0.28.1",
+ "dirs",
  "ratatui",
  "termide-clipboard",
  "termide-config",

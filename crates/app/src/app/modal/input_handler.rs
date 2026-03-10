@@ -106,8 +106,8 @@ impl App {
             // Get active Editor panel and save file
             if let Some(panel) = self.layout_manager.active_panel_mut() {
                 if let Some(editor) = panel.as_editor_mut() {
-                    // Resolve path: absolute paths used as-is, relative joined with directory
-                    let input_path = PathBuf::from(&result.path);
+                    // Resolve path: expand ~ and handle absolute/relative paths
+                    let input_path = termide_ui::expand_tilde(&result.path);
                     let file_path = if input_path.is_absolute() {
                         input_path
                     } else {

@@ -273,7 +273,7 @@ impl App {
 
         // Local destination - determine absolute path
         let absolute_destination = if let Some(target_dir) = target_directory {
-            let destination = PathBuf::from(&dest_str);
+            let destination = termide_ui::expand_tilde(&dest_str);
             if destination.is_absolute() {
                 destination
             } else {
@@ -283,7 +283,7 @@ impl App {
             // Get active FileManager panel to determine base path
             if let Some(panel) = self.layout_manager.active_panel_mut() {
                 if let Some(fm) = panel.as_file_manager_mut() {
-                    let destination = PathBuf::from(&dest_str);
+                    let destination = termide_ui::expand_tilde(&dest_str);
                     if destination.is_absolute() {
                         destination
                     } else {
@@ -620,9 +620,115 @@ impl App {
         &mut self,
         sources: Vec<PathBuf>,
         target_directory: Option<PathBuf>,
+        create_symlink: bool,
         value: Box<dyn std::any::Any>,
     ) -> Result<()> {
+        if create_symlink {
+            return self.handle_create_symlinks(sources, target_directory, value);
+        }
         self.handle_file_operation(BatchOperationType::Copy, sources, target_directory, value)
+    }
+
+    /// Handle symlink creation instead of copy
+    fn handle_create_symlinks(
+        &mut self,
+        sources: Vec<PathBuf>,
+        target_directory: Option<PathBuf>,
+        value: Box<dyn std::any::Any>,
+    ) -> Result<()> {
+        // Extract destination string
+        let dest_str = if let Some(s) = value.downcast_ref::<String>() {
+            s.clone()
+        } else {
+            return Ok(());
+        };
+
+        // Resolve absolute destination path
+        let absolute_destination = if let Some(target_dir) = target_directory {
+            let destination = termide_ui::expand_tilde(&dest_str);
+            if destination.is_absolute() {
+                destination
+            } else {
+                target_dir.join(&destination)
+            }
+        } else if let Some(panel) = self.layout_manager.active_panel_mut() {
+            if let Some(fm) = panel.as_file_manager_mut() {
+                let destination = termide_ui::expand_tilde(&dest_str);
+                if destination.is_absolute() {
+                    destination
+                } else {
+                    fm.get_current_directory().join(&destination)
+                }
+            } else {
+                return Ok(());
+            }
+        } else {
+            return Ok(());
+        };
+
+        // Create destination directory if needed
+        if let Err(e) = std::fs::create_dir_all(&absolute_destination) {
+            self.state
+                .set_error(format!("Failed to create directory: {}", e));
+            return Ok(());
+        }
+
+        let mut success_count = 0usize;
+        let mut error_count = 0usize;
+
+        for source in &sources {
+            let canonical = match std::fs::canonicalize(source) {
+                Ok(p) => p,
+                Err(e) => {
+                    log::error!("Failed to canonicalize {}: {}", source.display(), e);
+                    error_count += 1;
+                    continue;
+                }
+            };
+
+            let file_name = source
+                .file_name()
+                .unwrap_or_else(|| std::ffi::OsStr::new("link"));
+            let link_path = absolute_destination.join(file_name);
+
+            #[cfg(unix)]
+            match std::os::unix::fs::symlink(&canonical, &link_path) {
+                Ok(()) => success_count += 1,
+                Err(e) => {
+                    log::error!(
+                        "Failed to create symlink {} -> {}: {}",
+                        link_path.display(),
+                        canonical.display(),
+                        e
+                    );
+                    error_count += 1;
+                }
+            }
+
+            #[cfg(not(unix))]
+            {
+                log::error!("Symlink creation is only supported on Unix");
+                error_count += 1;
+            }
+        }
+
+        if error_count == 0 {
+            let t = termide_i18n::t();
+            self.state.set_info(format!(
+                "{} {} symlink{}",
+                t.batch_result_copied(),
+                success_count,
+                if success_count == 1 { "" } else { "s" }
+            ));
+        } else {
+            self.state.set_error(format!(
+                "Symlinks: {} created, {} errors",
+                success_count, error_count
+            ));
+        }
+
+        self.state.needs_redraw = true;
+        Ok(())
     }
 
     /// Handle file moving
