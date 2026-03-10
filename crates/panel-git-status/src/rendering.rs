@@ -480,7 +480,7 @@ impl GitStatusPanel {
                 (
                     color,
                     Modifier::empty(),
-                    format!("{}{}/", arrow, node.label),
+                    format!("{} /{}", arrow, node.label),
                 )
             }
             crate::tree::TreeNodeKind::File {
