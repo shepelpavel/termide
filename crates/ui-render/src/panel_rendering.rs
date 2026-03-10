@@ -123,7 +123,24 @@ fn smart_truncate_title(title: &str, max_width: usize) -> String {
 }
 
 use termide_config::Config;
-use termide_core::{Panel, PanelConfig, RenderContext, ThemeColors};
+use termide_core::{use_emoji_icons, Panel, PanelConfig, RenderContext, ThemeColors};
+
+/// Get emoji icon for a panel type.
+fn panel_icon(name: &str) -> &'static str {
+    match name {
+        "terminal" => "💻",
+        "file_manager" => "📁",
+        "editor" => "📝",
+        "git_status" => "📊",
+        "git_log" => "📜",
+        "git_diff" => "🔀",
+        "image" => "🖼️",
+        "diagnostics" => "⚠️",
+        "outline" => "🗂️",
+        "operations" => "⚙️",
+        _ => "📋",
+    }
+}
 use termide_theme::Theme;
 
 #[cfg(test)]
@@ -276,7 +293,7 @@ pub fn render_collapsed_panel(
     buf: &mut Buffer,
     is_focused: bool,
     theme: &Theme,
-    group_size: usize,
+    _group_size: usize,
 ) {
     if area.height == 0 || area.width == 0 {
         return;
@@ -298,9 +315,13 @@ pub fn render_collapsed_panel(
         buf[(area.x, y)].set_symbol("─").set_style(style);
     }
 
-    // Buttons: [X][▶] if group_size > 1, else [X]
-    let buttons = if group_size > 1 { "[X][▶]" } else { "[X]" };
-    let buttons_width = buttons.chars().count() as u16;
+    // Buttons: [X][icon] with emoji, or [X] in unicode mode
+    let buttons = if use_emoji_icons() {
+        format!("[X][{}]", panel_icon(panel.name()))
+    } else {
+        "[X]".to_string()
+    };
+    let buttons_width = buttons.width() as u16;
 
     if area.width > 1 + buttons_width {
         buf.set_string(area.x + 1, y, buttons, style);
@@ -338,7 +359,7 @@ pub fn render_expanded_panel(
     theme: &Theme,
     config: &Config,
     params: ExpandedPanelParams,
-    group_size: usize,
+    _group_size: usize,
 ) {
     if area.height == 0 || area.width == 0 {
         return;
@@ -353,9 +374,13 @@ pub fn render_expanded_panel(
         Style::default().fg(theme.disabled)
     };
 
-    // Create title: [X][▼] Title (if group_size > 1) or [X] Title
+    // Create title: [X][icon] Title (with emoji) or [X] Title (unicode mode)
     // Smart truncate title to fit within panel width
-    let buttons_text = if group_size > 1 { "[X][▼] " } else { "[X] " };
+    let buttons_text = if use_emoji_icons() {
+        format!("[X][{}] ", panel_icon(panel.name()))
+    } else {
+        "[X] ".to_string()
+    };
     let buttons_width = buttons_text.width();
     // Available width: panel width - 2 (borders) - buttons - 1 (trailing space)
     let available_for_title = (area.width as usize).saturating_sub(2 + buttons_width + 1);

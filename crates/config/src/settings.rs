@@ -3,6 +3,19 @@
 use serde::{Deserialize, Serialize};
 
 use crate::defaults;
+
+/// Icon rendering mode for panel titles.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum IconMode {
+    /// Auto-detect based on terminal capabilities
+    #[default]
+    Auto,
+    /// Force emoji icons
+    Emoji,
+    /// Unicode-only mode (no emoji, no arrows)
+    Unicode,
+}
 use crate::keybindings::{
     EditorKeybindings, FileManagerKeybindings, GitStatusKeybindings, GlobalKeybindings,
     TerminalKeybindings,
@@ -76,6 +89,10 @@ pub struct GeneralSettings {
     /// Play bell sound when a file operation completes (enabled by default)
     #[serde(default = "default_bell_on_operation_complete")]
     pub bell_on_operation_complete: bool,
+
+    /// Icon mode for panel titles (auto, emoji, unicode)
+    #[serde(default)]
+    pub icon_mode: IconMode,
 
     /// Global keyboard shortcuts
     #[serde(default)]
@@ -406,6 +423,7 @@ impl From<LegacyConfig> for Config {
                 session_retention_days: legacy.session_retention_days,
                 vim_mode: default_vim_mode(),
                 bell_on_operation_complete: default_bell_on_operation_complete(),
+                icon_mode: IconMode::default(),
                 keybindings: GlobalKeybindings::default(),
             },
             editor: EditorSettings {
@@ -447,6 +465,7 @@ impl Default for GeneralSettings {
             session_retention_days: default_session_retention_days(),
             vim_mode: default_vim_mode(),
             bell_on_operation_complete: default_bell_on_operation_complete(),
+            icon_mode: IconMode::default(),
             keybindings: GlobalKeybindings::default(),
         }
     }

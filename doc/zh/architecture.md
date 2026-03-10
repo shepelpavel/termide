@@ -10,14 +10,14 @@ TermIDE 是一个使用 Rust 语言基于 `ratatui` TUI 框架构建的基于终
 ┌─────────────────────────────────────────────────────────┐
 │ 菜单栏     [CPU] [RAM] [时钟]                            │
 ├───────────────────┬─────────────────────────────────────┤
-│ ┌[X][▼] 文件 ───┐ │ ┌[X][▼] 编辑器: main.rs ───────────┐│
+│ ┌[X][📁] 文件 ──┐ │ ┌[X][📝] 编辑器: main.rs ──────────┐│
 │ │               │ │ │                                  ││
 │ │ src/          │ │ │  fn main() {                     ││
 │ │ tests/        │ │ │      // code here                ││
 │ │ Cargo.toml    │ │ │  }                               ││
 │ │               │ │ │                                  ││
 │ └───────────────┘ │ └──────────────────────────────────┘│
-│ ─[X][▶] 终端──── │ ─[X][▶] 日志 ───────────────────────│
+│ ─[X][💻] 终端─── │ ─[X][📋] 日志 ──────────────────────│
 ├───────────────────┴─────────────────────────────────────┤
 │ 状态: file.rs:42  行 10, 列 5        磁盘: 83%          │
 └─────────────────────────────────────────────────────────┘
@@ -65,7 +65,7 @@ pub struct PanelGroup {
 **手风琴行为：**
 - 恰好一个面板处于展开状态（显示完整内容）
 - 其他面板折叠为仅显示标题栏
-- 点击标题栏 [▼]/[▶] 按钮进行展开/折叠
+- 点击标题栏面板图标按钮进行展开/折叠
 - Alt+Up/Down 在组内面板之间导航
 
 **关键操作：**
@@ -263,8 +263,7 @@ while !state.should_quit {
 
 **面板标题栏：**
 - 点击 `[X]` 按钮 → 关闭面板
-- 点击 `[▼]` 按钮 → 折叠面板（展开下一个）
-- 点击 `[▶]` 按钮 → 展开面板
+- 点击面板图标按钮 → 切换展开/折叠
 
 **面板内容：**
 - 点击转发到 `panel.handle_mouse()`
@@ -327,14 +326,20 @@ fn render_layout_with_accordion(frame, layout_manager, state) {
 **位置：** `crates/ui-render/src/panel.rs`
 
 **展开的面板：**
-- 带 `[X][▼]` 按钮和标题的边框
+- 带 `[X][图标]` 按钮和标题的边框（例如 `[X][📁] 文件`）
 - 完整的内容区域
 - 内容超出区域时可滚动
 
 **折叠的面板：**
-- 仅标题栏：`─[X][▶] 标题 ─────`
+- 仅标题栏：`─[X][📁] 文件 ─────`
 - 占用最小垂直空间（1 行）
 - 点击即展开
+
+**图标模式：**
+面板标题根据面板类型显示 emoji 图标（📁 文件管理器、💻 终端、📝 编辑器等）。通过 `[general]` 中的 `icon_mode` 配置：
+- `auto`（默认）— 终端支持时显示 emoji，否则仅显示 `[X]`
+- `emoji` — 始终显示 emoji 图标
+- `unicode` — 无图标、无箭头，仅 `[X]`
 
 **边框渲染：**
 边框和按钮由 `panel_rendering.rs` 绘制，然后面板的 `render()` 方法在内部区域绘制内容。
@@ -372,12 +377,14 @@ pub struct AppState {
 
 ```rust
 pub struct Config {
-    pub theme: String,                    // 主题名称
-    pub tab_size: usize,                  // 编辑器制表符大小
-    pub language: String,                 // UI 语言（auto/en/ru）
-    pub min_panel_width: u16,             // 堆叠阈值
-    pub resource_monitor_interval: u64,   // 更新间隔（毫秒）
-    pub log_file_path: Option<String>,    // 自定义日志路径
+    pub general: GeneralSettings,         // 主题、语言、icon_mode、vim_mode、快捷键
+    pub editor: EditorSettings,           // 制表符大小、自动换行、git diff、自动缩进
+    pub file_manager: FileManagerSettings, // 扩展视图宽度、快捷键
+    pub git_status: GitStatusSettings,    // 快捷键
+    pub terminal: TerminalSettings,       // 快捷键
+    pub lsp: LspSettings,                // LSP 服务器、补全、悬停
+    pub logging: LoggingSettings,         // 日志级别、资源监控间隔
+    pub vfs: VfsSettings,                // VFS 连接超时
 }
 ```
 

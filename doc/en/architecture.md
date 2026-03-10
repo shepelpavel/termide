@@ -10,14 +10,14 @@ TermIDE is a terminal-based IDE built with Rust using the `ratatui` TUI framewor
 ┌─────────────────────────────────────────────────────────┐
 │ Menu Bar     [CPU] [RAM] [Clock]                        │
 ├───────────────────┬─────────────────────────────────────┤
-│ ┌[X][▼] Files ──┐ │ ┌[X][▼] Editor: main.rs ──────────┐│
+│ ┌[X][📁] Files ─┐ │ ┌[X][📝] Editor: main.rs ─────────┐│
 │ │               │ │ │                                  ││
 │ │ src/          │ │ │  fn main() {                     ││
 │ │ tests/        │ │ │      // code here                ││
 │ │ Cargo.toml    │ │ │  }                               ││
 │ │               │ │ │                                  ││
 │ └───────────────┘ │ └──────────────────────────────────┘│
-│ ─[X][▶] Terminal─ │ ─[X][▶] Log ────────────────────────│
+│ ─[X][💻] Terminal │ ─[X][📋] Log ───────────────────────│
 ├───────────────────┴─────────────────────────────────────┤
 │ Status: file.rs:42  Ln 10, Col 5        Disk: 83%      │
 └─────────────────────────────────────────────────────────┘
@@ -65,7 +65,7 @@ pub struct PanelGroup {
 **Accordion Behavior:**
 - Exactly one panel is expanded (shows full content)
 - Other panels are collapsed to title bar only
-- Click title bar [▼]/[▶] button to expand/collapse
+- Click panel icon button in title bar to expand/collapse
 - Alt+Up/Down navigates between panels in group
 
 **Key Operations:**
@@ -263,8 +263,7 @@ Handles mouse input:
 
 **Panel Title Bar:**
 - Click `[X]` button → Close panel
-- Click `[▼]` button → Collapse panel (expand next)
-- Click `[▶]` button → Expand panel
+- Click panel icon button → Toggle expand/collapse
 
 **Panel Content:**
 - Clicks forwarded to `panel.handle_mouse()`
@@ -327,14 +326,20 @@ fn render_layout_with_accordion(frame, layout_manager, state) {
 **Location:** `crates/ui-render/src/panel.rs`
 
 **Expanded Panel:**
-- Border with `[X][▼]` buttons and title
+- Border with `[X][icon]` buttons and title (e.g. `[X][📁] Files`)
 - Full content area
 - Scrollable if content exceeds area
 
 **Collapsed Panel:**
-- Title bar only: `─[X][▶] Title ─────`
+- Title bar only: `─[X][📁] Files ─────`
 - Takes minimal vertical space (1 line)
 - Clicking expands
+
+**Icon Mode:**
+Panel titles show emoji icons based on panel type (📁 file manager, 💻 terminal, 📝 editor, etc.). Icon mode is configured via `icon_mode` in `[general]` settings:
+- `auto` (default) — emoji if terminal supports it, plain `[X]` otherwise
+- `emoji` — always show emoji icons
+- `unicode` — no icons, no arrows, just `[X]`
 
 **Border Rendering:**
 Borders and buttons are drawn by `panel_rendering.rs`, then panel's `render()` method draws content in the inner area.
@@ -372,12 +377,14 @@ User configuration loaded from TOML:
 
 ```rust
 pub struct Config {
-    pub theme: String,                    // Theme name
-    pub tab_size: usize,                  // Editor tab size
-    pub language: String,                 // UI language (auto/en/ru)
-    pub min_panel_width: u16,             // Stacking threshold
-    pub resource_monitor_interval: u64,   // Update interval (ms)
-    pub log_file_path: Option<String>,    // Custom log path
+    pub general: GeneralSettings,         // Theme, language, icon_mode, vim_mode, keybindings
+    pub editor: EditorSettings,           // Tab size, word wrap, git diff, auto-indent
+    pub file_manager: FileManagerSettings, // Extended view width, keybindings
+    pub git_status: GitStatusSettings,    // Keybindings
+    pub terminal: TerminalSettings,       // Keybindings
+    pub lsp: LspSettings,                // LSP servers, completion, hover
+    pub logging: LoggingSettings,         // Log level, resource monitor interval
+    pub vfs: VfsSettings,                // VFS connection timeout
 }
 ```
 

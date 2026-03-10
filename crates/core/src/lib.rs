@@ -15,7 +15,10 @@ pub use event::{
     PanelEvent, SelectAction, SplitDirection, VimPanelDirection,
 };
 pub use panel::{Panel, PanelConfig, RenderContext, SessionPanel, ThemeColors, WidthPreference};
-pub use terminal_caps::{get_terminal_caps, init_terminal_caps, ColorDepth, TerminalCaps};
+pub use terminal_caps::{
+    get_terminal_caps, init_icon_mode, init_terminal_caps, use_emoji_icons, ColorDepth,
+    TerminalCaps,
+};
 
 // Re-export theme and config for convenience
 pub use termide_config::Config;

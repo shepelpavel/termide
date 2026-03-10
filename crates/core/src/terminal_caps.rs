@@ -4,9 +4,13 @@
 //! current terminal to adapt theme rendering appropriately.
 
 use std::sync::OnceLock;
+use termide_config::IconMode;
 
 /// Global terminal capabilities (detected once at startup).
 static TERMINAL_CAPS: OnceLock<TerminalCaps> = OnceLock::new();
+
+/// Resolved "use emoji icons" flag (set after config is loaded).
+static USE_EMOJI: OnceLock<bool> = OnceLock::new();
 
 /// Initialize global terminal capabilities.
 ///
@@ -136,6 +140,48 @@ fn is_linux_tty() -> bool {
 fn has_framebuffer() -> bool {
     // Check if any framebuffer device exists
     std::path::Path::new("/dev/fb0").exists()
+}
+
+/// Check if the locale suggests UTF-8 support.
+fn has_utf8_locale() -> bool {
+    for var in &["LC_ALL", "LC_CTYPE", "LANG"] {
+        if let Ok(val) = std::env::var(var) {
+            let upper = val.to_uppercase();
+            if upper.contains("UTF-8") || upper.contains("UTF8") {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Check if running inside a terminal multiplexer (tmux/screen).
+fn is_inside_multiplexer() -> bool {
+    std::env::var("TMUX").is_ok() || std::env::var("STY").is_ok()
+}
+
+/// Heuristic: can the terminal likely render emoji?
+fn emoji_likely() -> bool {
+    let caps = get_terminal_caps();
+    let is_linux_console = caps.is_some_and(|c| c.is_linux_console);
+    !is_linux_console && has_utf8_locale() && !is_inside_multiplexer()
+}
+
+/// Initialize icon mode after config is loaded.
+///
+/// Resolves the final "use emoji" decision based on config + terminal heuristics.
+pub fn init_icon_mode(mode: IconMode) {
+    let use_emoji = match mode {
+        IconMode::Emoji => true,
+        IconMode::Unicode => false,
+        IconMode::Auto => emoji_likely(),
+    };
+    let _ = USE_EMOJI.set(use_emoji);
+}
+
+/// Check if emoji icons should be used in panel titles.
+pub fn use_emoji_icons() -> bool {
+    USE_EMOJI.get().copied().unwrap_or(false)
 }
 
 #[cfg(test)]

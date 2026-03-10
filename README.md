@@ -352,6 +352,7 @@ language = "auto"  # auto, bn, de, en, es, fr, hi, id, ja, ko, pt, ru, th, tr, v
 vim_mode = false
 session_retention_days = 30
 bell_on_operation_complete = true
+icon_mode = "auto"  # auto, emoji, unicode
 
 [editor]
 tab_size = 4

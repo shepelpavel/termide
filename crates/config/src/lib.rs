@@ -18,8 +18,8 @@ pub use keybindings::{
     TerminalKeybindings,
 };
 pub use settings::{
-    Config, EditorSettings, FileManagerSettings, GeneralSettings, GitStatusSettings, LegacyConfig,
-    LoggingSettings, LspServerSettings, LspSettings, TerminalSettings, VfsSettings,
+    Config, EditorSettings, FileManagerSettings, GeneralSettings, GitStatusSettings, IconMode,
+    LegacyConfig, LoggingSettings, LspServerSettings, LspSettings, TerminalSettings, VfsSettings,
 };
 pub use xdg::{get_cache_dir, get_config_dir, get_data_dir};
 

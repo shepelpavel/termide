@@ -19,7 +19,7 @@ use std::io;
 
 use termide_app::App;
 use termide_config::Config;
-use termide_core::init_terminal_caps;
+use termide_core::{init_icon_mode, init_terminal_caps};
 use termide_git::is_available as check_git_available;
 use termide_i18n::init_with_language;
 use termide_theme::{set_ansi16_mode, set_themes_dir};
@@ -66,6 +66,9 @@ fn main() -> Result<()> {
     if cli.no_lsp {
         config.lsp.enabled = false;
     }
+
+    // Initialize icon mode based on config + terminal capabilities
+    init_icon_mode(config.general.icon_mode);
 
     // Initialize theme system with themes directory from config
     if let Ok(themes_dir) = Config::get_themes_dir() {
