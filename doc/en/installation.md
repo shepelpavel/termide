@@ -56,6 +56,49 @@ sudo mv termide /usr/local/bin/
 
 Now you can run `termide` from anywhere in your terminal.
 
+## Install via Package Manager
+
+### Debian/Ubuntu (.deb)
+
+```bash
+wget https://github.com/termide/termide/releases/latest/download/termide_0.14.3-1_amd64.deb
+sudo dpkg -i termide_0.14.3-1_amd64.deb
+```
+
+### Fedora/RHEL/CentOS (.rpm)
+
+```bash
+wget https://github.com/termide/termide/releases/latest/download/termide-0.14.3-1.x86_64.rpm
+sudo rpm -i termide-0.14.3-1.x86_64.rpm
+```
+
+### Arch Linux (AUR)
+
+```bash
+# Build from source
+yay -S termide
+
+# Or install pre-built binary
+yay -S termide-bin
+```
+
+### Homebrew (macOS/Linux)
+
+```bash
+brew tap termide/termide
+brew install termide
+```
+
+### NixOS/Nix (Flakes)
+
+```bash
+# Run without installing
+nix run github:termide/termide
+
+# Install to user profile
+nix profile install github:termide/termide
+```
+
 ## Build from Source
 
 ### Prerequisites

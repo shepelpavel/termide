@@ -56,6 +56,49 @@ sudo mv termide /usr/local/bin/
 
 Теперь вы можете запускать `termide` из любого места в терминале.
 
+## Установка через пакетный менеджер
+
+### Debian/Ubuntu (.deb)
+
+```bash
+wget https://github.com/termide/termide/releases/latest/download/termide_0.14.3-1_amd64.deb
+sudo dpkg -i termide_0.14.3-1_amd64.deb
+```
+
+### Fedora/RHEL/CentOS (.rpm)
+
+```bash
+wget https://github.com/termide/termide/releases/latest/download/termide-0.14.3-1.x86_64.rpm
+sudo rpm -i termide-0.14.3-1.x86_64.rpm
+```
+
+### Arch Linux (AUR)
+
+```bash
+# Сборка из исходников
+yay -S termide
+
+# Или установка готового бинарника
+yay -S termide-bin
+```
+
+### Homebrew (macOS/Linux)
+
+```bash
+brew tap termide/termide
+brew install termide
+```
+
+### NixOS/Nix (Flakes)
+
+```bash
+# Запуск без установки
+nix run github:termide/termide
+
+# Установка в профиль пользователя
+nix profile install github:termide/termide
+```
+
 ## Сборка из исходников
 
 ### Требования

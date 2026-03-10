@@ -56,6 +56,49 @@ sudo mv termide /usr/local/bin/
 
 现在您可以在终端的任何位置运行 `termide`。
 
+## 通过包管理器安装
+
+### Debian/Ubuntu (.deb)
+
+```bash
+wget https://github.com/termide/termide/releases/latest/download/termide_0.14.3-1_amd64.deb
+sudo dpkg -i termide_0.14.3-1_amd64.deb
+```
+
+### Fedora/RHEL/CentOS (.rpm)
+
+```bash
+wget https://github.com/termide/termide/releases/latest/download/termide-0.14.3-1.x86_64.rpm
+sudo rpm -i termide-0.14.3-1.x86_64.rpm
+```
+
+### Arch Linux (AUR)
+
+```bash
+# 从源码构建
+yay -S termide
+
+# 或安装预编译二进制文件
+yay -S termide-bin
+```
+
+### Homebrew (macOS/Linux)
+
+```bash
+brew tap termide/termide
+brew install termide
+```
+
+### NixOS/Nix (Flakes)
+
+```bash
+# 无需安装直接运行
+nix run github:termide/termide
+
+# 安装到用户配置文件
+nix profile install github:termide/termide
+```
+
 ## 从源码构建
 
 ### 前置条件

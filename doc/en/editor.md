@@ -47,6 +47,7 @@ The text editor panel provides a functional editor for working with text files w
 | `Delete`          | Delete character to the right of cursor    |
 | `Enter`           | Insert new line (with auto-indentation)    |
 | `Tab`             | Insert indent (configurable, default 4)    |
+| `Ctrl+/`          | Toggle comment (line/block)                |
 
 ## Search and Replace
 
@@ -195,6 +196,7 @@ auto_close_brackets = true  # or false (default: true)
 When working in the editor, the status bar displays:
 - File name and modification indicator (*)
 - Current cursor position (line:column)
+- Line ending format (LF / CRLF) and encoding (UTF-8)
 - Search information (number of matches)
 - File type (plain text / read-only)
 

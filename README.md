@@ -27,7 +27,7 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 
 ## Features
 
-- **Terminal-based IDE** - Syntax highlighting for 15+ languages, word navigation (Ctrl+Left/Right), paragraph/symbol navigation (Ctrl+Up/Down), auto-indentation, auto-close brackets
+- **Terminal-based IDE** - Syntax highlighting for 19 languages, word navigation (Ctrl+Left/Right), paragraph/symbol navigation (Ctrl+Up/Down), toggle comment (Ctrl+/), auto-indentation, auto-close brackets
 - **LSP Support** - Code completion with rust-analyzer, pylsp, typescript-language-server, and other LSP servers
 - **Smart File Manager** - Git status indicators, batch operations, file search (glob/regex)
 - **Integrated Terminal** - Full PTY support, VT100 escape sequences, mouse tracking
@@ -215,6 +215,19 @@ cargo build --release
   - Rust 1.70+ (stable)
   - For Nix users: Nix with flakes enabled
 
+### Command-Line Options
+
+```
+termide [OPTIONS] [PATH]
+
+Options:
+  --log-level <LEVEL>  Set log level (trace, debug, info, warn, error)
+  --no-lsp             Disable LSP language servers
+  --config <FILE>      Use custom config file path
+  -h, --help           Print help
+  -V, --version        Print version
+```
+
 ## Usage
 
 ### Quick Start
@@ -287,6 +300,7 @@ For detailed documentation, see:
 - `Ctrl+F` - Find
 - `Ctrl+H` - Replace
 - `F3` / `Shift+F3` - Next/previous match
+- `Ctrl+/` - Toggle comment (line/block)
 - `Ctrl+D` - Duplicate line
 - `Ctrl+C/X/V` - Copy/Cut/Paste
 - `Ctrl+Left/Right` - Move cursor by word
