@@ -21,6 +21,27 @@ fn cmp_ignore_case(a: &str, b: &str) -> std::cmp::Ordering {
         .cmp(b.chars().flat_map(char::to_lowercase))
 }
 
+/// Sort group key: 0 = directories, 1 = executable files, 2 = regular files.
+fn sort_group(entry: &FileEntry) -> u8 {
+    if entry.is_dir {
+        0
+    } else if entry.is_executable {
+        1
+    } else {
+        2
+    }
+}
+
+/// Sort entries: directories first, then executables, then regular files.
+/// Within each group, sort alphabetically (case-insensitive).
+fn sort_entries(entries: &mut [FileEntry]) {
+    entries.sort_by(|a, b| {
+        sort_group(a)
+            .cmp(&sort_group(b))
+            .then_with(|| cmp_ignore_case(&a.name, &b.name))
+    });
+}
+
 use anyhow::Result;
 use crossterm::event::KeyEvent;
 use ratatui::{buffer::Buffer, layout::Rect, prelude::Widget, widgets::Paragraph};
@@ -742,12 +763,8 @@ impl FileManager {
             .filter(|e| self.show_hidden || !e.name.starts_with('.'))
             .collect();
 
-        // Sort: directories first, then alphabetically by name (case-insensitive)
-        file_entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => cmp_ignore_case(&a.name, &b.name),
-        });
+        // Sort: directories, then executables, then regular files (alphabetically within each group)
+        sort_entries(&mut file_entries);
 
         self.entries.extend(file_entries);
 
@@ -956,12 +973,8 @@ impl FileManager {
 
         // Note: deleted files are added when async git status completes (apply_git_statuses)
 
-        // Sort: directories first, then files
-        self.entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => cmp_ignore_case(&a.name, &b.name),
-        });
+        // Sort: directories, then executables, then regular files
+        sort_entries(&mut self.entries);
 
         // Restore selection by file names
         if !selected_names.is_empty() {
@@ -1222,11 +1235,7 @@ impl FileManager {
                 // Only re-sort if we actually added deleted files
                 if !new_entries.is_empty() {
                     self.entries.extend(new_entries);
-                    self.entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
-                        (true, false) => std::cmp::Ordering::Less,
-                        (false, true) => std::cmp::Ordering::Greater,
-                        _ => cmp_ignore_case(&a.name, &b.name),
-                    });
+                    sort_entries(&mut self.entries);
                 }
             }
         }

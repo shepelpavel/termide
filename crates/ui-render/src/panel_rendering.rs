@@ -315,11 +315,11 @@ pub fn render_collapsed_panel(
         buf[(area.x, y)].set_symbol("─").set_style(style);
     }
 
-    // Buttons: [X][icon] with emoji, or [X] in unicode mode
+    // Buttons: [X] icon with emoji, or [X] in unicode mode
     let buttons = if use_emoji_icons() {
-        format!("[X][{}]", panel_icon(panel.name()))
+        format!("[X] {} ", panel_icon(panel.name()))
     } else {
-        "[X]".to_string()
+        "[X] ".to_string()
     };
     let buttons_width = buttons.width() as u16;
 
@@ -374,10 +374,10 @@ pub fn render_expanded_panel(
         Style::default().fg(theme.disabled)
     };
 
-    // Create title: [X][icon] Title (with emoji) or [X] Title (unicode mode)
+    // Create title: [X] icon Title (with emoji) or [X] Title (unicode mode)
     // Smart truncate title to fit within panel width
     let buttons_text = if use_emoji_icons() {
-        format!("[X][{}] ", panel_icon(panel.name()))
+        format!("[X] {} ", panel_icon(panel.name()))
     } else {
         "[X] ".to_string()
     };

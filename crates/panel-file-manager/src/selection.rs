@@ -4,13 +4,33 @@ use super::FileManager;
 use termide_vfs::VfsPath;
 
 impl FileManager {
+    /// Check if entry at index is ".." (not selectable)
+    fn is_parent_entry(&self, idx: usize) -> bool {
+        self.entries.get(idx).is_some_and(|e| e.name == "..")
+    }
+
+    /// Insert index into selection, skipping ".."
+    fn select_index(&mut self, idx: usize) {
+        if !self.is_parent_entry(idx) {
+            self.selection.items.insert(idx);
+        }
+    }
+
+    /// Toggle index in selection, skipping ".."
+    fn toggle_index(&mut self, idx: usize) {
+        if self.is_parent_entry(idx) {
+            return;
+        }
+        if self.selection.items.contains(&idx) {
+            self.selection.items.remove(&idx);
+        } else {
+            self.selection.items.insert(idx);
+        }
+    }
+
     /// Toggle selection of current item
     pub(crate) fn toggle_selection(&mut self) {
-        if self.selection.items.contains(&self.selected) {
-            self.selection.items.remove(&self.selected);
-        } else {
-            self.selection.items.insert(self.selected);
-        }
+        self.toggle_index(self.selected);
     }
 
     /// Select all files
@@ -27,13 +47,13 @@ impl FileManager {
 
     /// Move down with selection
     pub(crate) fn move_down_with_selection(&mut self) {
-        self.selection.items.insert(self.selected);
+        self.select_index(self.selected);
         self.move_down();
     }
 
     /// Move up with selection
     pub(crate) fn move_up_with_selection(&mut self) {
-        self.selection.items.insert(self.selected);
+        self.select_index(self.selected);
         self.move_up();
     }
 
@@ -43,7 +63,7 @@ impl FileManager {
         let target =
             (self.selected + self.visible_height).min(self.entries.len().saturating_sub(1));
         for i in start..=target {
-            self.selection.items.insert(i);
+            self.select_index(i);
         }
         self.selected = target;
         self.adjust_scroll_offset(self.visible_height);
@@ -54,7 +74,7 @@ impl FileManager {
         let start = self.selected;
         let target = self.selected.saturating_sub(self.visible_height);
         for i in target..=start {
-            self.selection.items.insert(i);
+            self.select_index(i);
         }
         self.selected = target;
         self.scroll_offset = 0;
@@ -63,7 +83,7 @@ impl FileManager {
     /// Select to beginning of list
     pub(crate) fn select_to_home(&mut self) {
         for i in 0..=self.selected {
-            self.selection.items.insert(i);
+            self.select_index(i);
         }
         self.selected = 0;
         self.scroll_offset = 0;
@@ -73,7 +93,7 @@ impl FileManager {
     pub(crate) fn select_to_end(&mut self) {
         let max_index = self.entries.len().saturating_sub(1);
         for i in self.selected..=max_index {
-            self.selection.items.insert(i);
+            self.select_index(i);
         }
         self.selected = max_index;
     }
@@ -164,23 +184,13 @@ impl FileManager {
 
     /// Move down with toggle selection
     pub(crate) fn move_down_with_toggle(&mut self) {
-        // Toggle current
-        if self.selection.items.contains(&self.selected) {
-            self.selection.items.remove(&self.selected);
-        } else {
-            self.selection.items.insert(self.selected);
-        }
+        self.toggle_index(self.selected);
         self.move_down();
     }
 
     /// Move up with toggle selection
     pub(crate) fn move_up_with_toggle(&mut self) {
-        // Toggle current
-        if self.selection.items.contains(&self.selected) {
-            self.selection.items.remove(&self.selected);
-        } else {
-            self.selection.items.insert(self.selected);
-        }
+        self.toggle_index(self.selected);
         self.move_up();
     }
 
@@ -190,13 +200,8 @@ impl FileManager {
         let target =
             (self.selected + self.visible_height).min(self.entries.len().saturating_sub(1));
 
-        // Toggle all elements from start to target
         for i in start..=target {
-            if self.selection.items.contains(&i) {
-                self.selection.items.remove(&i);
-            } else {
-                self.selection.items.insert(i);
-            }
+            self.toggle_index(i);
         }
 
         self.selected = target;
@@ -208,13 +213,8 @@ impl FileManager {
         let start = self.selected;
         let target = self.selected.saturating_sub(self.visible_height);
 
-        // Toggle all elements from target to start
         for i in target..=start {
-            if self.selection.items.contains(&i) {
-                self.selection.items.remove(&i);
-            } else {
-                self.selection.items.insert(i);
-            }
+            self.toggle_index(i);
         }
 
         self.selected = target;

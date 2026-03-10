@@ -129,12 +129,19 @@ impl FileManager {
                 fg_style
             };
 
-            // Name style: add CROSSED_OUT only for deleted files (strikethrough only on name)
-            let name_style = if entry.git_status == GitStatus::Deleted && !(is_cursor && is_focused)
-            {
-                fg_style.add_modifier(Modifier::CROSSED_OUT)
-            } else {
-                fg_style
+            // Name style: CROSSED_OUT for deleted, ITALIC for symlinks, UNDERLINED for executables
+            let name_style = {
+                let mut style = fg_style;
+                if entry.git_status == GitStatus::Deleted && !(is_cursor && is_focused) {
+                    style = style.add_modifier(Modifier::CROSSED_OUT);
+                }
+                if !entry.is_dir && entry.is_symlink {
+                    style = style.add_modifier(Modifier::ITALIC);
+                }
+                if !entry.is_dir && entry.is_executable {
+                    style = style.add_modifier(Modifier::BOLD);
+                }
+                style
             };
 
             if show_extended {

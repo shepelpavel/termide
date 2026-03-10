@@ -24,46 +24,19 @@ pub fn get_icon(entry: &FileEntry) -> &'static str {
         return if entry.is_symlink { "▷" } else { "▶" };
     }
 
-    // Determine file type by extension
-    let path = Path::new(&entry.name);
-    let highlighter = termide_highlight::global_highlighter();
-
-    // File with syntax highlighting
-    if highlighter.language_for_file(path).is_some() {
-        return if entry.is_symlink { "○" } else { "●" };
-    }
-
-    // Known text extensions without highlighting
-    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-        match ext.to_lowercase().as_str() {
-            "txt" | "log" | "conf" | "cfg" | "ini" | "xml" | "properties" | "env" => {
-                return if entry.is_symlink { "▫" } else { "▪" };
-            }
-            _ => {}
-        }
-    }
-
-    // Binary / unknown files
-    if entry.is_symlink {
-        "◇"
-    } else {
-        "◆"
-    }
+    // Files: no icon, styling (italic/underline) is handled in rendering
+    " "
 }
 
-/// Get attribute character (R/X flag or selection checkmark)
+/// Get attribute character (selection checkmark or directory flags)
 /// Returns 1 character
 pub fn get_attribute(entry: &FileEntry, is_selected: bool) -> &'static str {
     if is_selected {
         return "+";
     }
 
-    // Executable has priority over read-only (but not for directories)
-    if entry.is_executable && !entry.is_dir {
-        return "X";
-    }
-
-    if entry.is_readonly {
+    // For directories: show R if read-only
+    if entry.is_dir && entry.is_readonly {
         return "R";
     }
 
