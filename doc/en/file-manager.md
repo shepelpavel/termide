@@ -113,3 +113,27 @@ termide automatically detects if the parent terminal supports graphics protocols
 - **Single click**: Select a file or directory
 - **Double click**: Enter directory or open file
 - **Scroll wheel**: Scroll through file list
+
+## Display
+
+### Font Modifiers
+
+- **Italic** — symlinks (files and directories)
+- **Bold** — executable files
+
+### Sorting Order
+
+Files are displayed in groups, each sorted alphabetically:
+1. Directories
+2. Executable files
+3. Regular files
+
+### Symlinks
+
+- Copy modal includes a "Create symlink" checkbox — creates a symbolic link instead of copying
+- Navigating into a symlink directory follows the link to the target
+
+### Notes
+
+- `..` (parent directory) cannot be selected — it is only for navigation
+- Input modals support `~/` expansion to home directory

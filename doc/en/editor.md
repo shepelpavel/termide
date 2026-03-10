@@ -5,7 +5,7 @@ The text editor panel provides a functional editor for working with text files w
 ## Key Features
 
 - **Syntax Highlighting**: Automatic highlighting for popular programming languages (Rust, Python, JavaScript, C/C++, Go, etc.)
-- **Git Diff Visualization**: Real-time visualization of changes compared to HEAD with color-coded line numbers (green for added, yellow for modified, red for deleted lines), deletion markers showing count of deleted lines
+- **Git Diff Visualization**: Real-time visualization of changes compared to HEAD with background-colored line numbers (green for added, yellow for modified) and auto-contrast foreground, deletion markers showing count of deleted lines
 - **Search and Replace**: Text search with case-sensitivity support and replacement of found matches
 - **Edit History**: Undo and Redo actions
 - **Clipboard**: Copy, cut, and paste via system clipboard
@@ -206,10 +206,10 @@ When editing files in a git repository with `show_git_diff` enabled, the editor 
 
 ### Line Number Colors
 
-Line numbers are color-coded to show the status compared to HEAD:
+Line numbers use background highlighting to show the status compared to HEAD. The text color is automatically selected for optimal contrast:
 
-- **Green** - Line was added (not in HEAD)
-- **Yellow** - Line was modified (changed from HEAD)
+- **Green background** - Line was added (not in HEAD)
+- **Yellow background** - Line was modified (changed from HEAD)
 - **Red marker (▶)** - Marks a deletion point (lines were deleted after this line)
 - **Default color** - Line unchanged from HEAD
 
