@@ -466,7 +466,8 @@ impl LocalDeleteWorker {
         for entry in fs::read_dir(path)? {
             control.check_cancelled()?;
             let entry = entry?;
-            if entry.path().is_dir() {
+            let meta = fs::symlink_metadata(entry.path())?;
+            if meta.is_dir() && !meta.is_symlink() {
                 count += self.count_files(&entry.path(), control)?;
             } else {
                 count += 1;
@@ -509,7 +510,8 @@ impl LocalDeleteWorker {
                 individual_file_total: 0,
             });
 
-            if entry_path.is_dir() {
+            let meta = fs::symlink_metadata(&entry_path)?;
+            if meta.is_dir() && !meta.is_symlink() {
                 self.delete_directory(
                     &entry_path,
                     control,
@@ -545,7 +547,9 @@ impl OperationWorker for LocalDeleteWorker {
                 return OperationResult::Cancelled;
             }
 
-            if path.is_dir() {
+            let meta = fs::symlink_metadata(path).map_err(|e| OperationError::Io(e.to_string()));
+            let is_real_dir = meta.as_ref().is_ok_and(|m| m.is_dir() && !m.is_symlink());
+            if is_real_dir {
                 match self.count_files(path, control) {
                     Ok(count) => total_files += count,
                     Err(OperationError::Cancelled) => return OperationResult::Cancelled,
@@ -563,7 +567,9 @@ impl OperationWorker for LocalDeleteWorker {
                 return OperationResult::Cancelled;
             }
 
-            let result = if path.is_dir() {
+            let meta = fs::symlink_metadata(path).map_err(|e| OperationError::Io(e.to_string()));
+            let is_real_dir = meta.as_ref().is_ok_and(|m| m.is_dir() && !m.is_symlink());
+            let result = if is_real_dir {
                 self.delete_directory(path, control, progress_tx, &mut files_deleted, total_files)
             } else {
                 let _ = progress_tx.send(OperationProgress {
