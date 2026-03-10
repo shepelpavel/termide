@@ -23,6 +23,28 @@ enum SearchReplaceResult {
 }
 
 impl App {
+    /// Sync the "create symlink" checkbox state from the active modal into `PendingAction::CopyPath`.
+    fn sync_copy_symlink_flag(&mut self) {
+        if !matches!(
+            self.state.pending_action,
+            Some(termide_state::PendingAction::CopyPath { .. })
+        ) {
+            return;
+        }
+        let checked = match &self.state.active_modal {
+            Some(ActiveModal::Input(m)) => m.is_checkbox_checked(),
+            Some(ActiveModal::EditableSelect(m)) => m.is_checkbox_checked(),
+            _ => false,
+        };
+        if checked {
+            if let Some(termide_state::PendingAction::CopyPath { create_symlink, .. }) =
+                &mut self.state.pending_action
+            {
+                *create_symlink = true;
+            }
+        }
+    }
+
     /// Handle keyboard event in modal window
     pub(super) fn handle_modal_key(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
         // Get mutable reference to active modal window
@@ -89,6 +111,7 @@ impl App {
                     return Ok(());
                 }
 
+                self.sync_copy_symlink_flag();
                 self.state.close_modal();
                 if let ModalResult::Confirmed(value) = result {
                     self.handle_modal_result(value)?;
@@ -146,6 +169,7 @@ impl App {
                     return Ok(());
                 }
 
+                self.sync_copy_symlink_flag();
                 self.state.close_modal();
                 if let ModalResult::Confirmed(value) = result {
                     self.handle_modal_result(value)?;
@@ -191,8 +215,9 @@ impl App {
                 PendingAction::CopyPath {
                     sources,
                     target_directory,
+                    create_symlink,
                 } => {
-                    self.handle_copy_path(sources, target_directory, value)?;
+                    self.handle_copy_path(sources, target_directory, create_symlink, value)?;
                 }
                 PendingAction::MovePath {
                     sources,
@@ -296,6 +321,10 @@ impl App {
                         value,
                     )?;
                 }
+                // Follow symlink — navigate to target
+                PendingAction::FollowSymlink { target_path } => {
+                    self.handle_follow_symlink(value, &target_path)?;
+                }
                 // Handle conflict resolution for OperationManager operations
                 PendingAction::ResolveOperationConflict { operation_id } => {
                     self.handle_resolve_operation_conflict(operation_id, value)?;
@@ -356,6 +385,31 @@ impl App {
                     // Try to navigate - errors are silently ignored for now
                     let _ = fm.navigate_to_url(path_str);
                     self.state.needs_watcher_registration = true;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Handle follow symlink action from InfoActionModal
+    fn handle_follow_symlink(
+        &mut self,
+        value: Box<dyn std::any::Any>,
+        target_path: &std::path::Path,
+    ) -> Result<()> {
+        use termide_modal::InfoActionResult;
+
+        if let Some(InfoActionResult::Action(action)) = value.downcast_ref::<InfoActionResult>() {
+            if action == "follow" {
+                if target_path.is_dir() {
+                    if let Some(panel) = self.layout_manager.active_panel_mut() {
+                        if let Some(fm) = panel.as_file_manager_mut() {
+                            let _ = fm.navigate_to_url(&target_path.display().to_string());
+                            self.state.needs_watcher_registration = true;
+                        }
+                    }
+                } else if target_path.is_file() {
+                    let _ = self.open_editor_for_file(target_path.to_path_buf());
                 }
             }
         }

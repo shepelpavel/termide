@@ -1908,6 +1908,7 @@ impl FileManager {
                     let action = PendingAction::CopyPath {
                         sources: paths,
                         target_directory: None,
+                        create_symlink: false,
                     };
                     self.modal_request = Some((action, ActiveModal::Input(Box::new(modal))));
                 }
@@ -2032,6 +2033,7 @@ impl FileManager {
                         let action = PendingAction::CopyPath {
                             sources: files,
                             target_directory: Some(self.current_path.clone()),
+                            create_symlink: false,
                         };
                         let modal = ConfirmModal::new("Confirm", &message);
                         self.modal_request = Some((action, ActiveModal::Confirm(Box::new(modal))));

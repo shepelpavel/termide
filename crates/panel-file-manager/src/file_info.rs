@@ -15,6 +15,9 @@ pub struct FileInfo {
     pub owner: String,
     pub group: String,
     pub mode: String, // Access permissions in format "0755"
+    pub symlink_target: Option<String>,
+    /// Whether the effective target is a directory (follows symlinks)
+    pub target_is_dir: bool,
 }
 
 impl FileManager {
@@ -33,6 +36,8 @@ impl FileManager {
                 owner: "remote".to_string(),
                 group: "remote".to_string(),
                 mode: "????".to_string(),
+                symlink_target: None,
+                target_is_dir: true,
             });
         }
 
@@ -70,6 +75,8 @@ impl FileManager {
                 owner: "remote".to_string(),
                 group: "remote".to_string(),
                 mode,
+                symlink_target: None,
+                target_is_dir: entry.is_dir,
             });
         }
 
@@ -83,17 +90,30 @@ impl FileManager {
             self.current_path.join(&entry.name)
         };
 
-        let metadata = fs::metadata(&file_path).ok()?;
+        let symlink_metadata = fs::symlink_metadata(&file_path).ok()?;
 
-        let file_type = if metadata.is_dir() {
+        let file_type = if symlink_metadata.is_dir() {
             "Directory"
-        } else if metadata.is_symlink() {
+        } else if symlink_metadata.is_symlink() {
             "Symlink"
         } else {
             "File"
         };
 
-        let size = if metadata.is_dir() {
+        let symlink_target = if symlink_metadata.is_symlink() {
+            fs::read_link(&file_path)
+                .ok()
+                .map(|p| termide_core::util::shorten_home_path(&p.display().to_string()))
+        } else {
+            None
+        };
+
+        // For size/owner/group/mode, follow the symlink
+        let metadata = fs::metadata(&file_path).unwrap_or(symlink_metadata);
+
+        let target_is_dir = metadata.is_dir();
+
+        let size = if target_is_dir {
             "DIR".to_string()
         } else {
             utils::format_size(metadata.len())
@@ -112,6 +132,8 @@ impl FileManager {
             owner,
             group,
             mode,
+            symlink_target,
+            target_is_dir,
         })
     }
 
@@ -194,14 +216,21 @@ impl FileManager {
                 self.current_path.join(&entry.name)
             };
 
+            // Use symlink_metadata to detect symlinks before following them
+            let symlink_meta = fs::symlink_metadata(&file_path).ok();
+            let is_symlink = symlink_meta
+                .as_ref()
+                .map(|m| m.is_symlink())
+                .unwrap_or(false);
+
             if let Ok(metadata) = fs::metadata(&file_path) {
                 let t = termide_i18n::t();
 
-                // Determine type and title
-                let (modal_title, is_dir) = if metadata.is_dir() {
+                // Determine type and title (use symlink_metadata for type detection)
+                let (modal_title, is_dir) = if is_symlink {
+                    (t.file_info_title_symlink(&entry.name), metadata.is_dir())
+                } else if metadata.is_dir() {
                     (t.file_info_title_directory(&entry.name), true)
-                } else if metadata.is_symlink() {
-                    (t.file_info_title_symlink(&entry.name), false)
                 } else {
                     (t.file_info_title_file(&entry.name), false)
                 };
@@ -249,7 +278,7 @@ impl FileManager {
                 let mut data = vec![
                     (
                         t.file_info_path().to_string(),
-                        file_path.display().to_string(),
+                        termide_core::util::shorten_home_path(&file_path.display().to_string()),
                     ),
                     (t.file_info_size().to_string(), size),
                     (t.file_info_owner().to_string(), owner),
@@ -322,6 +351,21 @@ impl FileManager {
                             repo_path: repo,
                             is_staged: false, // File manager shows unstaged files
                         },
+                        ActiveModal::InfoAction(Box::new(modal)),
+                    ));
+                } else if is_symlink {
+                    // Symlink without git actions — show "Follow symlink" button
+                    let target_path =
+                        fs::canonicalize(&file_path).unwrap_or_else(|_| file_path.clone());
+                    let buttons = vec![
+                        ActionButton::new(t.file_info_follow_symlink(), "follow"),
+                        ActionButton::new(t.git_action_close(), "close"),
+                    ];
+                    let modal =
+                        termide_modal::InfoActionModal::new(modal_title, data.clone(), buttons)
+                            .with_selected_button(1); // Select [Close] by default
+                    self.modal_request = Some((
+                        PendingAction::FollowSymlink { target_path },
                         ActiveModal::InfoAction(Box::new(modal)),
                     ));
                 } else {

@@ -244,6 +244,12 @@ impl Modal for SaveAsModal {
                 }
             }
             FocusArea::Checkbox => {
+                // Space toggles checkbox — must come before handle_input_key which would eat it
+                if key.code == KeyCode::Char(' ') {
+                    self.executable = !self.executable;
+                    return Ok(None);
+                }
+
                 // Handle text input keys for quick typing
                 match handle_input_key(&mut self.input_handler, key) {
                     InputKeyResult::Handled | InputKeyResult::TextModified => {
@@ -260,10 +266,6 @@ impl Modal for SaveAsModal {
                     }
                     KeyCode::Down => {
                         self.focus = FocusArea::Buttons;
-                        Ok(None)
-                    }
-                    KeyCode::Char(' ') => {
-                        self.executable = !self.executable;
                         Ok(None)
                     }
                     KeyCode::Enter => Ok(self.confirm()),

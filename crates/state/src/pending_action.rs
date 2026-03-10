@@ -25,6 +25,7 @@ pub enum PendingAction {
     CopyPath {
         sources: Vec<PathBuf>,
         target_directory: Option<PathBuf>,
+        create_symlink: bool,
     },
     /// Move files/directories (one or multiple)
     MovePath {
@@ -116,6 +117,8 @@ pub enum PendingAction {
         /// Optional batch operation to continue after handling
         batch_operation: Option<Box<BatchOperation>>,
     },
+    /// Follow symlink — navigate to symlink target
+    FollowSymlink { target_path: PathBuf },
     /// Resolve a file conflict for an OperationManager operation
     ResolveOperationConflict {
         /// The operation ID waiting for resolution

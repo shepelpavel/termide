@@ -871,6 +871,7 @@ impl App {
             termide_core::InputAction::CopyTo { sources } => PendingAction::CopyPath {
                 sources: sources.clone(),
                 target_directory: None,
+                create_symlink: false,
             },
             termide_core::InputAction::MoveTo { sources } => PendingAction::MovePath {
                 sources: sources.clone(),

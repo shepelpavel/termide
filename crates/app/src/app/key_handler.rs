@@ -280,11 +280,20 @@ impl App {
 
         // Choose modal based on number of unique paths
         if unique_paths_count >= 2 {
-            let new_modal =
+            let mut new_modal =
                 termide_modal::EditableSelectModal::new(title, prompt, &default_dest, options);
+            if is_copy {
+                let t = i18n::t();
+                new_modal = new_modal.with_checkbox(t.checkbox_create_symlink().to_string());
+            }
             ActiveModal::EditableSelect(Box::new(new_modal))
         } else {
-            let new_modal = termide_modal::InputModal::with_default(title, prompt, &default_dest);
+            let mut new_modal =
+                termide_modal::InputModal::with_default(title, prompt, &default_dest);
+            if is_copy {
+                let t = i18n::t();
+                new_modal = new_modal.with_checkbox(t.checkbox_create_symlink().to_string());
+            }
             ActiveModal::Input(Box::new(new_modal))
         }
     }

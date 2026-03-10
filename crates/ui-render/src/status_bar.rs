@@ -227,15 +227,22 @@ impl StatusBar {
             // Format for directories: "Dir: dirname | Mod: 0755 | Owner: nvn:users"
             // Format for files: "File: filename | 12.3MB | Mod: 0755 | Owner: nvn:users"
 
-            if info.file_type == "Directory" {
+            if info.file_type == "Directory" || (info.file_type == "Symlink" && info.target_is_dir)
+            {
                 spans.push(Span::styled(format!(" {} ", t.status_dir()), base_style));
             } else {
                 spans.push(Span::styled(format!(" {} ", t.status_file()), base_style));
             }
             spans.push(Span::styled(info.name.as_str(), highlight_style));
 
-            // For files show size
-            if info.file_type != "Directory" {
+            if let Some(ref target) = info.symlink_target {
+                spans.push(Span::styled(" → ", base_style));
+                spans.push(Span::styled(target.as_str(), highlight_style));
+            }
+
+            // For files show size (skip for directories and symlinks-to-directories)
+            if info.file_type != "Directory" && !(info.file_type == "Symlink" && info.target_is_dir)
+            {
                 spans.push(Span::styled(t.ui_hint_separator(), base_style));
                 spans.push(Span::styled(info.size.as_str(), highlight_style));
             }

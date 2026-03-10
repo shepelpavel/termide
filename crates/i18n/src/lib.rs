@@ -375,6 +375,7 @@ pub trait Translation: Send + Sync {
 
     // Checkboxes
     fn checkbox_executable(&self) -> &str;
+    fn checkbox_create_symlink(&self) -> &str;
 
     // File size units
     fn size_bytes(&self) -> &str;
@@ -397,6 +398,7 @@ pub trait Translation: Send + Sync {
     fn file_info_git_ahead(&self, count: usize) -> String;
     fn file_info_git_behind(&self, count: usize) -> String;
     fn file_info_git_ignored(&self) -> &str;
+    fn file_info_follow_symlink(&self) -> &str;
 
     // File types
     fn file_type_directory(&self) -> &str;

@@ -1178,6 +1178,10 @@ impl Translation for RuntimeTranslation {
         self.get_string("checkbox_executable")
     }
 
+    fn checkbox_create_symlink(&self) -> &str {
+        self.get_string("checkbox_create_symlink")
+    }
+
     fn size_bytes(&self) -> &str {
         self.get_string("size_bytes")
     }
@@ -1255,6 +1259,10 @@ impl Translation for RuntimeTranslation {
 
     fn file_info_git_ignored(&self) -> &str {
         self.get_string("file_info_git_ignored")
+    }
+
+    fn file_info_follow_symlink(&self) -> &str {
+        self.get_string("file_info_follow_symlink")
     }
 
     fn file_type_directory(&self) -> &str {

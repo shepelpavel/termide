@@ -26,6 +26,7 @@ use crate::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FocusArea {
     Input,
+    Checkbox,
     Buttons,
 }
 
@@ -39,6 +40,9 @@ pub struct InputModal {
     selected_button: usize, // 0 = OK, 1 = Cancel
     last_buttons_area: Option<Rect>,
     last_input_area: Option<Rect>,
+    checkbox_label: Option<String>,
+    checkbox_checked: bool,
+    last_checkbox_area: Option<Rect>,
 }
 
 impl InputModal {
@@ -52,6 +56,9 @@ impl InputModal {
             selected_button: 0, // OK button selected by default
             last_buttons_area: None,
             last_input_area: None,
+            checkbox_label: None,
+            checkbox_checked: false,
+            last_checkbox_area: None,
         }
     }
 
@@ -69,7 +76,21 @@ impl InputModal {
             selected_button: 0, // OK button selected by default
             last_buttons_area: None,
             last_input_area: None,
+            checkbox_label: None,
+            checkbox_checked: false,
+            last_checkbox_area: None,
         }
+    }
+
+    /// Add an optional checkbox to the modal
+    pub fn with_checkbox(mut self, label: String) -> Self {
+        self.checkbox_label = Some(label);
+        self
+    }
+
+    /// Whether the checkbox is checked
+    pub fn is_checkbox_checked(&self) -> bool {
+        self.checkbox_checked
     }
 
     /// Calculate dynamic modal width and height
@@ -78,9 +99,21 @@ impl InputModal {
         let prompt_width = max_line_width(&self.prompt);
         let buttons_width = 21u16; // "[ OK ]    [ Cancel ]"
         let input_width = self.input_handler.text().chars().count() as u16 + 20;
+        let checkbox_width = self
+            .checkbox_label
+            .as_ref()
+            .map(|l| max_line_width(&format!("[x] {}", l)))
+            .unwrap_or(0);
 
         let width = calculate_modal_width(
-            [title_width, prompt_width, buttons_width, input_width].into_iter(),
+            [
+                title_width,
+                prompt_width,
+                buttons_width,
+                input_width,
+                checkbox_width,
+            ]
+            .into_iter(),
             screen_width,
             ModalWidthConfig {
                 wide: false,
@@ -88,15 +121,51 @@ impl InputModal {
             },
         );
 
-        // Calculate height: border + prompt + input(3) + buttons + border
+        // Calculate height: border + prompt + input(3) + checkbox(0 or 1) + buttons + border
         let prompt_lines = if self.prompt.is_empty() {
             0
         } else {
             self.prompt.lines().count().max(1) as u16
         };
-        let height = (1 + prompt_lines + 3 + 1 + 1).min(screen_height);
+        let checkbox_height = if self.checkbox_label.is_some() { 1 } else { 0 };
+        let height = (1 + prompt_lines + 3 + checkbox_height + 1 + 1).min(screen_height);
 
         (width, height)
+    }
+
+    /// Whether this modal has a checkbox
+    fn has_checkbox(&self) -> bool {
+        self.checkbox_label.is_some()
+    }
+
+    /// Move focus to next element
+    fn focus_next(&mut self) {
+        self.focus = match self.focus {
+            FocusArea::Input => {
+                if self.has_checkbox() {
+                    FocusArea::Checkbox
+                } else {
+                    FocusArea::Buttons
+                }
+            }
+            FocusArea::Checkbox => FocusArea::Buttons,
+            FocusArea::Buttons => FocusArea::Input,
+        };
+    }
+
+    /// Move focus to previous element
+    fn focus_prev(&mut self) {
+        self.focus = match self.focus {
+            FocusArea::Input => FocusArea::Buttons,
+            FocusArea::Checkbox => FocusArea::Input,
+            FocusArea::Buttons => {
+                if self.has_checkbox() {
+                    FocusArea::Checkbox
+                } else {
+                    FocusArea::Input
+                }
+            }
+        };
     }
 }
 
@@ -112,25 +181,22 @@ impl Modal for InputModal {
 
         let inner = render_modal_block(modal_area, buf, &self.title, theme);
 
-        // Split into prompt (if not empty), input, and buttons
+        // Split into prompt (if not empty), input, checkbox (if present), and buttons
         let prompt_lines = if self.prompt.is_empty() {
             0
         } else {
             self.prompt.lines().count().max(1) as u16
         };
 
-        let constraints = if prompt_lines > 0 {
-            vec![
-                Constraint::Length(prompt_lines), // Prompt
-                Constraint::Length(3),            // Input
-                Constraint::Length(1),            // Buttons
-            ]
-        } else {
-            vec![
-                Constraint::Length(3), // Input
-                Constraint::Length(1), // Buttons
-            ]
-        };
+        let mut constraints = Vec::new();
+        if prompt_lines > 0 {
+            constraints.push(Constraint::Length(prompt_lines)); // Prompt
+        }
+        constraints.push(Constraint::Length(3)); // Input
+        if self.checkbox_label.is_some() {
+            constraints.push(Constraint::Length(1)); // Checkbox
+        }
+        constraints.push(Constraint::Length(1)); // Buttons
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -172,6 +238,25 @@ impl Modal for InputModal {
         );
         chunk_idx += 1;
 
+        // Render checkbox if present
+        if let Some(label) = &self.checkbox_label {
+            let checkbox_char = if self.checkbox_checked { "x" } else { " " };
+            let checkbox_style = if self.focus == FocusArea::Checkbox {
+                Style::default().fg(theme.accented_fg).bg(theme.bg)
+            } else {
+                Style::default().fg(theme.fg).bg(theme.bg)
+            };
+            let checkbox_text = format!("[{}] {}", checkbox_char, label);
+            let checkbox = Paragraph::new(checkbox_text)
+                .style(checkbox_style)
+                .alignment(Alignment::Left);
+            checkbox.render(chunks[chunk_idx], buf);
+            self.last_checkbox_area = Some(chunks[chunk_idx]);
+            chunk_idx += 1;
+        } else {
+            self.last_checkbox_area = None;
+        }
+
         // Render buttons
         let t = i18n::t();
 
@@ -203,6 +288,16 @@ impl Modal for InputModal {
             return Ok(Some(ModalResult::Cancelled));
         }
 
+        // Tab navigation (works from any focus)
+        if key.code == KeyCode::Tab {
+            self.focus_next();
+            return Ok(None);
+        }
+        if key.code == KeyCode::BackTab {
+            self.focus_prev();
+            return Ok(None);
+        }
+
         match self.focus {
             FocusArea::Input => {
                 // Try common input handling first
@@ -215,13 +310,49 @@ impl Modal for InputModal {
 
                 // Modal-specific handling
                 match key.code {
-                    KeyCode::Down | KeyCode::Tab => {
-                        // Move focus to buttons
-                        self.focus = FocusArea::Buttons;
+                    KeyCode::Down => {
+                        self.focus_next();
                         Ok(None)
                     }
                     KeyCode::Enter => {
                         // Confirm input (or cancel if empty)
+                        if self.input_handler.is_empty() {
+                            Ok(Some(ModalResult::Cancelled))
+                        } else {
+                            Ok(Some(ModalResult::Confirmed(
+                                self.input_handler.text().to_string(),
+                            )))
+                        }
+                    }
+                    _ => Ok(None),
+                }
+            }
+            FocusArea::Checkbox => {
+                // Space toggles checkbox — must come before handle_input_key which would eat it
+                if key.code == KeyCode::Char(' ') {
+                    self.checkbox_checked = !self.checkbox_checked;
+                    return Ok(None);
+                }
+
+                // Handle text input keys for quick typing
+                match handle_input_key(&mut self.input_handler, key) {
+                    InputKeyResult::Handled | InputKeyResult::TextModified => {
+                        self.focus = FocusArea::Input;
+                        return Ok(None);
+                    }
+                    InputKeyResult::NotHandled => {}
+                }
+
+                match key.code {
+                    KeyCode::Up => {
+                        self.focus = FocusArea::Input;
+                        Ok(None)
+                    }
+                    KeyCode::Down => {
+                        self.focus = FocusArea::Buttons;
+                        Ok(None)
+                    }
+                    KeyCode::Enter => {
                         if self.input_handler.is_empty() {
                             Ok(Some(ModalResult::Cancelled))
                         } else {
@@ -255,9 +386,8 @@ impl Modal for InputModal {
                         self.selected_button = if self.selected_button == 1 { 0 } else { 1 };
                         Ok(None)
                     }
-                    KeyCode::Up | KeyCode::BackTab => {
-                        // Move focus back to input
-                        self.focus = FocusArea::Input;
+                    KeyCode::Up => {
+                        self.focus_prev();
                         Ok(None)
                     }
                     KeyCode::Enter => {
@@ -301,6 +431,19 @@ impl Modal for InputModal {
                         let click_x = (mouse.column - input_area.x) as usize;
                         let char_pos = screen_x_to_char_pos(self.input_handler.text(), click_x);
                         self.input_handler.set_cursor_with_selection_start(char_pos);
+                        return Ok(None);
+                    }
+                }
+
+                // Check if click is on checkbox
+                if let Some(checkbox_area) = self.last_checkbox_area {
+                    if mouse.row >= checkbox_area.y
+                        && mouse.row < checkbox_area.y + checkbox_area.height
+                        && mouse.column >= checkbox_area.x
+                        && mouse.column < checkbox_area.x + checkbox_area.width
+                    {
+                        self.focus = FocusArea::Checkbox;
+                        self.checkbox_checked = !self.checkbox_checked;
                         return Ok(None);
                     }
                 }
