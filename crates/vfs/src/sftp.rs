@@ -600,13 +600,14 @@ impl SftpProvider {
                     )?;
                 } else {
                     let file_size = stat.size.unwrap_or(0);
+                    let file_name_owned = name_str.to_string();
 
                     // Send progress update before downloading
                     if let Some(tx) = tx_progress {
                         let _ = tx.send(DownloadProgress {
                             bytes_downloaded: *bytes_downloaded,
                             total_bytes,
-                            current_file: Some(name_str.to_string()),
+                            current_file: Some(file_name_owned.clone()),
                             files_downloaded: *files_downloaded,
                             total_files,
                             current_file_bytes: 0,
@@ -674,7 +675,7 @@ impl SftpProvider {
                                 let _ = tx.send(DownloadProgress {
                                     bytes_downloaded: *bytes_downloaded + current_file_bytes,
                                     total_bytes,
-                                    current_file: Some(name_str.to_string()),
+                                    current_file: Some(file_name_owned.clone()),
                                     files_downloaded: *files_downloaded,
                                     total_files,
                                     current_file_bytes,
@@ -823,14 +824,14 @@ impl SftpProvider {
                 )?;
             } else {
                 let file_size = metadata.len();
-                let name_str = file_name.to_string_lossy();
+                let file_name_owned = file_name.to_string_lossy().into_owned();
 
                 // Send progress update before uploading
                 if let Some(tx) = tx_progress {
                     let _ = tx.send(UploadProgress {
                         bytes_uploaded: *bytes_uploaded,
                         total_bytes,
-                        current_file: Some(name_str.to_string()),
+                        current_file: Some(file_name_owned.clone()),
                         files_uploaded: *files_uploaded,
                         total_files,
                         current_file_bytes: 0,
@@ -948,7 +949,7 @@ impl SftpProvider {
                             let _ = tx.send(UploadProgress {
                                 bytes_uploaded: *bytes_uploaded + current_file_bytes,
                                 total_bytes,
-                                current_file: Some(name_str.to_string()),
+                                current_file: Some(file_name_owned.clone()),
                                 files_uploaded: *files_uploaded,
                                 total_files,
                                 current_file_bytes,
@@ -1111,7 +1112,7 @@ impl VfsProvider for SftpProvider {
                 // Get home directory
                 let home_dir = sftp
                     .realpath(Path::new("."))
-                    .map(|p| p.to_string_lossy().to_string())
+                    .map(|p| p.to_string_lossy().into_owned())
                     .unwrap_or_else(|_| format!("/home/{}", username));
 
                 Ok((session, sftp, home_dir))
@@ -1174,7 +1175,7 @@ impl VfsProvider for SftpProvider {
             for (entry_path, stat) in dir {
                 let name = entry_path
                     .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
+                    .map(|n| n.to_string_lossy().into_owned())
                     .unwrap_or_default();
 
                 if name.is_empty() {
@@ -1442,7 +1443,7 @@ impl VfsProvider for SftpProvider {
                     let total_bytes = metadata.len();
                     let file_name = local_path
                         .file_name()
-                        .map(|n| n.to_string_lossy().to_string());
+                        .map(|n| n.to_string_lossy().into_owned());
 
                     // Send initial progress
                     let _ = tx_progress.send(UploadProgress {
@@ -1636,7 +1637,7 @@ impl VfsProvider for SftpProvider {
                     let file_size = stat.size.unwrap_or(0);
                     let file_name = remote_path
                         .file_name()
-                        .map(|n| n.to_string_lossy().to_string());
+                        .map(|n| n.to_string_lossy().into_owned());
 
                     // Send initial progress
                     let _ = tx_progress.send(DownloadProgress {

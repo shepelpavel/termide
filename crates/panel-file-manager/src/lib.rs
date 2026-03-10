@@ -161,25 +161,23 @@ fn determine_file_open_event(
 
 /// Selection state for file manager (multi-select and drag selection)
 #[derive(Clone, Default)]
-pub struct SelectionState {
+pub(crate) struct SelectionState {
     /// Set of selected items (indices)
-    pub items: HashSet<usize>,
+    pub(crate) items: HashSet<usize>,
     /// Starting index for drag selection
-    pub drag_start: Option<usize>,
+    pub(crate) drag_start: Option<usize>,
     /// Drag mode (Shift/Ctrl)
     drag_mode: Option<DragMode>,
     /// Set of items already processed during current drag (to avoid re-toggling)
-    pub dragged: HashSet<usize>,
+    pub(crate) dragged: HashSet<usize>,
 }
 
 impl SelectionState {
-    /// Clear all selection
-    pub fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.items.clear();
     }
 
-    /// Toggle item selection
-    pub fn toggle(&mut self, index: usize) {
+    pub(crate) fn toggle(&mut self, index: usize) {
         if self.items.contains(&index) {
             self.items.remove(&index);
         } else {
@@ -187,33 +185,15 @@ impl SelectionState {
         }
     }
 
-    /// Select an item
-    pub fn select(&mut self, index: usize) {
+    pub(crate) fn select(&mut self, index: usize) {
         self.items.insert(index);
     }
 
-    /// Deselect an item
-    pub fn deselect(&mut self, index: usize) {
-        self.items.remove(&index);
-    }
-
-    /// Check if item is selected
-    pub fn is_selected(&self, index: usize) -> bool {
+    pub(crate) fn is_selected(&self, index: usize) -> bool {
         self.items.contains(&index)
     }
 
-    /// Get count of selected items
-    pub fn count(&self) -> usize {
-        self.items.len()
-    }
-
-    /// Check if selection is empty
-    pub fn is_empty(&self) -> bool {
-        self.items.is_empty()
-    }
-
-    /// Start shift-drag selection
-    pub fn start_shift_drag(&mut self, index: usize) {
+    pub(crate) fn start_shift_drag(&mut self, index: usize) {
         self.dragged.clear();
         self.select(index);
         self.dragged.insert(index);
@@ -221,8 +201,7 @@ impl SelectionState {
         self.drag_mode = Some(DragMode::Select);
     }
 
-    /// Start ctrl-drag toggle selection
-    pub fn start_ctrl_drag(&mut self, index: usize) {
+    pub(crate) fn start_ctrl_drag(&mut self, index: usize) {
         self.toggle(index);
         self.drag_start = Some(index);
         self.drag_mode = Some(DragMode::Toggle);
@@ -230,30 +209,17 @@ impl SelectionState {
         self.dragged.insert(index);
     }
 
-    /// End drag selection
-    pub fn end_drag(&mut self) {
+    pub(crate) fn end_drag(&mut self) {
         self.drag_start = None;
         self.drag_mode = None;
         self.dragged.clear();
     }
 
-    /// Check if drag is active
-    pub fn is_dragging(&self) -> bool {
+    pub(crate) fn is_dragging(&self) -> bool {
         self.drag_mode.is_some()
     }
 
-    /// Check if shift-drag mode
-    pub fn is_shift_drag(&self) -> bool {
-        self.drag_mode == Some(DragMode::Select)
-    }
-
-    /// Check if ctrl-drag mode
-    pub fn is_ctrl_drag(&self) -> bool {
-        self.drag_mode == Some(DragMode::Toggle)
-    }
-
-    /// Process drag over item (returns true if item was processed)
-    pub fn process_drag(&mut self, index: usize) -> bool {
+    pub(crate) fn process_drag(&mut self, index: usize) -> bool {
         if !self.dragged.contains(&index) {
             match self.drag_mode {
                 Some(DragMode::Select) => {
@@ -272,22 +238,6 @@ impl SelectionState {
             false
         }
     }
-
-    /// Select range of items
-    pub fn select_range(&mut self, from: usize, to: usize) {
-        let (start, end) = if from <= to { (from, to) } else { (to, from) };
-        for i in start..=end {
-            self.items.insert(i);
-        }
-    }
-
-    /// Toggle range of items
-    pub fn toggle_range(&mut self, from: usize, to: usize) {
-        let (start, end) = if from <= to { (from, to) } else { (to, from) };
-        for i in start..=end {
-            self.toggle(i);
-        }
-    }
 }
 
 /// Navigation state for directory traversal (cursor restoration, debouncing).
@@ -298,20 +248,19 @@ impl SelectionState {
 /// - `last_reload_time`: Timestamp for debouncing rapid reload_directory() calls
 /// - `newly_created_item`: Name of newly created file/directory (for cursor positioning)
 #[derive(Clone, Default)]
-pub struct NavigationState {
+pub(crate) struct NavigationState {
     /// Name of directory we came from (for cursor restoration when going up)
-    pub previous_dir_name: Option<String>,
+    pub(crate) previous_dir_name: Option<String>,
     /// Flag indicating we're navigating down into a subdirectory (cursor should reset to 0)
-    pub navigating_down: bool,
+    pub(crate) navigating_down: bool,
     /// Last reload time for debouncing rapid reload_directory() calls
-    pub last_reload_time: Option<std::time::Instant>,
+    pub(crate) last_reload_time: Option<std::time::Instant>,
     /// Name of newly created item to navigate to after reload
-    pub newly_created_item: Option<String>,
+    pub(crate) newly_created_item: Option<String>,
 }
 
 impl NavigationState {
-    /// Create a new navigation state
-    pub const fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self {
             previous_dir_name: None,
             navigating_down: false,
@@ -320,24 +269,20 @@ impl NavigationState {
         }
     }
 
-    /// Save directory name before going up (for cursor restoration)
-    pub fn save_for_going_up(&mut self, dir_name: String) {
+    pub(crate) fn save_for_going_up(&mut self, dir_name: String) {
         self.previous_dir_name = Some(dir_name);
     }
 
-    /// Clear saved name and set flag for going down into subdirectory
-    pub fn prepare_for_going_down(&mut self) {
+    pub(crate) fn prepare_for_going_down(&mut self) {
         self.previous_dir_name = None;
         self.navigating_down = true;
     }
 
-    /// Take previous directory name (returns and clears it)
-    pub fn take_previous_dir_name(&mut self) -> Option<String> {
+    pub(crate) fn take_previous_dir_name(&mut self) -> Option<String> {
         self.previous_dir_name.take()
     }
 
-    /// Check and reset navigating_down flag, returns true if was navigating down
-    pub fn check_and_reset_navigating_down(&mut self) -> bool {
+    pub(crate) fn check_and_reset_navigating_down(&mut self) -> bool {
         if self.navigating_down {
             self.navigating_down = false;
             true
@@ -346,26 +291,22 @@ impl NavigationState {
         }
     }
 
-    /// Check if reload should be skipped due to debounce
-    /// Returns true if enough time has passed since last reload
-    pub fn should_reload(&mut self, debounce_ms: u128) -> bool {
+    pub(crate) fn should_reload(&mut self, debounce_ms: u128) -> bool {
         let now = std::time::Instant::now();
         if let Some(last) = self.last_reload_time {
             if now.duration_since(last).as_millis() < debounce_ms {
-                return false; // Skip rapid reloads
+                return false;
             }
         }
         self.last_reload_time = Some(now);
         true
     }
 
-    /// Set newly created item name (for cursor navigation after reload)
-    pub fn set_newly_created(&mut self, name: String) {
+    pub(crate) fn set_newly_created(&mut self, name: String) {
         self.newly_created_item = Some(name);
     }
 
-    /// Take newly created item name (returns and clears it)
-    pub fn take_newly_created(&mut self) -> Option<String> {
+    pub(crate) fn take_newly_created(&mut self) -> Option<String> {
         self.newly_created_item.take()
     }
 }
@@ -448,6 +389,11 @@ impl FileEntry {
 }
 
 impl FileManager {
+    /// Find entry index by name
+    fn find_entry_index(&self, name: &str) -> Option<usize> {
+        self.entries.iter().position(|e| e.name == name)
+    }
+
     /// Create a new smart file manager
     pub fn new() -> Self {
         let current_path = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
@@ -693,7 +639,7 @@ impl FileManager {
             // Find and select the file in the list
             if let Some(file_name) = path.file_name() {
                 let name_str = file_name.to_string_lossy();
-                if let Some(idx) = self.entries.iter().position(|e| e.name == name_str) {
+                if let Some(idx) = self.find_entry_index(&name_str) {
                     self.selected = idx;
                     self.adjust_scroll_offset(self.visible_height);
                 }
@@ -704,7 +650,7 @@ impl FileManager {
     /// Select an entry by name in the current directory
     pub fn select_by_name(&mut self, name: &std::ffi::OsStr) {
         let name_str = name.to_string_lossy();
-        if let Some(idx) = self.entries.iter().position(|e| e.name == name_str) {
+        if let Some(idx) = self.find_entry_index(&name_str) {
             self.selected = idx;
             self.adjust_scroll_offset(self.visible_height);
         }
@@ -776,7 +722,7 @@ impl FileManager {
         // Priority: newly created item > navigating down > normal restoration
         if let Some(created_name) = self.navigation.take_newly_created() {
             // Navigate to newly created/copied item (highest priority)
-            if let Some(idx) = self.entries.iter().position(|e| e.name == created_name) {
+            if let Some(idx) = self.find_entry_index(&created_name) {
                 self.selected = idx;
                 // Ensure cursor is visible in viewport
                 if self.visible_height > 0 {
@@ -791,7 +737,7 @@ impl FileManager {
             self.selected = 0;
             self.scroll_offset = 0;
         } else if let Some(name) = current_name {
-            if let Some(pos) = self.entries.iter().position(|e| e.name == name) {
+            if let Some(pos) = self.find_entry_index(&name) {
                 // Found file by name - restore to its position
                 self.selected = pos;
             } else if !self.entries.is_empty() {
@@ -989,7 +935,7 @@ impl FileManager {
         // Priority: newly created item > navigating down > normal restoration
         if let Some(created_name) = self.navigation.take_newly_created() {
             // Navigate to newly created item (highest priority)
-            if let Some(idx) = self.entries.iter().position(|e| e.name == created_name) {
+            if let Some(idx) = self.find_entry_index(&created_name) {
                 self.selected = idx;
                 // Ensure cursor is visible
                 if self.visible_height > 0 {
@@ -1004,7 +950,7 @@ impl FileManager {
             self.selected = 0;
             self.scroll_offset = 0;
         } else if let Some(name) = current_name {
-            if let Some(pos) = self.entries.iter().position(|e| e.name == name) {
+            if let Some(pos) = self.find_entry_index(&name) {
                 // Found file by name - restore to its position
                 self.selected = pos;
             } else if !self.entries.is_empty() {

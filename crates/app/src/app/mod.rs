@@ -37,6 +37,7 @@ mod modal;
 mod modal_handler;
 mod mouse_handler;
 mod operation_manager_handler;
+mod panel_factory;
 mod panel_manager;
 mod panel_operations;
 mod session;

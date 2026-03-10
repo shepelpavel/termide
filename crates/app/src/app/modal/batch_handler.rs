@@ -1125,12 +1125,13 @@ impl App {
         // For remote URLs, PathBuf::is_dir() returns false, so standard
         // resolve functions don't work; compute the path component directly.
         let final_dest = if operation.rename_pattern.is_some() {
-            // Apply rename pattern
+            // Apply rename pattern (get mutable counter first, then borrow pattern)
             let counter = operation.get_and_increment_rename_counter();
             let metadata = source.metadata().ok();
             let created = metadata.as_ref().and_then(|m| m.created().ok());
             let modified = metadata.as_ref().and_then(|m| m.modified().ok());
 
+            // SAFETY: checked is_some() above; unwrap is safe
             let pattern = operation.rename_pattern.as_ref().unwrap();
             let new_name = pattern.apply(&item_name, counter, created, modified);
 
