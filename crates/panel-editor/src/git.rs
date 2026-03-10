@@ -147,20 +147,42 @@ pub fn check_pending_git_diff_update(
     (false, pending_time) // No update, keep pending time
 }
 
-/// Get line number color based on git status only.
+/// Approximate relative luminance (ITU-R BT.601) for a ratatui Color.
+fn color_luminance(color: Color) -> f32 {
+    match color {
+        Color::Rgb(r, g, b) => 0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32,
+        _ => 128.0, // fallback for named colors
+    }
+}
+
+/// Pick fg that contrasts better with the given bg from two candidates.
+fn pick_contrasting_fg(bg: Color, a: Color, b: Color) -> Color {
+    let bg_lum = color_luminance(bg);
+    let diff_a = (color_luminance(a) - bg_lum).abs();
+    let diff_b = (color_luminance(b) - bg_lum).abs();
+    if diff_a >= diff_b {
+        a
+    } else {
+        b
+    }
+}
+
+/// Get line number style based on git status.
 ///
-/// Returns the color for the line number (not the marker).
-/// - Green for added lines
-/// - Yellow for modified lines
-/// - Default/disabled for unchanged lines
-pub fn get_line_number_color(
+/// Returns (fg_color, bg_color) for the line number.
+/// - Green bg for added lines
+/// - Yellow bg for modified lines
+/// - No bg for unchanged lines
+///
+/// fg is chosen from theme.fg / theme.bg for best contrast against git bg.
+pub fn get_line_number_git_style(
     line_idx: usize,
     git_diff_cache: &Option<GitDiffCache>,
     show_git_diff: bool,
     theme: &Theme,
-) -> Color {
+) -> (Color, Option<Color>) {
     if !show_git_diff {
-        return theme.disabled;
+        return (theme.disabled, None);
     }
 
     git_diff_cache
@@ -168,13 +190,19 @@ pub fn get_line_number_color(
         .map(|cache| {
             let status = cache.get_line_status(line_idx);
             match status {
-                LineStatus::Added => theme.success,
-                LineStatus::Modified => theme.warning,
-                LineStatus::Unchanged => theme.disabled,
-                LineStatus::DeletedAfter => theme.disabled,
+                LineStatus::Added => {
+                    let fg = pick_contrasting_fg(theme.success, theme.fg, theme.bg);
+                    (fg, Some(theme.success))
+                }
+                LineStatus::Modified => {
+                    let fg = pick_contrasting_fg(theme.warning, theme.fg, theme.bg);
+                    (fg, Some(theme.warning))
+                }
+                LineStatus::Unchanged => (theme.disabled, None),
+                LineStatus::DeletedAfter => (theme.disabled, None),
             }
         })
-        .unwrap_or(theme.disabled)
+        .unwrap_or((theme.disabled, None))
 }
 
 /// Get git status marker (for backward compatibility).

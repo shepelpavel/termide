@@ -33,6 +33,9 @@ pub fn load_original_async(file_path: PathBuf) -> mpsc::Receiver<GitDiffAsyncRes
 /// Synchronous function to load original content from HEAD
 /// Extracted for use in background thread
 fn load_original_from_head_sync(file_path: &std::path::Path) -> Option<String> {
+    // Canonicalize to resolve symlinks (git returns canonical paths)
+    let file_path = &std::fs::canonicalize(file_path).unwrap_or_else(|_| file_path.to_path_buf());
+
     // Get git root
     let git_root_output = Command::new("git")
         .arg("rev-parse")
@@ -178,6 +181,9 @@ pub struct GitDiffCache {
 impl GitDiffCache {
     /// Create new git diff cache for a file
     pub fn new(file_path: PathBuf) -> Self {
+        // Canonicalize to resolve symlinks — git rev-parse returns canonical paths,
+        // so file_path must match for strip_prefix to work.
+        let file_path = std::fs::canonicalize(&file_path).unwrap_or(file_path);
         Self {
             file_path,
             line_statuses: HashMap::new(),
@@ -464,30 +470,48 @@ fn compute_line_statuses_from_textdiff<'a>(diff: &TextDiff<'a, 'a, 'a, str>) -> 
                 i += 1;
             }
             ChangeTag::Delete => {
-                // Check if immediately followed by Insert (indicating modification)
-                if i + 1 < changes.len() && changes[i + 1].tag() == ChangeTag::Insert {
-                    // Modification: pair this Delete with the next Insert
+                // Count consecutive deletions
+                let mut delete_count = 0;
+                let delete_start_old = old_idx;
+                while i + delete_count < changes.len()
+                    && changes[i + delete_count].tag() == ChangeTag::Delete
+                {
+                    delete_count += 1;
+                }
+
+                // Count consecutive inserts immediately after the deletions
+                let mut insert_count = 0;
+                while i + delete_count + insert_count < changes.len()
+                    && changes[i + delete_count + insert_count].tag() == ChangeTag::Insert
+                {
+                    insert_count += 1;
+                }
+
+                // Pair deletes with inserts as Modified lines
+                let paired = delete_count.min(insert_count);
+                for p in 0..paired {
                     statuses.insert(new_idx, LineStatus::Modified);
-                    // Store mapping: new_idx -> old_idx
-                    modified_mapping.insert(new_idx, old_idx);
+                    modified_mapping.insert(new_idx, delete_start_old + p);
                     new_idx += 1;
                     old_idx += 1;
-                    i += 2; // Skip both Delete and Insert
-                } else {
-                    // Count consecutive deletions
-                    let mut deletion_count = 0;
-                    while i < changes.len() && changes[i].tag() == ChangeTag::Delete {
-                        deletion_count += 1;
-                        old_idx += 1;
-                        i += 1;
-                    }
-
-                    // Place deletion marker after previous line with deletion count
-                    let marker_line_idx = if new_idx > 0 { new_idx - 1 } else { 0 };
-                    deleted_after.insert(marker_line_idx, deletion_count);
-
-                    // new_idx stays the same (no new lines added)
                 }
+
+                // Remaining unpaired deletes → deletion marker
+                let unpaired_deletes = delete_count - paired;
+                if unpaired_deletes > 0 {
+                    old_idx += unpaired_deletes;
+                    let marker_line_idx = if new_idx > 0 { new_idx - 1 } else { 0 };
+                    deleted_after.insert(marker_line_idx, unpaired_deletes);
+                }
+
+                // Remaining unpaired inserts → Added lines
+                let unpaired_inserts = insert_count - paired;
+                for _ in 0..unpaired_inserts {
+                    statuses.insert(new_idx, LineStatus::Added);
+                    new_idx += 1;
+                }
+
+                i += delete_count + insert_count;
             }
             ChangeTag::Insert => {
                 // Pure insertion - only new index increments
@@ -666,5 +690,49 @@ mod tests {
         assert_eq!(changes.len(), 1);
         assert_eq!(changes[0].change_type, InlineChangeType::Unchanged);
         assert_eq!(changes[0].text, text);
+    }
+
+    #[test]
+    fn test_multiple_consecutive_modified_lines() {
+        let original = "line1\noriginal A\noriginal B\noriginal C\nline5\n";
+        let current = "line1\nmodified A\nmodified B\nmodified C\nline5\n";
+
+        let diff = similar::TextDiff::from_lines(original, current);
+        let result = compute_line_statuses_from_textdiff(&diff);
+
+        // All 3 lines should be Modified, not DeletedAfter + Added
+        assert_eq!(result.statuses.get(&1), Some(&LineStatus::Modified));
+        assert_eq!(result.statuses.get(&2), Some(&LineStatus::Modified));
+        assert_eq!(result.statuses.get(&3), Some(&LineStatus::Modified));
+        assert!(result.deleted_after.is_empty());
+    }
+
+    #[test]
+    fn test_more_deletes_than_inserts() {
+        // 3 lines replaced by 1 line: 3 Del + 1 Ins → 1 Modified + 2 deleted
+        let original = "line1\nold A\nold B\nold C\nline5\n";
+        let current = "line1\nnew A\nline5\n";
+
+        let diff = similar::TextDiff::from_lines(original, current);
+        let result = compute_line_statuses_from_textdiff(&diff);
+
+        assert_eq!(result.statuses.get(&1), Some(&LineStatus::Modified));
+        // 2 unpaired deletions after Modified line (index 1)
+        assert_eq!(result.deleted_after.get(&1), Some(&2));
+    }
+
+    #[test]
+    fn test_more_inserts_than_deletes() {
+        // 1 line replaced by 3 lines: 1 Del + 3 Ins → 1 Modified + 2 Added
+        let original = "line1\nold A\nline3\n";
+        let current = "line1\nnew A\nnew B\nnew C\nline3\n";
+
+        let diff = similar::TextDiff::from_lines(original, current);
+        let result = compute_line_statuses_from_textdiff(&diff);
+
+        assert_eq!(result.statuses.get(&1), Some(&LineStatus::Modified));
+        assert_eq!(result.statuses.get(&2), Some(&LineStatus::Added));
+        assert_eq!(result.statuses.get(&3), Some(&LineStatus::Added));
+        assert!(result.deleted_after.is_empty());
     }
 }

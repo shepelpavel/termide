@@ -131,11 +131,15 @@ fn render_line_gutter(
     theme: &Theme,
 ) {
     // Get separate colors for line number and LSP marker
-    let line_num_color = git::get_line_number_color(line_idx, git_diff_cache, show_git_diff, theme);
+    let (line_num_fg, line_num_bg) =
+        git::get_line_number_git_style(line_idx, git_diff_cache, show_git_diff, theme);
     let lsp_marker = git::get_lsp_marker(diagnostic_severity, theme);
 
-    // Render line number (4 chars) with git color — write digits directly to avoid format!()
-    let line_num_style = Style::default().fg(line_num_color);
+    // Render line number (4 chars) with git bg color — write digits directly to avoid format!()
+    let mut line_num_style = Style::default().fg(line_num_fg);
+    if let Some(bg) = line_num_bg {
+        line_num_style = line_num_style.bg(bg);
+    }
     let mut num_buf = [0u8; 20];
     let num_str = super::itoa_right_align::<4>(line_idx + 1, &mut num_buf);
 

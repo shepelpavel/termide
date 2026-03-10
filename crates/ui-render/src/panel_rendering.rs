@@ -317,9 +317,9 @@ pub fn render_collapsed_panel(
 
     // Buttons: [X] icon with emoji, or [X] in unicode mode
     let buttons = if use_emoji_icons() {
-        format!("[X] {} ", panel_icon(panel.name()))
+        format!("[X] {}", panel_icon(panel.name()))
     } else {
-        "[X] ".to_string()
+        "[X]".to_string()
     };
     let buttons_width = buttons.width() as u16;
 
