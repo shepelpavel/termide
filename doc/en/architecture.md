@@ -164,6 +164,7 @@ pub trait Panel {
 - Full PTY (pseudo-terminal) support
 - Shell integration
 - Scrollback buffer
+- Text search across scrollback and visible buffer (`Searchable` trait)
 - ANSI color support
 - Resize handling
 

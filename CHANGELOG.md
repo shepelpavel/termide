@@ -5,6 +5,17 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.1] - 2026-03-11
+
+### Added
+- **Terminal**: Text search with `Ctrl+F` — search across scrollback buffer and visible screen with match highlighting, navigation, and auto-scroll
+- **Core**: `Searchable` trait for unified search across Editor, Journal, and Terminal panels
+- **Search Modal**: Button focus area with keyboard navigation (Down/Up to switch, Left/Right between buttons)
+
+### Fixed
+- **Terminal**: Default search keybinding changed from `Ctrl+Shift+F` to `Ctrl+F` — host terminals (GNOME Terminal, etc.) intercept `Ctrl+Shift+F`
+- **Journal**: Auto-scroll suppressed during active search to keep viewport on current match
+
 ## [0.15.0] - 2026-03-10
 
 ### Added

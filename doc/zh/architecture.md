@@ -164,6 +164,7 @@ pub trait Panel {
 - 完整的 PTY（伪终端）支持
 - Shell 集成
 - 回滚缓冲区
+- 跨滚动缓冲区和可见缓冲区的文本搜索（`Searchable` trait）
 - ANSI 颜色支持
 - 调整大小处理
 
