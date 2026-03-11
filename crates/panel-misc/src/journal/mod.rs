@@ -134,8 +134,8 @@ impl Panel for JournalPanel {
         // Sync new log entries
         self.sync_logs();
 
-        // Auto-scroll if enabled (word-wrap aware)
-        if self.auto_scroll && area.height > 0 {
+        // Auto-scroll if enabled, but not when search is active (viewport must follow search cursor)
+        if self.auto_scroll && area.height > 0 && self.editor.get_search_match_info().is_none() {
             self.scroll_to_end();
         }
 

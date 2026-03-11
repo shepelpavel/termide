@@ -449,9 +449,9 @@ impl App {
     /// Handle search result
     fn handle_search(&mut self, value: Box<dyn std::any::Any>) -> Result<()> {
         if let Some(query) = value.downcast_ref::<String>() {
-            // Start search in active editor (case insensitive by default)
-            if let Some(editor) = self.active_searchable_editor_mut() {
-                editor.start_search(query.clone(), false);
+            // Start search in active panel (case insensitive by default)
+            if let Some(searchable) = self.active_searchable_mut() {
+                searchable.start_search(query.clone(), false);
             }
         }
         Ok(())
@@ -507,20 +507,20 @@ impl App {
 
     /// Handle search action from SearchModal
     fn handle_search_action(&mut self, search_result: &SearchModalResult) -> Result<()> {
-        // Get active editor
-        if let Some(editor) = self.active_searchable_editor_mut() {
+        // Get active searchable panel (Editor, Journal, or Terminal)
+        if let Some(searchable) = self.active_searchable_mut() {
             match search_result.action {
                 SearchAction::Search => {
                     // Perform new search (or update existing)
-                    editor.start_search(search_result.query.clone(), false);
+                    searchable.start_search(search_result.query.clone(), false);
                 }
                 SearchAction::Next => {
                     // Navigate to next match
-                    editor.search_next();
+                    searchable.search_next();
                 }
                 SearchAction::Previous => {
                     // Navigate to previous match
-                    editor.search_prev();
+                    searchable.search_prev();
                 }
                 SearchAction::CloseWithSelection => {
                     // Just ensure search is active (will be handled by modal close logic)
@@ -538,15 +538,15 @@ impl App {
     ) -> SearchReplaceResult {
         if let ModalResult::Confirmed(value) = result {
             if let Some(search_result) = value.downcast_ref::<SearchModalResult>() {
-                // Handle search action in editor
+                // Handle search action in active searchable panel
                 if self.handle_search_action(search_result).is_err() {
                     return SearchReplaceResult::Close;
                 }
 
-                // Get match info from active editor
+                // Get match info from active searchable panel
                 let match_info = self
-                    .active_searchable_editor_mut()
-                    .and_then(|editor| editor.get_search_match_info());
+                    .active_searchable_mut()
+                    .and_then(|s| s.get_search_match_info());
 
                 // Check if we should close modal
                 if matches!(search_result.action, SearchAction::CloseWithSelection) {
@@ -673,8 +673,8 @@ impl App {
                 }
                 SearchReplaceResult::Cancelled => {
                     self.state.close_modal();
-                    if let Some(editor) = self.active_searchable_editor_mut() {
-                        editor.close_search();
+                    if let Some(searchable) = self.active_searchable_mut() {
+                        searchable.close_search();
                     }
                     return Some(());
                 }
@@ -691,6 +691,7 @@ impl App {
                 }
                 SearchReplaceResult::Cancelled => {
                     self.state.close_modal();
+                    // Replace is editor-only, use editor downcast
                     if let Some(editor) = self.active_searchable_editor_mut() {
                         editor.close_search();
                     }

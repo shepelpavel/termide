@@ -36,11 +36,24 @@ use vte::Parser;
 
 use termide_config::{matches_binding_or_default, Config, TerminalKeybindings};
 use termide_core::{
-    get_terminal_caps, CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel,
-    WidthPreference,
+    get_terminal_caps, CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, Searchable,
+    SessionPanel, WidthPreference,
 };
 use termide_theme::Theme;
 use termide_ui::ScrollBar;
+
+/// State for terminal text search across scrollback and visible buffer.
+struct TerminalSearchState {
+    /// Search query (kept for re-search when scrollback changes).
+    #[allow(dead_code)]
+    query: String,
+    /// Case sensitivity flag (kept for re-search).
+    #[allow(dead_code)]
+    case_sensitive: bool,
+    /// Matches: (absolute_row, column_start, match_length)
+    matches: Vec<(usize, usize, usize)>,
+    current_match: Option<usize>,
+}
 
 /// Full-featured terminal with PTY
 pub struct Terminal {
@@ -83,6 +96,8 @@ pub struct Terminal {
     hovered_link: Option<(LinkType, Vec<HighlightSegment>)>,
     /// Whether Ctrl key is pressed (tracked for link highlighting)
     ctrl_pressed: bool,
+    /// Search state for Ctrl+Shift+F text search
+    search_state: Option<TerminalSearchState>,
     /// Selection drag is active (left button held during selection).
     selection_drag_active: bool,
     /// Last mouse position in screen coordinates for auto-scroll.
@@ -192,6 +207,7 @@ impl Terminal {
             cached_use_alt_screen: false,
             hovered_link: None,
             ctrl_pressed: false,
+            search_state: None,
             selection_drag_active: false,
             last_mouse_position: None,
             panel_bounds: None,
@@ -664,9 +680,11 @@ impl Terminal {
         // - Cursor position hasn't changed (BS/CR move cursor without dirty flag)
         // - No active selection (selection changes without dirty flag)
         // - We have cached lines
+        let has_search = self.search_state.is_some();
         if !is_dirty
             && self.cached_focus == show_cursor
             && !has_selection
+            && !has_search
             && current_cursor == self.cached_cursor
         {
             if let Some(ref cached) = self.cached_lines {
@@ -800,6 +818,45 @@ impl Terminal {
             }
         };
 
+        // Pre-index search matches by row for O(1) lookup per cell
+        // Maps abs_row -> Vec<(col_start, col_end, is_current_match)>
+        let search_matches_by_row: HashMap<usize, Vec<(usize, usize, bool)>> =
+            if let Some(ref search) = self.search_state {
+                let mut map: HashMap<usize, Vec<(usize, usize, bool)>> = HashMap::new();
+                for (idx, &(abs_row, col_start, match_len)) in search.matches.iter().enumerate() {
+                    let is_current = search.current_match == Some(idx);
+                    map.entry(abs_row).or_default().push((
+                        col_start,
+                        col_start + match_len,
+                        is_current,
+                    ));
+                }
+                map
+            } else {
+                HashMap::new()
+            };
+
+        // Helper to check if cell is in a search match
+        // Returns: None = not in match, Some(true) = current match, Some(false) = other match
+        let is_in_search_match = |visual_row: usize, col: usize| -> Option<bool> {
+            if search_matches_by_row.is_empty() {
+                return None;
+            }
+            let abs_row = if scrollback_slice {
+                view_start + visual_row
+            } else {
+                scrollback_len + visual_row
+            };
+            if let Some(ranges) = search_matches_by_row.get(&abs_row) {
+                for &(start, end, is_current) in ranges {
+                    if col >= start && col < end {
+                        return Some(is_current);
+                    }
+                }
+            }
+            None
+        };
+
         // Render directly from screen buffer (zero-copy)
         for row_idx in 0..visible_rows {
             // Get row reference without cloning
@@ -867,6 +924,17 @@ impl Terminal {
                 // Check if cell is in hovered URL (Ctrl+hover) - use warning color
                 if is_in_url(row_idx, col_idx) {
                     style = Style::default().fg(theme.bg).bg(theme.warning);
+                }
+
+                // Check if cell is in a search match
+                if let Some(is_current) = is_in_search_match(row_idx, col_idx) {
+                    if is_current {
+                        // Current match: accented foreground background
+                        style = Style::default().fg(theme.bg).bg(theme.accented_fg);
+                    } else {
+                        // Other matches: warning background
+                        style = Style::default().fg(theme.bg).bg(theme.warning);
+                    }
                 }
 
                 // If this is cursor position and needs showing, use inverse colors
@@ -981,6 +1049,190 @@ impl Terminal {
             }
         }
         "shell".to_string()
+    }
+
+    /// Scroll the terminal view to center the given absolute row.
+    fn scroll_to_abs_row(&mut self, abs_row: usize) {
+        let screen = self.read_screen();
+        let scrollback_len = screen.scrollback.len();
+        let visible_rows = screen.rows;
+        let total_lines = scrollback_len + visible_rows;
+        drop(screen);
+
+        // Calculate scroll_offset to center abs_row in viewport
+        // scroll_offset = distance from bottom of total content to bottom of viewport
+        let target_bottom = abs_row + visible_rows / 2 + 1;
+        if target_bottom >= total_lines {
+            // Row is in or near the active buffer — no scroll needed
+            self.write_screen().scroll_offset = 0;
+        } else {
+            let offset = total_lines - target_bottom;
+            let mut screen = self.write_screen();
+            screen.scroll_offset = offset.min(scrollback_len);
+        }
+    }
+
+    /// Find all search matches in scrollback + visible buffer.
+    fn find_matches(
+        screen: &TerminalScreen,
+        query: &str,
+        case_sensitive: bool,
+    ) -> Vec<(usize, usize, usize)> {
+        let mut matches = Vec::new();
+        let scrollback_len = screen.scrollback.len();
+        let total_lines = scrollback_len + screen.rows;
+
+        let query_lower = if case_sensitive {
+            query.to_string()
+        } else {
+            query.to_lowercase()
+        };
+
+        for abs_row in 0..total_lines {
+            let Some(row) = screen.get_line_by_absolute(abs_row) else {
+                continue;
+            };
+
+            // Extract text from cells
+            let line_text: String = row.iter().map(|c| c.ch).collect();
+            let search_text = if case_sensitive {
+                line_text.clone()
+            } else {
+                line_text.to_lowercase()
+            };
+
+            // Find all occurrences in this line
+            let mut start = 0;
+            while let Some(pos) = search_text[start..].find(&query_lower) {
+                let col = start + pos;
+                matches.push((abs_row, col, query_lower.len()));
+                start = col + 1;
+                if start >= search_text.len() {
+                    break;
+                }
+            }
+        }
+        matches
+    }
+}
+
+impl Searchable for Terminal {
+    fn start_search(&mut self, query: String, case_sensitive: bool) {
+        if query.is_empty() {
+            self.search_state = None;
+            self.cached_lines = None;
+            return;
+        }
+
+        let screen = self.read_screen();
+        let matches = Self::find_matches(&screen, &query, case_sensitive);
+        let scrollback_len = screen.scrollback.len();
+        let visible_rows = screen.rows;
+        let scroll_offset = screen.scroll_offset;
+        drop(screen);
+
+        // Find nearest match to current viewport
+        let current_match = if matches.is_empty() {
+            None
+        } else {
+            // Calculate what absolute row is at the center of the viewport
+            let total_lines = scrollback_len + visible_rows;
+            let view_bottom = total_lines.saturating_sub(scroll_offset);
+            let view_center = view_bottom.saturating_sub(visible_rows / 2);
+
+            // Find the match closest to the center of current viewport
+            let idx = matches
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, (row, _, _))| {
+                    (*row as isize - view_center as isize).unsigned_abs()
+                })
+                .map(|(i, _)| i);
+            idx
+        };
+
+        self.search_state = Some(TerminalSearchState {
+            query,
+            case_sensitive,
+            matches,
+            current_match,
+        });
+
+        // Scroll to current match
+        if let Some(idx) = current_match {
+            if let Some(state) = &self.search_state {
+                let abs_row = state.matches[idx].0;
+                self.scroll_to_abs_row(abs_row);
+            }
+        }
+
+        self.cached_lines = None;
+    }
+
+    fn search_next(&mut self) {
+        let should_scroll = if let Some(ref mut state) = self.search_state {
+            if state.matches.is_empty() {
+                false
+            } else {
+                let next = match state.current_match {
+                    Some(idx) => (idx + 1) % state.matches.len(),
+                    None => 0,
+                };
+                state.current_match = Some(next);
+                true
+            }
+        } else {
+            false
+        };
+
+        if should_scroll {
+            if let Some(ref state) = self.search_state {
+                if let Some(idx) = state.current_match {
+                    let abs_row = state.matches[idx].0;
+                    self.scroll_to_abs_row(abs_row);
+                }
+            }
+            self.cached_lines = None;
+        }
+    }
+
+    fn search_prev(&mut self) {
+        let should_scroll = if let Some(ref mut state) = self.search_state {
+            if state.matches.is_empty() {
+                false
+            } else {
+                let prev = match state.current_match {
+                    Some(0) => state.matches.len() - 1,
+                    Some(idx) => idx - 1,
+                    None => state.matches.len() - 1,
+                };
+                state.current_match = Some(prev);
+                true
+            }
+        } else {
+            false
+        };
+
+        if should_scroll {
+            if let Some(ref state) = self.search_state {
+                if let Some(idx) = state.current_match {
+                    let abs_row = state.matches[idx].0;
+                    self.scroll_to_abs_row(abs_row);
+                }
+            }
+            self.cached_lines = None;
+        }
+    }
+
+    fn close_search(&mut self) {
+        self.search_state = None;
+        self.cached_lines = None;
+    }
+
+    fn get_search_match_info(&self) -> Option<(usize, usize)> {
+        self.search_state
+            .as_ref()
+            .and_then(|state| state.current_match.map(|idx| (idx, state.matches.len())))
     }
 }
 
@@ -1107,6 +1359,13 @@ impl Panel for Terminal {
         ) {
             let _ = self.copy_selection_to_clipboard();
             return vec![];
+        }
+
+        // Search (Ctrl+F)
+        if matches_binding_or_default(&kb.search, &key, KeyCode::Char('f'), KeyModifiers::CONTROL) {
+            return vec![PanelEvent::ShowSearch {
+                initial_query: None,
+            }];
         }
 
         // Scroll up (Shift+PageUp)

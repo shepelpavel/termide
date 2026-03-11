@@ -9,9 +9,33 @@
 use anyhow::Result;
 use termide_buffer::SearchState;
 
+use termide_core::Searchable;
+
 use crate::search;
 
 use super::Editor;
+
+impl Searchable for Editor {
+    fn start_search(&mut self, query: String, case_sensitive: bool) {
+        self.start_search(query, case_sensitive);
+    }
+
+    fn search_next(&mut self) {
+        self.search_next();
+    }
+
+    fn search_prev(&mut self) {
+        self.search_prev();
+    }
+
+    fn close_search(&mut self) {
+        self.close_search();
+    }
+
+    fn get_search_match_info(&self) -> Option<(usize, usize)> {
+        self.get_search_match_info()
+    }
+}
 
 impl Editor {
     // =========================================================================

@@ -654,6 +654,32 @@ impl App {
         }
     }
 
+    /// Get mutable reference to any Searchable panel (Editor, Journal, Terminal).
+    fn active_searchable_mut(&mut self) -> Option<&mut dyn termide_core::Searchable> {
+        let panel = self.layout_manager.active_panel_mut()?;
+        let is_editor = panel.as_any().is::<termide_panel_editor::Editor>();
+        let is_journal = panel.as_any().is::<termide_panel_misc::JournalPanel>();
+        let is_terminal = panel.as_any().is::<termide_panel_terminal::Terminal>();
+        if is_editor {
+            panel
+                .as_any_mut()
+                .downcast_mut::<termide_panel_editor::Editor>()
+                .map(|e| e as &mut dyn termide_core::Searchable)
+        } else if is_journal {
+            panel
+                .as_any_mut()
+                .downcast_mut::<termide_panel_misc::JournalPanel>()
+                .map(|j| j.editor_mut() as &mut dyn termide_core::Searchable)
+        } else if is_terminal {
+            panel
+                .as_any_mut()
+                .downcast_mut::<termide_panel_terminal::Terminal>()
+                .map(|t| t as &mut dyn termide_core::Searchable)
+        } else {
+            None
+        }
+    }
+
     /// Get reference to AppState
     pub fn state(&self) -> &AppState {
         &self.state

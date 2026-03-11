@@ -307,6 +307,7 @@ pub struct TerminalKeybindings {
     pub scroll_down: Option<KeyBinding>,
     pub scroll_top: Option<KeyBinding>,
     pub scroll_bottom: Option<KeyBinding>,
+    pub search: Option<KeyBinding>,
 }
 
 // =============================================================================
@@ -522,6 +523,7 @@ impl TerminalKeybindings {
         set_default!(scroll_down, "Shift+PageDown");
         set_default!(scroll_top, "Shift+Home");
         set_default!(scroll_bottom, "Shift+End");
+        set_default!(search, "Ctrl+F");
     }
 }
 

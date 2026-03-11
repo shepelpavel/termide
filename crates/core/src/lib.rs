@@ -14,7 +14,9 @@ pub use event::{
     ConfirmAction, ConflictResolution, Event, EventHandler, GitOperationType, InputAction,
     PanelEvent, SelectAction, SplitDirection, VimPanelDirection,
 };
-pub use panel::{Panel, PanelConfig, RenderContext, SessionPanel, ThemeColors, WidthPreference};
+pub use panel::{
+    Panel, PanelConfig, RenderContext, Searchable, SessionPanel, ThemeColors, WidthPreference,
+};
 pub use terminal_caps::{
     get_terminal_caps, init_icon_mode, init_terminal_caps, use_emoji_icons, ColorDepth,
     TerminalCaps,

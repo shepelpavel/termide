@@ -131,6 +131,24 @@ impl From<&Theme> for ThemeColors {
     }
 }
 
+/// Unified search interface for panels that support text search.
+///
+/// Implemented by Editor (text search) and Terminal (scrollback search).
+/// This trait allows the modal handler to dispatch search actions
+/// without knowing the concrete panel type.
+pub trait Searchable {
+    /// Start a new search with the given query.
+    fn start_search(&mut self, query: String, case_sensitive: bool);
+    /// Navigate to the next match.
+    fn search_next(&mut self);
+    /// Navigate to the previous match.
+    fn search_prev(&mut self);
+    /// Close search and clear highlights.
+    fn close_search(&mut self);
+    /// Get current match info: (current_index, total_matches).
+    fn get_search_match_info(&self) -> Option<(usize, usize)>;
+}
+
 /// Panel width preference for auto-stacking into existing groups.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WidthPreference {

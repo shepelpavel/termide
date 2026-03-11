@@ -36,6 +36,7 @@ pub enum SearchAction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FocusArea {
     Input,
+    Buttons,
 }
 
 /// Interactive search modal with live preview and navigation
@@ -155,7 +156,7 @@ impl Modal for SearchModal {
         // Buttons on the left
         let buttons = vec![("◄ Prev", 0), ("Next ►", 1)];
 
-        let buttons_focused = false; // Buttons are not focusable in search modal
+        let buttons_focused = matches!(self.focus, FocusArea::Buttons);
         let mut x_offset = buttons_area.x;
         self.last_button_areas.clear();
 
@@ -197,9 +198,8 @@ impl Modal for SearchModal {
     fn handle_key(&mut self, key: KeyEvent) -> Result<Option<ModalResult<Self::Result>>> {
         match self.focus {
             FocusArea::Input => match (key.code, key.modifiers) {
-                // Tab - move to buttons / trigger next
+                // Tab - next match
                 (KeyCode::Tab, KeyModifiers::NONE) => {
-                    // Trigger next search
                     if !self.input_handler.is_empty() {
                         return Ok(Some(ModalResult::Confirmed(SearchModalResult {
                             query: self.input_handler.text().to_string(),
@@ -207,13 +207,19 @@ impl Modal for SearchModal {
                         })));
                     }
                 }
-                // Shift+Tab - trigger previous
+                // Shift+Tab - previous match
                 (KeyCode::BackTab, _) => {
                     if !self.input_handler.is_empty() {
                         return Ok(Some(ModalResult::Confirmed(SearchModalResult {
                             query: self.input_handler.text().to_string(),
                             action: SearchAction::Previous,
                         })));
+                    }
+                }
+                // Down - move focus to buttons
+                (KeyCode::Down, KeyModifiers::NONE) => {
+                    if !self.input_handler.is_empty() {
+                        self.focus = FocusArea::Buttons;
                     }
                 }
                 // Enter - close modal with selection
@@ -369,6 +375,65 @@ impl Modal for SearchModal {
                     self.input_handler.insert_char(ch);
 
                     // Trigger live search
+                    return Ok(Some(ModalResult::Confirmed(SearchModalResult {
+                        query: self.input_handler.text().to_string(),
+                        action: SearchAction::Search,
+                    })));
+                }
+                _ => {}
+            },
+            FocusArea::Buttons => match (key.code, key.modifiers) {
+                // Left/Right - switch between Prev (0) and Next (1)
+                (KeyCode::Left, KeyModifiers::NONE) => {
+                    self.selected_button = 0;
+                }
+                (KeyCode::Right, KeyModifiers::NONE) => {
+                    self.selected_button = 1;
+                }
+                // Enter - activate selected button
+                (KeyCode::Enter, KeyModifiers::NONE) => {
+                    if !self.input_handler.is_empty() {
+                        let action = if self.selected_button == 0 {
+                            SearchAction::Previous
+                        } else {
+                            SearchAction::Next
+                        };
+                        return Ok(Some(ModalResult::Confirmed(SearchModalResult {
+                            query: self.input_handler.text().to_string(),
+                            action,
+                        })));
+                    }
+                }
+                // Tab - next match
+                (KeyCode::Tab, KeyModifiers::NONE) => {
+                    if !self.input_handler.is_empty() {
+                        return Ok(Some(ModalResult::Confirmed(SearchModalResult {
+                            query: self.input_handler.text().to_string(),
+                            action: SearchAction::Next,
+                        })));
+                    }
+                }
+                // Shift+Tab - previous match
+                (KeyCode::BackTab, _) => {
+                    if !self.input_handler.is_empty() {
+                        return Ok(Some(ModalResult::Confirmed(SearchModalResult {
+                            query: self.input_handler.text().to_string(),
+                            action: SearchAction::Previous,
+                        })));
+                    }
+                }
+                // Up - return to input
+                (KeyCode::Up, KeyModifiers::NONE) => {
+                    self.focus = FocusArea::Input;
+                }
+                // Esc - cancel
+                (KeyCode::Esc, KeyModifiers::NONE) => {
+                    return Ok(Some(ModalResult::Cancelled));
+                }
+                // Any character - return to input and type
+                (KeyCode::Char(ch), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
+                    self.focus = FocusArea::Input;
+                    self.input_handler.insert_char(ch);
                     return Ok(Some(ModalResult::Confirmed(SearchModalResult {
                         query: self.input_handler.text().to_string(),
                         action: SearchAction::Search,
