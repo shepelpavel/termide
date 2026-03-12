@@ -25,7 +25,8 @@ impl FileManager {
     pub fn get_current_file_info(&self) -> Option<FileInfo> {
         use std::os::unix::fs::MetadataExt;
 
-        let entry = self.entries.get(self.selected)?;
+        let te = self.tree_entry_at(self.selected)?;
+        let entry = &te.file_entry;
 
         // Handle ".." directory for remote paths
         if entry.name == ".." && self.is_remote() {
@@ -142,250 +143,245 @@ impl FileManager {
         use std::os::unix::fs::MetadataExt;
         use std::time::SystemTime;
 
-        if let Some(entry) = self.entries.get(self.selected) {
-            // Handle remote file info display
-            if self.is_remote() {
-                let t = termide_i18n::t();
+        // Clone the data we need to avoid borrow issues with self
+        let te = match self.tree_entry_at(self.selected) {
+            Some(te) => te.clone(),
+            None => return,
+        };
+        let entry = &te.file_entry;
 
-                // Determine type and title
-                let (modal_title, is_dir) = if entry.is_dir {
-                    (t.file_info_title_directory(&entry.name), true)
-                } else if entry.is_symlink {
-                    (t.file_info_title_symlink(&entry.name), false)
-                } else {
-                    (t.file_info_title_file(&entry.name), false)
-                };
+        // Handle remote file info display
+        if self.is_remote() {
+            let t = termide_i18n::t();
 
-                let size = if is_dir {
-                    "DIR".to_string()
-                } else {
-                    entry
-                        .size
-                        .map(utils::format_size)
+            // Determine type and title
+            let (modal_title, is_dir) = if entry.is_dir {
+                (t.file_info_title_directory(&entry.name), true)
+            } else if entry.is_symlink {
+                (t.file_info_title_symlink(&entry.name), false)
+            } else {
+                (t.file_info_title_file(&entry.name), false)
+            };
+
+            let size = if is_dir {
+                "DIR".to_string()
+            } else {
+                entry
+                    .size
+                    .map(utils::format_size)
+                    .unwrap_or_else(|| "Unknown".to_string())
+            };
+
+            let modified = entry
+                .modified
+                .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
+                .map(|d| {
+                    chrono::DateTime::from_timestamp(d.as_secs() as i64, 0)
+                        .map(|dt| {
+                            dt.with_timezone(&chrono::Local)
+                                .format("%Y-%m-%d %H:%M:%S")
+                                .to_string()
+                        })
                         .unwrap_or_else(|| "Unknown".to_string())
-                };
+                })
+                .unwrap_or_else(|| "Unknown".to_string());
 
-                let modified = entry
-                    .modified
-                    .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
-                    .map(|d| {
-                        chrono::DateTime::from_timestamp(d.as_secs() as i64, 0)
-                            .map(|dt| {
-                                dt.with_timezone(&chrono::Local)
-                                    .format("%Y-%m-%d %H:%M:%S")
-                                    .to_string()
-                            })
-                            .unwrap_or_else(|| "Unknown".to_string())
-                    })
-                    .unwrap_or_else(|| "Unknown".to_string());
+            let mode = if entry.is_executable {
+                "0755"
+            } else if entry.is_readonly {
+                "0444"
+            } else {
+                "0644"
+            };
 
-                let mode = if entry.is_executable {
-                    "0755"
-                } else if entry.is_readonly {
-                    "0444"
+            // Collect data for remote file (no git status)
+            let data = vec![
+                (t.file_info_path().to_string(), self.display_path()),
+                (t.file_info_size().to_string(), size),
+                (t.file_info_owner().to_string(), "remote".to_string()),
+                (t.file_info_group().to_string(), "remote".to_string()),
+                (t.file_info_modified().to_string(), modified),
+                ("Mode".to_string(), mode.to_string()),
+            ];
+
+            let modal = termide_modal::InfoModal::new(modal_title, data);
+            self.modal_request = Some((
+                PendingAction::ClosePanel,
+                ActiveModal::Info(Box::new(modal)),
+            ));
+
+            return;
+        }
+
+        // Local file handling
+        let file_path = te.full_path.clone();
+
+        // Use symlink_metadata to detect symlinks before following them
+        let symlink_meta = fs::symlink_metadata(&file_path).ok();
+        let is_symlink = symlink_meta
+            .as_ref()
+            .map(|m| m.is_symlink())
+            .unwrap_or(false);
+
+        if let Ok(metadata) = fs::metadata(&file_path) {
+            let t = termide_i18n::t();
+
+            // Determine type and title (use symlink_metadata for type detection)
+            let (modal_title, is_dir) = if is_symlink {
+                (t.file_info_title_symlink(&entry.name), metadata.is_dir())
+            } else if metadata.is_dir() {
+                (t.file_info_title_directory(&entry.name), true)
+            } else {
+                (t.file_info_title_file(&entry.name), false)
+            };
+
+            let size = if is_dir {
+                format!("{}...", t.file_info_calculating())
+            } else {
+                utils::format_size(metadata.len())
+            };
+
+            let owner = utils::get_user_name(metadata.uid());
+            let group = utils::get_group_name(metadata.gid());
+
+            let modified = metadata
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
+                .map(|d| {
+                    chrono::DateTime::from_timestamp(d.as_secs() as i64, 0)
+                        .map(|dt| {
+                            dt.with_timezone(&chrono::Local)
+                                .format("%Y-%m-%d %H:%M:%S")
+                                .to_string()
+                        })
+                        .unwrap_or_else(|| "Unknown".to_string())
+                })
+                .unwrap_or_else(|| "Unknown".to_string());
+
+            let created = metadata
+                .created()
+                .ok()
+                .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
+                .map(|d| {
+                    chrono::DateTime::from_timestamp(d.as_secs() as i64, 0)
+                        .map(|dt| {
+                            dt.with_timezone(&chrono::Local)
+                                .format("%Y-%m-%d %H:%M:%S")
+                                .to_string()
+                        })
+                        .unwrap_or_else(|| "Unknown".to_string())
+                })
+                .unwrap_or_else(|| "Unknown".to_string());
+
+            // Collect data without Name and Type
+            let mut data = vec![
+                (
+                    t.file_info_path().to_string(),
+                    termide_core::util::shorten_home_path(&file_path.display().to_string()),
+                ),
+                (t.file_info_size().to_string(), size),
+                (t.file_info_owner().to_string(), owner),
+                (t.file_info_group().to_string(), group),
+                (t.file_info_created().to_string(), created),
+                (t.file_info_modified().to_string(), modified),
+            ];
+
+            // Add git status if in repository (filtered by specific file/directory)
+            // Special case: if directory is itself a git repo root, show its git info
+            let (git_status, repo_path) = if is_dir && file_path.join(".git").exists() {
+                // Directory is a git repo root - get its own status
+                (
+                    termide_git::get_repo_status(&file_path, &file_path),
+                    Some(file_path.clone()),
+                )
+            } else {
+                // Regular file/directory - check status in parent repo
+                let repo = termide_git::find_repo_root(&self.current_path);
+                (
+                    termide_git::get_repo_status(&self.current_path, &file_path),
+                    repo,
+                )
+            };
+
+            // Track whether file has actionable git status (any git actions available)
+            let has_git_actions = git_status
+                .as_ref()
+                .map(|s| {
+                    !s.is_ignored && (s.uncommitted_changes > 0 || s.ahead > 0 || s.behind > 0)
+                })
+                .unwrap_or(false);
+
+            if let Some(ref git_status) = git_status {
+                if git_status.is_ignored {
+                    // If file is ignored, show only one line
+                    data.push((
+                        t.file_info_git().to_string(),
+                        t.file_info_git_ignored().to_string(),
+                    ));
                 } else {
-                    "0644"
-                };
+                    // Otherwise show three lines for uncommitted, ahead, behind
+                    data.push((
+                        t.file_info_git().to_string(),
+                        t.file_info_git_uncommitted(git_status.uncommitted_changes),
+                    ));
+                    data.push((
+                        String::new(), // Empty key - aligns with first line's value
+                        t.file_info_git_ahead(git_status.ahead),
+                    ));
+                    data.push((
+                        String::new(), // Empty key
+                        t.file_info_git_behind(git_status.behind),
+                    ));
+                }
+            }
 
-                // Collect data for remote file (no git status)
-                let data = vec![
-                    (t.file_info_path().to_string(), self.display_path()),
-                    (t.file_info_size().to_string(), size),
-                    (t.file_info_owner().to_string(), "remote".to_string()),
-                    (t.file_info_group().to_string(), "remote".to_string()),
-                    (t.file_info_modified().to_string(), modified),
-                    ("Mode".to_string(), mode.to_string()),
+            // If file has git actions, use InfoActionModal with smart buttons
+            if let (true, Some(ref status), Some(repo)) = (has_git_actions, &git_status, repo_path)
+            {
+                let buttons = Self::build_git_action_buttons(status, is_dir);
+                let selected_button = buttons.len().saturating_sub(1); // Select [Close]
+                let modal = termide_modal::InfoActionModal::new(modal_title, data.clone(), buttons)
+                    .with_selected_button(selected_button);
+                self.modal_request = Some((
+                    PendingAction::GitFileAction {
+                        file_path: file_path.clone(),
+                        repo_path: repo,
+                        is_staged: false, // File manager shows unstaged files
+                    },
+                    ActiveModal::InfoAction(Box::new(modal)),
+                ));
+            } else if is_symlink {
+                // Symlink without git actions — show "Follow symlink" button
+                let target_path =
+                    fs::canonicalize(&file_path).unwrap_or_else(|_| file_path.clone());
+                let buttons = vec![
+                    ActionButton::new(t.file_info_follow_symlink(), "follow"),
+                    ActionButton::new(t.git_action_close(), "close"),
                 ];
-
+                let modal = termide_modal::InfoActionModal::new(modal_title, data.clone(), buttons)
+                    .with_selected_button(1); // Select [Close] by default
+                self.modal_request = Some((
+                    PendingAction::FollowSymlink { target_path },
+                    ActiveModal::InfoAction(Box::new(modal)),
+                ));
+            } else {
                 let modal = termide_modal::InfoModal::new(modal_title, data);
                 self.modal_request = Some((
                     PendingAction::ClosePanel,
                     ActiveModal::Info(Box::new(modal)),
                 ));
-
-                return;
             }
 
-            // Local file handling
-            let file_path = if entry.name == ".." {
-                self.current_path
-                    .parent()
-                    .unwrap_or(&self.current_path)
-                    .to_path_buf()
-            } else {
-                self.current_path.join(&entry.name)
-            };
+            if is_dir {
+                let (tx, rx) = mpsc::channel();
 
-            // Use symlink_metadata to detect symlinks before following them
-            let symlink_meta = fs::symlink_metadata(&file_path).ok();
-            let is_symlink = symlink_meta
-                .as_ref()
-                .map(|m| m.is_symlink())
-                .unwrap_or(false);
+                std::thread::spawn(move || {
+                    let size = utils::calculate_dir_size(&file_path);
+                    let _ = tx.send(DirSizeResult { size });
+                });
 
-            if let Ok(metadata) = fs::metadata(&file_path) {
-                let t = termide_i18n::t();
-
-                // Determine type and title (use symlink_metadata for type detection)
-                let (modal_title, is_dir) = if is_symlink {
-                    (t.file_info_title_symlink(&entry.name), metadata.is_dir())
-                } else if metadata.is_dir() {
-                    (t.file_info_title_directory(&entry.name), true)
-                } else {
-                    (t.file_info_title_file(&entry.name), false)
-                };
-
-                let size = if is_dir {
-                    format!("{}...", t.file_info_calculating())
-                } else {
-                    utils::format_size(metadata.len())
-                };
-
-                let owner = utils::get_user_name(metadata.uid());
-                let group = utils::get_group_name(metadata.gid());
-
-                let modified = metadata
-                    .modified()
-                    .ok()
-                    .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
-                    .map(|d| {
-                        chrono::DateTime::from_timestamp(d.as_secs() as i64, 0)
-                            .map(|dt| {
-                                dt.with_timezone(&chrono::Local)
-                                    .format("%Y-%m-%d %H:%M:%S")
-                                    .to_string()
-                            })
-                            .unwrap_or_else(|| "Unknown".to_string())
-                    })
-                    .unwrap_or_else(|| "Unknown".to_string());
-
-                let created = metadata
-                    .created()
-                    .ok()
-                    .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
-                    .map(|d| {
-                        chrono::DateTime::from_timestamp(d.as_secs() as i64, 0)
-                            .map(|dt| {
-                                dt.with_timezone(&chrono::Local)
-                                    .format("%Y-%m-%d %H:%M:%S")
-                                    .to_string()
-                            })
-                            .unwrap_or_else(|| "Unknown".to_string())
-                    })
-                    .unwrap_or_else(|| "Unknown".to_string());
-
-                // Collect data without Name and Type
-                let mut data = vec![
-                    (
-                        t.file_info_path().to_string(),
-                        termide_core::util::shorten_home_path(&file_path.display().to_string()),
-                    ),
-                    (t.file_info_size().to_string(), size),
-                    (t.file_info_owner().to_string(), owner),
-                    (t.file_info_group().to_string(), group),
-                    (t.file_info_created().to_string(), created),
-                    (t.file_info_modified().to_string(), modified),
-                ];
-
-                // Add git status if in repository (filtered by specific file/directory)
-                // Special case: if directory is itself a git repo root, show its git info
-                let (git_status, repo_path) = if is_dir && file_path.join(".git").exists() {
-                    // Directory is a git repo root - get its own status
-                    (
-                        termide_git::get_repo_status(&file_path, &file_path),
-                        Some(file_path.clone()),
-                    )
-                } else {
-                    // Regular file/directory - check status in parent repo
-                    let repo = termide_git::find_repo_root(&self.current_path);
-                    (
-                        termide_git::get_repo_status(&self.current_path, &file_path),
-                        repo,
-                    )
-                };
-
-                // Track whether file has actionable git status (any git actions available)
-                let has_git_actions = git_status
-                    .as_ref()
-                    .map(|s| {
-                        !s.is_ignored && (s.uncommitted_changes > 0 || s.ahead > 0 || s.behind > 0)
-                    })
-                    .unwrap_or(false);
-
-                if let Some(ref git_status) = git_status {
-                    if git_status.is_ignored {
-                        // If file is ignored, show only one line
-                        data.push((
-                            t.file_info_git().to_string(),
-                            t.file_info_git_ignored().to_string(),
-                        ));
-                    } else {
-                        // Otherwise show three lines for uncommitted, ahead, behind
-                        data.push((
-                            t.file_info_git().to_string(),
-                            t.file_info_git_uncommitted(git_status.uncommitted_changes),
-                        ));
-                        data.push((
-                            String::new(), // Empty key - aligns with first line's value
-                            t.file_info_git_ahead(git_status.ahead),
-                        ));
-                        data.push((
-                            String::new(), // Empty key
-                            t.file_info_git_behind(git_status.behind),
-                        ));
-                    }
-                }
-
-                // If file has git actions, use InfoActionModal with smart buttons
-                if let (true, Some(ref status), Some(repo)) =
-                    (has_git_actions, &git_status, repo_path)
-                {
-                    let buttons = Self::build_git_action_buttons(status, is_dir);
-                    let selected_button = buttons.len().saturating_sub(1); // Select [Close]
-                    let modal =
-                        termide_modal::InfoActionModal::new(modal_title, data.clone(), buttons)
-                            .with_selected_button(selected_button);
-                    self.modal_request = Some((
-                        PendingAction::GitFileAction {
-                            file_path: file_path.clone(),
-                            repo_path: repo,
-                            is_staged: false, // File manager shows unstaged files
-                        },
-                        ActiveModal::InfoAction(Box::new(modal)),
-                    ));
-                } else if is_symlink {
-                    // Symlink without git actions — show "Follow symlink" button
-                    let target_path =
-                        fs::canonicalize(&file_path).unwrap_or_else(|_| file_path.clone());
-                    let buttons = vec![
-                        ActionButton::new(t.file_info_follow_symlink(), "follow"),
-                        ActionButton::new(t.git_action_close(), "close"),
-                    ];
-                    let modal =
-                        termide_modal::InfoActionModal::new(modal_title, data.clone(), buttons)
-                            .with_selected_button(1); // Select [Close] by default
-                    self.modal_request = Some((
-                        PendingAction::FollowSymlink { target_path },
-                        ActiveModal::InfoAction(Box::new(modal)),
-                    ));
-                } else {
-                    let modal = termide_modal::InfoModal::new(modal_title, data);
-                    self.modal_request = Some((
-                        PendingAction::ClosePanel,
-                        ActiveModal::Info(Box::new(modal)),
-                    ));
-                }
-
-                if is_dir {
-                    let (tx, rx) = mpsc::channel();
-
-                    std::thread::spawn(move || {
-                        let size = utils::calculate_dir_size(&file_path);
-                        let _ = tx.send(DirSizeResult { size });
-                    });
-
-                    self.dir_size_receiver = Some(rx);
-                }
+                self.dir_size_receiver = Some(rx);
             }
         }
     }

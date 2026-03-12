@@ -74,6 +74,10 @@ pub enum FmCommand {
     #[allow(dead_code)]
     CancelOperation,
 
+    // Tree expand/collapse
+    ExpandDir,
+    CollapseDir,
+
     // No operation
     None,
 }
@@ -332,6 +336,12 @@ impl FmCommand {
             (KeyCode::PageDown, KeyModifiers::CONTROL) => Self::PageDownWithToggle,
             (KeyCode::PageUp, KeyModifiers::CONTROL) => Self::PageUpWithToggle,
 
+            // Tree expand/collapse
+            (KeyCode::Right, KeyModifiers::NONE) => Self::ExpandDir,
+            (KeyCode::Left, KeyModifiers::NONE) => Self::CollapseDir,
+            (KeyCode::Char('l'), KeyModifiers::NONE) if vim_mode => Self::ExpandDir,
+            (KeyCode::Char('h'), KeyModifiers::NONE) if vim_mode => Self::CollapseDir,
+
             // Regular navigation (arrows-only, vim handled above)
             (KeyCode::PageUp, KeyModifiers::NONE) => Self::PageUp,
             (KeyCode::PageDown, KeyModifiers::NONE) => Self::PageDown,
@@ -398,6 +408,30 @@ mod tests {
         assert_eq!(
             FmCommand::from_key_event(key(KeyCode::Enter, KeyModifiers::NONE), &kb, false),
             FmCommand::Enter
+        );
+    }
+
+    #[test]
+    fn test_tree_expand_collapse_keys() {
+        let kb = default_keybindings();
+
+        assert_eq!(
+            FmCommand::from_key_event(key(KeyCode::Right, KeyModifiers::NONE), &kb, false),
+            FmCommand::ExpandDir
+        );
+        assert_eq!(
+            FmCommand::from_key_event(key(KeyCode::Left, KeyModifiers::NONE), &kb, false),
+            FmCommand::CollapseDir
+        );
+
+        // Vim mode: l/h for expand/collapse
+        assert_eq!(
+            FmCommand::from_key_event(key(KeyCode::Char('l'), KeyModifiers::NONE), &kb, true),
+            FmCommand::ExpandDir
+        );
+        assert_eq!(
+            FmCommand::from_key_event(key(KeyCode::Char('h'), KeyModifiers::NONE), &kb, true),
+            FmCommand::CollapseDir
         );
     }
 

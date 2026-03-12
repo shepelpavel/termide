@@ -3,7 +3,7 @@ use super::FileManager;
 impl FileManager {
     /// Move cursor down
     pub(crate) fn move_down(&mut self) {
-        if self.selected < self.entries.len().saturating_sub(1) {
+        if self.selected < self.visible_count().saturating_sub(1) {
             self.selected += 1;
         }
     }

@@ -2,31 +2,10 @@ use std::fs;
 use std::path::Path;
 use std::time::SystemTime;
 
-use termide_git::{truncate_right, GitStatus};
+use termide_git::truncate_right;
 use termide_ui::constants::{GIGABYTE, KILOBYTE, MEGABYTE};
 
 use super::FileEntry;
-
-/// Get icon for file/directory (1 character)
-pub fn get_icon(entry: &FileEntry) -> &'static str {
-    // Git deleted
-    if entry.git_status == GitStatus::Deleted {
-        return "✗";
-    }
-
-    // Parent directory
-    if entry.name == ".." {
-        return "↑";
-    }
-
-    // Directory
-    if entry.is_dir {
-        return if entry.is_symlink { "▷" } else { "▶" };
-    }
-
-    // Files: no icon, styling (italic/underline) is handled in rendering
-    " "
-}
 
 /// Get attribute character (selection checkmark or directory flags)
 /// Returns 1 character

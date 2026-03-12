@@ -22,6 +22,35 @@ fn git_status_style(status: GitStatus, theme: &Theme) -> Style {
     }
 }
 
+/// Get icon for entry, accounting for expand/collapse state.
+fn get_icon(entry: &super::FileEntry, expanded: Option<bool>) -> &'static str {
+    if entry.git_status == GitStatus::Deleted {
+        return "✗";
+    }
+    if entry.name == ".." {
+        return "↑";
+    }
+    if entry.is_dir {
+        return match expanded {
+            Some(true) => {
+                if entry.is_symlink {
+                    "▽"
+                } else {
+                    "▼"
+                }
+            }
+            Some(false) | None => {
+                if entry.is_symlink {
+                    "▷"
+                } else {
+                    "▶"
+                }
+            }
+        };
+    }
+    " "
+}
+
 impl FileManager {
     /// Get list of lines for display
     pub(crate) fn get_items(
@@ -41,22 +70,26 @@ impl FileManager {
         const TIME_COLUMN_WIDTH: usize = 19;
         const SEPARATOR: &str = " │ ";
         const SEPARATOR_WIDTH: usize = 3;
-        // Static padding buffer to avoid per-item allocation
         const PAD: &str = "                                                                                                                                                                                                        ";
 
         // Determine whether to show extended view with columns
         let show_extended = available_width >= config.extended_view_width;
 
-        for (i, entry) in self.entries.iter().enumerate() {
-            if i < visible_start || i >= visible_end {
+        for (vis_i, &tree_idx) in self.visible_indices.iter().enumerate() {
+            if vis_i < visible_start || vis_i >= visible_end {
                 continue;
             }
 
-            let is_selected = self.selection.is_selected(i);
-            let is_cursor = i == self.selected;
+            let tree_entry = &self.tree_entries[tree_idx];
+            let entry = &tree_entry.file_entry;
+            let tree_prefix = &self.tree_prefixes[vis_i];
+            let tree_prefix_width = tree_prefix.width();
+
+            let is_selected = self.selection.is_selected(vis_i);
+            let is_cursor = vis_i == self.selected;
 
             let attr = utils::get_attribute(entry, is_selected);
-            let icon = utils::get_icon(entry);
+            let icon = get_icon(entry, tree_entry.expanded);
             let attr_width = 1; // always 1 character
             let icon_width = 1; // always 1 character
             let dir_prefix = if entry.is_dir && entry.name != ".." {
@@ -68,9 +101,9 @@ impl FileManager {
 
             // Calculate maximum visual width of name WITHOUT prefix, considering display mode
             let max_name_len = if show_extended {
-                // For wide mode: attr + icon + space + prefix + two columns and two separators
                 available_width.saturating_sub(
-                    attr_width
+                    tree_prefix_width
+                        + attr_width
                         + icon_width
                         + 1
                         + prefix_width
@@ -80,8 +113,8 @@ impl FileManager {
                         + TIME_COLUMN_WIDTH,
                 )
             } else {
-                // For normal mode: attr + icon + space + prefix
-                available_width.saturating_sub(attr_width + icon_width + 1 + prefix_width)
+                available_width
+                    .saturating_sub(tree_prefix_width + attr_width + icon_width + 1 + prefix_width)
             };
 
             let name = utils::truncate_name(&entry.name, max_name_len);
@@ -89,16 +122,12 @@ impl FileManager {
             let full_name = format!("{}{}", dir_prefix, name);
 
             let (bg_style, fg_style) = if is_cursor && is_focused {
-                // Get the normal foreground style for this entry
                 let normal_fg_style = git_status_style(entry.git_status, theme);
-
-                // Extract fg color and create inverted cursor style
                 let fg_color = normal_fg_style.fg.unwrap_or(theme.fg);
                 let cursor_style = Style::default()
-                    .bg(fg_color) // Swap: entry fg becomes cursor bg
-                    .fg(theme.bg) // Swap: theme bg becomes cursor fg
+                    .bg(fg_color)
+                    .fg(theme.bg)
                     .add_modifier(Modifier::BOLD);
-
                 (cursor_style, cursor_style)
             } else {
                 let fg_style = git_status_style(entry.git_status, theme);
@@ -113,7 +142,6 @@ impl FileManager {
                 fg_style
             };
 
-            // Переопределить fg_style для выделенных файлов (если не курсор)
             let fg_style = if is_selected && !(is_cursor && is_focused) {
                 Style::default()
                     .fg(theme.accented_fg)
@@ -122,14 +150,12 @@ impl FileManager {
                 fg_style
             };
 
-            // Icon style: same as fg_style but without CROSSED_OUT for deleted files
             let icon_style = if entry.git_status == GitStatus::Deleted {
                 Style::default().fg(theme.error)
             } else {
                 fg_style
             };
 
-            // Name style: CROSSED_OUT for deleted, ITALIC for symlinks, UNDERLINED for executables
             let name_style = {
                 let mut style = fg_style;
                 if entry.git_status == GitStatus::Deleted && !(is_cursor && is_focused) {
@@ -144,23 +170,30 @@ impl FileManager {
                 style
             };
 
+            // Tree prefix style: dimmed connectors
+            let prefix_style = if is_cursor && is_focused {
+                bg_style
+            } else {
+                Style::default().fg(theme.disabled)
+            };
+
             if show_extended {
-                // Extended mode with columns
-                // Use name_width without prefix, since max_name_len already accounted for prefix_width when subtracting
                 let padding_len = max_name_len.saturating_sub(name_width);
                 let padding = &PAD[..padding_len.min(PAD.len())];
 
-                // Format size (or spaces for directories and ".."), right-aligned
                 let size_str: std::borrow::Cow<'static, str> = if let Some(size) = entry.size {
                     format!("{:>10}", utils::format_size(size)).into()
                 } else {
                     std::borrow::Cow::Borrowed("          ")
                 };
 
-                // Format time
                 let time_str = utils::format_modified_time(entry.modified);
 
-                lines.push(Line::from(vec![
+                let mut spans = Vec::with_capacity(10);
+                if !tree_prefix.is_empty() {
+                    spans.push(Span::styled(tree_prefix.as_str(), prefix_style));
+                }
+                spans.extend([
                     Span::styled(attr, attr_style),
                     Span::styled(icon, icon_style),
                     Span::styled(" ", bg_style),
@@ -170,20 +203,26 @@ impl FileManager {
                     Span::styled(size_str, fg_style),
                     Span::styled(SEPARATOR, bg_style.fg(theme.disabled)),
                     Span::styled(time_str, fg_style),
-                ]));
+                ]);
+                lines.push(Line::from(spans));
             } else {
-                // Normal mode without columns
-                let content_width = attr_width + icon_width + 1 + prefix_width + name_width;
+                let content_width =
+                    tree_prefix_width + attr_width + icon_width + 1 + prefix_width + name_width;
                 let padding_len = available_width.saturating_sub(content_width);
                 let padding = &PAD[..padding_len.min(PAD.len())];
 
-                lines.push(Line::from(vec![
+                let mut spans = Vec::with_capacity(6);
+                if !tree_prefix.is_empty() {
+                    spans.push(Span::styled(tree_prefix.as_str(), prefix_style));
+                }
+                spans.extend([
                     Span::styled(attr, attr_style),
                     Span::styled(icon, icon_style),
                     Span::styled(" ", bg_style),
                     Span::styled(full_name, name_style),
                     Span::styled(padding, bg_style),
-                ]));
+                ]);
+                lines.push(Line::from(spans));
             }
         }
 

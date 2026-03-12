@@ -4,27 +4,27 @@ use super::FileManager;
 use termide_vfs::VfsPath;
 
 impl FileManager {
-    /// Check if entry at index is ".." (not selectable)
-    fn is_parent_entry(&self, idx: usize) -> bool {
-        self.entries.get(idx).is_some_and(|e| e.name == "..")
+    /// Check if entry at visible index is ".." (not selectable)
+    fn is_parent_entry(&self, vis_idx: usize) -> bool {
+        self.entry_at(vis_idx).is_some_and(|e| e.name == "..")
     }
 
-    /// Insert index into selection, skipping ".."
-    fn select_index(&mut self, idx: usize) {
-        if !self.is_parent_entry(idx) {
-            self.selection.items.insert(idx);
+    /// Insert visible index into selection, skipping ".."
+    fn select_index(&mut self, vis_idx: usize) {
+        if !self.is_parent_entry(vis_idx) {
+            self.selection.items.insert(vis_idx);
         }
     }
 
-    /// Toggle index in selection, skipping ".."
-    fn toggle_index(&mut self, idx: usize) {
-        if self.is_parent_entry(idx) {
+    /// Toggle visible index in selection, skipping ".."
+    fn toggle_index(&mut self, vis_idx: usize) {
+        if self.is_parent_entry(vis_idx) {
             return;
         }
-        if self.selection.items.contains(&idx) {
-            self.selection.items.remove(&idx);
+        if self.selection.items.contains(&vis_idx) {
+            self.selection.items.remove(&vis_idx);
         } else {
-            self.selection.items.insert(idx);
+            self.selection.items.insert(vis_idx);
         }
     }
 
@@ -33,13 +33,13 @@ impl FileManager {
         self.toggle_index(self.selected);
     }
 
-    /// Select all files
+    /// Select all visible files
     pub(crate) fn select_all(&mut self) {
         self.selection.items.clear();
-        for i in 0..self.entries.len() {
-            if let Some(entry) = self.entries.get(i) {
+        for vis_idx in 0..self.visible_count() {
+            if let Some(entry) = self.entry_at(vis_idx) {
                 if entry.name != ".." {
-                    self.selection.items.insert(i);
+                    self.selection.items.insert(vis_idx);
                 }
             }
         }
@@ -61,7 +61,7 @@ impl FileManager {
     pub(crate) fn page_down_with_selection(&mut self) {
         let start = self.selected;
         let target =
-            (self.selected + self.visible_height).min(self.entries.len().saturating_sub(1));
+            (self.selected + self.visible_height).min(self.visible_count().saturating_sub(1));
         for i in start..=target {
             self.select_index(i);
         }
@@ -91,46 +91,43 @@ impl FileManager {
 
     /// Select to end of list
     pub(crate) fn select_to_end(&mut self) {
-        let max_index = self.entries.len().saturating_sub(1);
+        let max_index = self.visible_count().saturating_sub(1);
         for i in self.selected..=max_index {
             self.select_index(i);
         }
         self.selected = max_index;
     }
 
-    /// Get list of selected files/directories
-    /// If nothing is selected, return current item under cursor
+    /// Get list of selected files/directories as absolute paths.
+    /// If nothing is selected, return current item under cursor.
     pub fn get_selected_paths(&self) -> Vec<PathBuf> {
         if self.selection.items.is_empty() {
-            // If no items are selected, return current one
-            if let Some(entry) = self.entries.get(self.selected) {
-                if entry.name != ".." {
-                    return vec![self.current_path.join(&entry.name)];
+            if let Some(te) = self.tree_entry_at(self.selected) {
+                if te.file_entry.name != ".." {
+                    return vec![te.full_path.clone()];
                 }
             }
             return Vec::new();
         }
 
-        // Collect paths of selected items (pre-allocate capacity for efficiency)
         let mut paths = Vec::with_capacity(self.selection.items.len());
-        for &idx in &self.selection.items {
-            if let Some(entry) = self.entries.get(idx) {
-                if entry.name != ".." {
-                    paths.push(self.current_path.join(&entry.name));
+        for &vis_idx in &self.selection.items {
+            if let Some(te) = self.tree_entry_at(vis_idx) {
+                if te.file_entry.name != ".." {
+                    paths.push(te.full_path.clone());
                 }
             }
         }
         paths
     }
 
-    /// Get list of selected files/directories as VfsPath (for remote operations)
-    /// If nothing is selected, return current item under cursor
+    /// Get list of selected files/directories as VfsPath (for remote operations).
+    /// If nothing is selected, return current item under cursor.
     pub fn get_selected_vfs_paths(&self) -> Vec<VfsPath> {
         let base_path = self.vfs.current_path();
 
         if self.selection.items.is_empty() {
-            // If no items are selected, return current one
-            if let Some(entry) = self.entries.get(self.selected) {
+            if let Some(entry) = self.entry_at(self.selected) {
                 if entry.name != ".." {
                     return vec![base_path.join(&entry.name)];
                 }
@@ -138,10 +135,9 @@ impl FileManager {
             return Vec::new();
         }
 
-        // Collect VFS paths of selected items (pre-allocate capacity for efficiency)
         let mut paths = Vec::with_capacity(self.selection.items.len());
-        for &idx in &self.selection.items {
-            if let Some(entry) = self.entries.get(idx) {
+        for &vis_idx in &self.selection.items {
+            if let Some(entry) = self.entry_at(vis_idx) {
                 if entry.name != ".." {
                     paths.push(base_path.join(&entry.name));
                 }
@@ -155,20 +151,18 @@ impl FileManager {
         self.selection.items.len()
     }
 
-    /// Check if any selected entry is a directory
-    /// If nothing is selected, check if current item under cursor is a directory
+    /// Check if any selected entry is a directory.
+    /// If nothing is selected, check if current item under cursor is a directory.
     pub fn has_selected_directories(&self) -> bool {
         if self.selection.items.is_empty() {
-            // If no items are selected, check current one
-            if let Some(entry) = self.entries.get(self.selected) {
+            if let Some(entry) = self.entry_at(self.selected) {
                 return entry.is_dir && entry.name != "..";
             }
             return false;
         }
 
-        // Check if any selected item is a directory
-        for &idx in &self.selection.items {
-            if let Some(entry) = self.entries.get(idx) {
+        for &vis_idx in &self.selection.items {
+            if let Some(entry) = self.entry_at(vis_idx) {
                 if entry.is_dir && entry.name != ".." {
                     return true;
                 }
@@ -198,7 +192,7 @@ impl FileManager {
     pub(crate) fn page_down_with_toggle(&mut self) {
         let start = self.selected;
         let target =
-            (self.selected + self.visible_height).min(self.entries.len().saturating_sub(1));
+            (self.selected + self.visible_height).min(self.visible_count().saturating_sub(1));
 
         for i in start..=target {
             self.toggle_index(i);

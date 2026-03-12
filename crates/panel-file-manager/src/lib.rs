@@ -8,6 +8,7 @@ mod navigation;
 mod operations;
 mod rendering;
 mod selection;
+mod tree;
 mod utils;
 mod vfs_state;
 
@@ -314,7 +315,15 @@ impl NavigationState {
 /// Smart file manager with advanced features
 pub struct FileManager {
     current_path: PathBuf,
-    entries: Vec<FileEntry>,
+    /// Flat tree of all known entries (top-level + expanded subdirectories).
+    tree_entries: Vec<tree::TreeEntry>,
+    /// Indices into `tree_entries` of currently visible nodes (hides collapsed children).
+    visible_indices: Vec<usize>,
+    /// Tree-drawing prefixes (├─, └─, │) for each visible node.
+    tree_prefixes: Vec<String>,
+    /// Set of expanded directory paths (persists across reloads within session).
+    expanded_dirs: HashSet<PathBuf>,
+    /// Cursor position — index into `visible_indices`.
     selected: usize,
     scroll_offset: usize,
     /// Modal window request (action, modal)
@@ -389,9 +398,50 @@ impl FileEntry {
 }
 
 impl FileManager {
-    /// Find entry index by name
+    // ── Tree helpers ───────────────────────────────────────────────────
+
+    /// Number of visible entries (used in place of old `entries.len()`).
+    fn visible_count(&self) -> usize {
+        self.visible_indices.len()
+    }
+
+    /// Get `FileEntry` at a visible index.
+    fn entry_at(&self, vis_idx: usize) -> Option<&FileEntry> {
+        let tree_idx = *self.visible_indices.get(vis_idx)?;
+        Some(&self.tree_entries[tree_idx].file_entry)
+    }
+
+    /// Get `TreeEntry` at a visible index.
+    fn tree_entry_at(&self, vis_idx: usize) -> Option<&tree::TreeEntry> {
+        let tree_idx = *self.visible_indices.get(vis_idx)?;
+        Some(&self.tree_entries[tree_idx])
+    }
+
+    /// Get full path of entry at a visible index.
+    fn path_at(&self, vis_idx: usize) -> Option<&PathBuf> {
+        let tree_idx = *self.visible_indices.get(vis_idx)?;
+        Some(&self.tree_entries[tree_idx].full_path)
+    }
+
+    /// Recompute `visible_indices` and `tree_prefixes` from `tree_entries`.
+    fn recompute_visible(&mut self) {
+        self.visible_indices = tree::compute_visible(&self.tree_entries);
+        self.tree_prefixes = tree::compute_prefixes(&self.tree_entries, &self.visible_indices);
+    }
+
+    /// Find visible index by entry name (top-level only for navigation restore).
     fn find_entry_index(&self, name: &str) -> Option<usize> {
-        self.entries.iter().position(|e| e.name == name)
+        self.visible_indices
+            .iter()
+            .position(|&ti| self.tree_entries[ti].file_entry.name == name)
+    }
+
+    /// Find visible index by full path.
+    #[allow(dead_code)]
+    fn find_visible_by_path(&self, path: &std::path::Path) -> Option<usize> {
+        self.visible_indices
+            .iter()
+            .position(|&ti| self.tree_entries[ti].full_path == path)
     }
 
     /// Create a new smart file manager
@@ -405,7 +455,10 @@ impl FileManager {
         let vfs = VfsState::with_path(termide_vfs::VfsPath::local(&current_path), None);
         let mut fm = Self {
             current_path,
-            entries: Vec::new(),
+            tree_entries: Vec::new(),
+            visible_indices: Vec::new(),
+            tree_prefixes: Vec::new(),
+            expanded_dirs: HashSet::new(),
             selected: 0,
             scroll_offset: 0,
             modal_request: None,
@@ -439,7 +492,10 @@ impl FileManager {
 
         let mut fm = Self {
             current_path: PathBuf::from("/"), // Not used for remote
-            entries: Vec::new(),
+            tree_entries: Vec::new(),
+            visible_indices: Vec::new(),
+            tree_prefixes: Vec::new(),
+            expanded_dirs: HashSet::new(),
             selected: 0,
             scroll_offset: 0,
             modal_request: None,
@@ -676,21 +732,353 @@ impl FileManager {
         self.load_directory_inner(true)
     }
 
+    /// Build top-level `tree_entries` from a sorted list of `FileEntry`.
+    fn build_top_level_tree(&self, entries: Vec<FileEntry>) -> Vec<tree::TreeEntry> {
+        entries
+            .into_iter()
+            .map(|fe| {
+                let full_path = if fe.name == ".." {
+                    self.current_path
+                        .parent()
+                        .unwrap_or(&self.current_path)
+                        .to_path_buf()
+                } else {
+                    self.current_path.join(&fe.name)
+                };
+                let expanded = if fe.is_dir && fe.name != ".." {
+                    let is_expanded = self.expanded_dirs.contains(&full_path);
+                    Some(is_expanded)
+                } else {
+                    None
+                };
+                tree::TreeEntry {
+                    file_entry: fe,
+                    full_path,
+                    depth: 0,
+                    expanded,
+                }
+            })
+            .collect()
+    }
+
+    /// Read entries from a directory and return sorted `FileEntry` list.
+    /// Does NOT add ".." entry — caller handles that.
+    fn read_dir_entries(&self, dir_path: &std::path::Path) -> Result<Vec<FileEntry>> {
+        let mut entries = Vec::new();
+
+        if let Ok(read_dir) = fs::read_dir(dir_path) {
+            for entry in read_dir.flatten() {
+                if let Ok(metadata) = entry.metadata() {
+                    let name = entry.file_name().to_string_lossy().to_string();
+
+                    if !self.show_hidden && name.starts_with('.') {
+                        continue;
+                    }
+
+                    let is_symlink = if let Ok(link_metadata) = fs::symlink_metadata(entry.path()) {
+                        link_metadata.is_symlink()
+                    } else {
+                        false
+                    };
+
+                    let is_dir = if is_symlink {
+                        fs::metadata(entry.path())
+                            .map(|m| m.is_dir())
+                            .unwrap_or(false)
+                    } else {
+                        metadata.is_dir()
+                    };
+
+                    let git_status = if is_dir {
+                        self.git_status_cache
+                            .as_ref()
+                            .map(|cache| cache.get_directory_status(&name))
+                            .unwrap_or(GitStatus::Unmodified)
+                    } else {
+                        self.git_status_cache
+                            .as_ref()
+                            .map(|cache| cache.get_status(&name))
+                            .unwrap_or(GitStatus::Unmodified)
+                    };
+
+                    #[cfg(unix)]
+                    let is_executable = {
+                        use std::os::unix::fs::PermissionsExt;
+                        metadata.permissions().mode() & 0o111 != 0
+                    };
+                    #[cfg(not(unix))]
+                    let is_executable = false;
+
+                    #[cfg(unix)]
+                    let is_readonly = {
+                        use std::os::unix::fs::PermissionsExt;
+                        let mode = metadata.permissions().mode();
+                        (mode & 0o200) == 0
+                    };
+                    #[cfg(not(unix))]
+                    let is_readonly = metadata.permissions().readonly();
+
+                    let size = if metadata.is_file() {
+                        Some(metadata.len())
+                    } else {
+                        None
+                    };
+                    let modified = metadata.modified().ok();
+
+                    entries.push(FileEntry {
+                        name,
+                        is_dir,
+                        is_symlink,
+                        is_executable,
+                        is_readonly,
+                        git_status,
+                        size,
+                        modified,
+                    });
+                }
+            }
+        } else {
+            log::warn!("Failed to read directory: {}", dir_path.display());
+        }
+
+        sort_entries(&mut entries);
+        Ok(entries)
+    }
+
+    /// Restore cursor position after entries reload.
+    /// Priority: newly created item → navigating down → restore by name → fallback to index.
+    fn restore_cursor(
+        &mut self,
+        current_name: Option<String>,
+        previous_index: usize,
+        previous_scroll_offset: usize,
+    ) {
+        let count = self.visible_count();
+        if let Some(created_name) = self.navigation.take_newly_created() {
+            if let Some(idx) = self.find_entry_index(&created_name) {
+                self.selected = idx;
+                if self.visible_height > 0 {
+                    self.adjust_scroll_offset(self.visible_height);
+                }
+            } else if count > 0 {
+                self.selected = previous_index.min(count - 1);
+            }
+        } else if self.navigation.check_and_reset_navigating_down() {
+            self.selected = 0;
+            self.scroll_offset = 0;
+        } else if let Some(name) = current_name {
+            if let Some(pos) = self.find_entry_index(&name) {
+                self.selected = pos;
+            } else if count > 0 {
+                self.selected = previous_index.min(count - 1);
+            }
+            if self.visible_height > 0 {
+                if count <= self.visible_height {
+                    self.scroll_offset = 0;
+                } else {
+                    let max_scroll = count.saturating_sub(self.visible_height);
+                    self.scroll_offset = previous_scroll_offset.min(max_scroll);
+                }
+                self.adjust_scroll_offset(self.visible_height);
+            }
+        }
+    }
+
+    /// Expand a directory at the given visible index, loading children lazily.
+    pub(crate) fn expand_dir(&mut self, vis_idx: usize) {
+        let tree_idx = match self.visible_indices.get(vis_idx) {
+            Some(&idx) => idx,
+            None => return,
+        };
+        if self.tree_entries[tree_idx].expanded != Some(false) {
+            return; // not a collapsed dir
+        }
+        let dir_path = self.tree_entries[tree_idx].full_path.clone();
+        let depth = self.tree_entries[tree_idx].depth;
+
+        // Mark as expanded
+        self.tree_entries[tree_idx].expanded = Some(true);
+        self.expanded_dirs.insert(dir_path.clone());
+
+        // Check if children are already loaded (next entry has depth > current)
+        let next_idx = tree_idx + 1;
+        let already_loaded =
+            next_idx < self.tree_entries.len() && self.tree_entries[next_idx].depth > depth;
+
+        if !already_loaded {
+            // Load children from filesystem
+            if let Ok(children) = self.read_dir_entries(&dir_path) {
+                let child_depth = depth + 1;
+                let child_tree_entries: Vec<tree::TreeEntry> = children
+                    .into_iter()
+                    .map(|fe| {
+                        let full_path = dir_path.join(&fe.name);
+                        let expanded = if fe.is_dir {
+                            let is_exp = self.expanded_dirs.contains(&full_path);
+                            Some(is_exp)
+                        } else {
+                            None
+                        };
+                        tree::TreeEntry {
+                            file_entry: fe,
+                            full_path,
+                            depth: child_depth,
+                            expanded,
+                        }
+                    })
+                    .collect();
+
+                // Save selection by path before insert (indices will shift)
+                let saved = self.save_selection_paths();
+                let n = child_tree_entries.len();
+                // Insert children after parent
+                self.tree_entries
+                    .splice(next_idx..next_idx, child_tree_entries);
+                // Recursively expand any subdirs that were previously expanded
+                self.expand_previously_expanded(next_idx, n);
+                // Rebuild visible and restore selection
+                self.recompute_visible();
+                self.restore_selection_by_paths(&saved);
+                return;
+            }
+        }
+
+        self.recompute_visible();
+    }
+
+    /// After inserting children, check if any subdirectories should be expanded
+    /// (because they are in `expanded_dirs`).
+    fn expand_previously_expanded(&mut self, start: usize, count: usize) {
+        let mut i = start;
+        let end = start + count;
+        while i < end.min(self.tree_entries.len()) {
+            if self.tree_entries[i].expanded == Some(true) {
+                let dir_path = self.tree_entries[i].full_path.clone();
+                let child_depth = self.tree_entries[i].depth + 1;
+                if let Ok(children) = self.read_dir_entries(&dir_path) {
+                    let child_entries: Vec<tree::TreeEntry> = children
+                        .into_iter()
+                        .map(|fe| {
+                            let full_path = dir_path.join(&fe.name);
+                            let expanded = if fe.is_dir {
+                                let is_exp = self.expanded_dirs.contains(&full_path);
+                                Some(is_exp)
+                            } else {
+                                None
+                            };
+                            tree::TreeEntry {
+                                file_entry: fe,
+                                full_path,
+                                depth: child_depth,
+                                expanded,
+                            }
+                        })
+                        .collect();
+                    let n = child_entries.len();
+                    let insert_at = i + 1;
+                    self.tree_entries
+                        .splice(insert_at..insert_at, child_entries);
+                    // Recurse into newly inserted range
+                    self.expand_previously_expanded(insert_at, n);
+                }
+            }
+            // Skip over any children we just inserted (they have depth > current)
+            let current_depth = self.tree_entries[i].depth;
+            i += 1;
+            while i < self.tree_entries.len() && self.tree_entries[i].depth > current_depth {
+                i += 1;
+            }
+        }
+    }
+
+    /// Collapse a directory at the given visible index.
+    pub(crate) fn collapse_dir(&mut self, vis_idx: usize) {
+        let tree_idx = match self.visible_indices.get(vis_idx) {
+            Some(&idx) => idx,
+            None => return,
+        };
+        if self.tree_entries[tree_idx].expanded != Some(true) {
+            return; // not an expanded dir
+        }
+
+        // Mark as collapsed (children stay in tree_entries, just hidden by visibility)
+        self.tree_entries[tree_idx].expanded = Some(false);
+        self.expanded_dirs
+            .remove(&self.tree_entries[tree_idx].full_path);
+
+        self.recompute_visible();
+    }
+
+    /// Toggle expand/collapse for a directory at the given visible index.
+    pub(crate) fn toggle_expand(&mut self, vis_idx: usize) {
+        let tree_idx = match self.visible_indices.get(vis_idx) {
+            Some(&idx) => idx,
+            None => return,
+        };
+        match self.tree_entries[tree_idx].expanded {
+            Some(true) => self.collapse_dir(vis_idx),
+            Some(false) => self.expand_dir(vis_idx),
+            None => {} // not a directory
+        }
+    }
+
+    /// Jump cursor to the parent directory node in the tree.
+    /// Used when pressing Left on a non-directory or on a child of an expanded dir.
+    fn jump_to_parent_dir(&mut self) {
+        let tree_idx = match self.visible_indices.get(self.selected) {
+            Some(&idx) => idx,
+            None => return,
+        };
+        let current_depth = self.tree_entries[tree_idx].depth;
+        if current_depth == 0 {
+            return;
+        }
+        // Walk backwards in visible_indices to find the parent (first entry with depth < current)
+        for vis_idx in (0..self.selected).rev() {
+            let ti = self.visible_indices[vis_idx];
+            if self.tree_entries[ti].depth < current_depth {
+                self.selected = vis_idx;
+                self.adjust_scroll_offset(self.visible_height);
+                return;
+            }
+        }
+    }
+
+    /// Save selection as set of paths (survives tree rebuilds).
+    fn save_selection_paths(&self) -> HashSet<PathBuf> {
+        self.selection
+            .items
+            .iter()
+            .filter_map(|&vis_idx| self.path_at(vis_idx).cloned())
+            .collect()
+    }
+
+    /// Restore selection from saved paths after tree rebuild.
+    fn restore_selection_by_paths(&mut self, saved: &HashSet<PathBuf>) {
+        self.selection.items.clear();
+        for (vis_idx, &tree_idx) in self.visible_indices.iter().enumerate() {
+            if saved.contains(&self.tree_entries[tree_idx].full_path) {
+                self.selection.items.insert(vis_idx);
+            }
+        }
+    }
+
     /// Update entries from VFS directory listing (for remote directories).
     fn update_entries_from_vfs(&mut self, vfs_entries: Vec<VfsEntry>) {
-        // Save current state BEFORE clearing entries for cursor restoration
         let previous_index = self.selected;
         let previous_scroll_offset = self.scroll_offset;
-        let current_name = self.entries.get(self.selected).map(|e| e.name.clone());
+        let current_name = self.entry_at(self.selected).map(|e| e.name.clone());
 
-        self.entries.clear();
+        self.tree_entries.clear();
         self.selected = 0;
         self.scroll_offset = 0;
         self.selection.clear();
 
+        let mut entries = Vec::new();
+
         // Add ".." entry for parent directory navigation (unless at root)
         if self.vfs.current_path().parent().is_some() {
-            self.entries.push(FileEntry {
+            entries.push(FileEntry {
                 name: "..".to_string(),
                 is_dir: true,
                 is_symlink: false,
@@ -709,86 +1097,40 @@ impl FileManager {
             .filter(|e| self.show_hidden || !e.name.starts_with('.'))
             .collect();
 
-        // Sort: directories, then executables, then regular files (alphabetically within each group)
         sort_entries(&mut file_entries);
+        entries.extend(file_entries);
 
-        self.entries.extend(file_entries);
+        self.tree_entries = self.build_top_level_tree(entries);
+        self.recompute_visible();
 
         // Clear git status (not applicable for remote files)
         self.git_status_cache = None;
         self.git_root = None;
 
-        // Restore cursor position intelligently
-        // Priority: newly created item > navigating down > normal restoration
-        if let Some(created_name) = self.navigation.take_newly_created() {
-            // Navigate to newly created/copied item (highest priority)
-            if let Some(idx) = self.find_entry_index(&created_name) {
-                self.selected = idx;
-                // Ensure cursor is visible in viewport
-                if self.visible_height > 0 {
-                    self.adjust_scroll_offset(self.visible_height);
-                }
-            } else if !self.entries.is_empty() {
-                // Item not found (shouldn't happen) - stay on current or last item
-                self.selected = previous_index.min(self.entries.len() - 1);
-            }
-        } else if self.navigation.check_and_reset_navigating_down() {
-            // When entering a subdirectory, always start at first item ("..")
-            self.selected = 0;
-            self.scroll_offset = 0;
-        } else if let Some(name) = current_name {
-            if let Some(pos) = self.find_entry_index(&name) {
-                // Found file by name - restore to its position
-                self.selected = pos;
-            } else if !self.entries.is_empty() {
-                // File not found (deleted) - use previous index or last available
-                self.selected = previous_index.min(self.entries.len() - 1);
-            }
-
-            // Restore scroll_offset using real visible_height
-            if self.visible_height > 0 {
-                // If all items fit on screen - no scroll needed
-                if self.entries.len() <= self.visible_height {
-                    self.scroll_offset = 0;
-                } else {
-                    // Restore previous offset if still valid
-                    let max_scroll = self.entries.len().saturating_sub(self.visible_height);
-                    self.scroll_offset = previous_scroll_offset.min(max_scroll);
-                }
-                // Ensure cursor is visible
-                self.adjust_scroll_offset(self.visible_height);
-            }
-            // If visible_height == 0, render() will recalculate on first draw
-        }
+        self.restore_cursor(current_name, previous_index, previous_scroll_offset);
     }
 
     /// Internal method to load directory with optional selection preservation
     fn load_directory_inner(&mut self, preserve_selection: bool) -> Result<()> {
         // Sync VFS path with current_path for local paths
-        // This ensures vfs.display_path() stays in sync with self.current_path
-        // after navigation operations (enter, go parent, go home, etc.)
         if !self.vfs.is_remote() {
             self.vfs
                 .set_path(termide_vfs::VfsPath::local(self.current_path.clone()));
         }
 
         // For remote paths, don't clear entries - keep showing current content while loading
-        // update_entries_from_vfs() will replace them atomically when async operation completes
         if self.vfs.is_remote() {
             log::debug!("load_directory_inner: Starting async list for remote path (keeping current entries)");
-            // Invalidate cache and start async directory listing
-            // Entries will be populated by update_entries_from_vfs() when VFS operation completes
             self.vfs.invalidate_cache();
             self.vfs.start_list_dir();
             return Ok(());
         }
 
         // Save current file name and index to restore position
-        // Use previous_dir_name if navigating up, otherwise use current selection
         let current_name = self
             .navigation
             .take_previous_dir_name()
-            .or_else(|| self.entries.get(self.selected).map(|e| e.name.clone()));
+            .or_else(|| self.entry_at(self.selected).map(|e| e.name.clone()));
         let previous_index = self.selected;
         let previous_scroll_offset = self.scroll_offset;
 
@@ -797,29 +1139,28 @@ impl FileManager {
             self.selection
                 .items
                 .iter()
-                .filter_map(|&idx| self.entries.get(idx).map(|e| e.name.clone()))
+                .filter_map(|&vis_idx| self.entry_at(vis_idx).map(|e| e.name.clone()))
                 .collect()
         } else {
             HashSet::new()
         };
 
-        self.entries.clear();
+        self.tree_entries.clear();
         self.selected = 0;
         self.scroll_offset = 0;
-        // Clear selection state (will restore by names if preserve_selection)
         self.selection.clear();
         self.selection.end_drag();
 
         // Start async git status loading (non-blocking)
-        // Git status will be applied when check_git_status_async() is called
-        // Clear cache to ensure we don't use stale data (fixes deleted files
-        // appearing in wrong directories after file deletion)
         self.git_status_cache = None;
         self.git_status_receiver = Some(get_git_status_async(self.current_path.clone()));
 
+        // Build entries list
+        let mut entries = Vec::new();
+
         // Add parent directory if not at root
         if self.current_path.parent().is_some() {
-            self.entries.push(FileEntry {
+            entries.push(FileEntry {
                 name: "..".to_string(),
                 is_dir: true,
                 is_symlink: false,
@@ -831,150 +1172,67 @@ impl FileManager {
             });
         }
 
-        // Read directory contents (local paths only - remote handled above)
-        if let Ok(read_dir) = fs::read_dir(&self.current_path) {
-            for entry in read_dir.flatten() {
-                if let Ok(metadata) = entry.metadata() {
-                    let name = entry.file_name().to_string_lossy().to_string();
+        // Read directory contents
+        let mut dir_entries = self.read_dir_entries(&self.current_path)?;
+        entries.append(&mut dir_entries);
 
-                    if !self.show_hidden && name.starts_with('.') {
-                        continue;
-                    }
+        // Build tree (top-level, respecting previously expanded dirs)
+        self.tree_entries = self.build_top_level_tree(entries);
 
-                    // Check if this is a symlink (use symlink_metadata to not follow links)
-                    let is_symlink = if let Ok(link_metadata) = fs::symlink_metadata(entry.path()) {
-                        link_metadata.is_symlink()
-                    } else {
-                        false
-                    };
+        // Expand any directories that were previously expanded
+        self.load_expanded_subtrees();
 
-                    // For symlinks, follow the link to determine if target is a directory.
-                    // DirEntry::metadata() on Unix uses lstat() which doesn't follow symlinks,
-                    // so we need fs::metadata() (stat()) to resolve the target type.
-                    let is_dir = if is_symlink {
-                        fs::metadata(entry.path())
-                            .map(|m| m.is_dir())
-                            .unwrap_or(false)
-                    } else {
-                        metadata.is_dir()
-                    };
-
-                    // Determine git status for this entry
-                    let git_status = if is_dir {
-                        // For directories: check recursively for nested changes
-                        self.git_status_cache
-                            .as_ref()
-                            .map(|cache| cache.get_directory_status(&name))
-                            .unwrap_or(GitStatus::Unmodified)
-                    } else {
-                        // For files: use direct status
-                        self.git_status_cache
-                            .as_ref()
-                            .map(|cache| cache.get_status(&name))
-                            .unwrap_or(GitStatus::Unmodified)
-                    };
-
-                    // Check if file is executable (Unix permissions)
-                    #[cfg(unix)]
-                    let is_executable = {
-                        use std::os::unix::fs::PermissionsExt;
-                        metadata.permissions().mode() & 0o111 != 0
-                    };
-                    #[cfg(not(unix))]
-                    let is_executable = false;
-
-                    // Check if file is read-only (Unix permissions)
-                    #[cfg(unix)]
-                    let is_readonly = {
-                        use std::os::unix::fs::PermissionsExt;
-                        let mode = metadata.permissions().mode();
-                        (mode & 0o200) == 0 // owner write bit
-                    };
-                    #[cfg(not(unix))]
-                    let is_readonly = metadata.permissions().readonly();
-
-                    // Get size (files only) and modification time
-                    let size = if metadata.is_file() {
-                        Some(metadata.len())
-                    } else {
-                        None
-                    };
-                    let modified = metadata.modified().ok();
-
-                    self.entries.push(FileEntry {
-                        name,
-                        is_dir,
-                        is_symlink,
-                        is_executable,
-                        is_readonly,
-                        git_status,
-                        size,
-                        modified,
-                    });
-                }
-            }
-        } else {
-            log::warn!("Failed to read directory: {}", self.current_path.display());
-        }
-
-        // Note: deleted files are added when async git status completes (apply_git_statuses)
-
-        // Sort: directories, then executables, then regular files
-        sort_entries(&mut self.entries);
+        self.recompute_visible();
 
         // Restore selection by file names
         if !selected_names.is_empty() {
-            for (idx, entry) in self.entries.iter().enumerate() {
-                if selected_names.contains(&entry.name) {
-                    self.selection.select(idx);
+            for (vis_idx, &tree_idx) in self.visible_indices.iter().enumerate() {
+                if selected_names.contains(&self.tree_entries[tree_idx].file_entry.name) {
+                    self.selection.select(vis_idx);
                 }
             }
         }
 
-        // Restore cursor position
-        // Priority: newly created item > navigating down > normal restoration
-        if let Some(created_name) = self.navigation.take_newly_created() {
-            // Navigate to newly created item (highest priority)
-            if let Some(idx) = self.find_entry_index(&created_name) {
-                self.selected = idx;
-                // Ensure cursor is visible
-                if self.visible_height > 0 {
-                    self.adjust_scroll_offset(self.visible_height);
-                }
-            } else if !self.entries.is_empty() {
-                // Item not found (shouldn't happen) - stay on current or last item
-                self.selected = previous_index.min(self.entries.len() - 1);
-            }
-        } else if self.navigation.check_and_reset_navigating_down() {
-            // When entering a subdirectory, always start at first item ("..")
-            self.selected = 0;
-            self.scroll_offset = 0;
-        } else if let Some(name) = current_name {
-            if let Some(pos) = self.find_entry_index(&name) {
-                // Found file by name - restore to its position
-                self.selected = pos;
-            } else if !self.entries.is_empty() {
-                // File not found (deleted) - use previous index or last available
-                self.selected = previous_index.min(self.entries.len() - 1);
-            }
-
-            // Restore scroll_offset using real visible_height
-            if self.visible_height > 0 {
-                // If all items fit on screen - no scroll needed
-                if self.entries.len() <= self.visible_height {
-                    self.scroll_offset = 0;
-                } else {
-                    // Restore previous offset if still valid
-                    let max_scroll = self.entries.len().saturating_sub(self.visible_height);
-                    self.scroll_offset = previous_scroll_offset.min(max_scroll);
-                }
-                // Ensure cursor is visible
-                self.adjust_scroll_offset(self.visible_height);
-            }
-            // If visible_height == 0, render() will recalculate on first draw
-        }
+        self.restore_cursor(current_name, previous_index, previous_scroll_offset);
 
         Ok(())
+    }
+
+    /// After building top-level tree, load children for any expanded directories.
+    fn load_expanded_subtrees(&mut self) {
+        let mut i = 0;
+        while i < self.tree_entries.len() {
+            if self.tree_entries[i].expanded == Some(true) {
+                let dir_path = self.tree_entries[i].full_path.clone();
+                let child_depth = self.tree_entries[i].depth + 1;
+                if let Ok(children) = self.read_dir_entries(&dir_path) {
+                    let child_entries: Vec<tree::TreeEntry> = children
+                        .into_iter()
+                        .map(|fe| {
+                            let full_path = dir_path.join(&fe.name);
+                            let expanded = if fe.is_dir {
+                                let is_exp = self.expanded_dirs.contains(&full_path);
+                                Some(is_exp)
+                            } else {
+                                None
+                            };
+                            tree::TreeEntry {
+                                file_entry: fe,
+                                full_path,
+                                depth: child_depth,
+                                expanded,
+                            }
+                        })
+                        .collect();
+                    let insert_at = i + 1;
+                    self.tree_entries
+                        .splice(insert_at..insert_at, child_entries);
+                    // Don't increment i — continue to process the newly inserted children
+                    // (they may also need expansion)
+                }
+            }
+            i += 1;
+        }
     }
 
     /// Get current directory path
@@ -985,26 +1243,26 @@ impl FileManager {
     /// Enter directory or open file
     /// Returns `Some(PanelEvent::OpenFile)` if a file should be opened
     fn enter(&mut self) -> Option<PanelEvent> {
-        let entry = self.entries.get(self.selected)?;
+        // Extract all needed data upfront to avoid borrow conflicts
+        let te = self.tree_entry_at(self.selected)?;
+        let is_deleted = te.file_entry.git_status == GitStatus::Deleted;
+        let is_parent = te.file_entry.name == "..";
+        let is_dir = te.file_entry.is_dir;
+        let entry_name = te.file_entry.name.clone();
+        let full_path = te.full_path.clone();
 
-        // Prohibit operations on deleted files
-        if entry.git_status == GitStatus::Deleted {
+        if is_deleted {
             return None;
         }
 
-        // Handle directory navigation
-        if entry.name == ".." {
-            // Save current directory name before going up
+        if is_parent {
             if let Some(dir_name) = self.current_path.file_name() {
                 self.navigation
                     .save_for_going_up(dir_name.to_string_lossy().to_string());
             }
 
             if self.vfs.is_remote() {
-                // For remote paths, navigate through VFS
                 self.vfs.navigate_up();
-                // Don't update current_path yet - wait for listing to complete
-                // The path will be synced when tick() succeeds
                 self.vfs.start_list_dir();
             } else if let Some(parent) = self.current_path.parent() {
                 self.current_path = parent.to_path_buf();
@@ -1013,88 +1271,79 @@ impl FileManager {
             return None;
         }
 
-        if entry.is_dir {
+        if is_dir {
             self.navigation.prepare_for_going_down();
 
             if self.vfs.is_remote() {
-                // For remote paths, navigate through VFS
-                self.vfs.navigate_down(&entry.name);
-                // Don't update current_path yet - wait for listing to complete
-                // The path will be synced when tick() succeeds
+                self.vfs.navigate_down(&entry_name);
                 self.vfs.start_list_dir();
             } else {
-                self.current_path.push(&entry.name);
+                self.current_path.push(&entry_name);
                 let _ = self.load_directory();
             }
             return None;
         }
 
-        // This is a file - check if remote
+        // File — check if remote
         if self.vfs.is_remote() {
-            let vfs_path = self.vfs.current_path().join(&entry.name);
+            let vfs_path = self.vfs.current_path().join(&entry_name);
             return Some(PanelEvent::OpenRemoteFile(vfs_path.to_url_string()));
         }
 
-        // Local path handling
-        let file_path = self.current_path.join(&entry.name);
-        determine_file_open_event(entry, &file_path, FileOpenMode::Default)
+        // Re-borrow entry for determine_file_open_event
+        let entry = &self.tree_entry_at(self.selected)?.file_entry;
+        determine_file_open_event(entry, &full_path, FileOpenMode::Default)
     }
 
     /// Open file for editing (F4)
-    /// Returns `Some(PanelEvent::OpenFile)` if a file should be opened
     fn edit_file(&mut self) -> Option<PanelEvent> {
-        let entry = self.entries.get(self.selected)?;
-
-        // Prohibit operations on deleted files
-        if entry.git_status == GitStatus::Deleted {
+        let te = self.tree_entry_at(self.selected)?;
+        if te.file_entry.git_status == GitStatus::Deleted {
             return None;
         }
-
-        // Directories and ".." - do nothing for file operations
-        if entry.is_dir || entry.name == ".." {
+        if te.file_entry.is_dir || te.file_entry.name == ".." {
             return None;
         }
+        let entry_name = te.file_entry.name.clone();
+        let full_path = te.full_path.clone();
 
-        // Check if remote
         if self.vfs.is_remote() {
-            let vfs_path = self.vfs.current_path().join(&entry.name);
+            let vfs_path = self.vfs.current_path().join(&entry_name);
             return Some(PanelEvent::OpenRemoteFile(vfs_path.to_url_string()));
         }
 
-        let file_path = self.current_path.join(&entry.name);
-        determine_file_open_event(entry, &file_path, FileOpenMode::ForceEdit)
+        let entry = &self.tree_entry_at(self.selected)?.file_entry;
+        determine_file_open_event(entry, &full_path, FileOpenMode::ForceEdit)
     }
 
     /// View file without executing (F3)
-    /// Similar to enter() but treats executables as text files
     fn view_file(&mut self) -> Option<PanelEvent> {
-        let entry = self.entries.get(self.selected)?;
-
-        // Prohibit operations on deleted files
-        if entry.git_status == GitStatus::Deleted {
+        let te = self.tree_entry_at(self.selected)?;
+        if te.file_entry.git_status == GitStatus::Deleted {
             return None;
         }
-
-        // Directories and ".." - do nothing for file operations
-        if entry.is_dir || entry.name == ".." {
+        if te.file_entry.is_dir || te.file_entry.name == ".." {
             return None;
         }
+        let entry_name = te.file_entry.name.clone();
+        let full_path = te.full_path.clone();
 
-        // Check if remote
         if self.vfs.is_remote() {
-            let vfs_path = self.vfs.current_path().join(&entry.name);
+            let vfs_path = self.vfs.current_path().join(&entry_name);
             return Some(PanelEvent::OpenRemoteFile(vfs_path.to_url_string()));
         }
 
-        let file_path = self.current_path.join(&entry.name);
-        determine_file_open_event(entry, &file_path, FileOpenMode::View)
+        let entry = &self.tree_entry_at(self.selected)?.file_entry;
+        determine_file_open_event(entry, &full_path, FileOpenMode::View)
     }
 
     /// Force open file with system default application (Shift+Enter)
     fn open_external(&mut self) -> Option<PanelEvent> {
-        let entry = self.entries.get(self.selected)?;
-        let file_path = self.current_path.join(&entry.name);
-        determine_file_open_event(entry, &file_path, FileOpenMode::External)
+        let te = self.tree_entry_at(self.selected)?;
+        let full_path = te.full_path.clone();
+
+        let entry = &self.tree_entry_at(self.selected)?.file_entry;
+        determine_file_open_event(entry, &full_path, FileOpenMode::External)
     }
 
     /// Format file size in human-readable format (public method for external use)
@@ -1136,20 +1385,21 @@ impl FileManager {
 
     /// Apply git statuses from cache to entries
     fn apply_git_statuses(&mut self) {
-        for entry in &mut self.entries {
-            if entry.name == ".." {
+        // Only apply to top-level entries (depth 0) — subdirectories have their own git context
+        for te in &mut self.tree_entries {
+            if te.file_entry.name == ".." || te.depth > 0 {
                 continue;
             }
 
-            entry.git_status = if entry.is_dir {
+            te.file_entry.git_status = if te.file_entry.is_dir {
                 self.git_status_cache
                     .as_ref()
-                    .map(|cache| cache.get_directory_status(&entry.name))
+                    .map(|cache| cache.get_directory_status(&te.file_entry.name))
                     .unwrap_or(GitStatus::Unmodified)
             } else {
                 self.git_status_cache
                     .as_ref()
-                    .map(|cache| cache.get_status(&entry.name))
+                    .map(|cache| cache.get_status(&te.file_entry.name))
                     .unwrap_or(GitStatus::Unmodified)
             };
         }
@@ -1158,33 +1408,61 @@ impl FileManager {
         if let Some(cache) = &self.git_status_cache {
             let deleted_files = cache.get_deleted_files();
             if !deleted_files.is_empty() {
-                // Build HashSet of existing entry names for O(1) lookup instead of O(n) per check
-                let existing_names: HashSet<String> =
-                    self.entries.iter().map(|e| e.name.clone()).collect();
+                let existing_names: HashSet<String> = self
+                    .tree_entries
+                    .iter()
+                    .filter(|te| te.depth == 0)
+                    .map(|te| te.file_entry.name.clone())
+                    .collect();
 
-                // Collect new entries to add (avoiding borrow conflict)
-                let new_entries: Vec<FileEntry> = deleted_files
+                let new_entries: Vec<tree::TreeEntry> = deleted_files
                     .into_iter()
                     .filter(|deleted_name| !existing_names.contains(deleted_name))
-                    .map(|deleted_name| FileEntry {
-                        name: deleted_name,
-                        is_dir: false,
-                        is_symlink: false,
-                        is_executable: false,
-                        is_readonly: false,
-                        git_status: GitStatus::Deleted,
-                        size: None,
-                        modified: None,
+                    .map(|deleted_name| {
+                        let full_path = self.current_path.join(&deleted_name);
+                        tree::TreeEntry {
+                            file_entry: FileEntry {
+                                name: deleted_name,
+                                is_dir: false,
+                                is_symlink: false,
+                                is_executable: false,
+                                is_readonly: false,
+                                git_status: GitStatus::Deleted,
+                                size: None,
+                                modified: None,
+                            },
+                            full_path,
+                            depth: 0,
+                            expanded: None,
+                        }
                     })
                     .collect();
 
-                // Only re-sort if we actually added deleted files
                 if !new_entries.is_empty() {
-                    self.entries.extend(new_entries);
-                    sort_entries(&mut self.entries);
+                    // Insert deleted files among top-level entries and re-sort
+                    // Find the end of depth-0 entries to insert before any expanded children
+                    self.tree_entries.extend(new_entries);
+                    // Re-sort only depth-0 entries while preserving subtree structure
+                    // For simplicity, rebuild entire tree
+                    self.rebuild_with_expanded_subtrees();
                 }
             }
         }
+    }
+
+    /// Rebuild tree_entries preserving expanded state (used after adding deleted files).
+    fn rebuild_with_expanded_subtrees(&mut self) {
+        // Extract top-level entries, sort them, then re-expand
+        let mut top_entries: Vec<FileEntry> = self
+            .tree_entries
+            .iter()
+            .filter(|te| te.depth == 0)
+            .map(|te| te.file_entry.clone())
+            .collect();
+        sort_entries(&mut top_entries);
+        self.tree_entries = self.build_top_level_tree(top_entries);
+        self.load_expanded_subtrees();
+        self.recompute_visible();
     }
 
     /// Check if git status is still loading
@@ -1264,7 +1542,7 @@ impl Panel for FileManager {
                 area.height,
                 self.scroll_offset,
                 content_height,
-                self.entries.len(),
+                self.visible_count(),
                 &theme_colors,
                 ctx.is_focused,
             );
@@ -1304,7 +1582,7 @@ impl Panel for FileManager {
                 return vec![];
             }
             MouseEventKind::ScrollDown => {
-                let max_scroll = self.entries.len().saturating_sub(visible_height);
+                let max_scroll = self.visible_count().saturating_sub(visible_height);
                 self.scroll_offset = (self.scroll_offset + 3).min(max_scroll);
                 // Keep selected in visible area so render doesn't reset scroll
                 if self.selected < self.scroll_offset {
@@ -1343,7 +1621,7 @@ impl Panel for FileManager {
                 let relative_row = (mouse.row - inner_area.y) as usize;
                 let clicked_index = self.scroll_offset + relative_row;
 
-                if clicked_index < self.entries.len() {
+                if clicked_index < self.visible_count() {
                     // Check modifiers
                     if mouse.modifiers.contains(KeyModifiers::SHIFT) {
                         // Shift+click - select range from selected to clicked_index
@@ -1363,24 +1641,44 @@ impl Panel for FileManager {
                         self.selected = clicked_index;
                         self.selection.start_ctrl_drag(clicked_index);
                     } else {
-                        // Check for double click using ClickTracker
-                        let is_double_click = self.click_tracker.is_double_click(&clicked_index);
-
-                        if is_double_click {
-                            // Double click - open file/directory
-                            self.selected = clicked_index;
-                            let event = self.enter();
-                            // Reset click state
-                            self.click_tracker.reset();
-                            // Return event if file was opened
-                            if let Some(e) = event {
-                                return vec![e];
-                            }
+                        // Check if click is on the expand/collapse icon area for directories
+                        let relative_col = (mouse.column - inner_area.x) as usize;
+                        let is_dir_icon_click = if let Some(te) = self.tree_entry_at(clicked_index)
+                        {
+                            let prefix_width = self
+                                .tree_prefixes
+                                .get(clicked_index)
+                                .map(|p| unicode_width::UnicodeWidthStr::width(p.as_str()))
+                                .unwrap_or(0);
+                            // Icon is at prefix_width + 1 (attr char) position
+                            te.expanded.is_some() && relative_col <= prefix_width + 1
                         } else {
-                            // Single click - select item
+                            false
+                        };
+
+                        if is_dir_icon_click {
+                            // Click on ▶/▼ icon — toggle expand/collapse
                             self.selected = clicked_index;
-                            // Record click for double-click detection
-                            self.click_tracker.record(clicked_index);
+                            self.toggle_expand(clicked_index);
+                            self.click_tracker.reset();
+                        } else {
+                            // Check for double click using ClickTracker
+                            let is_double_click =
+                                self.click_tracker.is_double_click(&clicked_index);
+
+                            if is_double_click {
+                                // Double click - open file/directory
+                                self.selected = clicked_index;
+                                let event = self.enter();
+                                self.click_tracker.reset();
+                                if let Some(e) = event {
+                                    return vec![e];
+                                }
+                            } else {
+                                // Single click - select item
+                                self.selected = clicked_index;
+                                self.click_tracker.record(clicked_index);
+                            }
                         }
                         self.selection.end_drag();
                     }
@@ -1392,7 +1690,7 @@ impl Panel for FileManager {
                     let relative_row = (mouse.row - inner_area.y) as usize;
                     let current_index = self.scroll_offset + relative_row;
 
-                    if current_index < self.entries.len() {
+                    if current_index < self.visible_count() {
                         // Process drag will select or toggle based on drag mode
                         self.selection.process_drag(current_index);
                         self.selected = current_index;
@@ -1418,7 +1716,7 @@ impl Panel for FileManager {
             }
         } else {
             // Scroll down
-            let max_scroll = self.entries.len().saturating_sub(visible_height);
+            let max_scroll = self.visible_count().saturating_sub(visible_height);
             self.scroll_offset = (self.scroll_offset + lines).min(max_scroll);
             // Keep selected in visible area
             if self.selected < self.scroll_offset {
@@ -1715,7 +2013,7 @@ impl FileManager {
                 self.selected = self.selected.saturating_sub(self.visible_height);
             }
             FmCommand::PageDown => {
-                let max_index = self.entries.len().saturating_sub(1);
+                let max_index = self.visible_count().saturating_sub(1);
                 self.selected = (self.selected + self.visible_height).min(max_index);
             }
             FmCommand::GoHome => {
@@ -1723,7 +2021,7 @@ impl FileManager {
                 self.scroll_offset = 0;
             }
             FmCommand::GoEnd => {
-                self.selected = self.entries.len().saturating_sub(1);
+                self.selected = self.visible_count().saturating_sub(1);
             }
             FmCommand::Enter => {
                 if let Some(event) = self.enter() {
@@ -1890,18 +2188,19 @@ impl FileManager {
                 }
             }
             FmCommand::RenameFile => {
-                if let Some(entry) = self.entries.get(self.selected) {
+                if let Some(te) = self.tree_entry_at(self.selected) {
+                    let entry = &te.file_entry;
                     // Only allow renaming files and directories (not deleted or special entries)
                     if entry.git_status == GitStatus::Deleted {
                         return events;
                     }
-                    let path = self.current_path.join(&entry.name);
-                    let filename = &entry.name;
+                    let path = te.full_path.clone();
+                    let filename = entry.name.clone();
                     let t = termide_i18n::t();
                     let modal = InputModal::with_default(
                         t.op_type_rename(),
-                        t.fm_move_prompt(filename),
-                        filename,
+                        t.fm_move_prompt(&filename),
+                        &filename,
                     );
                     let action = PendingAction::MovePath {
                         sources: vec![path.clone()],
@@ -2029,6 +2328,33 @@ impl FileManager {
                     current_directory: self.current_path.clone(),
                 };
                 self.modal_request = Some((action, ActiveModal::Input(Box::new(modal))));
+            }
+
+            // Tree expand/collapse
+            FmCommand::ExpandDir => {
+                // If current item is a collapsed dir, expand it
+                // Otherwise, if it's a file or "..", Enter into it
+                if let Some(te) = self.tree_entry_at(self.selected) {
+                    if te.expanded == Some(false) {
+                        self.expand_dir(self.selected);
+                    } else if te.file_entry.is_dir || te.file_entry.name == ".." {
+                        if let Some(event) = self.enter() {
+                            events.push(event);
+                        }
+                    }
+                }
+            }
+            FmCommand::CollapseDir => {
+                // If current item is an expanded dir, collapse it
+                // If current item is inside an expanded subtree, jump to parent dir
+                if let Some(te) = self.tree_entry_at(self.selected) {
+                    if te.expanded == Some(true) {
+                        self.collapse_dir(self.selected);
+                    } else if te.depth > 0 {
+                        // Navigate up to parent directory in tree
+                        self.jump_to_parent_dir();
+                    }
+                }
             }
 
             // No operation
