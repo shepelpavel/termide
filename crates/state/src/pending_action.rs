@@ -67,10 +67,6 @@ pub enum PendingAction {
     NewSession,
     /// Change root path of current session
     ChangeRootPath,
-    /// File search in file manager
-    FileSearch,
-    /// Content search in file manager
-    ContentSearch,
     /// Open Git Status panel
     OpenGitStatus,
     /// Open Git Log panel

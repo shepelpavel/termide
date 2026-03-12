@@ -11,9 +11,13 @@ anyhow.workspace = true
 chrono.workspace = true
 crossterm.workspace = true
 dirs.workspace = true
+glob.workspace = true
+ignore.workspace = true
 libc.workspace = true
 log.workspace = true
 ratatui.workspace = true
+regex.workspace = true
+unicode-segmentation.workspace = true
 unicode-width.workspace = true
 
 # Workspace crates

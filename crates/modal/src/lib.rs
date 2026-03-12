@@ -26,11 +26,9 @@ pub mod choice;
 pub mod commit;
 pub mod confirm;
 pub mod conflict;
-pub mod content_search;
 pub mod directory_picker;
 pub mod directory_switcher;
 pub mod editable_select;
-pub mod file_search;
 pub mod info;
 pub mod info_action;
 pub mod input;
@@ -47,11 +45,9 @@ pub use choice::ChoiceModal;
 pub use commit::CommitModal;
 pub use confirm::ConfirmModal;
 pub use conflict::{ConflictModal, ConflictResolution};
-pub use content_search::{ContentSearchModal, ContentSearchResultItem};
 pub use directory_picker::DirectoryPickerModal;
 pub use directory_switcher::{DirectoryItem, DirectorySwitcherModal};
 pub use editable_select::{EditableSelectModal, SelectOption};
-pub use file_search::{FileSearchModal, SearchResultItem};
 pub use info::{InfoModal, ModalValue, SegmentStyle, StyledSegment};
 pub use info_action::{ActionButton, InfoActionModal, InfoActionResult};
 pub use input::InputModal;
@@ -94,10 +90,6 @@ pub enum ActiveModal {
     Replace(Box<ReplaceModal>),
     /// Sessions selection modal
     Sessions(Box<SessionsModal>),
-    /// File search modal
-    FileSearch(Box<FileSearchModal>),
-    /// Content search modal
-    ContentSearch(Box<ContentSearchModal>),
     /// Directory picker modal
     DirectoryPicker(Box<DirectoryPickerModal>),
     /// Save As modal with executable checkbox
@@ -137,8 +129,6 @@ macro_rules! dispatch_modal {
             ActiveModal::Search(m) => m.$method($($arg),*),
             ActiveModal::Replace(m) => m.$method($($arg),*),
             ActiveModal::Sessions(m) => m.$method($($arg),*),
-            ActiveModal::FileSearch(m) => m.$method($($arg),*),
-            ActiveModal::ContentSearch(m) => m.$method($($arg),*),
             ActiveModal::DirectoryPicker(m) => m.$method($($arg),*),
             ActiveModal::SaveAs(m) => m.$method($($arg),*),
             ActiveModal::DirectorySwitcher(m) => m.$method($($arg),*),
@@ -165,8 +155,6 @@ macro_rules! dispatch_modal_erased {
             ActiveModal::Search(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::Replace(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::Sessions(m) => m.$method($($arg),*)?.map(erase_modal_result),
-            ActiveModal::FileSearch(m) => m.$method($($arg),*)?.map(erase_modal_result),
-            ActiveModal::ContentSearch(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::DirectoryPicker(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::SaveAs(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::DirectorySwitcher(m) => m.$method($($arg),*)?.map(erase_modal_result),

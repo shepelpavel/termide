@@ -5,7 +5,6 @@
 use anyhow::Result;
 
 use super::App;
-use crate::panel_ext::PanelExt;
 use crate::state::{ActiveModal, PendingAction};
 use termide_core::{CommandResult, PanelCommand};
 use termide_i18n as i18n;
@@ -490,65 +489,6 @@ impl App {
         let t = termide_i18n::t();
         self.state.set_info(t.session_moved().to_string());
 
-        Ok(())
-    }
-
-    /// Handle file search modal result - navigate to selected file
-    pub(super) fn handle_file_search(&mut self, value: Box<dyn std::any::Any>) -> Result<()> {
-        if let Some(path) = value.downcast_ref::<std::path::PathBuf>() {
-            // Get the active file manager panel and navigate to the file
-            if let Some(panel) = self.layout_manager.active_panel_mut() {
-                if let Some(file_manager) = panel.as_file_manager_mut() {
-                    file_manager.navigate_to_file(path);
-                    self.state.needs_watcher_registration = true;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    /// Handle content search modal result - open file and go to line
-    pub(super) fn handle_content_search(&mut self, value: Box<dyn std::any::Any>) -> Result<()> {
-        use termide_modal::ContentSearchResultItem;
-        use termide_panel_editor::Editor;
-
-        if let Some(result) = value.downcast_ref::<ContentSearchResultItem>() {
-            let file_path = result.full_path.clone();
-            let line_number = result.line_number; // 1-based
-
-            // Close help panels if any
-            self.close_help_panels();
-
-            let filename = file_path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("?");
-
-            // Open file in editor
-            match Editor::open_file_with_config(file_path.clone(), self.state.editor_config()) {
-                Ok(mut editor_panel) => {
-                    // Set cursor to the found line (convert from 1-based to 0-based)
-                    let line_0based = line_number.saturating_sub(1);
-                    editor_panel.set_cursor_line(line_0based);
-
-                    // Initialize LSP for the editor
-                    if let Some(ref mut lsp_manager) = self.state.lsp_manager {
-                        editor_panel.init_lsp(lsp_manager);
-                    }
-
-                    self.add_panel(Box::new(editor_panel));
-                    self.auto_save_session();
-
-                    let t = termide_i18n::t();
-                    self.state.set_info(t.editor_file_opened(filename));
-                }
-                Err(e) => {
-                    let t = termide_i18n::t();
-                    let error_msg = t.status_error_open_file(filename, &e.to_string());
-                    self.state.set_error(error_msg);
-                }
-            }
-        }
         Ok(())
     }
 

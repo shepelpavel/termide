@@ -258,12 +258,6 @@ impl App {
                 PendingAction::ChangeRootPath => {
                     self.handle_change_root_path_result(value)?;
                 }
-                PendingAction::FileSearch => {
-                    self.handle_file_search(value)?;
-                }
-                PendingAction::ContentSearch => {
-                    self.handle_content_search(value)?;
-                }
                 // Navigation actions are handled in key_handler, should not get here
                 PendingAction::NextPanel | PendingAction::PrevPanel => {}
                 // Git actions will open panels directly, should not get here
@@ -507,24 +501,67 @@ impl App {
 
     /// Handle search action from SearchModal
     fn handle_search_action(&mut self, search_result: &SearchModalResult) -> Result<()> {
-        // Get active searchable panel (Editor, Journal, or Terminal)
-        if let Some(searchable) = self.active_searchable_mut() {
-            match search_result.action {
-                SearchAction::Search => {
-                    // Perform new search (or update existing)
-                    searchable.start_search(search_result.query.clone(), false);
+        use termide_core::SearchMode;
+
+        match search_result.mode {
+            SearchMode::Text => {
+                // Get active searchable panel (Editor, Journal, or Terminal)
+                if let Some(searchable) = self.active_searchable_mut() {
+                    match search_result.action {
+                        SearchAction::Search => {
+                            searchable.start_search(search_result.query.clone(), false);
+                        }
+                        SearchAction::Next => {
+                            searchable.search_next();
+                        }
+                        SearchAction::Previous => {
+                            searchable.search_prev();
+                        }
+                        SearchAction::CloseWithSelection => {
+                            // Selection is already set by editor methods
+                        }
+                    }
                 }
-                SearchAction::Next => {
-                    // Navigate to next match
-                    searchable.search_next();
+            }
+            SearchMode::FileGlob => {
+                if let Some(fm) = self.active_file_manager_mut() {
+                    match search_result.action {
+                        SearchAction::Search => {
+                            fm.start_file_search(&search_result.query);
+                        }
+                        SearchAction::Next => {
+                            fm.search_next();
+                        }
+                        SearchAction::Previous => {
+                            fm.search_prev();
+                        }
+                        SearchAction::CloseWithSelection => {
+                            fm.close_search_with_selection();
+                        }
+                    }
                 }
-                SearchAction::Previous => {
-                    // Navigate to previous match
-                    searchable.search_prev();
+            }
+            SearchMode::Content => {
+                let mut open_event = None;
+                if let Some(fm) = self.active_file_manager_mut() {
+                    let content_query = search_result.content_query.as_deref().unwrap_or("");
+                    match search_result.action {
+                        SearchAction::Search => {
+                            fm.start_content_search(&search_result.query, content_query);
+                        }
+                        SearchAction::Next => {
+                            fm.search_next();
+                        }
+                        SearchAction::Previous => {
+                            fm.search_prev();
+                        }
+                        SearchAction::CloseWithSelection => {
+                            open_event = fm.close_search_with_selection();
+                        }
+                    }
                 }
-                SearchAction::CloseWithSelection => {
-                    // Just ensure search is active (will be handled by modal close logic)
-                    // Selection is already set by editor methods
+                if let Some(event) = open_event {
+                    self.process_single_event(event)?;
                 }
             }
         }
@@ -536,27 +573,36 @@ impl App {
         &mut self,
         result: &ModalResult<Box<dyn std::any::Any>>,
     ) -> SearchReplaceResult {
+        use termide_core::SearchMode;
+
         if let ModalResult::Confirmed(value) = result {
             if let Some(search_result) = value.downcast_ref::<SearchModalResult>() {
-                // Handle search action in active searchable panel
+                // Handle search action based on mode
                 if self.handle_search_action(search_result).is_err() {
                     return SearchReplaceResult::Close;
                 }
-
-                // Get match info from active searchable panel
-                let match_info = self
-                    .active_searchable_mut()
-                    .and_then(|s| s.get_search_match_info());
 
                 // Check if we should close modal
                 if matches!(search_result.action, SearchAction::CloseWithSelection) {
                     return SearchReplaceResult::Close;
                 }
 
-                // Update match info in modal for other actions
-                if let Some((current, total)) = match_info {
-                    if let Some(ActiveModal::Search(search_modal)) = &mut self.state.active_modal {
+                // Get match info based on mode
+                let match_info = match search_result.mode {
+                    SearchMode::Text => self
+                        .active_searchable_mut()
+                        .and_then(|s| s.get_search_match_info()),
+                    SearchMode::FileGlob | SearchMode::Content => self
+                        .active_file_manager_mut()
+                        .and_then(|fm| fm.get_file_search_match_info()),
+                };
+
+                // Update match info in modal
+                if let Some(ActiveModal::Search(search_modal)) = &mut self.state.active_modal {
+                    if let Some((current, total)) = match_info {
                         search_modal.set_match_info(current, total);
+                    } else {
+                        search_modal.clear_match_info();
                     }
                 }
 
@@ -672,9 +718,27 @@ impl App {
                     return Some(());
                 }
                 SearchReplaceResult::Cancelled => {
+                    // Determine mode before closing modal
+                    let mode = if let Some(ActiveModal::Search(ref m)) = self.state.active_modal {
+                        Some(m.mode())
+                    } else {
+                        None
+                    };
                     self.state.close_modal();
-                    if let Some(searchable) = self.active_searchable_mut() {
-                        searchable.close_search();
+                    match mode {
+                        Some(termide_core::SearchMode::Text) => {
+                            if let Some(searchable) = self.active_searchable_mut() {
+                                searchable.close_search();
+                            }
+                        }
+                        Some(
+                            termide_core::SearchMode::FileGlob | termide_core::SearchMode::Content,
+                        ) => {
+                            if let Some(fm) = self.active_file_manager_mut() {
+                                fm.close_file_search();
+                            }
+                        }
+                        None => {}
                     }
                     return Some(());
                 }

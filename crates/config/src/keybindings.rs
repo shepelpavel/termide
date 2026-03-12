@@ -266,7 +266,6 @@ pub struct FileManagerKeybindings {
 
     // Search
     pub search: Option<KeyBinding>,
-    pub search_files: Option<KeyBinding>,
     pub search_content: Option<KeyBinding>,
 
     // Navigation
@@ -459,7 +458,7 @@ impl FileManagerKeybindings {
         set_default_multiple!(new_directory, "D", "F7");
 
         // Search
-        set_default_single!(search_files, "Ctrl+F");
+        set_default_single!(search, "Ctrl+F");
         set_default_single!(search_content, "Ctrl+Shift+F");
 
         // Navigation

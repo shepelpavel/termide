@@ -3315,9 +3315,12 @@ dependencies = [
  "chrono",
  "crossterm 0.28.1",
  "dirs",
+ "glob",
+ "ignore",
  "libc",
  "log",
  "ratatui",
+ "regex",
  "tempfile",
  "termide-config",
  "termide-core",
@@ -3333,6 +3336,7 @@ dependencies = [
  "termide-ui",
  "termide-vfs",
  "termide-watcher",
+ "unicode-segmentation",
  "unicode-width",
 ]
 

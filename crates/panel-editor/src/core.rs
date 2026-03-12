@@ -1324,7 +1324,7 @@ impl Editor {
     /// If active search exists, restores its state. Otherwise, if a previous query
     /// exists and execute_search is true, executes it immediately.
     pub(crate) fn open_search_modal(&mut self, execute_search: bool) {
-        let mut search_modal = SearchModal::new("");
+        let mut search_modal = SearchModal::new(termide_core::SearchMode::Text);
 
         // Restore active search state if it exists
         if let Some(ref search_state) = self.search.state {

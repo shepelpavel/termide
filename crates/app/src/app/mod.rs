@@ -480,6 +480,29 @@ impl App {
                                 log::error!("Error processing panel events: {}", e);
                             }
                         }
+
+                        // Update search modal match info from file manager async results
+                        {
+                            use termide_core::SearchMode;
+                            let is_file_search = matches!(
+                                &self.state.active_modal,
+                                Some(crate::state::ActiveModal::Search(m))
+                                    if matches!(m.mode(), SearchMode::FileGlob | SearchMode::Content)
+                            );
+                            if is_file_search {
+                                let match_info = self
+                                    .active_file_manager_mut()
+                                    .and_then(|fm| fm.get_file_search_match_info());
+                                if let Some(crate::state::ActiveModal::Search(
+                                    ref mut search_modal,
+                                )) = self.state.active_modal
+                                {
+                                    if let Some((current, total)) = match_info {
+                                        search_modal.set_match_info(current, total);
+                                    }
+                                }
+                            }
+                        }
                     } else {
                         // During scrolling: only check terminal output (lightweight)
                         for panel in self.layout_manager.iter_all_panels_mut() {
@@ -654,15 +677,12 @@ impl App {
         }
     }
 
-    /// Get mutable reference to any Searchable panel (Editor, Journal, Terminal, FileManager).
+    /// Get mutable reference to any Searchable panel (Editor, Journal, Terminal).
     fn active_searchable_mut(&mut self) -> Option<&mut dyn termide_core::Searchable> {
         let panel = self.layout_manager.active_panel_mut()?;
         let is_editor = panel.as_any().is::<termide_panel_editor::Editor>();
         let is_journal = panel.as_any().is::<termide_panel_misc::JournalPanel>();
         let is_terminal = panel.as_any().is::<termide_panel_terminal::Terminal>();
-        let is_file_manager = panel
-            .as_any()
-            .is::<termide_panel_file_manager::FileManager>();
         if is_editor {
             panel
                 .as_any_mut()
@@ -678,14 +698,15 @@ impl App {
                 .as_any_mut()
                 .downcast_mut::<termide_panel_terminal::Terminal>()
                 .map(|t| t as &mut dyn termide_core::Searchable)
-        } else if is_file_manager {
-            panel
-                .as_any_mut()
-                .downcast_mut::<termide_panel_file_manager::FileManager>()
-                .map(|fm| fm as &mut dyn termide_core::Searchable)
         } else {
             None
         }
+    }
+
+    /// Get mutable reference to the active file manager panel (if any).
+    fn active_file_manager_mut(&mut self) -> Option<&mut termide_panel_file_manager::FileManager> {
+        let panel = self.layout_manager.active_panel_mut()?;
+        panel.as_file_manager_mut()
     }
 
     /// Get reference to AppState

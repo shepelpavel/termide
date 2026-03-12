@@ -30,7 +30,7 @@ impl App {
     }
 
     /// Process a single panel event.
-    fn process_single_event(&mut self, event: PanelEvent) -> Result<()> {
+    pub(super) fn process_single_event(&mut self, event: PanelEvent) -> Result<()> {
         match event {
             // === File operations ===
             PanelEvent::OpenFile(path) => {
@@ -183,8 +183,11 @@ impl App {
                 self.event_show_select(title, options, on_select);
             }
 
-            PanelEvent::ShowSearch { initial_query } => {
-                self.event_show_search(initial_query);
+            PanelEvent::ShowSearch {
+                mode,
+                initial_query,
+            } => {
+                self.event_show_search(mode, initial_query);
             }
 
             PanelEvent::ShowReplace { find, replace } => {
@@ -810,12 +813,15 @@ impl App {
     }
 
     /// Handle ShowSearch event - show search modal
-    fn event_show_search(&mut self, _initial_query: Option<String>) {
+    fn event_show_search(
+        &mut self,
+        mode: termide_core::SearchMode,
+        _initial_query: Option<String>,
+    ) {
         use crate::state::{ActiveModal, PendingAction};
         use termide_modal::SearchModal;
 
-        // Note: SearchModal doesn't support initial query yet
-        let modal = SearchModal::new("");
+        let modal = SearchModal::new(mode);
 
         self.state
             .set_pending_action(PendingAction::Search, ActiveModal::Search(Box::new(modal)));

@@ -3,6 +3,7 @@
 //! Provides a smart file manager with git integration, drag selection, and file operations.
 
 mod file_info;
+mod file_search;
 mod keyboard;
 mod navigation;
 mod operations;
@@ -55,13 +56,10 @@ use std::sync::mpsc;
 use termide_config::{constants, Config, FileManagerSettings};
 use termide_core::{
     util::is_binary_file, CommandResult, Panel, PanelCommand, PanelEvent, RenderContext,
-    Searchable, SessionPanel,
+    SessionPanel,
 };
 use termide_git::{get_git_status_async, GitStatus, GitStatusAsyncResult, GitStatusCache};
-use termide_modal::{
-    ActionButton, ActiveModal, ConfirmModal, ContentSearchModal, FileSearchModal, InfoActionModal,
-    InputModal,
-};
+use termide_modal::{ActionButton, ActiveModal, ConfirmModal, InfoActionModal, InputModal};
 use termide_state::{DirSizeResult, PendingAction};
 use termide_theme::Theme;
 use termide_ui::{clipboard, path_utils, IndexClickTracker, ScrollBar};
@@ -359,12 +357,8 @@ pub struct FileManager {
     is_stale: bool,
     /// Whether to show hidden (dot) files
     show_hidden: bool,
-    /// Search state: current query string
-    search_query: Option<String>,
-    /// Search state: indices into visible_indices that match the query
-    search_matches: Vec<usize>,
-    /// Search state: current match index (into search_matches)
-    search_current: usize,
+    /// File/content search state (replaces TreeSearchModal results display)
+    file_search: Option<file_search::FileSearchState>,
 }
 
 #[derive(Debug, Clone)]
@@ -433,33 +427,6 @@ impl FileManager {
     fn recompute_visible(&mut self) {
         self.visible_indices = tree::compute_visible(&self.tree_entries);
         self.tree_prefixes = tree::compute_prefixes(&self.tree_entries, &self.visible_indices);
-        self.recompute_search_matches();
-    }
-
-    /// Recompute search matches after visible_indices change.
-    fn recompute_search_matches(&mut self) {
-        if let Some(ref query) = self.search_query {
-            let query_lower = query.to_lowercase();
-            self.search_matches = self
-                .visible_indices
-                .iter()
-                .enumerate()
-                .filter(|&(_, &tree_idx)| {
-                    self.tree_entries[tree_idx]
-                        .file_entry
-                        .name
-                        .to_lowercase()
-                        .contains(&query_lower)
-                })
-                .map(|(vis_idx, _)| vis_idx)
-                .collect();
-            // Clamp current match index
-            if self.search_matches.is_empty() {
-                self.search_current = 0;
-            } else if self.search_current >= self.search_matches.len() {
-                self.search_current = self.search_matches.len() - 1;
-            }
-        }
     }
 
     /// Find visible index by entry name (top-level only for navigation restore).
@@ -510,9 +477,7 @@ impl FileManager {
             vfs,
             is_stale: false,
             show_hidden: true,
-            search_query: None,
-            search_matches: Vec::new(),
-            search_current: 0,
+            file_search: None,
         };
         let _ = fm.load_directory();
         fm
@@ -550,15 +515,80 @@ impl FileManager {
             vfs,
             is_stale: false,
             show_hidden: true,
-            search_query: None,
-            search_matches: Vec::new(),
-            search_current: 0,
+            file_search: None,
         };
 
         // Start the directory listing operation for remote paths
         fm.vfs.start_list_dir();
 
         Ok(fm)
+    }
+
+    // ── File/content search methods ─────────────────────────────────────
+
+    /// Start file glob search
+    pub fn start_file_search(&mut self, glob_mask: &str) {
+        let mut state = file_search::FileSearchState::new_file_glob(self.current_path.clone());
+        state.start_file_search(glob_mask);
+        self.file_search = Some(state);
+    }
+
+    /// Start content search (glob mask + regex pattern)
+    pub fn start_content_search(&mut self, glob_mask: &str, regex_pattern: &str) {
+        let max_file_size = self.cached_config.content_search_max_file_size_mb * 1024 * 1024;
+        let mut state =
+            file_search::FileSearchState::new_content(self.current_path.clone(), max_file_size);
+        state.start_content_search(glob_mask, regex_pattern);
+        self.file_search = Some(state);
+    }
+
+    /// Navigate to next search result
+    pub fn search_next(&mut self) {
+        if let Some(ref mut state) = self.file_search {
+            state.next_result();
+        }
+    }
+
+    /// Navigate to previous search result
+    pub fn search_prev(&mut self) {
+        if let Some(ref mut state) = self.file_search {
+            state.prev_result();
+        }
+    }
+
+    /// Close file search and return to normal tree view
+    pub fn close_file_search(&mut self) {
+        self.file_search = None;
+    }
+
+    /// Get match info for search modal display
+    pub fn get_file_search_match_info(&self) -> Option<(usize, usize)> {
+        self.file_search.as_ref().and_then(|s| s.get_match_info())
+    }
+
+    /// Whether file search is active
+    pub fn is_file_search_active(&self) -> bool {
+        self.file_search.is_some()
+    }
+
+    /// Close search and apply the selected result.
+    /// For FileGlob: navigates to the file in the tree.
+    /// For Content: returns `Some(PanelEvent::OpenFileAt { .. })` so the caller can open the file.
+    pub fn close_search_with_selection(&mut self) -> Option<PanelEvent> {
+        use file_search::SelectedSearchResult;
+        let selection = self.file_search.as_ref()?.get_selected_result();
+        self.close_file_search();
+        match selection? {
+            SelectedSearchResult::NavigateToFile(path) => {
+                self.navigate_to_file(&path);
+                None
+            }
+            SelectedSearchResult::OpenAtLine { path, line } => Some(PanelEvent::OpenFileAt {
+                path,
+                line,
+                column: 0,
+            }),
+        }
     }
 
     /// Get the VfsManager Arc (for cloning panels)
@@ -1567,85 +1597,6 @@ impl FileManager {
     }
 }
 
-impl Searchable for FileManager {
-    fn start_search(&mut self, query: String, _case_sensitive: bool) {
-        if query.is_empty() {
-            self.search_query = None;
-            self.search_matches.clear();
-            self.search_current = 0;
-            return;
-        }
-
-        let query_lower = query.to_lowercase();
-        self.search_matches = self
-            .visible_indices
-            .iter()
-            .enumerate()
-            .filter(|&(_, &tree_idx)| {
-                self.tree_entries[tree_idx]
-                    .file_entry
-                    .name
-                    .to_lowercase()
-                    .contains(&query_lower)
-            })
-            .map(|(vis_idx, _)| vis_idx)
-            .collect();
-
-        self.search_query = Some(query);
-
-        // Jump to the nearest match at or after current cursor
-        if !self.search_matches.is_empty() {
-            self.search_current = self
-                .search_matches
-                .iter()
-                .position(|&idx| idx >= self.selected)
-                .unwrap_or(0);
-            self.selected = self.search_matches[self.search_current];
-            self.adjust_scroll_offset(self.visible_height);
-        } else {
-            self.search_current = 0;
-        }
-    }
-
-    fn search_next(&mut self) {
-        if self.search_matches.is_empty() {
-            return;
-        }
-        self.search_current = (self.search_current + 1) % self.search_matches.len();
-        self.selected = self.search_matches[self.search_current];
-        self.adjust_scroll_offset(self.visible_height);
-    }
-
-    fn search_prev(&mut self) {
-        if self.search_matches.is_empty() {
-            return;
-        }
-        self.search_current = if self.search_current == 0 {
-            self.search_matches.len() - 1
-        } else {
-            self.search_current - 1
-        };
-        self.selected = self.search_matches[self.search_current];
-        self.adjust_scroll_offset(self.visible_height);
-    }
-
-    fn close_search(&mut self) {
-        self.search_query = None;
-        self.search_matches.clear();
-        self.search_current = 0;
-    }
-
-    fn get_search_match_info(&self) -> Option<(usize, usize)> {
-        if self.search_matches.is_empty() {
-            if self.search_query.is_some() {
-                return Some((0, 0));
-            }
-            return None;
-        }
-        Some((self.search_current, self.search_matches.len()))
-    }
-}
-
 impl Panel for FileManager {
     fn name(&self) -> &'static str {
         "file_manager"
@@ -1680,11 +1631,14 @@ impl Panel for FileManager {
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
-        let _ = ctx; // Use ctx in future for theme/config
-                     // Automatically update scroll offset
-                     // area is already the inner content area (accordion drew outer border)
         let content_height = area.height as usize;
-        self.visible_height = content_height; // Save for use in handle_key
+        self.visible_height = content_height;
+
+        // If file search is active, render search results instead of normal tree
+        if let Some(ref search) = self.file_search {
+            self.render_search_results(area, buf, search, &self.cached_theme.clone());
+            return;
+        }
 
         if self.selected >= self.scroll_offset + content_height {
             self.scroll_offset = self.selected - content_height + 1;
@@ -2072,6 +2026,13 @@ impl Panel for FileManager {
             events.push(PanelEvent::NeedsRedraw);
         }
 
+        // Poll file search results
+        if let Some(ref mut search) = self.file_search {
+            if search.poll_results() {
+                events.push(PanelEvent::NeedsRedraw);
+            }
+        }
+
         // Skip remaining work when collapsed (stale)
         if self.is_stale {
             return vec![];
@@ -2402,26 +2363,15 @@ impl FileManager {
             // Search
             FmCommand::Search => {
                 events.push(PanelEvent::ShowSearch {
+                    mode: termide_core::SearchMode::FileGlob,
                     initial_query: None,
                 });
             }
-            FmCommand::SearchFiles => {
-                let t = termide_i18n::t();
-                let modal = FileSearchModal::new(t.file_search_title(), self.current_path.clone());
-                let action = PendingAction::FileSearch;
-                self.modal_request = Some((action, ActiveModal::FileSearch(Box::new(modal))));
-            }
             FmCommand::SearchContent => {
-                let t = termide_i18n::t();
-                let max_file_size =
-                    self.cached_config.content_search_max_file_size_mb * 1024 * 1024;
-                let modal = ContentSearchModal::new(
-                    t.content_search_title(),
-                    self.current_path.clone(),
-                    max_file_size,
-                );
-                let action = PendingAction::ContentSearch;
-                self.modal_request = Some((action, ActiveModal::ContentSearch(Box::new(modal))));
+                events.push(PanelEvent::ShowSearch {
+                    mode: termide_core::SearchMode::Content,
+                    initial_query: None,
+                });
             }
 
             // Clipboard

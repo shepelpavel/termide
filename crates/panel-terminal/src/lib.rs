@@ -1364,6 +1364,7 @@ impl Panel for Terminal {
         // Search (Ctrl+F)
         if matches_binding_or_default(&kb.search, &key, KeyCode::Char('f'), KeyModifiers::CONTROL) {
             return vec![PanelEvent::ShowSearch {
+                mode: termide_core::SearchMode::Text,
                 initial_query: None,
             }];
         }

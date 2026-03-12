@@ -1,0 +1,814 @@
+//! File and content search state for file manager.
+//!
+//! Replaces TreeSearchModal's result display — search results are shown
+//! in the file manager panel instead of a modal.
+
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc};
+
+use regex::Regex;
+use termide_core::util::is_binary_file;
+use termide_git::{GitStatus, GitStatusCache};
+
+/// Maximum total results to collect
+const MAX_RESULTS: usize = 500;
+
+/// Content match info for a single line match
+#[derive(Debug, Clone)]
+pub(crate) struct ContentMatch {
+    pub line_number: usize,
+    pub line_before: Option<String>,
+    pub matched_line: String,
+    pub match_start: usize,
+    pub match_end: usize,
+    pub line_after: Option<String>,
+}
+
+/// A node in the search result tree
+#[derive(Debug, Clone)]
+pub(crate) struct ResultTreeNode {
+    pub name: String,
+    pub full_path: PathBuf,
+    pub depth: usize,
+    pub is_dir: bool,
+    pub git_status: GitStatus,
+    pub content_match: Option<ContentMatch>,
+}
+
+/// Search mode for file search
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FileSearchMode {
+    FileGlob,
+    Content,
+}
+
+/// Search results from background thread
+enum SearchResults {
+    FileResults(Vec<FileResult>),
+    ContentResults(Vec<ContentResult>),
+}
+
+#[derive(Debug, Clone)]
+struct FileResult {
+    full_path: PathBuf,
+    relative_path: String,
+    git_status: GitStatus,
+    is_dir: bool,
+}
+
+#[derive(Debug, Clone)]
+struct ContentResult {
+    full_path: PathBuf,
+    relative_path: String,
+    line_number: usize,
+    line_before: Option<String>,
+    matched_line: String,
+    match_start: usize,
+    match_end: usize,
+    line_after: Option<String>,
+    git_status: GitStatus,
+}
+
+/// Persistent search state for file manager
+pub(crate) struct FileSearchState {
+    pub mode: FileSearchMode,
+    pub tree_nodes: Vec<ResultTreeNode>,
+    pub tree_prefixes: Vec<String>,
+    pub result_count: usize,
+    pub cursor: usize,
+    pub scroll_offset: usize,
+    pub is_searching: bool,
+    search_receiver: Option<mpsc::Receiver<SearchResults>>,
+    search_cancel: Option<Arc<AtomicBool>>,
+    git_cache: Option<GitStatusCache>,
+    base_path: PathBuf,
+    max_file_size: u64,
+}
+
+impl std::fmt::Debug for FileSearchState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FileSearchState")
+            .field("mode", &self.mode)
+            .field("result_count", &self.result_count)
+            .field("cursor", &self.cursor)
+            .field("is_searching", &self.is_searching)
+            .finish()
+    }
+}
+
+impl FileSearchState {
+    /// Create new file glob search state
+    pub fn new_file_glob(base_path: PathBuf) -> Self {
+        let git_cache = termide_git::get_git_status(&base_path);
+        Self {
+            mode: FileSearchMode::FileGlob,
+            tree_nodes: Vec::new(),
+            tree_prefixes: Vec::new(),
+            result_count: 0,
+            cursor: 0,
+            scroll_offset: 0,
+            is_searching: false,
+            search_receiver: None,
+            search_cancel: None,
+            git_cache,
+            base_path,
+            max_file_size: 0,
+        }
+    }
+
+    /// Create new content search state
+    pub fn new_content(base_path: PathBuf, max_file_size: u64) -> Self {
+        let git_cache = termide_git::get_git_status(&base_path);
+        Self {
+            mode: FileSearchMode::Content,
+            tree_nodes: Vec::new(),
+            tree_prefixes: Vec::new(),
+            result_count: 0,
+            cursor: 0,
+            scroll_offset: 0,
+            is_searching: false,
+            search_receiver: None,
+            search_cancel: None,
+            git_cache,
+            base_path,
+            max_file_size,
+        }
+    }
+
+    /// Start file search in background thread
+    pub fn start_file_search(&mut self, mask: &str) {
+        if mask.is_empty() {
+            self.tree_nodes.clear();
+            self.tree_prefixes.clear();
+            self.result_count = 0;
+            self.cursor = 0;
+            self.scroll_offset = 0;
+            self.is_searching = false;
+            return;
+        }
+
+        // Cancel previous search
+        if let Some(cancel) = self.search_cancel.take() {
+            cancel.store(true, Ordering::Relaxed);
+        }
+
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.search_cancel = Some(cancel.clone());
+
+        let (tx, rx) = mpsc::channel();
+        let base_path = self.base_path.clone();
+        let git_cache = self.git_cache.clone();
+        let mask = mask.to_string();
+
+        self.search_receiver = Some(rx);
+        self.is_searching = true;
+
+        std::thread::spawn(move || {
+            let results = search_files(&base_path, &mask, &cancel, git_cache.as_ref());
+            if !cancel.load(Ordering::Relaxed) {
+                let _ = tx.send(SearchResults::FileResults(results));
+            }
+        });
+    }
+
+    /// Start content search in background thread
+    pub fn start_content_search(&mut self, mask: &str, content_pattern: &str) {
+        if mask.is_empty() || content_pattern.is_empty() {
+            self.tree_nodes.clear();
+            self.tree_prefixes.clear();
+            self.result_count = 0;
+            self.cursor = 0;
+            self.scroll_offset = 0;
+            self.is_searching = false;
+            return;
+        }
+
+        // Validate regex
+        if Regex::new(content_pattern).is_err() {
+            return;
+        }
+
+        // Cancel previous search
+        if let Some(cancel) = self.search_cancel.take() {
+            cancel.store(true, Ordering::Relaxed);
+        }
+
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.search_cancel = Some(cancel.clone());
+
+        let (tx, rx) = mpsc::channel();
+        let base_path = self.base_path.clone();
+        let git_cache = self.git_cache.clone();
+        let mask = mask.to_string();
+        let content_pattern = content_pattern.to_string();
+        let max_file_size = self.max_file_size;
+
+        self.search_receiver = Some(rx);
+        self.is_searching = true;
+
+        std::thread::spawn(move || {
+            let results = search_content(
+                &base_path,
+                &mask,
+                &content_pattern,
+                &cancel,
+                git_cache.as_ref(),
+                max_file_size,
+            );
+            if !cancel.load(Ordering::Relaxed) {
+                let _ = tx.send(SearchResults::ContentResults(results));
+            }
+        });
+    }
+
+    /// Poll for search results (call from tick())
+    pub fn poll_results(&mut self) -> bool {
+        if let Some(rx) = &self.search_receiver {
+            match rx.try_recv() {
+                Ok(results) => {
+                    match results {
+                        SearchResults::FileResults(items) => {
+                            self.build_file_tree(items);
+                        }
+                        SearchResults::ContentResults(items) => {
+                            self.build_content_tree(items);
+                        }
+                    }
+                    self.cursor = 0;
+                    self.scroll_offset = 0;
+                    self.is_searching = false;
+                    self.search_receiver = None;
+                    // Move cursor to first non-dir result
+                    for (i, node) in self.tree_nodes.iter().enumerate() {
+                        if !node.is_dir {
+                            self.cursor = i;
+                            break;
+                        }
+                    }
+                    return true;
+                }
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.is_searching = false;
+                    self.search_receiver = None;
+                }
+                Err(mpsc::TryRecvError::Empty) => {}
+            }
+        }
+        false
+    }
+
+    /// Navigate to next result (skip dirs)
+    pub fn next_result(&mut self) {
+        if self.tree_nodes.is_empty() {
+            return;
+        }
+        let start = self.cursor;
+        let len = self.tree_nodes.len();
+        let mut pos = (start + 1) % len;
+        while pos != start {
+            if !self.tree_nodes[pos].is_dir {
+                self.cursor = pos;
+                self.ensure_visible();
+                return;
+            }
+            pos = (pos + 1) % len;
+        }
+    }
+
+    /// Navigate to previous result (skip dirs)
+    pub fn prev_result(&mut self) {
+        if self.tree_nodes.is_empty() {
+            return;
+        }
+        let start = self.cursor;
+        let len = self.tree_nodes.len();
+        let mut pos = if start == 0 { len - 1 } else { start - 1 };
+        while pos != start {
+            if !self.tree_nodes[pos].is_dir {
+                self.cursor = pos;
+                self.ensure_visible();
+                return;
+            }
+            pos = if pos == 0 { len - 1 } else { pos - 1 };
+        }
+    }
+
+    /// Get match info: (current_index, total_count)
+    pub fn get_match_info(&self) -> Option<(usize, usize)> {
+        if self.result_count == 0 {
+            return None;
+        }
+        // Count how many non-dir results precede cursor
+        let mut current = 0;
+        for (idx, node) in self.tree_nodes.iter().enumerate() {
+            if idx == self.cursor && !node.is_dir {
+                return Some((current, self.result_count));
+            }
+            if !node.is_dir {
+                current += 1;
+            }
+        }
+        Some((0, self.result_count))
+    }
+
+    /// Get the selected result for opening
+    pub fn get_selected_result(&self) -> Option<SelectedSearchResult> {
+        let node = self.tree_nodes.get(self.cursor)?;
+        if node.is_dir {
+            return None;
+        }
+        match self.mode {
+            FileSearchMode::FileGlob => {
+                Some(SelectedSearchResult::NavigateToFile(node.full_path.clone()))
+            }
+            FileSearchMode::Content => {
+                let line = node
+                    .content_match
+                    .as_ref()
+                    .map(|m| m.line_number)
+                    .unwrap_or(1);
+                Some(SelectedSearchResult::OpenAtLine {
+                    path: node.full_path.clone(),
+                    line,
+                })
+            }
+        }
+    }
+
+    /// Max visible nodes for this mode
+    pub fn max_visible_nodes(&self) -> usize {
+        match self.mode {
+            FileSearchMode::FileGlob => 15,
+            FileSearchMode::Content => 40,
+        }
+    }
+
+    /// How many display lines a node takes
+    pub fn node_display_lines(&self, idx: usize) -> usize {
+        if idx >= self.tree_nodes.len() {
+            return 0;
+        }
+        let node = &self.tree_nodes[idx];
+        if node.is_dir {
+            1
+        } else if self.mode == FileSearchMode::Content && node.content_match.is_some() {
+            4
+        } else {
+            1
+        }
+    }
+
+    fn ensure_visible(&mut self) {
+        let max_vis = self.max_visible_nodes();
+        let lines_to_cursor = self.count_lines(self.scroll_offset, self.cursor);
+        if lines_to_cursor >= max_vis {
+            self.scroll_offset = self.find_scroll_for_cursor(max_vis);
+        } else if self.cursor < self.scroll_offset {
+            self.scroll_offset = self.cursor;
+        }
+    }
+
+    fn count_lines(&self, from: usize, to: usize) -> usize {
+        if to < from || from >= self.tree_nodes.len() {
+            return 0;
+        }
+        let end = to.min(self.tree_nodes.len());
+        let mut lines = 0;
+        for i in from..end {
+            lines += self.node_display_lines(i);
+        }
+        lines
+    }
+
+    fn find_scroll_for_cursor(&self, max_vis: usize) -> usize {
+        let mut lines = self.node_display_lines(self.cursor);
+        let mut start = self.cursor;
+        while start > 0 && lines < max_vis {
+            start -= 1;
+            lines += self.node_display_lines(start);
+        }
+        if lines > max_vis && start < self.cursor {
+            start + 1
+        } else {
+            start
+        }
+    }
+
+    fn build_file_tree(&mut self, items: Vec<FileResult>) {
+        self.result_count = items.len();
+        let (nodes, prefixes) = build_tree_nodes(
+            items
+                .iter()
+                .map(|i| TreeBuildItem {
+                    relative_path: &i.relative_path,
+                    full_path: &i.full_path,
+                    git_status: i.git_status,
+                    is_dir: i.is_dir,
+                    content_match: None,
+                })
+                .collect(),
+        );
+        self.tree_nodes = nodes;
+        self.tree_prefixes = prefixes;
+    }
+
+    fn build_content_tree(&mut self, items: Vec<ContentResult>) {
+        self.result_count = items.len();
+        let (nodes, prefixes) = build_tree_nodes(
+            items
+                .iter()
+                .map(|i| TreeBuildItem {
+                    relative_path: &i.relative_path,
+                    full_path: &i.full_path,
+                    git_status: i.git_status,
+                    is_dir: false,
+                    content_match: Some(ContentMatch {
+                        line_number: i.line_number,
+                        line_before: i.line_before.clone(),
+                        matched_line: i.matched_line.clone(),
+                        match_start: i.match_start,
+                        match_end: i.match_end,
+                        line_after: i.line_after.clone(),
+                    }),
+                })
+                .collect(),
+        );
+        self.tree_nodes = nodes;
+        self.tree_prefixes = prefixes;
+    }
+}
+
+/// Result when user selects a search result
+#[derive(Debug, Clone)]
+pub(crate) enum SelectedSearchResult {
+    NavigateToFile(PathBuf),
+    OpenAtLine { path: PathBuf, line: usize },
+}
+
+// ─── Tree building ───────────────────────────────────────────────────────
+
+struct TreeBuildItem<'a> {
+    relative_path: &'a str,
+    full_path: &'a Path,
+    git_status: GitStatus,
+    is_dir: bool,
+    content_match: Option<ContentMatch>,
+}
+
+fn build_tree_nodes(items: Vec<TreeBuildItem<'_>>) -> (Vec<ResultTreeNode>, Vec<String>) {
+    if items.is_empty() {
+        return (Vec::new(), Vec::new());
+    }
+
+    let mut nodes: Vec<ResultTreeNode> = Vec::new();
+    let mut added_dirs: HashSet<PathBuf> = HashSet::new();
+
+    for item in &items {
+        let rel_path = Path::new(item.relative_path);
+        let components: Vec<&std::ffi::OsStr> = rel_path.iter().collect();
+
+        // Add ancestor directories
+        for depth in 0..components.len().saturating_sub(1) {
+            let dir_path: PathBuf = components[..=depth].iter().collect();
+            if !added_dirs.contains(&dir_path) {
+                added_dirs.insert(dir_path.clone());
+                let dir_name = components[depth].to_string_lossy().to_string();
+                nodes.push(ResultTreeNode {
+                    name: dir_name,
+                    full_path: Path::new(item.full_path)
+                        .ancestors()
+                        .nth(components.len() - 1 - depth)
+                        .unwrap_or(item.full_path)
+                        .to_path_buf(),
+                    depth,
+                    is_dir: true,
+                    git_status: GitStatus::Unmodified,
+                    content_match: None,
+                });
+            }
+        }
+
+        // Add the item itself
+        let depth = components.len().saturating_sub(1);
+        let name = components
+            .last()
+            .map(|c| c.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        nodes.push(ResultTreeNode {
+            name,
+            full_path: item.full_path.to_path_buf(),
+            depth,
+            is_dir: item.is_dir,
+            git_status: item.git_status,
+            content_match: item.content_match.clone(),
+        });
+    }
+
+    // Sort by path to maintain tree structure
+    nodes.sort_by(|a, b| a.full_path.cmp(&b.full_path));
+
+    // Deduplicate dir nodes
+    nodes.dedup_by(|a, b| a.is_dir && b.is_dir && a.full_path == b.full_path);
+
+    let prefixes = compute_tree_prefixes(&nodes);
+    (nodes, prefixes)
+}
+
+fn compute_tree_prefixes(nodes: &[ResultTreeNode]) -> Vec<String> {
+    if nodes.is_empty() {
+        return Vec::new();
+    }
+
+    let max_depth = nodes.iter().map(|n| n.depth).max().unwrap_or(0);
+    if max_depth == 0 {
+        return vec![String::new(); nodes.len()];
+    }
+
+    let mut has_next_at_level = vec![false; max_depth + 1];
+    let mut prefixes: Vec<String> = Vec::with_capacity(nodes.len());
+
+    for node in nodes.iter().rev() {
+        let depth = node.depth;
+
+        if depth == 0 {
+            has_next_at_level.fill(false);
+            has_next_at_level[0] = true;
+            prefixes.push(String::new());
+            continue;
+        }
+
+        let mut prefix = String::with_capacity(depth * 3);
+        for (lvl, has_next) in has_next_at_level[1..=depth].iter().enumerate() {
+            let lvl = lvl + 1;
+            if lvl == depth {
+                if *has_next {
+                    prefix.push_str("├─ ");
+                } else {
+                    prefix.push_str("└─ ");
+                }
+            } else if *has_next {
+                prefix.push_str("│  ");
+            } else {
+                prefix.push_str("   ");
+            }
+        }
+        prefixes.push(prefix);
+
+        for val in &mut has_next_at_level[(depth + 1)..] {
+            *val = false;
+        }
+        has_next_at_level[depth] = true;
+    }
+
+    prefixes.reverse();
+    prefixes
+}
+
+// ─── Background search functions ─────────────────────────────────────────
+
+fn search_files(
+    base_path: &Path,
+    mask: &str,
+    cancel: &AtomicBool,
+    git_cache: Option<&GitStatusCache>,
+) -> Vec<FileResult> {
+    use ignore::WalkBuilder;
+
+    let has_path_sep = mask.contains('/') || mask.contains('\\');
+    let has_wildcards = mask.contains('*') || mask.contains('?');
+
+    let glob_pattern = glob::Pattern::new(mask).ok();
+
+    let mask_lower = mask.to_lowercase();
+    let mut results = Vec::new();
+
+    let walker = WalkBuilder::new(base_path)
+        .hidden(false)
+        .git_ignore(false)
+        .git_global(false)
+        .git_exclude(false)
+        .build();
+
+    for entry in walker {
+        if cancel.load(Ordering::Relaxed) {
+            break;
+        }
+
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+
+        let path = entry.path();
+        if path == base_path {
+            continue;
+        }
+
+        let relative_path = path
+            .strip_prefix(base_path)
+            .map(|r| r.display().to_string())
+            .unwrap_or_default();
+
+        let matches = if has_path_sep {
+            glob_pattern
+                .as_ref()
+                .map(|g| g.matches(&relative_path))
+                .unwrap_or(false)
+        } else if has_wildcards {
+            let name = match path.file_name() {
+                Some(n) => n.to_string_lossy(),
+                None => continue,
+            };
+            glob_pattern
+                .as_ref()
+                .map(|g| g.matches(&name))
+                .unwrap_or(false)
+        } else {
+            let name = match path.file_name() {
+                Some(n) => n.to_string_lossy(),
+                None => continue,
+            };
+            name.to_lowercase().contains(&mask_lower)
+        };
+
+        if !matches {
+            continue;
+        }
+
+        let is_dir = path.is_dir();
+        let git_status = git_cache
+            .map(|cache| {
+                if is_dir {
+                    cache.get_directory_status(&relative_path)
+                } else {
+                    cache.get_status(&relative_path)
+                }
+            })
+            .unwrap_or(GitStatus::Unmodified);
+
+        results.push(FileResult {
+            full_path: path.to_path_buf(),
+            relative_path,
+            git_status,
+            is_dir,
+        });
+
+        if results.len() >= MAX_RESULTS {
+            break;
+        }
+    }
+
+    results.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+    results
+}
+
+fn search_content(
+    base_path: &Path,
+    mask: &str,
+    content_pattern: &str,
+    cancel: &AtomicBool,
+    git_cache: Option<&GitStatusCache>,
+    max_file_size: u64,
+) -> Vec<ContentResult> {
+    use ignore::WalkBuilder;
+
+    let regex = match Regex::new(content_pattern) {
+        Ok(r) => r,
+        Err(_) => return Vec::new(),
+    };
+
+    let has_path_sep = mask.contains('/') || mask.contains('\\');
+    let has_wildcards = mask.contains('*') || mask.contains('?');
+    let glob_pattern = glob::Pattern::new(mask).ok();
+    let mask_lower = mask.to_lowercase();
+
+    let min_size = content_pattern.len() as u64;
+    let mut results = Vec::new();
+
+    let walker = WalkBuilder::new(base_path)
+        .hidden(false)
+        .git_ignore(false)
+        .git_global(false)
+        .git_exclude(false)
+        .build();
+
+    for entry in walker {
+        if cancel.load(Ordering::Relaxed) {
+            break;
+        }
+
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+
+        let path = entry.path();
+        if path.is_dir() {
+            continue;
+        }
+
+        let relative_path = path
+            .strip_prefix(base_path)
+            .map(|r| r.display().to_string())
+            .unwrap_or_default();
+
+        let name_matches = if has_path_sep {
+            glob_pattern
+                .as_ref()
+                .map(|g| g.matches(&relative_path))
+                .unwrap_or(false)
+        } else if has_wildcards {
+            let name = match path.file_name() {
+                Some(n) => n.to_string_lossy(),
+                None => continue,
+            };
+            glob_pattern
+                .as_ref()
+                .map(|g| g.matches(&name))
+                .unwrap_or(false)
+        } else {
+            let name = match path.file_name() {
+                Some(n) => n.to_string_lossy(),
+                None => continue,
+            };
+            name.to_lowercase().contains(&mask_lower)
+        };
+
+        if !name_matches {
+            continue;
+        }
+
+        if should_skip_file(path, max_file_size, min_size) {
+            continue;
+        }
+
+        let content = match std::fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        let lines: Vec<&str> = content.lines().collect();
+        let git_status = git_cache
+            .map(|cache| cache.get_status(&relative_path))
+            .unwrap_or(GitStatus::Unmodified);
+
+        for (line_idx, line) in lines.iter().enumerate() {
+            if cancel.load(Ordering::Relaxed) {
+                break;
+            }
+
+            if let Some(m) = regex.find(line) {
+                let line_before = if line_idx > 0 {
+                    Some(lines[line_idx - 1].to_string())
+                } else {
+                    None
+                };
+                let line_after = if line_idx + 1 < lines.len() {
+                    Some(lines[line_idx + 1].to_string())
+                } else {
+                    None
+                };
+
+                results.push(ContentResult {
+                    full_path: path.to_path_buf(),
+                    relative_path: relative_path.clone(),
+                    line_number: line_idx + 1,
+                    line_before,
+                    matched_line: line.to_string(),
+                    match_start: m.start(),
+                    match_end: m.end(),
+                    line_after,
+                    git_status,
+                });
+
+                if results.len() >= MAX_RESULTS {
+                    return results;
+                }
+            }
+        }
+
+        if results.len() >= MAX_RESULTS {
+            break;
+        }
+    }
+
+    results
+}
+
+fn should_skip_file(path: &Path, max_size: u64, min_size: u64) -> bool {
+    let meta = match std::fs::metadata(path) {
+        Ok(m) => m,
+        Err(_) => return true,
+    };
+    let file_size = meta.len();
+    if file_size < min_size {
+        return true;
+    }
+    if max_size > 0 && file_size > max_size {
+        return true;
+    }
+    is_binary_file(path)
+}

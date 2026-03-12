@@ -54,7 +54,6 @@ pub enum FmCommand {
 
     // Search
     Search,
-    SearchFiles,
     SearchContent,
 
     // Clipboard
@@ -166,7 +165,7 @@ impl FmCommand {
             return Self::NewFile;
         }
 
-        // In-tree search (Ctrl+F)
+        // File search (Ctrl+F)
         if matches_binding_or_default(
             &keybindings.search,
             &key,
@@ -176,17 +175,7 @@ impl FmCommand {
             return Self::Search;
         }
 
-        // Search files (Ctrl+P)
-        if matches_binding_or_default(
-            &keybindings.search_files,
-            &key,
-            KeyCode::Char('p'),
-            KeyModifiers::CONTROL,
-        ) {
-            return Self::SearchFiles;
-        }
-
-        // Search content
+        // Content search
         if matches_binding_or_default(
             &keybindings.search_content,
             &key,
@@ -618,16 +607,10 @@ mod tests {
     fn test_search_keys() {
         let kb = default_keybindings();
 
-        // Ctrl+F → in-tree search
+        // Ctrl+F → file search
         assert_eq!(
             FmCommand::from_key_event(key(KeyCode::Char('f'), KeyModifiers::CONTROL), &kb, false),
             FmCommand::Search
-        );
-
-        // Ctrl+P → project-wide file search
-        assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Char('p'), KeyModifiers::CONTROL), &kb, false),
-            FmCommand::SearchFiles
         );
 
         // Ctrl+Shift+F → content search

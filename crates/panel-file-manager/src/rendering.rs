@@ -1,10 +1,13 @@
 use ratatui::{
+    buffer::Buffer,
+    layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
 };
+use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-use super::{utils, FileManager};
+use super::{file_search::FileSearchMode, utils, FileManager};
 use termide_config::FileManagerSettings;
 use termide_git::GitStatus;
 use termide_theme::Theme;
@@ -156,8 +159,6 @@ impl FileManager {
                 fg_style
             };
 
-            let is_search_match = self.search_matches.contains(&vis_i);
-
             let name_style = {
                 let mut style = fg_style;
                 if entry.git_status == GitStatus::Deleted && !(is_cursor && is_focused) {
@@ -168,9 +169,6 @@ impl FileManager {
                 }
                 if !entry.is_dir && entry.is_executable {
                     style = style.add_modifier(Modifier::BOLD);
-                }
-                if is_search_match && !(is_cursor && is_focused) {
-                    style = style.add_modifier(Modifier::UNDERLINED);
                 }
                 style
             };
@@ -254,4 +252,378 @@ impl FileManager {
 
         lines
     }
+
+    /// Render search results instead of normal file tree
+    pub(crate) fn render_search_results(
+        &self,
+        area: Rect,
+        buf: &mut Buffer,
+        search: &super::file_search::FileSearchState,
+        theme: &Theme,
+    ) {
+        if search.is_searching {
+            let style = Style::default()
+                .fg(theme.accented_bg)
+                .add_modifier(Modifier::DIM);
+            buf.set_string(area.x, area.y, "Searching…", style);
+            return;
+        }
+
+        if search.tree_nodes.is_empty() {
+            let style = Style::default()
+                .fg(theme.accented_bg)
+                .add_modifier(Modifier::DIM);
+            buf.set_string(area.x, area.y, "No matches found", style);
+            return;
+        }
+
+        match search.mode {
+            FileSearchMode::FileGlob => {
+                self.render_file_search_results(area, buf, search, theme);
+            }
+            FileSearchMode::Content => {
+                self.render_content_search_results(area, buf, search, theme);
+            }
+        }
+    }
+
+    fn render_file_search_results(
+        &self,
+        area: Rect,
+        buf: &mut Buffer,
+        search: &super::file_search::FileSearchState,
+        theme: &Theme,
+    ) {
+        let max_lines = area.height as usize;
+        let content_width = area.width as usize;
+
+        for (vis_idx, (idx, node)) in search
+            .tree_nodes
+            .iter()
+            .enumerate()
+            .skip(search.scroll_offset)
+            .enumerate()
+        {
+            if vis_idx >= max_lines {
+                break;
+            }
+
+            let is_selected = idx == search.cursor;
+            let prefix = &search.tree_prefixes[idx];
+
+            let style = if is_selected {
+                Style::default()
+                    .fg(theme.bg)
+                    .bg(theme.accented_fg)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                git_status_style(node.git_status, theme)
+            };
+
+            let prefix_style = if is_selected {
+                style
+            } else {
+                Style::default().fg(theme.disabled)
+            };
+
+            let icon_text = if node.is_dir { "▶ " } else { "" };
+            let dir_slash = if node.is_dir { "/" } else { "" };
+            let display_name = format!("{}{}", dir_slash, node.name);
+
+            let mut spans = Vec::new();
+            if !prefix.is_empty() {
+                spans.push(Span::styled(prefix.clone(), prefix_style));
+            }
+            spans.push(Span::styled(icon_text, style));
+            spans.push(Span::styled(display_name, style));
+
+            let text_width: usize = spans.iter().map(|s| s.content.width()).sum();
+            let padding_len = content_width.saturating_sub(text_width);
+            if padding_len > 0 {
+                spans.push(Span::styled(" ".repeat(padding_len), style));
+            }
+
+            let y = area.y + vis_idx as u16;
+            buf.set_line(area.x, y, &Line::from(spans), area.width);
+        }
+    }
+
+    fn render_content_search_results(
+        &self,
+        area: Rect,
+        buf: &mut Buffer,
+        search: &super::file_search::FileSearchState,
+        theme: &Theme,
+    ) {
+        let max_lines = area.height as usize;
+        let content_width = area.width as usize;
+        let mut y = area.y;
+        let mut lines_rendered = 0;
+
+        let editor_bg = theme.bg;
+        let line_num_style = Style::default().fg(theme.disabled).bg(editor_bg);
+        let context_text_style = Style::default().fg(theme.fg).bg(editor_bg);
+        let matched_text_style = Style::default().fg(theme.fg).bg(editor_bg);
+        let highlight_style = Style::default().bg(theme.selected_bg).fg(theme.selected_fg);
+        let separator_style = Style::default().fg(theme.disabled).bg(editor_bg);
+
+        let line_num_width = 4usize;
+        let separator = " │ ";
+        let separator_len = 3;
+        let max_text_width = content_width.saturating_sub(line_num_width + separator_len);
+
+        for (idx, node) in search
+            .tree_nodes
+            .iter()
+            .enumerate()
+            .skip(search.scroll_offset)
+        {
+            if lines_rendered >= max_lines || y >= area.y + area.height {
+                break;
+            }
+
+            let is_selected = idx == search.cursor;
+
+            if node.is_dir {
+                let prefix = &search.tree_prefixes[idx];
+                let style = if is_selected {
+                    Style::default()
+                        .fg(theme.bg)
+                        .bg(theme.accented_fg)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(theme.fg)
+                };
+                let prefix_style = if is_selected {
+                    style
+                } else {
+                    Style::default().fg(theme.disabled)
+                };
+
+                let mut x = area.x;
+                if !prefix.is_empty() {
+                    buf.set_string(x, y, prefix, prefix_style);
+                    x += prefix.width() as u16;
+                }
+                let dir_text = format!("▶ /{}", node.name);
+                buf.set_string(x, y, &dir_text, style);
+                x += dir_text.width() as u16;
+                let pad = content_width.saturating_sub((x - area.x) as usize);
+                if pad > 0 {
+                    buf.set_string(x, y, " ".repeat(pad), style);
+                }
+
+                y += 1;
+                lines_rendered += 1;
+            } else if let Some(ref cm) = node.content_match {
+                if y + 4 > area.y + area.height {
+                    break;
+                }
+
+                // Line 1: path:line_number
+                let prefix = &search.tree_prefixes[idx];
+                let path_text = format!("{}{}:{}", prefix, node.name, cm.line_number);
+                let path_style = if is_selected {
+                    Style::default()
+                        .fg(theme.bg)
+                        .bg(theme.accented_fg)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(theme.fg)
+                };
+                let padding = content_width.saturating_sub(path_text.width());
+                buf.set_string(area.x, y, &path_text, path_style);
+                if padding > 0 {
+                    buf.set_string(
+                        area.x + path_text.width() as u16,
+                        y,
+                        " ".repeat(padding),
+                        path_style,
+                    );
+                }
+                y += 1;
+
+                let fill_bg = |buf: &mut Buffer, row: u16| {
+                    for col in 0..content_width {
+                        buf.set_string(
+                            area.x + col as u16,
+                            row,
+                            " ",
+                            Style::default().bg(editor_bg),
+                        );
+                    }
+                };
+
+                // Line 2: previous line
+                fill_bg(buf, y);
+                if let Some(ref line_before) = cm.line_before {
+                    let line_num = format!("{:>4}", cm.line_number - 1);
+                    let content = truncate_from_start(line_before, max_text_width);
+                    buf.set_string(area.x, y, &line_num, line_num_style);
+                    buf.set_string(
+                        area.x + line_num_width as u16,
+                        y,
+                        separator,
+                        separator_style,
+                    );
+                    buf.set_string(
+                        area.x + (line_num_width + separator_len) as u16,
+                        y,
+                        &content,
+                        context_text_style,
+                    );
+                }
+                y += 1;
+
+                // Line 3: matched line with highlight
+                fill_bg(buf, y);
+                let line_num = format!("{:>4}", cm.line_number);
+                buf.set_string(area.x, y, &line_num, line_num_style);
+                buf.set_string(
+                    area.x + line_num_width as u16,
+                    y,
+                    separator,
+                    separator_style,
+                );
+
+                let content_start_x = area.x + (line_num_width + separator_len) as u16;
+                let (display_line, match_start_g, match_end_g) = prepare_matched_line(
+                    &cm.matched_line,
+                    cm.match_start,
+                    cm.match_end,
+                    max_text_width,
+                );
+
+                let mut x = content_start_x;
+                for (grapheme_idx, grapheme) in display_line.graphemes(true).enumerate() {
+                    let style = if grapheme_idx >= match_start_g && grapheme_idx < match_end_g {
+                        highlight_style
+                    } else {
+                        matched_text_style
+                    };
+                    buf.set_string(x, y, grapheme, style);
+                    x += grapheme.width() as u16;
+                }
+                y += 1;
+
+                // Line 4: next line
+                fill_bg(buf, y);
+                if let Some(ref line_after) = cm.line_after {
+                    let line_num = format!("{:>4}", cm.line_number + 1);
+                    let content = truncate_from_start(line_after, max_text_width);
+                    buf.set_string(area.x, y, &line_num, line_num_style);
+                    buf.set_string(
+                        area.x + line_num_width as u16,
+                        y,
+                        separator,
+                        separator_style,
+                    );
+                    buf.set_string(
+                        area.x + (line_num_width + separator_len) as u16,
+                        y,
+                        &content,
+                        context_text_style,
+                    );
+                }
+                y += 1;
+
+                lines_rendered += 4;
+            } else {
+                // File without content match
+                let prefix = &search.tree_prefixes[idx];
+                let style = if is_selected {
+                    Style::default()
+                        .fg(theme.bg)
+                        .bg(theme.accented_fg)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    git_status_style(node.git_status, theme)
+                };
+                let text = format!("{}  {}", prefix, node.name);
+                let padding = content_width.saturating_sub(text.width());
+                buf.set_string(area.x, y, &text, style);
+                if padding > 0 {
+                    buf.set_string(area.x + text.width() as u16, y, " ".repeat(padding), style);
+                }
+                y += 1;
+                lines_rendered += 1;
+            }
+        }
+    }
+}
+
+fn truncate_from_start(line: &str, max_chars: usize) -> String {
+    let graphemes: Vec<&str> = line.graphemes(true).collect();
+    if graphemes.len() > max_chars {
+        let truncated: String = graphemes[..max_chars.saturating_sub(1)].concat();
+        format!("{}…", truncated)
+    } else {
+        line.to_string()
+    }
+}
+
+fn byte_to_grapheme_indices(line: &str, byte_start: usize, byte_end: usize) -> (usize, usize) {
+    let mut grapheme_start = 0;
+    let mut grapheme_end = 0;
+    let mut byte_pos = 0;
+
+    for (idx, grapheme) in line.graphemes(true).enumerate() {
+        if byte_pos <= byte_start {
+            grapheme_start = idx;
+        }
+        byte_pos += grapheme.len();
+        if byte_pos <= byte_end {
+            grapheme_end = idx + 1;
+        }
+    }
+
+    (grapheme_start, grapheme_end)
+}
+
+fn prepare_matched_line(
+    line: &str,
+    match_start: usize,
+    match_end: usize,
+    max_width: usize,
+) -> (String, usize, usize) {
+    let graphemes: Vec<&str> = line.graphemes(true).collect();
+    let (match_start_g, match_end_g) = byte_to_grapheme_indices(line, match_start, match_end);
+
+    if graphemes.len() <= max_width {
+        return (line.to_string(), match_start_g, match_end_g);
+    }
+
+    let ellipsis_len = 1;
+    let match_center = (match_start_g + match_end_g) / 2;
+    let available_for_text = max_width.saturating_sub(ellipsis_len * 2);
+    let half_window = available_for_text / 2;
+    let window_start = match_center.saturating_sub(half_window).min(match_start_g);
+    let window_end = (window_start + available_for_text).min(graphemes.len());
+    let window_start = if window_end == graphemes.len() {
+        graphemes.len().saturating_sub(available_for_text)
+    } else {
+        window_start
+    };
+
+    let needs_left_ellipsis = window_start > 0;
+    let needs_right_ellipsis = window_end < graphemes.len();
+
+    let mut result = String::new();
+    let mut new_match_start = match_start_g.saturating_sub(window_start);
+    let mut new_match_end = match_end_g.saturating_sub(window_start);
+
+    if needs_left_ellipsis {
+        result.push('…');
+        new_match_start += ellipsis_len;
+        new_match_end += ellipsis_len;
+    }
+
+    result.push_str(&graphemes[window_start..window_end].concat());
+
+    if needs_right_ellipsis {
+        result.push('…');
+    }
+
+    let result_len = result.graphemes(true).count();
+    (result, new_match_start, new_match_end.min(result_len))
 }
