@@ -269,10 +269,17 @@ impl GitDiffCache {
             self.load_original_from_head()?;
         }
 
-        let original = self
-            .original_content
-            .as_ref()
-            .expect("original_content set by load_original_from_head above");
+        let original = match self.original_content.as_ref() {
+            Some(content) if !content.is_empty() => content,
+            _ => {
+                // File not in HEAD (new/untracked) — no git markers
+                self.line_statuses.clear();
+                self.deleted_after_lines.clear();
+                self.modified_line_mapping.clear();
+                self.last_updated = std::time::Instant::now();
+                return Ok(());
+            }
+        };
 
         // Compute diff using similar crate
         let diff = TextDiff::from_lines(original.as_str(), current_content);
@@ -734,5 +741,34 @@ mod tests {
         assert_eq!(result.statuses.get(&2), Some(&LineStatus::Added));
         assert_eq!(result.statuses.get(&3), Some(&LineStatus::Added));
         assert!(result.deleted_after.is_empty());
+    }
+
+    #[test]
+    fn test_update_from_buffer_empty_original_clears_statuses() {
+        use std::path::PathBuf;
+
+        // Simulate a new/untracked file: original_content is empty string
+        let mut cache = GitDiffCache {
+            file_path: PathBuf::from("/tmp/test_new_file.rs"),
+            original_content: Some(String::new()),
+            line_statuses: HashMap::new(),
+            deleted_after_lines: HashMap::new(),
+            modified_line_mapping: HashMap::new(),
+            last_updated: std::time::Instant::now(),
+        };
+
+        // Pre-populate with stale data to verify it gets cleared
+        cache.line_statuses.insert(0, LineStatus::Added);
+        cache.line_statuses.insert(1, LineStatus::Added);
+
+        let result = cache.update_from_buffer("line1\nline2\n");
+        assert!(result.is_ok());
+        assert!(
+            cache.line_statuses.is_empty(),
+            "Expected no git markers for untracked file, got {:?}",
+            cache.line_statuses
+        );
+        assert!(cache.deleted_after_lines.is_empty());
+        assert!(cache.modified_line_mapping.is_empty());
     }
 }
