@@ -88,12 +88,12 @@ pub(crate) fn compute_prefixes(tree: &[TreeEntry], visible: &[usize]) -> Vec<Str
             let lvl = lvl + 1; // offset since we sliced from index 1
             if lvl == depth {
                 if *has_next {
-                    prefix.push_str("├─ ");
+                    prefix.push_str(" ├─");
                 } else {
-                    prefix.push_str("└─ ");
+                    prefix.push_str(" └─");
                 }
             } else if *has_next {
-                prefix.push_str("│  ");
+                prefix.push_str(" │ ");
             } else {
                 prefix.push_str("   ");
             }
@@ -228,8 +228,8 @@ mod tests {
         let visible = compute_visible(&tree);
         let prefixes = compute_prefixes(&tree, &visible);
         assert_eq!(prefixes[0], ""); // src (depth 0)
-        assert_eq!(prefixes[1], "├─ "); // main.rs (has sibling)
-        assert_eq!(prefixes[2], "└─ "); // lib.rs (last child)
+        assert_eq!(prefixes[1], " ├─"); // main.rs (has sibling)
+        assert_eq!(prefixes[2], " └─"); // lib.rs (last child)
         assert_eq!(prefixes[3], ""); // Cargo.toml (depth 0)
     }
 
@@ -244,9 +244,9 @@ mod tests {
         let visible = compute_visible(&tree);
         let prefixes = compute_prefixes(&tree, &visible);
         assert_eq!(prefixes[0], ""); // src
-        assert_eq!(prefixes[1], "├─ "); // components (has sibling main.rs)
-        assert_eq!(prefixes[2], "│  └─ "); // button.rs (inside components, which has sibling)
-        assert_eq!(prefixes[3], "└─ "); // main.rs (last child of src)
+        assert_eq!(prefixes[1], " ├─"); // components (has sibling main.rs)
+        assert_eq!(prefixes[2], " │  └─"); // button.rs (inside components, which has sibling)
+        assert_eq!(prefixes[3], " └─"); // main.rs (last child of src)
     }
 
     #[test]

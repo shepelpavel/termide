@@ -55,7 +55,7 @@ use std::sync::mpsc;
 use termide_config::{constants, Config, FileManagerSettings};
 use termide_core::{
     util::is_binary_file, CommandResult, Panel, PanelCommand, PanelEvent, RenderContext,
-    SessionPanel,
+    Searchable, SessionPanel,
 };
 use termide_git::{get_git_status_async, GitStatus, GitStatusAsyncResult, GitStatusCache};
 use termide_modal::{
@@ -359,6 +359,12 @@ pub struct FileManager {
     is_stale: bool,
     /// Whether to show hidden (dot) files
     show_hidden: bool,
+    /// Search state: current query string
+    search_query: Option<String>,
+    /// Search state: indices into visible_indices that match the query
+    search_matches: Vec<usize>,
+    /// Search state: current match index (into search_matches)
+    search_current: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -427,6 +433,33 @@ impl FileManager {
     fn recompute_visible(&mut self) {
         self.visible_indices = tree::compute_visible(&self.tree_entries);
         self.tree_prefixes = tree::compute_prefixes(&self.tree_entries, &self.visible_indices);
+        self.recompute_search_matches();
+    }
+
+    /// Recompute search matches after visible_indices change.
+    fn recompute_search_matches(&mut self) {
+        if let Some(ref query) = self.search_query {
+            let query_lower = query.to_lowercase();
+            self.search_matches = self
+                .visible_indices
+                .iter()
+                .enumerate()
+                .filter(|&(_, &tree_idx)| {
+                    self.tree_entries[tree_idx]
+                        .file_entry
+                        .name
+                        .to_lowercase()
+                        .contains(&query_lower)
+                })
+                .map(|(vis_idx, _)| vis_idx)
+                .collect();
+            // Clamp current match index
+            if self.search_matches.is_empty() {
+                self.search_current = 0;
+            } else if self.search_current >= self.search_matches.len() {
+                self.search_current = self.search_matches.len() - 1;
+            }
+        }
     }
 
     /// Find visible index by entry name (top-level only for navigation restore).
@@ -477,6 +510,9 @@ impl FileManager {
             vfs,
             is_stale: false,
             show_hidden: true,
+            search_query: None,
+            search_matches: Vec::new(),
+            search_current: 0,
         };
         let _ = fm.load_directory();
         fm
@@ -514,6 +550,9 @@ impl FileManager {
             vfs,
             is_stale: false,
             show_hidden: true,
+            search_query: None,
+            search_matches: Vec::new(),
+            search_current: 0,
         };
 
         // Start the directory listing operation for remote paths
@@ -763,7 +802,11 @@ impl FileManager {
 
     /// Read entries from a directory and return sorted `FileEntry` list.
     /// Does NOT add ".." entry — caller handles that.
-    fn read_dir_entries(&self, dir_path: &std::path::Path) -> Result<Vec<FileEntry>> {
+    fn read_dir_entries(
+        &self,
+        dir_path: &std::path::Path,
+        rel_prefix: &str,
+    ) -> Result<Vec<FileEntry>> {
         let mut entries = Vec::new();
 
         if let Ok(read_dir) = fs::read_dir(dir_path) {
@@ -789,15 +832,23 @@ impl FileManager {
                         metadata.is_dir()
                     };
 
+                    // Build git-relative name: for top-level entries just the name,
+                    // for nested entries: "subdir/name"
+                    let git_name = if rel_prefix.is_empty() {
+                        name.clone()
+                    } else {
+                        format!("{rel_prefix}/{name}")
+                    };
+
                     let git_status = if is_dir {
                         self.git_status_cache
                             .as_ref()
-                            .map(|cache| cache.get_directory_status(&name))
+                            .map(|cache| cache.get_directory_status(&git_name))
                             .unwrap_or(GitStatus::Unmodified)
                     } else {
                         self.git_status_cache
                             .as_ref()
-                            .map(|cache| cache.get_status(&name))
+                            .map(|cache| cache.get_status(&git_name))
                             .unwrap_or(GitStatus::Unmodified)
                     };
 
@@ -907,7 +958,13 @@ impl FileManager {
 
         if !already_loaded {
             // Load children from filesystem
-            if let Ok(children) = self.read_dir_entries(&dir_path) {
+            let rel_prefix = dir_path
+                .strip_prefix(&self.current_path)
+                .ok()
+                .and_then(|p| p.to_str())
+                .unwrap_or("")
+                .to_string();
+            if let Ok(children) = self.read_dir_entries(&dir_path, &rel_prefix) {
                 let child_depth = depth + 1;
                 let child_tree_entries: Vec<tree::TreeEntry> = children
                     .into_iter()
@@ -928,6 +985,8 @@ impl FileManager {
                     })
                     .collect();
 
+                // Check if this directory was selected before expansion
+                let dir_was_selected = self.selection.items.contains(&vis_idx);
                 // Save selection by path before insert (indices will shift)
                 let saved = self.save_selection_paths();
                 let n = child_tree_entries.len();
@@ -939,11 +998,22 @@ impl FileManager {
                 // Rebuild visible and restore selection
                 self.recompute_visible();
                 self.restore_selection_by_paths(&saved);
+                // Cascade selection to descendants if directory was selected
+                if dir_was_selected {
+                    self.select_descendants(vis_idx);
+                }
                 return;
             }
         }
 
+        // Already loaded — just toggle visibility
+        let dir_was_selected = self.selection.items.contains(&vis_idx);
+        let saved = self.save_selection_paths();
         self.recompute_visible();
+        self.restore_selection_by_paths(&saved);
+        if dir_was_selected {
+            self.select_descendants(vis_idx);
+        }
     }
 
     /// After inserting children, check if any subdirectories should be expanded
@@ -955,7 +1025,13 @@ impl FileManager {
             if self.tree_entries[i].expanded == Some(true) {
                 let dir_path = self.tree_entries[i].full_path.clone();
                 let child_depth = self.tree_entries[i].depth + 1;
-                if let Ok(children) = self.read_dir_entries(&dir_path) {
+                let rel_prefix = dir_path
+                    .strip_prefix(&self.current_path)
+                    .ok()
+                    .and_then(|p| p.to_str())
+                    .unwrap_or("")
+                    .to_string();
+                if let Ok(children) = self.read_dir_entries(&dir_path, &rel_prefix) {
                     let child_entries: Vec<tree::TreeEntry> = children
                         .into_iter()
                         .map(|fe| {
@@ -1006,7 +1082,9 @@ impl FileManager {
         self.expanded_dirs
             .remove(&self.tree_entries[tree_idx].full_path);
 
+        let saved = self.save_selection_paths();
         self.recompute_visible();
+        self.restore_selection_by_paths(&saved);
     }
 
     /// Toggle expand/collapse for a directory at the given visible index.
@@ -1173,7 +1251,7 @@ impl FileManager {
         }
 
         // Read directory contents
-        let mut dir_entries = self.read_dir_entries(&self.current_path)?;
+        let mut dir_entries = self.read_dir_entries(&self.current_path, "")?;
         entries.append(&mut dir_entries);
 
         // Build tree (top-level, respecting previously expanded dirs)
@@ -1205,7 +1283,13 @@ impl FileManager {
             if self.tree_entries[i].expanded == Some(true) {
                 let dir_path = self.tree_entries[i].full_path.clone();
                 let child_depth = self.tree_entries[i].depth + 1;
-                if let Ok(children) = self.read_dir_entries(&dir_path) {
+                let rel_prefix = dir_path
+                    .strip_prefix(&self.current_path)
+                    .ok()
+                    .and_then(|p| p.to_str())
+                    .unwrap_or("")
+                    .to_string();
+                if let Ok(children) = self.read_dir_entries(&dir_path, &rel_prefix) {
                     let child_entries: Vec<tree::TreeEntry> = children
                         .into_iter()
                         .map(|fe| {
@@ -1385,21 +1469,33 @@ impl FileManager {
 
     /// Apply git statuses from cache to entries
     fn apply_git_statuses(&mut self) {
-        // Only apply to top-level entries (depth 0) — subdirectories have their own git context
+        let current_path = self.current_path.clone();
         for te in &mut self.tree_entries {
-            if te.file_entry.name == ".." || te.depth > 0 {
+            if te.file_entry.name == ".." {
                 continue;
             }
+
+            // For nested entries, compute relative path from panel's current_path
+            let git_name = if te.depth == 0 {
+                te.file_entry.name.clone()
+            } else {
+                te.full_path
+                    .strip_prefix(&current_path)
+                    .ok()
+                    .and_then(|p| p.to_str())
+                    .unwrap_or(&te.file_entry.name)
+                    .to_string()
+            };
 
             te.file_entry.git_status = if te.file_entry.is_dir {
                 self.git_status_cache
                     .as_ref()
-                    .map(|cache| cache.get_directory_status(&te.file_entry.name))
+                    .map(|cache| cache.get_directory_status(&git_name))
                     .unwrap_or(GitStatus::Unmodified)
             } else {
                 self.git_status_cache
                     .as_ref()
-                    .map(|cache| cache.get_status(&te.file_entry.name))
+                    .map(|cache| cache.get_status(&git_name))
                     .unwrap_or(GitStatus::Unmodified)
             };
         }
@@ -1468,6 +1564,85 @@ impl FileManager {
     /// Check if git status is still loading
     pub fn is_git_status_loading(&self) -> bool {
         self.git_status_receiver.is_some()
+    }
+}
+
+impl Searchable for FileManager {
+    fn start_search(&mut self, query: String, _case_sensitive: bool) {
+        if query.is_empty() {
+            self.search_query = None;
+            self.search_matches.clear();
+            self.search_current = 0;
+            return;
+        }
+
+        let query_lower = query.to_lowercase();
+        self.search_matches = self
+            .visible_indices
+            .iter()
+            .enumerate()
+            .filter(|&(_, &tree_idx)| {
+                self.tree_entries[tree_idx]
+                    .file_entry
+                    .name
+                    .to_lowercase()
+                    .contains(&query_lower)
+            })
+            .map(|(vis_idx, _)| vis_idx)
+            .collect();
+
+        self.search_query = Some(query);
+
+        // Jump to the nearest match at or after current cursor
+        if !self.search_matches.is_empty() {
+            self.search_current = self
+                .search_matches
+                .iter()
+                .position(|&idx| idx >= self.selected)
+                .unwrap_or(0);
+            self.selected = self.search_matches[self.search_current];
+            self.adjust_scroll_offset(self.visible_height);
+        } else {
+            self.search_current = 0;
+        }
+    }
+
+    fn search_next(&mut self) {
+        if self.search_matches.is_empty() {
+            return;
+        }
+        self.search_current = (self.search_current + 1) % self.search_matches.len();
+        self.selected = self.search_matches[self.search_current];
+        self.adjust_scroll_offset(self.visible_height);
+    }
+
+    fn search_prev(&mut self) {
+        if self.search_matches.is_empty() {
+            return;
+        }
+        self.search_current = if self.search_current == 0 {
+            self.search_matches.len() - 1
+        } else {
+            self.search_current - 1
+        };
+        self.selected = self.search_matches[self.search_current];
+        self.adjust_scroll_offset(self.visible_height);
+    }
+
+    fn close_search(&mut self) {
+        self.search_query = None;
+        self.search_matches.clear();
+        self.search_current = 0;
+    }
+
+    fn get_search_match_info(&self) -> Option<(usize, usize)> {
+        if self.search_matches.is_empty() {
+            if self.search_query.is_some() {
+                return Some((0, 0));
+            }
+            return None;
+        }
+        Some((self.search_current, self.search_matches.len()))
     }
 }
 
@@ -2048,7 +2223,6 @@ impl FileManager {
             // Selection
             FmCommand::ToggleSelection => {
                 self.toggle_selection();
-                self.move_down();
             }
             FmCommand::SelectAll => self.select_all(),
             FmCommand::ClearSelection => {
@@ -2226,6 +2400,11 @@ impl FileManager {
             }
 
             // Search
+            FmCommand::Search => {
+                events.push(PanelEvent::ShowSearch {
+                    initial_query: None,
+                });
+            }
             FmCommand::SearchFiles => {
                 let t = termide_i18n::t();
                 let modal = FileSearchModal::new(t.file_search_title(), self.current_path.clone());

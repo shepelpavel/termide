@@ -156,6 +156,8 @@ impl FileManager {
                 fg_style
             };
 
+            let is_search_match = self.search_matches.contains(&vis_i);
+
             let name_style = {
                 let mut style = fg_style;
                 if entry.git_status == GitStatus::Deleted && !(is_cursor && is_focused) {
@@ -166,6 +168,9 @@ impl FileManager {
                 }
                 if !entry.is_dir && entry.is_executable {
                     style = style.add_modifier(Modifier::BOLD);
+                }
+                if is_search_match && !(is_cursor && is_focused) {
+                    style = style.add_modifier(Modifier::UNDERLINED);
                 }
                 style
             };

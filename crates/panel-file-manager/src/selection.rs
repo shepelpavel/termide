@@ -13,11 +13,73 @@ impl FileManager {
     fn select_index(&mut self, vis_idx: usize) {
         if !self.is_parent_entry(vis_idx) {
             self.selection.items.insert(vis_idx);
+            self.sync_parent_selection(vis_idx);
         }
     }
 
-    /// Toggle visible index in selection, skipping ".."
-    fn toggle_index(&mut self, vis_idx: usize) {
+    /// Range of visible descendants of an expanded directory at vis_idx (exclusive of dir itself).
+    /// Returns empty range if not an expanded directory or has no visible children.
+    fn visible_descendants_range(&self, vis_idx: usize) -> std::ops::Range<usize> {
+        let tree_idx = match self.visible_indices.get(vis_idx) {
+            Some(&idx) => idx,
+            None => return vis_idx..vis_idx,
+        };
+        if self.tree_entries[tree_idx].expanded != Some(true) {
+            return vis_idx..vis_idx;
+        }
+        let dir_depth = self.tree_entries[tree_idx].depth;
+        let start = vis_idx + 1;
+        let end = self.visible_indices[start..]
+            .iter()
+            .position(|&ti| self.tree_entries[ti].depth <= dir_depth)
+            .map(|pos| start + pos)
+            .unwrap_or(self.visible_indices.len());
+        start..end
+    }
+
+    /// Find the visible index of the parent expanded directory for a given vis_idx.
+    /// Walks backward through visible_indices looking for the first entry with a smaller depth.
+    fn find_parent_dir_vis(&self, vis_idx: usize) -> Option<usize> {
+        let tree_idx = *self.visible_indices.get(vis_idx)?;
+        let my_depth = self.tree_entries[tree_idx].depth;
+        if my_depth == 0 {
+            return None;
+        }
+        for candidate_vis in (0..vis_idx).rev() {
+            let candidate_tree = self.visible_indices[candidate_vis];
+            if self.tree_entries[candidate_tree].depth < my_depth {
+                return Some(candidate_vis);
+            }
+        }
+        None
+    }
+
+    /// Synchronize parent directory selection state after a child's selection changed.
+    /// If all visible descendants of a parent are selected, selects the parent.
+    /// If any descendant is not selected, deselects the parent.
+    /// Recurses upward through the directory hierarchy.
+    fn sync_parent_selection(&mut self, vis_idx: usize) {
+        let Some(parent_vis) = self.find_parent_dir_vis(vis_idx) else {
+            return;
+        };
+        let descendants = self.visible_descendants_range(parent_vis);
+        if descendants.is_empty() {
+            return;
+        }
+        let all_selected = descendants
+            .clone()
+            .all(|i| self.selection.items.contains(&i));
+        if all_selected {
+            self.selection.items.insert(parent_vis);
+        } else {
+            self.selection.items.remove(&parent_vis);
+        }
+        self.sync_parent_selection(parent_vis);
+    }
+
+    /// Toggle a single visible index in selection, skipping ".."
+    /// No cascade — used for element-by-element selection (Shift+arrows, page toggle).
+    fn toggle_index_single(&mut self, vis_idx: usize) {
         if self.is_parent_entry(vis_idx) {
             return;
         }
@@ -26,11 +88,40 @@ impl FileManager {
         } else {
             self.selection.items.insert(vis_idx);
         }
+        self.sync_parent_selection(vis_idx);
     }
 
-    /// Toggle selection of current item
+    /// Toggle selection of current item and advance cursor (Insert key).
+    /// For expanded directories, cascades to all visible descendants and skips past subtree.
     pub(crate) fn toggle_selection(&mut self) {
-        self.toggle_index(self.selected);
+        if self.is_parent_entry(self.selected) {
+            self.move_down();
+            return;
+        }
+        let descendants = self.visible_descendants_range(self.selected);
+        let adding = !self.selection.items.contains(&self.selected);
+        if adding {
+            self.selection.items.insert(self.selected);
+            for i in descendants.clone() {
+                if !self.is_parent_entry(i) {
+                    self.selection.items.insert(i);
+                }
+            }
+        } else {
+            self.selection.items.remove(&self.selected);
+            for i in descendants.clone() {
+                self.selection.items.remove(&i);
+            }
+        }
+        self.sync_parent_selection(self.selected);
+        if !descendants.is_empty() {
+            // Jump past the subtree to the next sibling-level entry
+            let target = descendants.end.min(self.visible_count().saturating_sub(1));
+            self.selected = target;
+            self.adjust_scroll_offset(self.visible_height);
+        } else {
+            self.move_down();
+        }
     }
 
     /// Select all visible files
@@ -100,6 +191,9 @@ impl FileManager {
 
     /// Get list of selected files/directories as absolute paths.
     /// If nothing is selected, return current item under cursor.
+    ///
+    /// Deduplicates: if a directory is selected, its selected descendants are omitted
+    /// (the directory copy/move/delete already covers them recursively).
     pub fn get_selected_paths(&self) -> Vec<PathBuf> {
         if self.selection.items.is_empty() {
             if let Some(te) = self.tree_entry_at(self.selected) {
@@ -110,7 +204,8 @@ impl FileManager {
             return Vec::new();
         }
 
-        let mut paths = Vec::with_capacity(self.selection.items.len());
+        // Collect all selected paths
+        let mut paths: Vec<PathBuf> = Vec::with_capacity(self.selection.items.len());
         for &vis_idx in &self.selection.items {
             if let Some(te) = self.tree_entry_at(vis_idx) {
                 if te.file_entry.name != ".." {
@@ -118,11 +213,26 @@ impl FileManager {
                 }
             }
         }
-        paths
+
+        // Remove paths whose parent directory is also in the selection.
+        // Sort so that parent dirs come before their children.
+        paths.sort();
+        let mut deduped: Vec<PathBuf> = Vec::with_capacity(paths.len());
+        for path in &paths {
+            let dominated = deduped
+                .iter()
+                .any(|ancestor| path.starts_with(ancestor) && path != ancestor);
+            if !dominated {
+                deduped.push(path.clone());
+            }
+        }
+        deduped
     }
 
     /// Get list of selected files/directories as VfsPath (for remote operations).
     /// If nothing is selected, return current item under cursor.
+    ///
+    /// Deduplicates: if a directory is selected, its selected descendants are omitted.
     pub fn get_selected_vfs_paths(&self) -> Vec<VfsPath> {
         let base_path = self.vfs.current_path();
 
@@ -135,12 +245,27 @@ impl FileManager {
             return Vec::new();
         }
 
-        let mut paths = Vec::with_capacity(self.selection.items.len());
+        // Collect all selected tree entries with their full_path for dedup
+        let mut entries: Vec<(PathBuf, String)> = Vec::with_capacity(self.selection.items.len());
         for &vis_idx in &self.selection.items {
-            if let Some(entry) = self.entry_at(vis_idx) {
-                if entry.name != ".." {
-                    paths.push(base_path.join(&entry.name));
+            if let Some(te) = self.tree_entry_at(vis_idx) {
+                if te.file_entry.name != ".." {
+                    entries.push((te.full_path.clone(), te.file_entry.name.clone()));
                 }
+            }
+        }
+
+        // Sort by full_path so parents come before children
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        let mut kept_ancestors: Vec<PathBuf> = Vec::with_capacity(entries.len());
+        let mut paths = Vec::with_capacity(entries.len());
+        for (full_path, name) in &entries {
+            let dominated = kept_ancestors
+                .iter()
+                .any(|ancestor| full_path.starts_with(ancestor) && full_path != ancestor);
+            if !dominated {
+                kept_ancestors.push(full_path.clone());
+                paths.push(base_path.join(name));
             }
         }
         paths
@@ -171,6 +296,14 @@ impl FileManager {
         false
     }
 
+    /// Select all visible descendants of an expanded directory.
+    /// Used when expanding a directory that is already selected.
+    pub(crate) fn select_descendants(&mut self, vis_idx: usize) {
+        for i in self.visible_descendants_range(vis_idx) {
+            self.select_index(i);
+        }
+    }
+
     /// Clear file selection
     pub fn clear_selection(&mut self) {
         self.selection.items.clear();
@@ -178,13 +311,13 @@ impl FileManager {
 
     /// Move down with toggle selection
     pub(crate) fn move_down_with_toggle(&mut self) {
-        self.toggle_index(self.selected);
+        self.toggle_index_single(self.selected);
         self.move_down();
     }
 
     /// Move up with toggle selection
     pub(crate) fn move_up_with_toggle(&mut self) {
-        self.toggle_index(self.selected);
+        self.toggle_index_single(self.selected);
         self.move_up();
     }
 
@@ -195,7 +328,7 @@ impl FileManager {
             (self.selected + self.visible_height).min(self.visible_count().saturating_sub(1));
 
         for i in start..=target {
-            self.toggle_index(i);
+            self.toggle_index_single(i);
         }
 
         self.selected = target;
@@ -208,7 +341,7 @@ impl FileManager {
         let target = self.selected.saturating_sub(self.visible_height);
 
         for i in target..=start {
-            self.toggle_index(i);
+            self.toggle_index_single(i);
         }
 
         self.selected = target;

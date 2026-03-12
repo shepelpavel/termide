@@ -265,6 +265,7 @@ pub struct FileManagerKeybindings {
     pub new_directory: Option<KeyBinding>,
 
     // Search
+    pub search: Option<KeyBinding>,
     pub search_files: Option<KeyBinding>,
     pub search_content: Option<KeyBinding>,
 

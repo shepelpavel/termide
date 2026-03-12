@@ -53,6 +53,7 @@ pub enum FmCommand {
     OpenExternal,
 
     // Search
+    Search,
     SearchFiles,
     SearchContent,
 
@@ -165,11 +166,21 @@ impl FmCommand {
             return Self::NewFile;
         }
 
-        // Search files
+        // In-tree search (Ctrl+F)
+        if matches_binding_or_default(
+            &keybindings.search,
+            &key,
+            KeyCode::Char('f'),
+            KeyModifiers::CONTROL,
+        ) {
+            return Self::Search;
+        }
+
+        // Search files (Ctrl+P)
         if matches_binding_or_default(
             &keybindings.search_files,
             &key,
-            KeyCode::Char('f'),
+            KeyCode::Char('p'),
             KeyModifiers::CONTROL,
         ) {
             return Self::SearchFiles;
@@ -600,6 +611,36 @@ mod tests {
         assert_eq!(
             FmCommand::from_key_event(key(KeyCode::Char('.'), KeyModifiers::NONE), &kb, false),
             FmCommand::ToggleHidden
+        );
+    }
+
+    #[test]
+    fn test_search_keys() {
+        let kb = default_keybindings();
+
+        // Ctrl+F → in-tree search
+        assert_eq!(
+            FmCommand::from_key_event(key(KeyCode::Char('f'), KeyModifiers::CONTROL), &kb, false),
+            FmCommand::Search
+        );
+
+        // Ctrl+P → project-wide file search
+        assert_eq!(
+            FmCommand::from_key_event(key(KeyCode::Char('p'), KeyModifiers::CONTROL), &kb, false),
+            FmCommand::SearchFiles
+        );
+
+        // Ctrl+Shift+F → content search
+        assert_eq!(
+            FmCommand::from_key_event(
+                key(
+                    KeyCode::Char('F'),
+                    KeyModifiers::CONTROL | KeyModifiers::SHIFT
+                ),
+                &kb,
+                false
+            ),
+            FmCommand::SearchContent
         );
     }
 
