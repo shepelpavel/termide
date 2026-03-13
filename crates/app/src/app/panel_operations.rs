@@ -77,7 +77,8 @@ impl App {
                 } else {
                     // For other panels show simple confirmation
                     let t = i18n::t();
-                    let modal = termide_modal::ConfirmModal::new(t.modal_yes(), &_message);
+                    let modal =
+                        termide_modal::ConfirmModal::new(t.modal_confirm_title(), &_message);
                     let action = PendingAction::ClosePanel;
                     self.state
                         .set_pending_action(action, ActiveModal::Confirm(Box::new(modal)));

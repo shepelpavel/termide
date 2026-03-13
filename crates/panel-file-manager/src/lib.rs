@@ -2418,7 +2418,8 @@ impl FileManager {
                             target_directory: Some(self.current_path.clone()),
                             create_symlink: false,
                         };
-                        let modal = ConfirmModal::new("Confirm", &message);
+                        let modal =
+                            ConfirmModal::new(termide_i18n::t().modal_confirm_title(), &message);
                         self.modal_request = Some((action, ActiveModal::Confirm(Box::new(modal))));
                     }
                 }

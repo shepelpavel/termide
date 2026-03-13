@@ -449,6 +449,7 @@ pub trait Translation: Send + Sync {
     fn op_speed_rate(&self, speed: &str) -> String;
 
     // Modal titles
+    fn modal_confirm_title(&self) -> &str;
     fn modal_error_title(&self) -> &str;
 
     // Git panel strings

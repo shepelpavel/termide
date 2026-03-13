@@ -15,7 +15,7 @@ There are many ways to contribute to TermIDE:
 - 🐛 **Bug Reports** - Help us identify and fix issues
 - 💡 **Feature Requests** - Suggest new features or improvements
 - 📝 **Documentation** - Improve or translate documentation
-- 🌍 **Translations** - Add support for new languages (we support English and Russian)
+- 🌍 **Translations** - Add support for new languages (we support 15 languages, see `crates/i18n/`)
 - 🎨 **Themes** - Create and share new color themes
 - 🔧 **Code Contributions** - Fix bugs or implement new features
 - 📢 **Spread the Word** - Star the project, share it with others
@@ -305,17 +305,15 @@ Use the [Feature Request template](.github/ISSUE_TEMPLATE/feature_request.md) wh
 
 ## Internationalization (i18n)
 
-TermIDE supports multiple languages. Currently, English and Russian are fully supported.
+TermIDE supports 15 languages: Bengali, Chinese, English, French, German, Hindi, Indonesian, Japanese, Korean, Portuguese, Russian, Spanish, Thai, Turkish, and Vietnamese.
 
 ### Adding a New Language
 
 To add support for a new language:
 
-1. Create a new module in `src/i18n/` (e.g., `ja.rs` for Japanese)
-2. Implement the `Translation` trait with all strings from `src/i18n/en.rs`
-3. Register your language in `src/i18n/mod.rs`
-4. Update `src/config.rs` to support the new language code
-5. Create documentation in `doc/<lang>/README.md` (optional but appreciated)
+1. Create a new TOML file in `crates/i18n/i18n/` (e.g., `ja.toml` for Japanese), using `en.toml` as a template
+2. Add the language to `SUPPORTED_LANGUAGES` in `crates/i18n/src/lib.rs`
+3. Create documentation in `doc/<lang>/README.md` (optional but appreciated)
 6. Test thoroughly, especially:
    - UI text rendering
    - Keyboard shortcuts (if your language uses different script)
