@@ -29,7 +29,7 @@
 
 - **基于终端的 IDE** - 支持 15+ 种语言的语法高亮、单词导航（Ctrl+Left/Right）、段落/符号导航（Ctrl+Up/Down）、自动缩进、自动关闭括号
 - **LSP 支持** - 通过 rust-analyzer、pylsp、typescript-language-server 及其他 LSP 服务器实现代码补全
-- **智能文件管理器** - Git 状态指示器、批量操作、文件搜索（glob/正则表达式）
+- **智能文件管理器** - 可展开目录的树形视图、嵌套 Git 状态、批量操作、文件/内容搜索（glob/正则表达式）、树内增量搜索
 - **集成终端** - 完整的 PTY 支持、VT100 转义序列、鼠标跟踪
 - **Git 集成** - 状态面板、带 ASCII 图形的提交日志、暂存/取消暂存、分支切换
 - **多面板布局** - 手风琴系统，智能自动堆叠
@@ -64,23 +64,23 @@
 
 ```bash
 # Linux x86_64（也适用于 WSL）
-wget https://github.com/termide/termide/releases/latest/download/termide-0.15.1-x86_64-unknown-linux-gnu.tar.gz
-tar xzf termide-0.15.1-x86_64-unknown-linux-gnu.tar.gz
+wget https://github.com/termide/termide/releases/latest/download/termide-0.15.2-x86_64-unknown-linux-gnu.tar.gz
+tar xzf termide-0.15.2-x86_64-unknown-linux-gnu.tar.gz
 ./termide
 
 # macOS Intel (x86_64)
-curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.15.1-x86_64-apple-darwin.tar.gz
-tar xzf termide-0.15.1-x86_64-apple-darwin.tar.gz
+curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.15.2-x86_64-apple-darwin.tar.gz
+tar xzf termide-0.15.2-x86_64-apple-darwin.tar.gz
 ./termide
 
 # macOS Apple Silicon (ARM64)
-curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.15.1-aarch64-apple-darwin.tar.gz
-tar xzf termide-0.15.1-aarch64-apple-darwin.tar.gz
+curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.15.2-aarch64-apple-darwin.tar.gz
+tar xzf termide-0.15.2-aarch64-apple-darwin.tar.gz
 ./termide
 
 # Linux ARM64（树莓派、ARM 服务器）
-wget https://github.com/termide/termide/releases/latest/download/termide-0.15.1-aarch64-unknown-linux-gnu.tar.gz
-tar xzf termide-0.15.1-aarch64-unknown-linux-gnu.tar.gz
+wget https://github.com/termide/termide/releases/latest/download/termide-0.15.2-aarch64-unknown-linux-gnu.tar.gz
+tar xzf termide-0.15.2-aarch64-unknown-linux-gnu.tar.gz
 ./termide
 ```
 
@@ -93,8 +93,8 @@ tar xzf termide-0.15.1-aarch64-unknown-linux-gnu.tar.gz
 
 ```bash
 # 仅限 x86_64（ARM64 请使用上面的 tar.gz）
-wget https://github.com/termide/termide/releases/latest/download/termide_0.15.1-1_amd64.deb
-sudo dpkg -i termide_0.15.1-1_amd64.deb
+wget https://github.com/termide/termide/releases/latest/download/termide_0.15.2-1_amd64.deb
+sudo dpkg -i termide_0.15.2-1_amd64.deb
 ```
 
 </details>
@@ -106,8 +106,8 @@ sudo dpkg -i termide_0.15.1-1_amd64.deb
 
 ```bash
 # 仅限 x86_64（ARM64 请使用上面的 tar.gz）
-wget https://github.com/termide/termide/releases/latest/download/termide-0.15.1-1.x86_64.rpm
-sudo rpm -i termide-0.15.1-1.x86_64.rpm
+wget https://github.com/termide/termide/releases/latest/download/termide-0.15.2-1.x86_64.rpm
+sudo rpm -i termide-0.15.2-1.x86_64.rpm
 ```
 
 </details>
@@ -267,8 +267,11 @@ cargo build --release
 - `Ctrl+B` - 添加书签
 - `Enter` - 打开文件/目录
 - `Backspace` - 上级目录
+- `→` / `l` - 展开目录（树形视图）
+- `←` / `h` - 折叠目录（树形视图）
+- `/` - 树内增量搜索
 - `Space` - 文件信息
-- `Insert` - 切换选择
+- `Insert` - 切换选择（级联到目录内）
 - `Ctrl+A` - 全选
 - `Ctrl+F` - 按名称搜索
 - `Ctrl+Shift+F` - 在内容中搜索

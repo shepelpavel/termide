@@ -29,7 +29,7 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 
 - **Terminal-based IDE** - Syntax highlighting for 19 languages, word navigation (Ctrl+Left/Right), paragraph/symbol navigation (Ctrl+Up/Down), toggle comment (Ctrl+/), auto-indentation, auto-close brackets
 - **LSP Support** - Code completion with rust-analyzer, pylsp, typescript-language-server, and other LSP servers
-- **Smart File Manager** - Git status indicators, batch operations, file search (glob/regex)
+- **Smart File Manager** - Tree view with expandable directories, nested git status, batch operations, file/content search (glob/regex), in-tree incremental search
 - **Integrated Terminal** - Full PTY support, VT100 escape sequences, mouse tracking
 - **Git Integration** - Status panel, commit log with ASCII graph, staging/unstaging, branch switching
 - **Multi-panel Layout** - Accordion system with smart auto-stacking
@@ -64,23 +64,23 @@ Download the latest release for your platform from [GitHub Releases](https://git
 
 ```bash
 # Linux x86_64 (also works in WSL)
-wget https://github.com/termide/termide/releases/latest/download/termide-0.15.1-x86_64-unknown-linux-gnu.tar.gz
-tar xzf termide-0.15.1-x86_64-unknown-linux-gnu.tar.gz
+wget https://github.com/termide/termide/releases/latest/download/termide-0.15.2-x86_64-unknown-linux-gnu.tar.gz
+tar xzf termide-0.15.2-x86_64-unknown-linux-gnu.tar.gz
 ./termide
 
 # macOS Intel (x86_64)
-curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.15.1-x86_64-apple-darwin.tar.gz
-tar xzf termide-0.15.1-x86_64-apple-darwin.tar.gz
+curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.15.2-x86_64-apple-darwin.tar.gz
+tar xzf termide-0.15.2-x86_64-apple-darwin.tar.gz
 ./termide
 
 # macOS Apple Silicon (ARM64)
-curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.15.1-aarch64-apple-darwin.tar.gz
-tar xzf termide-0.15.1-aarch64-apple-darwin.tar.gz
+curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.15.2-aarch64-apple-darwin.tar.gz
+tar xzf termide-0.15.2-aarch64-apple-darwin.tar.gz
 ./termide
 
 # Linux ARM64 (Raspberry Pi, ARM servers)
-wget https://github.com/termide/termide/releases/latest/download/termide-0.15.1-aarch64-unknown-linux-gnu.tar.gz
-tar xzf termide-0.15.1-aarch64-unknown-linux-gnu.tar.gz
+wget https://github.com/termide/termide/releases/latest/download/termide-0.15.2-aarch64-unknown-linux-gnu.tar.gz
+tar xzf termide-0.15.2-aarch64-unknown-linux-gnu.tar.gz
 ./termide
 ```
 
@@ -93,8 +93,8 @@ Download and install the `.deb` package from [GitHub Releases](https://github.co
 
 ```bash
 # x86_64 only (ARM64 use tar.gz above)
-wget https://github.com/termide/termide/releases/latest/download/termide_0.15.1-1_amd64.deb
-sudo dpkg -i termide_0.15.1-1_amd64.deb
+wget https://github.com/termide/termide/releases/latest/download/termide_0.15.2-1_amd64.deb
+sudo dpkg -i termide_0.15.2-1_amd64.deb
 ```
 
 </details>
@@ -106,8 +106,8 @@ Download and install the `.rpm` package from [GitHub Releases](https://github.co
 
 ```bash
 # x86_64 only (ARM64 use tar.gz above)
-wget https://github.com/termide/termide/releases/latest/download/termide-0.15.1-1.x86_64.rpm
-sudo rpm -i termide-0.15.1-1.x86_64.rpm
+wget https://github.com/termide/termide/releases/latest/download/termide-0.15.2-1.x86_64.rpm
+sudo rpm -i termide-0.15.2-1.x86_64.rpm
 ```
 
 </details>
@@ -279,8 +279,11 @@ For detailed documentation, see:
 - `Ctrl+B` - Add bookmark
 - `Enter` - Open file/directory
 - `Backspace` - Parent directory
+- `→` / `l` - Expand directory (tree view)
+- `←` / `h` - Collapse directory (tree view)
+- `/` - In-tree incremental search
 - `Space` - File info
-- `Insert` - Toggle selection
+- `Insert` - Toggle selection (cascades into directories)
 - `Ctrl+A` - Select all
 - `Ctrl+F` - Search by name
 - `Ctrl+Shift+F` - Search in contents

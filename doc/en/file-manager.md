@@ -13,6 +13,9 @@ The file manager panel provides an intuitive interface for navigating the file s
 | `PageUp` / `PageDown` | Scroll list by one page                |
 | `Home` / `End`    | Go to beginning/end of list                |
 | `.`               | Toggle hidden files visibility             |
+| `→` / `l`       | Expand directory (tree view)                |
+| `←` / `h`       | Collapse directory (tree view)              |
+| `/`              | In-tree incremental search                  |
 | `Ctrl+P`          | Open directory switcher                    |
 | `Ctrl+G`          | Go to path/URL                             |
 | `Ctrl+B`          | Add bookmark                               |
@@ -27,6 +30,8 @@ The file manager panel provides an intuitive interface for navigating the file s
 | `Shift + ↑ / ↓`   | Select multiple consecutive files          |
 | `Ctrl+A`          | Select all files and directories in panel  |
 | `Escape`          | Clear all selections                       |
+
+In tree view, selecting a directory with `Insert` cascades the selection to all files within it. Collapsing a selected directory keeps the selection on its children.
 
 ## File Operations
 
@@ -49,6 +54,7 @@ The file manager panel provides an intuitive interface for navigating the file s
 |-------------------|--------------------------------------------|
 | `Ctrl+F`          | Search files by name (glob patterns)       |
 | `Ctrl+Shift+F`    | Search in file contents (regex)            |
+| `/`              | In-tree incremental search (filter as you type) |
 
 ### File Search (Ctrl+F)
 
@@ -68,6 +74,15 @@ Opens a modal for searching text within files using regular expressions:
 - Press Enter to open file at the matched line
 - Press Escape or click outside to close
 
+### In-tree Search (/)
+
+Press `/` to start incremental search within the current directory tree:
+- Filters the file list as you type, showing only matching entries
+- Parent directories of matching files remain visible for context
+- Press `Enter` to confirm and navigate to the match
+- Press `Escape` to cancel and restore the full tree
+- Works together with the tree view — matched directories auto-expand
+
 ## Clipboard
 
 | Shortcut           | Action                                     |
@@ -78,7 +93,11 @@ Opens a modal for searching text within files using regular expressions:
 
 ## Git Integration
 
-The file manager displays file status in Git repositories, highlighting new, modified, and deleted files.
+The file manager displays file status in Git repositories:
+
+- **File status colors** — new, modified, deleted, and untracked files are color-coded
+- **Nested git status** — directories show aggregated status of their children (e.g., a directory containing modified files is highlighted)
+- **Tree view integration** — git status propagates through the directory tree, making it easy to locate changes in deep hierarchies
 
 ## Media Preview
 
