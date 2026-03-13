@@ -652,6 +652,7 @@ impl App {
         };
 
         if should_close && self.layout_manager.can_close_active() {
+            self.state.bell();
             // Calculate available width for panel groups
             let terminal_width = self.state.terminal.width;
 

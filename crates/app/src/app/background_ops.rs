@@ -103,6 +103,7 @@ impl App {
                 }
 
                 // Show result modal for push/pull
+                self.state.bell();
                 let t = termide_i18n::t();
                 let title = if result.success {
                     if result.operation == "push" {
