@@ -4,6 +4,7 @@ name = "Spanish"
 
 [strings]
 app_quit_confirm = "Hay cambios no guardados. ¿Salir de todos modos?"
+app_quit_title = "Salir"
 batch_result_copied = "Copiado"
 batch_result_error_copy = "Error al copiar"
 batch_result_error_move = "Error al mover"

@@ -4,6 +4,7 @@ name = "Bahasa Indonesia"
 
 [strings]
 app_quit_confirm = "Ada perubahan yang belum disimpan. Tetap keluar?"
+app_quit_title = "Keluar"
 batch_result_copied = "Disalin"
 batch_result_error_copy = "Kesalahan salin"
 batch_result_error_move = "Kesalahan pindah"

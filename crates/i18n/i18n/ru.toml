@@ -4,6 +4,7 @@ name = "Russian"
 
 [strings]
 app_quit_confirm = "Есть несохранённые изменения. Всё равно выйти?"
+app_quit_title = "Выход"
 batch_result_copied = "Скопировано"
 batch_result_error_copy = "Ошибка копирования"
 batch_result_error_move = "Ошибка перемещения"

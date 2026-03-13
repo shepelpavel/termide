@@ -4,6 +4,7 @@ name = "বাংলা"
 
 [strings]
 app_quit_confirm = "অসংরক্ষিত পরিবর্তন আছে। তবুও বন্ধ করবেন?"
+app_quit_title = "প্রস্থান"
 batch_result_copied = "কপি হয়েছে"
 batch_result_error_copy = "কপি ত্রুটি"
 batch_result_error_move = "সরানো ত্রুটি"

@@ -4,6 +4,7 @@ name = "Thai"
 
 [strings]
 app_quit_confirm = "มีการเปลี่ยนแปลงที่ยังไม่บันทึก ออกจากโปรแกรมหรือไม่?"
+app_quit_title = "ออก"
 batch_result_copied = "คัดลอกแล้ว"
 batch_result_error_copy = "ข้อผิดพลาดในการคัดลอก"
 batch_result_error_move = "ข้อผิดพลาดในการย้าย"

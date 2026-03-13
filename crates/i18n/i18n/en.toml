@@ -4,6 +4,7 @@ name = "English"
 
 [strings]
 app_quit_confirm = "There are unsaved changes. Quit anyway?"
+app_quit_title = "Quit"
 batch_result_copied = "Copied"
 batch_result_error_copy = "Error copy"
 batch_result_error_move = "Error move"

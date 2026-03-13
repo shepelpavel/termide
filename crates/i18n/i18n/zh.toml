@@ -4,6 +4,7 @@ name = "Chinese"
 
 [strings]
 app_quit_confirm = "有未保存的更改。仍要退出吗？"
+app_quit_title = "退出"
 batch_result_copied = "已复制"
 batch_result_error_copy = "复制错误"
 batch_result_error_move = "移动错误"

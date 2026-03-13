@@ -4,6 +4,7 @@ name = "German"
 
 [strings]
 app_quit_confirm = "Es gibt ungespeicherte Änderungen. Trotzdem beenden?"
+app_quit_title = "Beenden"
 batch_result_copied = "Kopiert"
 batch_result_error_copy = "Fehler beim Kopieren"
 batch_result_error_move = "Fehler beim Verschieben"

@@ -4,6 +4,7 @@ name = "한국어"
 
 [strings]
 app_quit_confirm = "저장되지 않은 변경 사항이 있습니다. 그래도 종료하시겠습니까?"
+app_quit_title = "종료"
 batch_result_copied = "복사됨"
 batch_result_error_copy = "복사 오류"
 batch_result_error_move = "이동 오류"

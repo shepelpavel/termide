@@ -4,6 +4,7 @@ name = "Tiếng Việt"
 
 [strings]
 app_quit_confirm = "Có thay đổi chưa được lưu. Vẫn thoát?"
+app_quit_title = "Thoát"
 batch_result_copied = "Đã sao chép"
 batch_result_error_copy = "Lỗi sao chép"
 batch_result_error_move = "Lỗi di chuyển"

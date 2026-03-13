@@ -4,6 +4,7 @@ name = "Türkçe"
 
 [strings]
 app_quit_confirm = "Kaydedilmemiş değişiklikler var. Yine de çıkmak istiyor musunuz?"
+app_quit_title = "Çıkış"
 batch_result_copied = "Kopyalandı"
 batch_result_error_copy = "Kopyalama hatası"
 batch_result_error_move = "Taşıma hatası"

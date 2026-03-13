@@ -4,6 +4,7 @@ name = "日本語"
 
 [strings]
 app_quit_confirm = "保存されていない変更があります。終了しますか？"
+app_quit_title = "終了"
 batch_result_copied = "コピー完了"
 batch_result_error_copy = "コピーエラー"
 batch_result_error_move = "移動エラー"

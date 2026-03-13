@@ -351,7 +351,7 @@ impl App {
                 if self.has_panels_requiring_confirmation() {
                     let t = i18n::t();
                     let modal =
-                        termide_modal::ConfirmModal::new(t.modal_yes(), t.app_quit_confirm());
+                        termide_modal::ConfirmModal::new(t.app_quit_title(), t.app_quit_confirm());
                     self.state.set_pending_action(
                         PendingAction::QuitApplication,
                         ActiveModal::Confirm(Box::new(modal)),

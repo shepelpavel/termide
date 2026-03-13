@@ -896,6 +896,15 @@ impl App {
         use crate::state::{ActiveModal, PendingAction};
         use termide_modal::ConfirmModal;
 
+        // Determine title based on action type
+        let t = i18n::t();
+        let is_quit = matches!(on_confirm, termide_core::ConfirmAction::QuitApplication);
+        let title = if is_quit {
+            t.app_quit_title()
+        } else {
+            t.modal_yes()
+        };
+
         // Map ConfirmAction to PendingAction
         let pending_action = match on_confirm {
             termide_core::ConfirmAction::DeleteFile(path) => {
@@ -911,8 +920,7 @@ impl App {
         };
 
         // Create confirmation modal
-        let t = i18n::t();
-        let modal = ConfirmModal::new(t.modal_yes(), message);
+        let modal = ConfirmModal::new(title, message);
         self.state
             .set_pending_action(pending_action, ActiveModal::Confirm(Box::new(modal)));
     }

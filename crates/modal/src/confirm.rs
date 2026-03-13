@@ -59,7 +59,7 @@ impl Modal for ConfirmModal {
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, theme: &Theme) {
         // Calculate required height based on content:
-        // 1 (top border) + N (message lines) + 1 (buttons) + 1 (empty line) + 1 (bottom border) = N + 4
+        // 1 (top border) + N (message lines) + 1 (empty) + 1 (buttons) + 1 (bottom border) = N + 4
         let message_lines = self.message.lines().count().max(1);
         let modal_height = (message_lines + 4) as u16;
 
@@ -71,13 +71,13 @@ impl Modal for ConfirmModal {
 
         let inner = render_modal_block(modal_area, buf, &self.title, theme);
 
-        // Split into: message, buttons, empty line
+        // Split into: message, empty line, buttons
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Length(message_lines as u16), // Message
+                Constraint::Length(1),                    // Empty line
                 Constraint::Length(1),                    // Buttons
-                Constraint::Length(1),                    // Empty line after buttons
             ])
             .split(inner);
 
@@ -100,10 +100,10 @@ impl Modal for ConfirmModal {
         ]);
 
         let buttons_paragraph = Paragraph::new(buttons).alignment(Alignment::Center);
-        buttons_paragraph.render(chunks[1], buf);
+        buttons_paragraph.render(chunks[2], buf);
 
         // Save buttons area for mouse handling
-        self.last_buttons_area = Some(chunks[1]);
+        self.last_buttons_area = Some(chunks[2]);
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<Option<ModalResult<Self::Result>>> {

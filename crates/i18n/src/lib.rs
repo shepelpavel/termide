@@ -96,6 +96,7 @@ pub trait Translation: Send + Sync {
     // Git status
     // Application quit
     fn app_quit_confirm(&self) -> &str;
+    fn app_quit_title(&self) -> &str;
 
     // Errors
     // Help modal

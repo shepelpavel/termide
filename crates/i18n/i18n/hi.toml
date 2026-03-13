@@ -4,6 +4,7 @@ name = "Hindi"
 
 [strings]
 app_quit_confirm = "असहेजे परिवर्तन हैं। फिर भी बाहर निकलें?"
+app_quit_title = "बाहर निकलें"
 batch_result_copied = "कॉपी किया गया"
 batch_result_error_copy = "कॉपी करने में त्रुटि"
 batch_result_error_move = "ले जाने में त्रुटि"

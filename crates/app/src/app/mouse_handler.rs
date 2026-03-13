@@ -915,7 +915,7 @@ impl App {
                             use termide_i18n as i18n;
                             let t = i18n::t();
                             let modal = termide_modal::ConfirmModal::new(
-                                t.modal_yes(),
+                                t.app_quit_title(),
                                 t.app_quit_confirm(),
                             );
                             self.state.set_pending_action(

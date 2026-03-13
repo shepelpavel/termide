@@ -4,6 +4,7 @@ name = "French"
 
 [strings]
 app_quit_confirm = "Il y a des modifications non enregistrées. Quitter quand même?"
+app_quit_title = "Quitter"
 batch_result_copied = "Copié"
 batch_result_error_copy = "Erreur de copie"
 batch_result_error_move = "Erreur de déplacement"

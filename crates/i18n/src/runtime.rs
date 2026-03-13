@@ -224,6 +224,10 @@ impl Translation for RuntimeTranslation {
         self.get_string("app_quit_confirm")
     }
 
+    fn app_quit_title(&self) -> &str {
+        self.get_string("app_quit_title")
+    }
+
     fn help_global_keys(&self) -> &str {
         self.get_string("help_global_keys")
     }
