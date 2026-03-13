@@ -528,27 +528,24 @@ impl SearchModal {
         match (key.code, key.modifiers) {
             // Tab - next match (for Text mode: live, for others: trigger search)
             (KeyCode::Tab, KeyModifiers::NONE) => {
-                if self.mode == SearchMode::Text {
-                    if self.has_input() {
-                        return Ok(Some(ModalResult::Confirmed(
-                            self.make_result(SearchAction::Next),
-                        )));
-                    }
-                } else {
-                    // FileGlob/Content: start search, then next
-                    if self.has_input() {
-                        return Ok(Some(ModalResult::Confirmed(
-                            self.make_result(SearchAction::Next),
-                        )));
-                    }
+                if self.has_input() {
+                    let action = if self.mode != SearchMode::Text && self.match_info.is_none() {
+                        SearchAction::Search
+                    } else {
+                        SearchAction::Next
+                    };
+                    return Ok(Some(ModalResult::Confirmed(self.make_result(action))));
                 }
             }
             // Shift+Tab - previous match
             (KeyCode::BackTab, _) => {
                 if self.has_input() {
-                    return Ok(Some(ModalResult::Confirmed(
-                        self.make_result(SearchAction::Previous),
-                    )));
+                    let action = if self.mode != SearchMode::Text && self.match_info.is_none() {
+                        SearchAction::Search
+                    } else {
+                        SearchAction::Previous
+                    };
+                    return Ok(Some(ModalResult::Confirmed(self.make_result(action))));
                 }
             }
             // Down - move focus
@@ -760,16 +757,22 @@ impl SearchModal {
             }
             (KeyCode::Tab, KeyModifiers::NONE) => {
                 if self.has_input() {
-                    return Ok(Some(ModalResult::Confirmed(
-                        self.make_result(SearchAction::Next),
-                    )));
+                    let action = if self.mode != SearchMode::Text && self.match_info.is_none() {
+                        SearchAction::Search
+                    } else {
+                        SearchAction::Next
+                    };
+                    return Ok(Some(ModalResult::Confirmed(self.make_result(action))));
                 }
             }
             (KeyCode::BackTab, _) => {
                 if self.has_input() {
-                    return Ok(Some(ModalResult::Confirmed(
-                        self.make_result(SearchAction::Previous),
-                    )));
+                    let action = if self.mode != SearchMode::Text && self.match_info.is_none() {
+                        SearchAction::Search
+                    } else {
+                        SearchAction::Previous
+                    };
+                    return Ok(Some(ModalResult::Confirmed(self.make_result(action))));
                 }
             }
             (KeyCode::Up, KeyModifiers::NONE) => match self.mode {
