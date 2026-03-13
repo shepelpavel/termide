@@ -712,6 +712,55 @@ impl GitStatusPanel {
         }
     }
 
+    /// Check if click column hits the expand/collapse icon of a tree directory node.
+    /// Returns `Some((is_unstaged, tree_idx))` if the click is on a directory icon.
+    fn check_dir_icon_click(&self, vline: usize, relative_col: usize) -> Option<(bool, usize)> {
+        let unstaged_start = 1;
+        let unstaged_end = unstaged_start + self.unstaged_item_count();
+        let staged_start = unstaged_end + 1;
+
+        let (is_unstaged, visible_idx) = if vline >= unstaged_start && vline < unstaged_end {
+            (true, vline - unstaged_start)
+        } else if vline >= staged_start {
+            (false, vline - staged_start)
+        } else {
+            return None;
+        };
+
+        let (tree_nodes, visible, prefixes) = if is_unstaged {
+            (
+                &self.unstaged_tree,
+                &self.unstaged_visible,
+                &self.unstaged_tree_prefixes,
+            )
+        } else {
+            (
+                &self.staged_tree,
+                &self.staged_visible,
+                &self.staged_tree_prefixes,
+            )
+        };
+
+        let &tree_idx = visible.get(visible_idx)?;
+        if !matches!(
+            tree_nodes[tree_idx].kind,
+            tree::TreeNodeKind::Directory { .. }
+        ) {
+            return None;
+        }
+
+        // Rendering layout: " {prefix}{arrow} /{name}"
+        // Arrow icon is at column 1 + prefix_width
+        let prefix_width = prefixes.get(visible_idx).map(|p| p.width()).unwrap_or(0);
+        let icon_end = 1 + prefix_width + 1; // " " + prefix + arrow char
+
+        if relative_col <= icon_end {
+            Some((is_unstaged, tree_idx))
+        } else {
+            None
+        }
+    }
+
     /// Check if current click is a double-click on the same item
     fn check_double_click(&self, now: std::time::Instant, vline: usize) -> bool {
         self.click_tracker.is_double_click_at(now, &vline)
@@ -1278,6 +1327,7 @@ impl Panel for GitStatusPanel {
                     self.branch_dropdown_open = false;
 
                     let relative_row = (row - self.files_area.y) as usize;
+                    let relative_col = (col - self.files_area.x) as usize;
                     let vline = self.scroll_offset + relative_row;
 
                     // Virtual layout constants
@@ -1290,22 +1340,26 @@ impl Panel for GitStatusPanel {
                     // Determine what was clicked
                     let unstaged_header_line = 0;
 
-                    if vline == unstaged_header_line && !self.unstaged_files.is_empty() {
+                    // Single click on directory icon → toggle expand/collapse
+                    if let Some((is_unstaged, tree_idx)) =
+                        self.check_dir_icon_click(vline, relative_col)
+                    {
+                        self.current_section = Section::Files;
+                        self.cursor = vline;
+                        self.toggle_dir_expand(is_unstaged, tree_idx);
+                        self.reset_click_state();
+                    } else if vline == unstaged_header_line && !self.unstaged_files.is_empty() {
                         // Clicked on unstaged header (with Stage all button)
                         self.current_section = Section::Files;
                         self.cursor = vline;
                         self.record_click(now, vline);
                     } else if vline >= unstaged_files_start && vline < unstaged_files_end {
-                        // Clicked on unstaged item
+                        // Clicked on unstaged item (file or dir name area)
                         self.current_section = Section::Files;
                         self.cursor = vline;
                         if self.check_double_click(now, vline) {
-                            // Double-click: toggle dir or stage file
-                            if let Some(Selection::UnstagedDir(idx)) = self.get_selection() {
-                                self.toggle_dir_expand(true, idx);
-                            } else {
-                                self.do_stage();
-                            }
+                            // Double-click: stage file
+                            self.do_stage();
                             self.reset_click_state();
                         } else {
                             self.record_click(now, vline);
@@ -1316,16 +1370,12 @@ impl Panel for GitStatusPanel {
                         self.cursor = vline;
                         self.record_click(now, vline);
                     } else if vline >= staged_files_start && vline < staged_files_end {
-                        // Clicked on staged item
+                        // Clicked on staged item (file or dir name area)
                         self.current_section = Section::Files;
                         self.cursor = vline;
                         if self.check_double_click(now, vline) {
-                            // Double-click: toggle dir or unstage file
-                            if let Some(Selection::StagedDir(idx)) = self.get_selection() {
-                                self.toggle_dir_expand(false, idx);
-                            } else {
-                                self.do_unstage();
-                            }
+                            // Double-click: unstage file
+                            self.do_unstage();
                             self.reset_click_state();
                         } else {
                             self.record_click(now, vline);
