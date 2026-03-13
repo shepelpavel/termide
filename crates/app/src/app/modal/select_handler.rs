@@ -20,13 +20,8 @@ impl App {
         // Store info needed for LSP notification (before mutable borrow)
         let mut lsp_info: Option<(String, PathBuf)> = None;
 
-        if let Some(selected) = value.downcast_ref::<Vec<usize>>() {
-            if selected.is_empty() {
-                // Cancel or Esc - do nothing
-                return Ok(());
-            }
-
-            match selected[0] {
+        if let Some(&selected) = value.downcast_ref::<usize>() {
+            match selected {
                 0 => {
                     // Save and close
                     log::info!("Selected: Save and close editor");
@@ -170,13 +165,8 @@ impl App {
         &mut self,
         value: Box<dyn std::any::Any>,
     ) -> Result<()> {
-        if let Some(selected) = value.downcast_ref::<Vec<usize>>() {
-            if selected.is_empty() {
-                // Cancel or Esc - do nothing
-                return Ok(());
-            }
-
-            match selected[0] {
+        if let Some(&selected) = value.downcast_ref::<usize>() {
+            match selected {
                 0 => {
                     // Overwrite disk with current content
                     log::info!("Selected: Overwrite disk with current content");
@@ -232,13 +222,8 @@ impl App {
         &mut self,
         value: Box<dyn std::any::Any>,
     ) -> Result<()> {
-        if let Some(selected) = value.downcast_ref::<Vec<usize>>() {
-            if selected.is_empty() {
-                // Cancel or Esc - do nothing
-                return Ok(());
-            }
-
-            match selected[0] {
+        if let Some(&selected) = value.downcast_ref::<usize>() {
+            match selected {
                 0 => {
                     // Overwrite disk with my changes
                     log::info!("Selected: Overwrite disk with local changes");

@@ -24,14 +24,14 @@ impl App {
                     has_external_change: has_external,
                 } = mod_status
                 {
-                    use termide_modal::SelectModal;
+                    use termide_modal::ChoiceModal;
                     let t = i18n::t();
 
                     if is_modified && has_external {
                         // Conflict: both local and external changes
-                        let modal = SelectModal::single(
+                        let modal = ChoiceModal::new(
                             t.editor_close_conflict(),
-                            t.editor_close_conflict_question(),
+                            Some(t.editor_close_conflict_question().to_string()),
                             vec![
                                 t.editor_overwrite_disk().to_string(),
                                 t.editor_reload_from_disk().to_string(),
@@ -40,13 +40,13 @@ impl App {
                         );
                         let action = PendingAction::CloseEditorConflict;
                         self.state
-                            .set_pending_action(action, ActiveModal::Select(Box::new(modal)));
+                            .set_pending_action(action, ActiveModal::Choice(Box::new(modal)));
                         return Ok(());
                     } else if is_modified {
                         // Only local changes
-                        let modal = SelectModal::single(
+                        let modal = ChoiceModal::new(
                             t.editor_close_unsaved(),
-                            t.editor_close_unsaved_question(),
+                            Some(t.editor_close_unsaved_question().to_string()),
                             vec![
                                 t.editor_save_and_close().to_string(),
                                 t.editor_close_without_saving().to_string(),
@@ -55,13 +55,13 @@ impl App {
                         );
                         let action = PendingAction::CloseEditorWithSave;
                         self.state
-                            .set_pending_action(action, ActiveModal::Select(Box::new(modal)));
+                            .set_pending_action(action, ActiveModal::Choice(Box::new(modal)));
                         return Ok(());
                     } else if has_external {
                         // Only external changes
-                        let modal = SelectModal::single(
+                        let modal = ChoiceModal::new(
                             t.editor_close_external(),
-                            t.editor_close_external_question(),
+                            Some(t.editor_close_external_question().to_string()),
                             vec![
                                 t.editor_overwrite_disk().to_string(),
                                 t.editor_keep_disk_close().to_string(),
@@ -71,7 +71,7 @@ impl App {
                         );
                         let action = PendingAction::CloseEditorExternal;
                         self.state
-                            .set_pending_action(action, ActiveModal::Select(Box::new(modal)));
+                            .set_pending_action(action, ActiveModal::Choice(Box::new(modal)));
                         return Ok(());
                     }
                 } else {
