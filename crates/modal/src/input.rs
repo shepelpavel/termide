@@ -102,7 +102,7 @@ impl InputModal {
         let checkbox_width = self
             .checkbox_label
             .as_ref()
-            .map(|l| max_line_width(&format!("[x] {}", l)))
+            .map(|l| max_line_width(&format!(" [x] {}", l)))
             .unwrap_or(0);
 
         let width = calculate_modal_width(
@@ -127,7 +127,7 @@ impl InputModal {
         } else {
             self.prompt.lines().count().max(1) as u16
         };
-        let checkbox_height = if self.checkbox_label.is_some() { 1 } else { 0 };
+        let checkbox_height = if self.checkbox_label.is_some() { 2 } else { 0 }; // checkbox + empty line
         let height = (1 + prompt_lines + 3 + checkbox_height + 1 + 1).min(screen_height);
 
         (width, height)
@@ -195,6 +195,7 @@ impl Modal for InputModal {
         constraints.push(Constraint::Length(3)); // Input
         if self.checkbox_label.is_some() {
             constraints.push(Constraint::Length(1)); // Checkbox
+            constraints.push(Constraint::Length(1)); // Empty line
         }
         constraints.push(Constraint::Length(1)); // Buttons
 
@@ -246,13 +247,13 @@ impl Modal for InputModal {
             } else {
                 Style::default().fg(theme.fg).bg(theme.bg)
             };
-            let checkbox_text = format!("[{}] {}", checkbox_char, label);
+            let checkbox_text = format!(" [{}] {}", checkbox_char, label);
             let checkbox = Paragraph::new(checkbox_text)
                 .style(checkbox_style)
                 .alignment(Alignment::Left);
             checkbox.render(chunks[chunk_idx], buf);
             self.last_checkbox_area = Some(chunks[chunk_idx]);
-            chunk_idx += 1;
+            chunk_idx += 2; // skip checkbox + empty line
         } else {
             self.last_checkbox_area = None;
         }
