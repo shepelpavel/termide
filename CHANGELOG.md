@@ -5,6 +5,22 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.3] - 2026-03-13
+
+### Added
+- **Git Status**: Single-click directory icon to expand/collapse tree nodes
+
+### Fixed
+- **Modal**: Correct quit confirm title and button layout
+- **Modal**: Adjust checkbox indent and spacing in InputModal
+- **i18n**: Add `modal_confirm_title` key — ConfirmModal no longer shows "Yes" as title
+- **i18n**: Localize hardcoded "Confirm" string in file manager paste confirmation
+- **Docs**: Fix syntax highlighting language count in README (19→21)
+- **Docs**: Update CONTRIBUTING.md with current i18n architecture (15 languages, TOML-based)
+
+### Changed
+- **Refactor**: Replace SelectModal with ChoiceModal for editor close dialogs
+
 ## [0.15.2] - 2026-03-13
 
 ### Added
