@@ -375,6 +375,26 @@ impl App {
         }
     }
 
+    /// Navigate nested submenu selection up/down with wrapping.
+    fn navigate_nested_submenu(&mut self, key_code: KeyCode, count: usize) {
+        match key_code {
+            KeyCode::Up => {
+                if self.state.ui.nested_submenu.selected > 0 {
+                    self.state.ui.nested_submenu.selected -= 1;
+                } else {
+                    self.state.ui.nested_submenu.selected = count.saturating_sub(1);
+                }
+            }
+            KeyCode::Down => {
+                if count > 0 {
+                    self.state.ui.nested_submenu.selected =
+                        (self.state.ui.nested_submenu.selected + 1) % count;
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// Handle keyboard event in Themes nested submenu
     fn handle_themes_nested_submenu_key(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
         let theme_names = Theme::all_theme_names();
@@ -389,22 +409,8 @@ impl App {
                 // Close nested submenu, return to parent
                 self.state.close_nested_submenu();
             }
-            KeyCode::Up => {
-                if self.state.ui.nested_submenu.selected > 0 {
-                    self.state.ui.nested_submenu.selected -= 1;
-                } else {
-                    self.state.ui.nested_submenu.selected = theme_count.saturating_sub(1);
-                }
-                // Live preview: apply theme on cursor move
-                if let Some(name) = theme_names.get(self.state.ui.nested_submenu.selected) {
-                    self.state.theme = Theme::get_by_name(name);
-                }
-            }
-            KeyCode::Down => {
-                if theme_count > 0 {
-                    self.state.ui.nested_submenu.selected =
-                        (self.state.ui.nested_submenu.selected + 1) % theme_count;
-                }
+            KeyCode::Up | KeyCode::Down => {
+                self.navigate_nested_submenu(key.code, theme_count);
                 // Live preview: apply theme on cursor move
                 if let Some(name) = theme_names.get(self.state.ui.nested_submenu.selected) {
                     self.state.theme = Theme::get_by_name(name);
@@ -442,22 +448,8 @@ impl App {
                 // Close nested submenu, return to parent
                 self.state.close_nested_submenu();
             }
-            KeyCode::Up => {
-                if self.state.ui.nested_submenu.selected > 0 {
-                    self.state.ui.nested_submenu.selected -= 1;
-                } else {
-                    self.state.ui.nested_submenu.selected = lang_count.saturating_sub(1);
-                }
-                // Live preview: apply language on cursor move
-                if let Some((code, _)) = languages.get(self.state.ui.nested_submenu.selected) {
-                    let _ = i18n::set_language(code);
-                }
-            }
-            KeyCode::Down => {
-                if lang_count > 0 {
-                    self.state.ui.nested_submenu.selected =
-                        (self.state.ui.nested_submenu.selected + 1) % lang_count;
-                }
+            KeyCode::Up | KeyCode::Down => {
+                self.navigate_nested_submenu(key.code, lang_count);
                 // Live preview: apply language on cursor move
                 if let Some((code, _)) = languages.get(self.state.ui.nested_submenu.selected) {
                     let _ = i18n::set_language(code);

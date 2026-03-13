@@ -111,14 +111,14 @@ impl GitStatusPanel {
 
     /// Execute stage action
     pub(crate) fn do_stage(&mut self) {
-        let files = self.get_selected_unstaged();
+        let files = self.get_selected_files(false);
         let t = termide_i18n::t();
         self.execute_git_op(files, git::stage_files, t.git_staged_header());
     }
 
     /// Execute unstage action
     pub(crate) fn do_unstage(&mut self) {
-        let files = self.get_selected_staged();
+        let files = self.get_selected_files(true);
         let t = termide_i18n::t();
         self.execute_git_op(files, git::unstage_files, t.git_unstaged_header());
     }

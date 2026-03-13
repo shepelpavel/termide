@@ -355,15 +355,26 @@ impl GitStatusPanel {
 
     /// Check if a virtual line is selectable (files and headers with buttons)
     fn is_selectable_line(&self, vline: usize) -> bool {
-        let unstaged_header = 0;
         let unstaged_end = 1 + self.unstaged_item_count();
+        let staged_end = unstaged_end + 1 + self.staged_item_count();
+        self.is_selectable_line_with_bounds(vline, unstaged_end, staged_end)
+    }
+
+    /// Check if a virtual line is selectable, using pre-calculated boundaries.
+    /// Use this in loops to avoid recalculating counts every iteration.
+    fn is_selectable_line_with_bounds(
+        &self,
+        vline: usize,
+        unstaged_end: usize,
+        staged_end: usize,
+    ) -> bool {
+        let unstaged_header = 0;
         let staged_header = unstaged_end;
-        let staged_end = staged_header + 1 + self.staged_item_count();
 
         if vline == unstaged_header {
-            !self.unstaged_files.is_empty() // Has [Stage all] button
+            !self.unstaged_files.is_empty()
         } else if vline == staged_header {
-            !self.staged_files.is_empty() // Has [Unstage all] button
+            !self.staged_files.is_empty()
         } else {
             vline > unstaged_header && vline < staged_end && vline != staged_header
         }
@@ -387,9 +398,11 @@ impl GitStatusPanel {
 
     /// Get last selectable virtual line
     fn last_selectable_line(&self) -> usize {
+        let unstaged_end = 1 + self.unstaged_item_count();
+        let staged_end = unstaged_end + 1 + self.staged_item_count();
         let total = self.total_virtual_lines();
         for vline in (0..total).rev() {
-            if self.is_selectable_line(vline) {
+            if self.is_selectable_line_with_bounds(vline, unstaged_end, staged_end) {
                 return vline;
             }
         }
@@ -399,17 +412,19 @@ impl GitStatusPanel {
     /// Find the nearest selectable line to the given position
     /// Prefers moving backward (up) when current line is not selectable
     fn find_nearest_selectable_line(&self, vline: usize) -> usize {
+        let unstaged_end = 1 + self.unstaged_item_count();
+        let staged_end = unstaged_end + 1 + self.staged_item_count();
         // Try moving backward first (more natural for cursor adjustment after refresh)
         for offset in 1..=vline {
             let target = vline - offset;
-            if self.is_selectable_line(target) {
+            if self.is_selectable_line_with_bounds(target, unstaged_end, staged_end) {
                 return target;
             }
         }
         // If nothing found backward, try forward
         let total = self.total_virtual_lines();
         for target in (vline + 1)..total {
-            if self.is_selectable_line(target) {
+            if self.is_selectable_line_with_bounds(target, unstaged_end, staged_end) {
                 return target;
             }
         }
@@ -440,71 +455,76 @@ impl GitStatusPanel {
         2 + self.unstaged_item_count() + self.staged_item_count()
     }
 
-    /// Get file at cursor from unstaged section
-    fn get_selected_unstaged(&self) -> Vec<PathBuf> {
+    /// Get selected files from the given section (staged or unstaged).
+    fn get_selected_files(&self, staged: bool) -> Vec<PathBuf> {
         match self.get_selection() {
-            Some(Selection::UnstagedFile(idx)) => self
+            Some(Selection::UnstagedFile(idx)) if !staged => self
                 .unstaged_files
                 .get(idx)
                 .map(|f| f.path.clone())
                 .into_iter()
                 .collect(),
-            Some(Selection::UnstagedDir(idx)) => {
+            Some(Selection::UnstagedDir(idx)) if !staged => {
                 tree::collect_files_under(&self.unstaged_tree, idx)
             }
-            _ => vec![],
-        }
-    }
-
-    /// Get file at cursor from staged section
-    fn get_selected_staged(&self) -> Vec<PathBuf> {
-        match self.get_selection() {
-            Some(Selection::StagedFile(idx)) => self
+            Some(Selection::StagedFile(idx)) if staged => self
                 .staged_files
                 .get(idx)
                 .map(|f| f.path.clone())
                 .into_iter()
                 .collect(),
-            Some(Selection::StagedDir(idx)) => tree::collect_files_under(&self.staged_tree, idx),
+            Some(Selection::StagedDir(idx)) if staged => {
+                tree::collect_files_under(&self.staged_tree, idx)
+            }
             _ => vec![],
         }
     }
 
+    /// Build a section tree from file entries.
+    fn build_section_tree(
+        paths: &[(PathBuf, usize, char, bool)],
+        collapsed: &HashSet<PathBuf>,
+    ) -> (Vec<tree::TreeNode>, Vec<usize>, Vec<String>) {
+        let entries: Vec<tree::FileEntry> = paths
+            .iter()
+            .map(|(path, index, status, untracked)| tree::FileEntry {
+                path: path.clone(),
+                index: *index,
+                status: *status,
+                untracked: *untracked,
+            })
+            .collect();
+        let tree_nodes = tree::build_tree(&entries, collapsed);
+        let visible = tree::compute_visible_nodes(&tree_nodes);
+        let prefixes = tree::compute_tree_prefixes(&tree_nodes, &visible);
+        (tree_nodes, visible, prefixes)
+    }
+
     /// Rebuild tree data structures from current file lists.
     fn rebuild_trees(&mut self) {
-        // Build unstaged tree
-        let unstaged_entries: Vec<tree::FileEntry> = self
+        let unstaged_data: Vec<_> = self
             .unstaged_files
             .iter()
             .enumerate()
-            .map(|(i, f)| tree::FileEntry {
-                path: f.path.clone(),
-                index: i,
-                status: f.status,
-                untracked: f.untracked,
-            })
+            .map(|(i, f)| (f.path.clone(), i, f.status, f.untracked))
             .collect();
-        self.unstaged_tree = tree::build_tree(&unstaged_entries, &self.unstaged_collapsed);
-        self.unstaged_visible = tree::compute_visible_nodes(&self.unstaged_tree);
-        self.unstaged_tree_prefixes =
-            tree::compute_tree_prefixes(&self.unstaged_tree, &self.unstaged_visible);
+        let (tree, visible, prefixes) =
+            Self::build_section_tree(&unstaged_data, &self.unstaged_collapsed);
+        self.unstaged_tree = tree;
+        self.unstaged_visible = visible;
+        self.unstaged_tree_prefixes = prefixes;
 
-        // Build staged tree
-        let staged_entries: Vec<tree::FileEntry> = self
+        let staged_data: Vec<_> = self
             .staged_files
             .iter()
             .enumerate()
-            .map(|(i, f)| tree::FileEntry {
-                path: f.path.clone(),
-                index: i,
-                status: f.status,
-                untracked: false,
-            })
+            .map(|(i, f)| (f.path.clone(), i, f.status, false))
             .collect();
-        self.staged_tree = tree::build_tree(&staged_entries, &self.staged_collapsed);
-        self.staged_visible = tree::compute_visible_nodes(&self.staged_tree);
-        self.staged_tree_prefixes =
-            tree::compute_tree_prefixes(&self.staged_tree, &self.staged_visible);
+        let (tree, visible, prefixes) =
+            Self::build_section_tree(&staged_data, &self.staged_collapsed);
+        self.staged_tree = tree;
+        self.staged_visible = visible;
+        self.staged_tree_prefixes = prefixes;
     }
 
     /// Toggle expand/collapse for a directory node.

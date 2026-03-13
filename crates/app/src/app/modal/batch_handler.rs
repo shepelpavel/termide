@@ -18,6 +18,13 @@ use termide_modal::ConflictModal;
 use termide_ui::path_utils;
 use termide_vfs::VfsPath;
 
+/// Extract the file name from a path, defaulting to "file" if unavailable.
+fn source_name(path: &Path) -> String {
+    path.file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "file".to_string())
+}
+
 /// Create a copy or move OperationRequest based on operation type.
 fn make_copy_or_move_request(
     source: OperationPath,
@@ -99,6 +106,18 @@ fn format_vfs_path_for_display(vfs_path: &VfsPath, file_path: &Path) -> String {
 }
 
 impl App {
+    /// Parse a VFS URL, logging and setting error on failure.
+    fn parse_remote_url(&mut self, remote_url: &str) -> Option<VfsPath> {
+        match termide_vfs::parse_vfs_url(remote_url) {
+            Ok(path) => Some(path),
+            Err(e) => {
+                log::error!("Invalid remote URL '{}': {}", remote_url, e);
+                self.state.set_error(format!("Invalid remote URL: {}", e));
+                None
+            }
+        }
+    }
+
     /// Start a sub-operation within a batch and store continuation state.
     ///
     /// On success, stores the operation ID and sets pending action for continuation.
@@ -320,13 +339,9 @@ impl App {
         }
 
         // Parse the remote URL
-        let remote_path = match termide_vfs::parse_vfs_url(remote_url) {
-            Ok(path) => path,
-            Err(e) => {
-                log::error!("Invalid remote URL '{}': {}", remote_url, e);
-                self.state.set_error(format!("Invalid remote URL: {}", e));
-                return Ok(());
-            }
+        let remote_path = match self.parse_remote_url(remote_url) {
+            Some(path) => path,
+            None => return Ok(()),
         };
 
         // Find the destination panel that is connected to this remote
@@ -352,15 +367,12 @@ impl App {
 
         // Start with the first file (clone to avoid borrow issues)
         let source = sources[0].clone();
-        let source_name = source
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| "file".to_string());
+        let src_name = source_name(&source);
 
         // Determine final remote destination path using VFS stat
         let (final_remote, dest_exists) = self.resolve_remote_dest(
             &remote_path,
-            &source_name,
+            &src_name,
             remote_url,
             sources.len() > 1,
             &vfs_manager,
@@ -381,8 +393,19 @@ impl App {
             return Ok(());
         }
 
+        // Determine operation type for display
+        let op_type = if is_move {
+            OperationType::MoveUpload
+        } else {
+            OperationType::CopyUpload
+        };
+
+        // Extract display strings before moving values
+        let source_display = source.display().to_string();
+        let dest_display = final_remote.to_url_string();
+
         // Create upload operation request
-        let request = OperationRequest::upload(source.clone(), final_remote.clone());
+        let request = OperationRequest::upload(source.clone(), final_remote);
 
         // Store batch upload state for continuation
         self.state.pending_batch_upload = Some(crate::state::PendingBatchUpload {
@@ -391,23 +414,16 @@ impl App {
             dest_base_url: remote_url.to_string(),
             vfs_manager: vfs_manager.clone(),
             is_move,
-            current_source: source.clone(),
+            current_source: source,
         });
-
-        // Determine operation type for display
-        let op_type = if is_move {
-            OperationType::MoveUpload
-        } else {
-            OperationType::CopyUpload
-        };
 
         // Start tracked upload operation (opens Operations panel)
         match self.start_tracked_operation(
             request,
             vfs_manager,
             op_type,
-            source.display().to_string(),
-            final_remote.to_url_string(),
+            source_display,
+            dest_display,
             total_files,
             0, // bytes will be updated during progress
         ) {
@@ -445,13 +461,9 @@ impl App {
             return Ok(());
         }
 
-        let parsed_dest = match termide_vfs::parse_vfs_url(remote_url) {
-            Ok(path) => path,
-            Err(e) => {
-                log::error!("Invalid remote URL '{}': {}", remote_url, e);
-                self.state.set_error(format!("Invalid remote URL: {}", e));
-                return Ok(());
-            }
+        let parsed_dest = match self.parse_remote_url(remote_url) {
+            Some(path) => path,
+            None => return Ok(()),
         };
 
         // Normalize destination to use connection info from the connected panel
@@ -463,16 +475,13 @@ impl App {
 
         // Build VFS source path from the server-side PathBuf
         let source = &sources[0];
-        let source_name = source
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_default();
-        let vfs_source = vfs_current_path.join(&source_name);
+        let src_name = source_name(source);
+        let vfs_source = vfs_current_path.join(&src_name);
 
         // Resolve destination using VFS stat
         let (vfs_dest, dest_exists) = self.resolve_remote_dest(
             &remote_dest,
-            &source_name,
+            &src_name,
             remote_url,
             sources.len() > 1,
             &vfs_manager,
@@ -490,25 +499,29 @@ impl App {
             return Ok(());
         }
 
-        // Create remote-to-remote copy/move request
-        let request = make_copy_or_move_request(
-            OperationPath::Remote(vfs_source.clone()),
-            OperationPath::Remote(vfs_dest.clone()),
-            is_move,
-        );
-
         let op_type = if is_move {
             OperationType::Move
         } else {
             OperationType::Copy
         };
 
+        // Extract display strings before moving values into the request
+        let source_url = vfs_source.to_url_string();
+        let dest_url = vfs_dest.to_url_string();
+
+        // Create remote-to-remote copy/move request
+        let request = make_copy_or_move_request(
+            OperationPath::Remote(vfs_source),
+            OperationPath::Remote(vfs_dest),
+            is_move,
+        );
+
         match self.start_tracked_operation(
             request,
             vfs_manager,
             op_type,
-            vfs_source.to_url_string(),
-            vfs_dest.to_url_string(),
+            source_url,
+            dest_url,
             total_files,
             0,
         ) {
@@ -777,11 +790,8 @@ impl App {
                             if let Some((vfs_manager, vfs_current_path)) =
                                 self.find_remote_file_manager_info()
                             {
-                                let source_name = source
-                                    .file_name()
-                                    .map(|n| n.to_string_lossy().to_string())
-                                    .unwrap_or_default();
-                                let vfs_source = vfs_current_path.join(&source_name);
+                                let src_name = source_name(&source);
+                                let vfs_source = vfs_current_path.join(&src_name);
 
                                 let is_move = operation.operation_type == BatchOperationType::Move;
 
