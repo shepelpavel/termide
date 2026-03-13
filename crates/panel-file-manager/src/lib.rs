@@ -1392,7 +1392,7 @@ impl FileManager {
                 self.vfs.navigate_down(&entry_name);
                 self.vfs.start_list_dir();
             } else {
-                self.current_path.push(&entry_name);
+                self.current_path = full_path;
                 let _ = self.load_directory();
             }
             return None;
