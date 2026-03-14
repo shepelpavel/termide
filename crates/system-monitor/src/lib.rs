@@ -545,13 +545,110 @@ pub fn get_all_disk_space_info() -> Vec<DiskSpaceInfo> {
 }
 
 #[cfg(windows)]
-pub fn get_disk_space_info(_path: &std::path::Path) -> Option<DiskSpaceInfo> {
-    None
+pub fn get_disk_space_info(path: &std::path::Path) -> Option<DiskSpaceInfo> {
+    let root = path.components().next()?;
+    let drive = root.as_os_str().to_string_lossy().to_string();
+    let drive_letter = drive.trim_end_matches([':', '\\', '/']);
+
+    let output = std::process::Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-Command",
+            &format!(
+                "Get-PSDrive -Name '{}' | Select-Object Free,Used | ConvertTo-Json",
+                drive_letter
+            ),
+        ])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let json_str = String::from_utf8(output.stdout).ok()?;
+    let free: u64 = json_str
+        .split("\"Free\"")
+        .nth(1)?
+        .split([',', '}', '\n'])
+        .next()?
+        .trim()
+        .trim_start_matches(':')
+        .trim()
+        .parse()
+        .ok()?;
+    let used: u64 = json_str
+        .split("\"Used\"")
+        .nth(1)?
+        .split([',', '}', '\n'])
+        .next()?
+        .trim()
+        .trim_start_matches(':')
+        .trim()
+        .parse()
+        .ok()?;
+
+    Some(DiskSpaceInfo {
+        device: Some(format!("{}:", drive_letter)),
+        available: free,
+        total: free.saturating_add(used),
+    })
 }
 
 #[cfg(windows)]
 pub fn get_all_disk_space_info() -> Vec<DiskSpaceInfo> {
-    Vec::new()
+    let output = match std::process::Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-Command",
+            "Get-PSDrive -PSProvider FileSystem | Select-Object Name,Free,Used | ConvertTo-Json",
+        ])
+        .output()
+    {
+        Ok(o) if o.status.success() => o,
+        _ => return Vec::new(),
+    };
+
+    let json_str = match String::from_utf8(output.stdout) {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+
+    // Parse JSON array of drive objects
+    let mut result = Vec::new();
+    // Split by },{ to get individual drive entries
+    for entry in json_str.split("},") {
+        let name = entry
+            .split("\"Name\"")
+            .nth(1)
+            .and_then(|s| s.split([',', '}', '\n']).next())
+            .map(|s| s.trim().trim_start_matches(':').trim().trim_matches('"').to_string());
+
+        let free: Option<u64> = entry
+            .split("\"Free\"")
+            .nth(1)
+            .and_then(|s| s.split([',', '}', '\n']).next())
+            .and_then(|s| s.trim().trim_start_matches(':').trim().parse().ok());
+
+        let used: Option<u64> = entry
+            .split("\"Used\"")
+            .nth(1)
+            .and_then(|s| s.split([',', '}', '\n']).next())
+            .and_then(|s| s.trim().trim_start_matches(':').trim().parse().ok());
+
+        if let (Some(name), Some(free), Some(used)) = (name, free, used) {
+            if free > 0 || used > 0 {
+                result.push(DiskSpaceInfo {
+                    device: Some(format!("{}:", name)),
+                    available: free,
+                    total: free.saturating_add(used),
+                });
+            }
+        }
+    }
+
+    result.sort_by(|a, b| a.device.cmp(&b.device));
+    result
 }
 
 #[cfg(test)]

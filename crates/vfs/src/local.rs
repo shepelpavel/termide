@@ -677,8 +677,58 @@ impl VfsProvider for LocalFileSystem {
 
         #[cfg(not(unix))]
         {
-            let _ = path;
-            None
+            let local_path = Self::to_local_path(path).ok()?;
+            let root = local_path.components().next()?;
+            let drive_letter = root
+                .as_os_str()
+                .to_string_lossy()
+                .trim_end_matches([':', '\\', '/'])
+                .to_string();
+
+            let output = std::process::Command::new("powershell")
+                .args([
+                    "-NoProfile",
+                    "-Command",
+                    &format!(
+                        "Get-PSDrive -Name '{}' | Select-Object Free,Used | ConvertTo-Json",
+                        drive_letter
+                    ),
+                ])
+                .output()
+                .ok()?;
+
+            if !output.status.success() {
+                return None;
+            }
+
+            let json_str = String::from_utf8(output.stdout).ok()?;
+            let free: u64 = json_str
+                .split("\"Free\"")
+                .nth(1)?
+                .split([',', '}', '\n'])
+                .next()?
+                .trim()
+                .trim_start_matches(':')
+                .trim()
+                .parse()
+                .ok()?;
+            let used: u64 = json_str
+                .split("\"Used\"")
+                .nth(1)?
+                .split([',', '}', '\n'])
+                .next()?
+                .trim()
+                .trim_start_matches(':')
+                .trim()
+                .parse()
+                .ok()?;
+
+            let total = free.saturating_add(used);
+            Some(DiskSpace {
+                total,
+                free,
+                used: total.saturating_sub(free),
+            })
         }
     }
 }

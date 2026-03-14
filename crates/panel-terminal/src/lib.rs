@@ -1042,10 +1042,9 @@ impl Terminal {
 
     /// Get the name of the currently running foreground command
     fn get_foreground_command(&self) -> String {
-        if let Some(_pid) = self.shell_pid {
+        if let Some(pid) = self.shell_pid {
             #[cfg(unix)]
             {
-                let pid = _pid;
                 // Read children of shell
                 let children_path = format!("/proc/{}/task/{}/children", pid, pid);
                 if let Ok(children) = std::fs::read_to_string(&children_path) {
@@ -1060,6 +1059,33 @@ impl Terminal {
                 let comm_path = format!("/proc/{}/comm", pid);
                 if let Ok(comm) = std::fs::read_to_string(&comm_path) {
                     return comm.trim().to_string();
+                }
+            }
+
+            #[cfg(windows)]
+            {
+                use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+                let mut sys = System::new();
+                let shell_pid = Pid::from_u32(pid);
+                sys.refresh_processes_specifics(
+                    ProcessesToUpdate::Some(&[shell_pid]),
+                    ProcessRefreshKind::new(),
+                );
+
+                // Look for child processes of the shell
+                sys.refresh_processes_specifics(
+                    ProcessesToUpdate::All,
+                    ProcessRefreshKind::new(),
+                );
+                for process in sys.processes().values() {
+                    if process.parent() == Some(shell_pid) {
+                        return process.name().to_string_lossy().to_string();
+                    }
+                }
+
+                // No children - return shell name
+                if let Some(process) = sys.process(shell_pid) {
+                    return process.name().to_string_lossy().to_string();
                 }
             }
         }
@@ -1938,11 +1964,29 @@ impl Panel for Terminal {
     }
 
     fn has_running_processes(&self) -> bool {
-        #[cfg(unix)]
         if let Some(pid) = self.shell_pid {
-            let children_path = format!("/proc/{}/task/{}/children", pid, pid);
-            if let Ok(children) = std::fs::read_to_string(&children_path) {
-                return !children.trim().is_empty();
+            #[cfg(unix)]
+            {
+                let children_path = format!("/proc/{}/task/{}/children", pid, pid);
+                if let Ok(children) = std::fs::read_to_string(&children_path) {
+                    return !children.trim().is_empty();
+                }
+            }
+
+            #[cfg(windows)]
+            {
+                use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+                let mut sys = System::new();
+                let shell_pid = Pid::from_u32(pid);
+                sys.refresh_processes_specifics(
+                    ProcessesToUpdate::All,
+                    ProcessRefreshKind::new(),
+                );
+                for process in sys.processes().values() {
+                    if process.parent() == Some(shell_pid) {
+                        return true;
+                    }
+                }
             }
         }
         false

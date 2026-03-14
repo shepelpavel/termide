@@ -47,10 +47,57 @@ pub fn get_disk_space_for_path(path: &str) -> Option<DiskSpaceInfo> {
 
 /// Get disk space information for specified path (Windows implementation)
 #[cfg(windows)]
-pub fn get_disk_space_for_path(_path: &str) -> Option<DiskSpaceInfo> {
-    // TODO: Implement using GetDiskFreeSpaceExW
-    // For now, disk space info is not available on Windows
-    None
+pub fn get_disk_space_for_path(path: &str) -> Option<DiskSpaceInfo> {
+    // Get the drive root from the path (e.g., "C:\" from "C:\Users\...")
+    let path = std::path::Path::new(path);
+    let root = path.components().next()?;
+    let drive = root.as_os_str().to_string_lossy().to_string();
+
+    // Use PowerShell to query disk space - works on all Windows 10+ systems
+    let output = std::process::Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-Command",
+            &format!(
+                "Get-PSDrive -Name '{}' | Select-Object Free,Used | ConvertTo-Json",
+                drive.trim_end_matches([':', '\\', '/'])
+            ),
+        ])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let json_str = String::from_utf8(output.stdout).ok()?;
+    // Parse simple JSON: {"Free":123456789,"Used":987654321}
+    let free: u64 = json_str
+        .split("\"Free\"")
+        .nth(1)?
+        .split([',', '}', '\n'])
+        .next()?
+        .trim()
+        .trim_start_matches(':')
+        .trim()
+        .parse()
+        .ok()?;
+    let used: u64 = json_str
+        .split("\"Used\"")
+        .nth(1)?
+        .split([',', '}', '\n'])
+        .next()?
+        .trim()
+        .trim_start_matches(':')
+        .trim()
+        .parse()
+        .ok()?;
+
+    Some(DiskSpaceInfo {
+        device: Some(drive),
+        available: free,
+        total: free.saturating_add(used),
+    })
 }
 
 /// Resolve dm-X device to physical partition (Unix only)
