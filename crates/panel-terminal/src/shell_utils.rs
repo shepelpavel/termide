@@ -11,11 +11,31 @@
 pub fn detect_shell() -> String {
     #[cfg(windows)]
     {
-        // On Windows, prefer PowerShell Core > Windows PowerShell > cmd.exe
+        // Check $SHELL first (set by Git Bash, MSYS2, Cygwin, etc.)
         if let Ok(shell) = std::env::var("SHELL") {
-            // Git Bash or similar sets $SHELL
             if std::path::Path::new(&shell).exists() {
                 return shell;
+            }
+        }
+        // Check for Git Bash at standard install locations
+        let git_bash_paths = [
+            r"C:\Program Files\Git\bin\bash.exe",
+            r"C:\Program Files (x86)\Git\bin\bash.exe",
+        ];
+        for path in &git_bash_paths {
+            if std::path::Path::new(path).exists() {
+                return path.to_string();
+            }
+        }
+        // Also check if bash is on PATH (e.g. MSYS2, custom Git install)
+        if let Ok(output) = std::process::Command::new("where").arg("bash.exe").output() {
+            if output.status.success() {
+                if let Ok(path) = String::from_utf8(output.stdout) {
+                    let path = path.trim();
+                    if !path.is_empty() {
+                        return path.lines().next().unwrap_or(path).to_string();
+                    }
+                }
             }
         }
         // Check for PowerShell Core (pwsh)
