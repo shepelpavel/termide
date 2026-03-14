@@ -14,7 +14,11 @@ pub static URL_REGEX: LazyLock<regex::Regex> = LazyLock::new(|| {
 
 /// Cached regex for file path detection in terminal (compiled once, used many times)
 pub static PATH_REGEX: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r#"(?:~|\.\.?)?/[^\s)>\]\}"'`<:*?|]+"#).expect("Path regex pattern is valid")
+    // Match Unix paths: /path, ./path, ../path, ~/path
+    // Match Windows paths: C:\path, C:/path, \\server\share
+    regex::Regex::new(
+        r#"(?:[A-Za-z]:[/\\][^\s)>\]\}"'`<:*?|]*|\\\\[^\s)>\]\}"'`<:*?|]+|(?:~|\.\.?)?/[^\s)>\]\}"'`<:*?|]+)"#
+    ).expect("Path regex pattern is valid")
 });
 
 /// Type of detected link in terminal
@@ -133,8 +137,11 @@ pub fn detect_link_at_position(
             let path_str = m.as_str();
             // Expand ~ to home directory
             let expanded = if let Some(suffix) = path_str.strip_prefix('~') {
-                if let Ok(home) = std::env::var("HOME") {
-                    PathBuf::from(home).join(suffix.trim_start_matches('/'))
+                if let Some(home) = std::env::var("HOME")
+                    .or_else(|_| std::env::var("USERPROFILE"))
+                    .ok()
+                {
+                    PathBuf::from(home).join(suffix.trim_start_matches(['/', '\\']))
                 } else {
                     PathBuf::from(path_str)
                 }

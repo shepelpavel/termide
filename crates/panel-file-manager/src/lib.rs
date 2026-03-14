@@ -2643,8 +2643,17 @@ mod tests {
     #[test]
     fn test_file_manager_panel_trait_title() {
         let (fm, temp_dir) = create_file_manager_in_temp();
-        // Title should contain the directory path
-        assert!(fm.title().contains(&temp_dir.path().display().to_string()));
+        let title = fm.title();
+        // Title may shorten home prefix to ~, so compare against both forms
+        let full_path = temp_dir.path().display().to_string();
+        let shortened = termide_core::util::shorten_home_path(&full_path);
+        assert!(
+            title.contains(&full_path) || title.contains(&shortened),
+            "title {:?} should contain {:?} or {:?}",
+            title,
+            full_path,
+            shortened,
+        );
     }
 
     #[test]

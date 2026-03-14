@@ -6,75 +6,8 @@
 
 use termide_ui::system_monitor::DiskSpaceInfo;
 
-/// Resolve dm-X device to physical partition
-/// e.g., /dev/dm-0 -> /dev/nvme0n1p2
-pub fn resolve_dm_device(device: &str) -> Option<String> {
-    // Extract dm number (e.g., "dm-0" from "/dev/dm-0")
-    let dm_name = device.strip_prefix("/dev/")?;
-    if !dm_name.starts_with("dm-") {
-        return None;
-    }
-
-    // Read /sys/block/dm-X/slaves/ to find physical partition
-    let slaves_path = format!("/sys/block/{}/slaves", dm_name);
-    let slaves_dir = std::fs::read_dir(&slaves_path).ok()?;
-
-    // Get first slave (physical partition)
-    for entry in slaves_dir.flatten() {
-        if let Ok(name) = entry.file_name().into_string() {
-            return Some(format!("/dev/{}", name));
-        }
-    }
-
-    None
-}
-
-/// Get device name from /proc/mounts for a given path
-pub fn get_device_for_path(path: &str) -> Option<String> {
-    let mounts_content = std::fs::read_to_string("/proc/mounts").ok()?;
-    let mut best_match: Option<(String, usize)> = None;
-
-    for line in mounts_content.lines() {
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() < 2 {
-            continue;
-        }
-
-        let device = parts[0];
-        let mount_point = parts[1];
-
-        // Check if this mount point is a prefix of our path
-        if let Ok(canonical_path) = std::path::Path::new(path).canonicalize() {
-            if let Ok(canonical_mount) = std::path::Path::new(mount_point).canonicalize() {
-                if canonical_path.starts_with(&canonical_mount) {
-                    let mount_len = canonical_mount.as_os_str().len();
-                    // Keep track of the longest matching mount point
-                    if best_match.as_ref().is_none_or(|b| mount_len > b.1) {
-                        best_match = Some((device.to_string(), mount_len));
-                    }
-                }
-            }
-        }
-    }
-
-    best_match.and_then(|(device, _)| {
-        // First try to resolve symlink (e.g., /dev/disk/by-uuid/... -> /dev/nvme0n1p2)
-        let resolved = std::path::Path::new(&device)
-            .canonicalize()
-            .ok()
-            .and_then(|p| p.to_str().map(|s| s.to_string()))
-            .unwrap_or_else(|| device.clone());
-
-        // If it's a dm device, resolve to physical partition
-        if resolved.contains("/dm-") {
-            resolve_dm_device(&resolved).or(Some(resolved))
-        } else {
-            Some(resolved)
-        }
-    })
-}
-
 /// Get disk space information for specified path
+#[cfg(unix)]
 pub fn get_disk_space_for_path(path: &str) -> Option<DiskSpaceInfo> {
     use std::ffi::CString;
 
@@ -91,8 +24,6 @@ pub fn get_disk_space_for_path(path: &str) -> Option<DiskSpaceInfo> {
     unsafe {
         let mut stat: libc::statvfs = std::mem::zeroed();
         if libc::statvfs(path_cstr.as_ptr(), &mut stat) == 0 {
-            // On macOS, f_bavail and f_blocks are u32, f_bsize is u64
-            // On Linux, all are u64
             #[cfg(target_os = "macos")]
             let available = (stat.f_bavail as u64).saturating_mul(stat.f_bsize);
             #[cfg(not(target_os = "macos"))]
@@ -112,4 +43,75 @@ pub fn get_disk_space_for_path(path: &str) -> Option<DiskSpaceInfo> {
             None
         }
     }
+}
+
+/// Get disk space information for specified path (Windows implementation)
+#[cfg(windows)]
+pub fn get_disk_space_for_path(_path: &str) -> Option<DiskSpaceInfo> {
+    // TODO: Implement using GetDiskFreeSpaceExW
+    // For now, disk space info is not available on Windows
+    None
+}
+
+/// Resolve dm-X device to physical partition (Unix only)
+/// e.g., /dev/dm-0 -> /dev/nvme0n1p2
+#[cfg(unix)]
+pub fn resolve_dm_device(device: &str) -> Option<String> {
+    let dm_name = device.strip_prefix("/dev/")?;
+    if !dm_name.starts_with("dm-") {
+        return None;
+    }
+
+    let slaves_path = format!("/sys/block/{}/slaves", dm_name);
+    let slaves_dir = std::fs::read_dir(&slaves_path).ok()?;
+
+    for entry in slaves_dir.flatten() {
+        if let Ok(name) = entry.file_name().into_string() {
+            return Some(format!("/dev/{}", name));
+        }
+    }
+
+    None
+}
+
+/// Get device name from /proc/mounts for a given path (Unix only)
+#[cfg(unix)]
+pub fn get_device_for_path(path: &str) -> Option<String> {
+    let mounts_content = std::fs::read_to_string("/proc/mounts").ok()?;
+    let mut best_match: Option<(String, usize)> = None;
+
+    for line in mounts_content.lines() {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() < 2 {
+            continue;
+        }
+
+        let device = parts[0];
+        let mount_point = parts[1];
+
+        if let Ok(canonical_path) = std::path::Path::new(path).canonicalize() {
+            if let Ok(canonical_mount) = std::path::Path::new(mount_point).canonicalize() {
+                if canonical_path.starts_with(&canonical_mount) {
+                    let mount_len = canonical_mount.as_os_str().len();
+                    if best_match.as_ref().is_none_or(|b| mount_len > b.1) {
+                        best_match = Some((device.to_string(), mount_len));
+                    }
+                }
+            }
+        }
+    }
+
+    best_match.and_then(|(device, _)| {
+        let resolved = std::path::Path::new(&device)
+            .canonicalize()
+            .ok()
+            .and_then(|p| p.to_str().map(|s| s.to_string()))
+            .unwrap_or_else(|| device.clone());
+
+        if resolved.contains("/dm-") {
+            resolve_dm_device(&resolved).or(Some(resolved))
+        } else {
+            Some(resolved)
+        }
+    })
 }

@@ -10,9 +10,7 @@ repository.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
 crossterm.workspace = true
-libc.workspace = true
 log.workspace = true
-nix = { version = "0.29", features = ["signal", "process"] }
 open = "5"
 portable-pty.workspace = true
 ratatui.workspace = true
@@ -28,3 +26,7 @@ termide-modal = { path = "../modal" }
 termide-state = { path = "../state" }
 termide-theme = { path = "../theme" }
 termide-ui = { path = "../ui" }
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+nix = { version = "0.29", features = ["signal", "process"] }

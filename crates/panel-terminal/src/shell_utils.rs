@@ -6,39 +6,76 @@
 /// Detect available shell on the system.
 ///
 /// Checks in order:
-/// 1. NixOS system shells (fish, zsh, bash)
-/// 2. $SHELL environment variable
-/// 3. Common shell paths (/usr/bin/fish, /usr/bin/zsh, /bin/bash, /bin/sh)
+/// - Windows: $SHELL (Git Bash), pwsh.exe, powershell.exe, cmd.exe ($COMSPEC)
+/// - Unix: NixOS system shells, $SHELL, common shell paths
 pub fn detect_shell() -> String {
-    // On NixOS first check bash-interactive in system profile
-    // (regular bash in nix store might be without readline)
-    let nixos_shells = [
-        "/run/current-system/sw/bin/fish",
-        "/run/current-system/sw/bin/zsh",
-        "/run/current-system/sw/bin/bash",
-    ];
-    for shell in nixos_shells {
-        if std::path::Path::new(shell).exists() {
-            return shell.to_string();
+    #[cfg(windows)]
+    {
+        // On Windows, prefer PowerShell Core > Windows PowerShell > cmd.exe
+        if let Ok(shell) = std::env::var("SHELL") {
+            // Git Bash or similar sets $SHELL
+            if std::path::Path::new(&shell).exists() {
+                return shell;
+            }
         }
+        // Check for PowerShell Core (pwsh)
+        if let Ok(output) = std::process::Command::new("where").arg("pwsh.exe").output() {
+            if output.status.success() {
+                if let Ok(path) = String::from_utf8(output.stdout) {
+                    let path = path.trim();
+                    if !path.is_empty() {
+                        return path.lines().next().unwrap_or(path).to_string();
+                    }
+                }
+            }
+        }
+        // Check for Windows PowerShell
+        if let Ok(output) = std::process::Command::new("where").arg("powershell.exe").output() {
+            if output.status.success() {
+                if let Ok(path) = String::from_utf8(output.stdout) {
+                    let path = path.trim();
+                    if !path.is_empty() {
+                        return path.lines().next().unwrap_or(path).to_string();
+                    }
+                }
+            }
+        }
+        // Fallback to cmd.exe
+        std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string())
     }
 
-    // Then check $SHELL
-    if let Ok(shell) = std::env::var("SHELL") {
-        if std::path::Path::new(&shell).exists() {
-            return shell;
+    #[cfg(not(windows))]
+    {
+        // On NixOS first check bash-interactive in system profile
+        // (regular bash in nix store might be without readline)
+        let nixos_shells = [
+            "/run/current-system/sw/bin/fish",
+            "/run/current-system/sw/bin/zsh",
+            "/run/current-system/sw/bin/bash",
+        ];
+        for shell in nixos_shells {
+            if std::path::Path::new(shell).exists() {
+                return shell.to_string();
+            }
         }
-    }
 
-    // Check popular shells on regular systems
-    let shells = ["/usr/bin/fish", "/usr/bin/zsh", "/bin/bash", "/bin/sh"];
-    for shell in shells {
-        if std::path::Path::new(shell).exists() {
-            return shell.to_string();
+        // Then check $SHELL
+        if let Ok(shell) = std::env::var("SHELL") {
+            if std::path::Path::new(&shell).exists() {
+                return shell;
+            }
         }
-    }
 
-    "/bin/sh".to_string()
+        // Check popular shells on regular systems
+        let shells = ["/usr/bin/fish", "/usr/bin/zsh", "/bin/bash", "/bin/sh"];
+        for shell in shells {
+            if std::path::Path::new(shell).exists() {
+                return shell.to_string();
+            }
+        }
+
+        "/bin/sh".to_string()
+    }
 }
 
 /// Get arguments for launching the shell.
@@ -47,16 +84,24 @@ pub fn detect_shell() -> String {
 /// - fish: `-l` (login shell)
 /// - zsh: `-l -i` (login + interactive)
 /// - bash: no args (PTY makes it interactive automatically)
+/// - pwsh / powershell: `-NoLogo`
+/// - cmd: no args
 pub fn get_shell_args(shell_path: &str) -> Vec<&'static str> {
     let shell_name = std::path::Path::new(shell_path)
         .file_name()
         .and_then(|n| n.to_str())
-        .unwrap_or("");
+        .unwrap_or("")
+        .to_lowercase();
+
+    // Strip .exe suffix for matching on Windows
+    let shell_name = shell_name.strip_suffix(".exe").unwrap_or(&shell_name);
 
     match shell_name {
         "fish" => vec!["-l"],      // login shell
         "zsh" => vec!["-l", "-i"], // login + interactive
         "bash" => vec![],          // PTY will make it interactive automatically
-        _ => vec![],               // no arguments
+        "pwsh" | "powershell" => vec!["-NoLogo"],
+        "cmd" => vec![],
+        _ => vec![],
     }
 }

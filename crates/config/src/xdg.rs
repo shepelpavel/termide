@@ -48,6 +48,7 @@ mod tests {
         assert!(dir.ends_with("termide"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn test_directories_are_different() {
         let config = get_config_dir().unwrap();

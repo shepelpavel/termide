@@ -13,7 +13,6 @@ crossterm.workspace = true
 dirs.workspace = true
 glob.workspace = true
 ignore.workspace = true
-libc.workspace = true
 log.workspace = true
 ratatui.workspace = true
 regex.workspace = true
@@ -35,6 +34,9 @@ termide-state = { path = "../state" }
 termide-theme = { path = "../theme" }
 termide-ui = { path = "../ui" }
 termide-watcher = { path = "../watcher" }
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

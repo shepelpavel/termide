@@ -677,6 +677,7 @@ impl VfsProvider for LocalFileSystem {
 
         #[cfg(not(unix))]
         {
+            let _ = path;
             None
         }
     }

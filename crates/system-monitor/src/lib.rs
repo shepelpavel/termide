@@ -359,10 +359,12 @@ impl DiskSpaceInfoExt for DiskSpaceInfo {
 // Disk space utility functions
 // ============================================================================
 
+#[cfg(unix)]
 use std::path::Path;
 
 /// Resolve dm-X device to physical partition.
 /// e.g., /dev/dm-0 -> /dev/nvme0n1p2
+#[cfg(unix)]
 fn resolve_dm_device(device: &str) -> Option<String> {
     // Extract dm number (e.g., "dm-0" from "/dev/dm-0")
     let dm_name = device.strip_prefix("/dev/")?;
@@ -385,6 +387,7 @@ fn resolve_dm_device(device: &str) -> Option<String> {
 }
 
 /// Get device name from /proc/mounts for a given path.
+#[cfg(unix)]
 fn get_device_for_path(path: &Path) -> Option<String> {
     let mounts_content = std::fs::read_to_string("/proc/mounts").ok()?;
     let mut best_match: Option<(String, usize)> = None;
@@ -432,6 +435,7 @@ fn get_device_for_path(path: &Path) -> Option<String> {
 /// Get disk space information for a given path.
 ///
 /// Returns `DiskSpaceInfo` with device name, available and total space.
+#[cfg(unix)]
 pub fn get_disk_space_info(path: &Path) -> Option<DiskSpaceInfo> {
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt;
@@ -480,6 +484,7 @@ pub fn get_disk_space_info(path: &Path) -> Option<DiskSpaceInfo> {
 ///
 /// Parses `/proc/mounts`, filters for real devices (`/dev/`),
 /// deduplicates by device path, and calls `statvfs` for each.
+#[cfg(unix)]
 pub fn get_all_disk_space_info() -> Vec<DiskSpaceInfo> {
     let Ok(mounts_content) = std::fs::read_to_string("/proc/mounts") else {
         return Vec::new();
@@ -537,6 +542,16 @@ pub fn get_all_disk_space_info() -> Vec<DiskSpaceInfo> {
     // Sort by device name for consistent ordering
     result.sort_by(|a, b| a.device.cmp(&b.device));
     result
+}
+
+#[cfg(windows)]
+pub fn get_disk_space_info(_path: &std::path::Path) -> Option<DiskSpaceInfo> {
+    None
+}
+
+#[cfg(windows)]
+pub fn get_all_disk_space_info() -> Vec<DiskSpaceInfo> {
+    Vec::new()
 }
 
 #[cfg(test)]
@@ -712,6 +727,7 @@ mod tests {
         assert_eq!(names.len(), len_before);
     }
 
+    #[cfg(unix)]
     #[test]
     fn test_get_all_disk_space_info() {
         let disks = get_all_disk_space_info();

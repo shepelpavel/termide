@@ -15,7 +15,9 @@ pub use terminal_info::TerminalInfo;
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use link_detection::{HighlightSegment, LinkType};
+#[cfg(unix)]
 use nix::sys::signal::{self, Signal};
+#[cfg(unix)]
 use nix::unistd::Pid;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use ratatui::{
@@ -254,7 +256,9 @@ impl Terminal {
 
         Self::spawn_reader(reader, &screen, &is_alive, &has_new_data);
 
-        let username = std::env::var("USER").unwrap_or_else(|_| "user".to_string());
+        let username = std::env::var("USER")
+            .or_else(|_| std::env::var("USERNAME"))
+            .unwrap_or_else(|_| "user".to_string());
         let hostname = std::env::var("HOSTNAME")
             .or_else(|_| std::env::var("HOST"))
             .unwrap_or_else(|_| "localhost".to_string());
@@ -413,26 +417,33 @@ impl Terminal {
     /// Get terminal info for status bar
     pub fn get_terminal_info(&self) -> TerminalInfo {
         // Get user@host
-        let username = std::env::var("USER").unwrap_or_else(|_| "user".to_string());
+        let username = std::env::var("USER")
+            .or_else(|_| std::env::var("USERNAME"))
+            .unwrap_or_else(|_| "user".to_string());
         let hostname = std::env::var("HOSTNAME")
             .or_else(|_| std::env::var("HOST"))
+            .or_else(|_| std::env::var("COMPUTERNAME"))
             .unwrap_or_else(|_| {
-                // Try to get hostname via gethostname
-                let mut buf = [0u8; 256];
-                // SAFETY: gethostname is a POSIX function that writes a null-terminated
-                // hostname into the provided buffer. We provide a stack-allocated buffer
-                // of 256 bytes (sufficient for hostnames per POSIX HOST_NAME_MAX).
-                // On success (return 0), the buffer contains a valid C string.
-                // We use CStr::from_ptr which requires a null-terminated string - guaranteed
-                // by gethostname on success. The buffer outlives the CStr usage.
-                unsafe {
-                    if libc::gethostname(buf.as_mut_ptr() as *mut libc::c_char, buf.len()) == 0 {
-                        let cstr = std::ffi::CStr::from_ptr(buf.as_ptr() as *const libc::c_char);
-                        cstr.to_string_lossy().to_string()
-                    } else {
-                        "localhost".to_string()
+                #[cfg(unix)]
+                {
+                    // Try to get hostname via gethostname
+                    let mut buf = [0u8; 256];
+                    // SAFETY: gethostname is a POSIX function that writes a null-terminated
+                    // hostname into the provided buffer. We provide a stack-allocated buffer
+                    // of 256 bytes (sufficient for hostnames per POSIX HOST_NAME_MAX).
+                    // On success (return 0), the buffer contains a valid C string.
+                    // We use CStr::from_ptr which requires a null-terminated string - guaranteed
+                    // by gethostname on success. The buffer outlives the CStr usage.
+                    unsafe {
+                        if libc::gethostname(buf.as_mut_ptr() as *mut libc::c_char, buf.len()) == 0
+                        {
+                            let cstr =
+                                std::ffi::CStr::from_ptr(buf.as_ptr() as *const libc::c_char);
+                            return cstr.to_string_lossy().to_string();
+                        }
                     }
                 }
+                "localhost".to_string()
             });
         let user_host = format!("{}@{}", username, hostname);
 
@@ -1031,21 +1042,25 @@ impl Terminal {
 
     /// Get the name of the currently running foreground command
     fn get_foreground_command(&self) -> String {
-        if let Some(pid) = self.shell_pid {
-            // Read children of shell
-            let children_path = format!("/proc/{}/task/{}/children", pid, pid);
-            if let Ok(children) = std::fs::read_to_string(&children_path) {
-                if let Some(child_pid) = children.split_whitespace().next() {
-                    let comm_path = format!("/proc/{}/comm", child_pid);
-                    if let Ok(comm) = std::fs::read_to_string(&comm_path) {
-                        return comm.trim().to_string();
+        if let Some(_pid) = self.shell_pid {
+            #[cfg(unix)]
+            {
+                let pid = _pid;
+                // Read children of shell
+                let children_path = format!("/proc/{}/task/{}/children", pid, pid);
+                if let Ok(children) = std::fs::read_to_string(&children_path) {
+                    if let Some(child_pid) = children.split_whitespace().next() {
+                        let comm_path = format!("/proc/{}/comm", child_pid);
+                        if let Ok(comm) = std::fs::read_to_string(&comm_path) {
+                            return comm.trim().to_string();
+                        }
                     }
                 }
-            }
-            // No children - return shell name
-            let comm_path = format!("/proc/{}/comm", pid);
-            if let Ok(comm) = std::fs::read_to_string(&comm_path) {
-                return comm.trim().to_string();
+                // No children - return shell name
+                let comm_path = format!("/proc/{}/comm", pid);
+                if let Ok(comm) = std::fs::read_to_string(&comm_path) {
+                    return comm.trim().to_string();
+                }
             }
         }
         "shell".to_string()
@@ -1923,9 +1938,8 @@ impl Panel for Terminal {
     }
 
     fn has_running_processes(&self) -> bool {
-        // Check if shell has child processes
+        #[cfg(unix)]
         if let Some(pid) = self.shell_pid {
-            // Read /proc/{pid}/task/{pid}/children
             let children_path = format!("/proc/{}/task/{}/children", pid, pid);
             if let Ok(children) = std::fs::read_to_string(&children_path) {
                 return !children.trim().is_empty();
@@ -1936,20 +1950,24 @@ impl Panel for Terminal {
 
     fn kill_processes(&mut self) {
         if let Some(pid) = self.shell_pid {
-            let pid = Pid::from_raw(pid as i32);
-
-            // Send SIGTERM to process group
-            let _ = signal::killpg(pid, Signal::SIGTERM);
-
-            // Wait a bit
-            std::thread::sleep(std::time::Duration::from_millis(100));
-
-            // If process still alive - SIGKILL
-            if self.is_alive() {
-                let _ = signal::killpg(pid, Signal::SIGKILL);
+            #[cfg(unix)]
+            {
+                let pid = Pid::from_raw(pid as i32);
+                let _ = signal::killpg(pid, Signal::SIGTERM);
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                if self.is_alive() {
+                    let _ = signal::killpg(pid, Signal::SIGKILL);
+                }
             }
 
-            // Wait for completion to avoid zombies
+            #[cfg(windows)]
+            {
+                // Use taskkill to terminate the process tree
+                let _ = std::process::Command::new("taskkill")
+                    .args(["/PID", &pid.to_string(), "/T", "/F"])
+                    .output();
+            }
+
             let _ = self.child.wait();
         }
     }

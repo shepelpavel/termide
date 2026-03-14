@@ -137,9 +137,10 @@ impl App {
 
         // Set executable permission if requested
         if make_executable {
-            if let Some(ref path) = saved_path {
+            if let Some(ref _path) = saved_path {
                 #[cfg(unix)]
                 {
+                    let path = _path;
                     use std::os::unix::fs::PermissionsExt;
                     if let Ok(metadata) = std::fs::metadata(path) {
                         let mut perms = metadata.permissions();

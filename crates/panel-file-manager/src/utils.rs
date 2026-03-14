@@ -84,6 +84,7 @@ pub fn calculate_dir_size(path: &Path) -> u64 {
 
 /// Get user name by UID
 /// Returns symbolic name if available, otherwise numeric ID
+#[cfg(unix)]
 pub fn get_user_name(uid: u32) -> String {
     // SAFETY: getpwuid is a POSIX function that returns a pointer to a static
     // passwd struct or NULL. We check for NULL before dereferencing. The returned
@@ -106,6 +107,7 @@ pub fn get_user_name(uid: u32) -> String {
 
 /// Get group name by GID
 /// Returns symbolic name if available, otherwise numeric ID
+#[cfg(unix)]
 pub fn get_group_name(gid: u32) -> String {
     // SAFETY: getgrgid is a POSIX function that returns a pointer to a static
     // group struct or NULL. We check for NULL before dereferencing. The returned
