@@ -1,9 +1,11 @@
 //! Clipboard operations for termide.
 //!
-//! Provides cross-platform clipboard access using arboard.
-//! On Linux, supports both CLIPBOARD and PRIMARY selections.
+//! Provides cross-platform clipboard access using arboard with OSC 52
+//! fallback for remote/SSH sessions where no display server is available.
 
 use arboard::Clipboard;
+use base64::{engine::general_purpose::STANDARD, Engine};
+use std::io::Write;
 use std::sync::{Mutex, OnceLock};
 
 #[cfg(target_os = "linux")]
@@ -23,10 +25,30 @@ fn get_clipboard() -> Result<&'static Mutex<Clipboard>, String> {
         .ok_or_else(|| "Clipboard unavailable (no display server?)".to_string())
 }
 
+/// Copy text to the terminal's clipboard via OSC 52 escape sequence.
+///
+/// This works over SSH when the terminal emulator supports OSC 52
+/// (Windows Terminal, iTerm2, kitty, foot, alacritty, etc.).
+fn osc52_copy(text: &str) -> Result<(), String> {
+    let encoded = STANDARD.encode(text.as_bytes());
+    // OSC 52 ; c ; <base64> ST
+    // 'c' = clipboard selection
+    let sequence = format!("\x1b]52;c;{}\x07", encoded);
+    let mut stdout = std::io::stdout().lock();
+    stdout
+        .write_all(sequence.as_bytes())
+        .map_err(|e| format!("Failed to write OSC 52: {}", e))?;
+    stdout
+        .flush()
+        .map_err(|e| format!("Failed to flush OSC 52: {}", e))?;
+    Ok(())
+}
+
 /// Copy text to system clipboard.
 ///
-/// Uses arboard for cross-platform clipboard access.
-/// On Linux, copies to BOTH CLIPBOARD and PRIMARY selections.
+/// Uses arboard for local clipboard access. Falls back to OSC 52
+/// escape sequence when no display server is available (SSH sessions).
+/// On Linux with a display server, copies to BOTH CLIPBOARD and PRIMARY selections.
 ///
 /// Returns Ok(()) on success, or Err with detailed error message.
 pub fn copy(text: &str) -> Result<(), String> {
@@ -34,6 +56,20 @@ pub fn copy(text: &str) -> Result<(), String> {
         return Err("Cannot copy empty text".to_string());
     }
 
+    // Try arboard first (works with display server)
+    let arboard_result = copy_arboard(text);
+
+    if arboard_result.is_ok() {
+        return Ok(());
+    }
+
+    // Fall back to OSC 52 for SSH/headless sessions
+    log::debug!("arboard clipboard unavailable, falling back to OSC 52");
+    osc52_copy(text)
+}
+
+/// Copy text using arboard (requires display server).
+fn copy_arboard(text: &str) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
         let mut clipboard = get_clipboard()?
@@ -76,6 +112,10 @@ pub fn copy(text: &str) -> Result<(), String> {
 ///
 /// On Linux, tries CLIPBOARD selection first, then falls back to PRIMARY.
 /// Returns None if clipboard is empty or inaccessible.
+///
+/// Note: OSC 52 paste (reading from terminal) is not supported because it requires
+/// async terminal response handling. Paste in SSH sessions relies on the terminal
+/// emulator's bracketed paste (Ctrl+V in the terminal sends the text directly).
 pub fn paste() -> Option<String> {
     let mut clipboard = get_clipboard().ok()?.lock().ok()?;
 
