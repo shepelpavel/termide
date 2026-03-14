@@ -8,7 +8,6 @@ repository.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-sysinfo.workspace = true
 chrono.workspace = true
 crossterm.workspace = true
 log.workspace = true
@@ -31,3 +30,6 @@ termide-ui = { path = "../ui" }
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true
 nix = { version = "0.29", features = ["signal", "process"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem", "Win32_System_Diagnostics_ToolHelp", "Win32_Foundation"] }

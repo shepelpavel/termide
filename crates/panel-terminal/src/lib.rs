@@ -1064,28 +1064,46 @@ impl Terminal {
 
             #[cfg(windows)]
             {
-                use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
-                let mut sys = System::new();
-                let shell_pid = Pid::from_u32(pid);
-                sys.refresh_processes_specifics(
-                    ProcessesToUpdate::Some(&[shell_pid]),
-                    ProcessRefreshKind::new(),
-                );
+                use windows_sys::Win32::System::Diagnostics::ToolHelp::*;
+                use windows_sys::Win32::Foundation::CloseHandle;
 
-                // Look for child processes of the shell
-                sys.refresh_processes_specifics(
-                    ProcessesToUpdate::All,
-                    ProcessRefreshKind::new(),
-                );
-                for process in sys.processes().values() {
-                    if process.parent() == Some(shell_pid) {
-                        return process.name().to_string_lossy().to_string();
+                // SAFETY: CreateToolhelp32Snapshot with TH32CS_SNAPPROCESS takes a
+                // snapshot of all processes. The returned handle must be closed.
+                let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+                if !snapshot.is_null() && snapshot != -1isize as *mut _ {
+                    let mut entry: PROCESSENTRY32W = unsafe { std::mem::zeroed() };
+                    entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+
+                    // Find child process of our shell
+                    let mut found_child = None;
+                    let mut shell_name = None;
+
+                    unsafe {
+                        if Process32FirstW(snapshot, &mut entry) != 0 {
+                            loop {
+                                if entry.th32ParentProcessID == pid {
+                                    // Found a child of our shell
+                                    let name_len = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(entry.szExeFile.len());
+                                    found_child = Some(String::from_utf16_lossy(&entry.szExeFile[..name_len]));
+                                }
+                                if entry.th32ProcessID == pid {
+                                    let name_len = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(entry.szExeFile.len());
+                                    shell_name = Some(String::from_utf16_lossy(&entry.szExeFile[..name_len]));
+                                }
+                                if Process32NextW(snapshot, &mut entry) == 0 {
+                                    break;
+                                }
+                            }
+                        }
+                        CloseHandle(snapshot);
                     }
-                }
 
-                // No children - return shell name
-                if let Some(process) = sys.process(shell_pid) {
-                    return process.name().to_string_lossy().to_string();
+                    if let Some(name) = found_child {
+                        return name;
+                    }
+                    if let Some(name) = shell_name {
+                        return name;
+                    }
                 }
             }
         }
@@ -1975,16 +1993,27 @@ impl Panel for Terminal {
 
             #[cfg(windows)]
             {
-                use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
-                let mut sys = System::new();
-                let shell_pid = Pid::from_u32(pid);
-                sys.refresh_processes_specifics(
-                    ProcessesToUpdate::All,
-                    ProcessRefreshKind::new(),
-                );
-                for process in sys.processes().values() {
-                    if process.parent() == Some(shell_pid) {
-                        return true;
+                use windows_sys::Win32::System::Diagnostics::ToolHelp::*;
+                use windows_sys::Win32::Foundation::CloseHandle;
+
+                let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+                if !snapshot.is_null() && snapshot != -1isize as *mut _ {
+                    let mut entry: PROCESSENTRY32W = unsafe { std::mem::zeroed() };
+                    entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+
+                    unsafe {
+                        if Process32FirstW(snapshot, &mut entry) != 0 {
+                            loop {
+                                if entry.th32ParentProcessID == pid {
+                                    CloseHandle(snapshot);
+                                    return true;
+                                }
+                                if Process32NextW(snapshot, &mut entry) == 0 {
+                                    break;
+                                }
+                            }
+                        }
+                        CloseHandle(snapshot);
                     }
                 }
             }

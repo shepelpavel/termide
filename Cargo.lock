@@ -3506,6 +3506,7 @@ dependencies = [
  "termide-theme",
  "termide-ui",
  "vte",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3537,6 +3538,7 @@ dependencies = [
  "libc",
  "sysinfo",
  "termide-i18n",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3598,6 +3600,7 @@ dependencies = [
  "termide-logger",
  "thiserror 1.0.69",
  "url",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

@@ -48,56 +48,43 @@ pub fn get_disk_space_for_path(path: &str) -> Option<DiskSpaceInfo> {
 /// Get disk space information for specified path (Windows implementation)
 #[cfg(windows)]
 pub fn get_disk_space_for_path(path: &str) -> Option<DiskSpaceInfo> {
-    // Get the drive root from the path (e.g., "C:\" from "C:\Users\...")
-    let path = std::path::Path::new(path);
-    let root = path.components().next()?;
-    let drive = root.as_os_str().to_string_lossy().to_string();
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
 
-    // Use PowerShell to query disk space - works on all Windows 10+ systems
-    let output = std::process::Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-Command",
-            &format!(
-                "Get-PSDrive -Name '{}' | Select-Object Free,Used | ConvertTo-Json",
-                drive.trim_end_matches([':', '\\', '/'])
-            ),
-        ])
-        .output()
-        .ok()?;
+    // Get the root of the path (e.g., "C:\")
+    let root = std::path::Path::new(path).components().next()?;
+    let root_str = format!("{}\\", root.as_os_str().to_string_lossy());
 
-    if !output.status.success() {
-        return None;
+    let wide_path: Vec<u16> = OsStr::new(&root_str)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
+    let mut free_bytes_available: u64 = 0;
+    let mut total_bytes: u64 = 0;
+    let mut _total_free_bytes: u64 = 0;
+
+    // SAFETY: GetDiskFreeSpaceExW is a Windows API function that writes disk
+    // space info into the provided pointers. wide_path is a valid null-terminated
+    // wide string. The function returns non-zero on success.
+    let success = unsafe {
+        windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW(
+            wide_path.as_ptr(),
+            &mut free_bytes_available,
+            &mut total_bytes,
+            &mut _total_free_bytes,
+        )
+    };
+
+    if success != 0 {
+        Some(DiskSpaceInfo {
+            device: Some(root_str.trim_end_matches('\\').to_string()),
+            available: free_bytes_available,
+            total: total_bytes,
+        })
+    } else {
+        None
     }
-
-    let json_str = String::from_utf8(output.stdout).ok()?;
-    // Parse simple JSON: {"Free":123456789,"Used":987654321}
-    let free: u64 = json_str
-        .split("\"Free\"")
-        .nth(1)?
-        .split([',', '}', '\n'])
-        .next()?
-        .trim()
-        .trim_start_matches(':')
-        .trim()
-        .parse()
-        .ok()?;
-    let used: u64 = json_str
-        .split("\"Used\"")
-        .nth(1)?
-        .split([',', '}', '\n'])
-        .next()?
-        .trim()
-        .trim_start_matches(':')
-        .trim()
-        .parse()
-        .ok()?;
-
-    Some(DiskSpaceInfo {
-        device: Some(drive),
-        available: free,
-        total: free.saturating_add(used),
-    })
 }
 
 /// Resolve dm-X device to physical partition (Unix only)

@@ -546,108 +546,77 @@ pub fn get_all_disk_space_info() -> Vec<DiskSpaceInfo> {
 
 #[cfg(windows)]
 pub fn get_disk_space_info(path: &std::path::Path) -> Option<DiskSpaceInfo> {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+
     let root = path.components().next()?;
-    let drive = root.as_os_str().to_string_lossy().to_string();
-    let drive_letter = drive.trim_end_matches([':', '\\', '/']);
+    let root_str = format!("{}\\", root.as_os_str().to_string_lossy());
 
-    let output = std::process::Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-Command",
-            &format!(
-                "Get-PSDrive -Name '{}' | Select-Object Free,Used | ConvertTo-Json",
-                drive_letter
-            ),
-        ])
-        .output()
-        .ok()?;
+    let wide_path: Vec<u16> = OsStr::new(&root_str)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
 
-    if !output.status.success() {
-        return None;
+    let mut free_bytes_available: u64 = 0;
+    let mut total_bytes: u64 = 0;
+    let mut _total_free_bytes: u64 = 0;
+
+    let success = unsafe {
+        windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW(
+            wide_path.as_ptr(),
+            &mut free_bytes_available,
+            &mut total_bytes,
+            &mut _total_free_bytes,
+        )
+    };
+
+    if success != 0 {
+        Some(DiskSpaceInfo {
+            device: Some(root_str.trim_end_matches('\\').to_string()),
+            available: free_bytes_available,
+            total: total_bytes,
+        })
+    } else {
+        None
     }
-
-    let json_str = String::from_utf8(output.stdout).ok()?;
-    let free: u64 = json_str
-        .split("\"Free\"")
-        .nth(1)?
-        .split([',', '}', '\n'])
-        .next()?
-        .trim()
-        .trim_start_matches(':')
-        .trim()
-        .parse()
-        .ok()?;
-    let used: u64 = json_str
-        .split("\"Used\"")
-        .nth(1)?
-        .split([',', '}', '\n'])
-        .next()?
-        .trim()
-        .trim_start_matches(':')
-        .trim()
-        .parse()
-        .ok()?;
-
-    Some(DiskSpaceInfo {
-        device: Some(format!("{}:", drive_letter)),
-        available: free,
-        total: free.saturating_add(used),
-    })
 }
 
 #[cfg(windows)]
 pub fn get_all_disk_space_info() -> Vec<DiskSpaceInfo> {
-    let output = match std::process::Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-Command",
-            "Get-PSDrive -PSProvider FileSystem | Select-Object Name,Free,Used | ConvertTo-Json",
-        ])
-        .output()
-    {
-        Ok(o) if o.status.success() => o,
-        _ => return Vec::new(),
-    };
+    // Query drives A-Z using GetDiskFreeSpaceExW
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
 
-    let json_str = match String::from_utf8(output.stdout) {
-        Ok(s) => s,
-        Err(_) => return Vec::new(),
-    };
-
-    // Parse JSON array of drive objects
     let mut result = Vec::new();
-    // Split by },{ to get individual drive entries
-    for entry in json_str.split("},") {
-        let name = entry
-            .split("\"Name\"")
-            .nth(1)
-            .and_then(|s| s.split([',', '}', '\n']).next())
-            .map(|s| s.trim().trim_start_matches(':').trim().trim_matches('"').to_string());
+    for letter in b'A'..=b'Z' {
+        let drive = format!("{}:\\", letter as char);
+        let wide_path: Vec<u16> = OsStr::new(&drive)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
 
-        let free: Option<u64> = entry
-            .split("\"Free\"")
-            .nth(1)
-            .and_then(|s| s.split([',', '}', '\n']).next())
-            .and_then(|s| s.trim().trim_start_matches(':').trim().parse().ok());
+        let mut free_bytes_available: u64 = 0;
+        let mut total_bytes: u64 = 0;
+        let mut _total_free_bytes: u64 = 0;
 
-        let used: Option<u64> = entry
-            .split("\"Used\"")
-            .nth(1)
-            .and_then(|s| s.split([',', '}', '\n']).next())
-            .and_then(|s| s.trim().trim_start_matches(':').trim().parse().ok());
+        let success = unsafe {
+            windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW(
+                wide_path.as_ptr(),
+                &mut free_bytes_available,
+                &mut total_bytes,
+                &mut _total_free_bytes,
+            )
+        };
 
-        if let (Some(name), Some(free), Some(used)) = (name, free, used) {
-            if free > 0 || used > 0 {
-                result.push(DiskSpaceInfo {
-                    device: Some(format!("{}:", name)),
-                    available: free,
-                    total: free.saturating_add(used),
-                });
-            }
+        if success != 0 && total_bytes > 0 {
+            result.push(DiskSpaceInfo {
+                device: Some(format!("{}:", letter as char)),
+                available: free_bytes_available,
+                total: total_bytes,
+            });
         }
     }
 
-    result.sort_by(|a, b| a.device.cmp(&b.device));
     result
 }
 
