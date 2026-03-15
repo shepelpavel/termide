@@ -692,10 +692,16 @@ impl App {
             return Ok(());
         }
 
+        #[allow(unused_mut)]
         let mut success_count = 0usize;
         let mut error_count = 0usize;
 
         for source in &sources {
+            let file_name = source
+                .file_name()
+                .unwrap_or_else(|| std::ffi::OsStr::new("link"));
+
+            #[cfg(unix)]
             let canonical = match std::fs::canonicalize(source) {
                 Ok(p) => p,
                 Err(e) => {
@@ -705,9 +711,7 @@ impl App {
                 }
             };
 
-            let file_name = source
-                .file_name()
-                .unwrap_or_else(|| std::ffi::OsStr::new("link"));
+            #[cfg(unix)]
             let link_path = absolute_destination.join(file_name);
 
             #[cfg(unix)]
@@ -726,6 +730,7 @@ impl App {
 
             #[cfg(not(unix))]
             {
+                let _ = file_name;
                 log::error!("Symlink creation is only supported on Unix");
                 error_count += 1;
             }

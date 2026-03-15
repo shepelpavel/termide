@@ -12,7 +12,6 @@ thiserror = "1.0"
 url.workspace = true
 log = "0.4"
 chrono.workspace = true
-libc.workspace = true
 termide-logger = { path = "../logger" }
 
 # SFTP support
@@ -40,6 +39,12 @@ ftp = []
 smb = ["pavao"]
 nfs = []
 vendored-openssl = ["openssl-sys"]
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem"] }
 
 [dev-dependencies]
 tempfile.workspace = true

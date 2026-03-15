@@ -3,6 +3,7 @@
 //! Scans `~/.local/share/termide/scripts/` for executable scripts and organizes them
 //! into a registry for the Scripts menu.
 
+use std::ffi::OsStr;
 use std::path::PathBuf;
 
 use super::get_data_dir;
@@ -148,7 +149,7 @@ impl ScriptsRegistry {
         let extensions = ["sh", "bat", "cmd", "ps1", "py", "rb", "pl"];
         path.extension()
             .and_then(OsStr::to_str)
-            .map(|ext| extensions.contains(&ext.to_lowercase().as_str()))
+            .map(|ext: &str| extensions.contains(&ext.to_lowercase().as_str()))
             .unwrap_or(false)
     }
 

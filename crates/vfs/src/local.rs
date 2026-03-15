@@ -677,7 +677,41 @@ impl VfsProvider for LocalFileSystem {
 
         #[cfg(not(unix))]
         {
-            None
+            use std::ffi::OsStr;
+            use std::os::windows::ffi::OsStrExt;
+
+            let local_path = Self::to_local_path(path).ok()?;
+            let root = local_path.components().next()?;
+            let root_str = format!("{}\\", root.as_os_str().to_string_lossy());
+
+            let wide_path: Vec<u16> = OsStr::new(&root_str)
+                .encode_wide()
+                .chain(std::iter::once(0))
+                .collect();
+
+            let mut free_bytes: u64 = 0;
+            let mut total_bytes: u64 = 0;
+            let mut _total_free: u64 = 0;
+
+            let success = unsafe {
+                windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW(
+                    wide_path.as_ptr(),
+                    &mut free_bytes,
+                    &mut total_bytes,
+                    &mut _total_free,
+                )
+            };
+
+            if success != 0 {
+                let used = total_bytes.saturating_sub(free_bytes);
+                Some(DiskSpace {
+                    total: total_bytes,
+                    free: free_bytes,
+                    used,
+                })
+            } else {
+                None
+            }
         }
     }
 }

@@ -359,10 +359,12 @@ impl DiskSpaceInfoExt for DiskSpaceInfo {
 // Disk space utility functions
 // ============================================================================
 
+#[cfg(unix)]
 use std::path::Path;
 
 /// Resolve dm-X device to physical partition.
 /// e.g., /dev/dm-0 -> /dev/nvme0n1p2
+#[cfg(unix)]
 fn resolve_dm_device(device: &str) -> Option<String> {
     // Extract dm number (e.g., "dm-0" from "/dev/dm-0")
     let dm_name = device.strip_prefix("/dev/")?;
@@ -385,6 +387,7 @@ fn resolve_dm_device(device: &str) -> Option<String> {
 }
 
 /// Get device name from /proc/mounts for a given path.
+#[cfg(unix)]
 fn get_device_for_path(path: &Path) -> Option<String> {
     let mounts_content = std::fs::read_to_string("/proc/mounts").ok()?;
     let mut best_match: Option<(String, usize)> = None;
@@ -432,6 +435,7 @@ fn get_device_for_path(path: &Path) -> Option<String> {
 /// Get disk space information for a given path.
 ///
 /// Returns `DiskSpaceInfo` with device name, available and total space.
+#[cfg(unix)]
 pub fn get_disk_space_info(path: &Path) -> Option<DiskSpaceInfo> {
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt;
@@ -480,6 +484,7 @@ pub fn get_disk_space_info(path: &Path) -> Option<DiskSpaceInfo> {
 ///
 /// Parses `/proc/mounts`, filters for real devices (`/dev/`),
 /// deduplicates by device path, and calls `statvfs` for each.
+#[cfg(unix)]
 pub fn get_all_disk_space_info() -> Vec<DiskSpaceInfo> {
     let Ok(mounts_content) = std::fs::read_to_string("/proc/mounts") else {
         return Vec::new();
@@ -536,6 +541,82 @@ pub fn get_all_disk_space_info() -> Vec<DiskSpaceInfo> {
 
     // Sort by device name for consistent ordering
     result.sort_by(|a, b| a.device.cmp(&b.device));
+    result
+}
+
+#[cfg(windows)]
+pub fn get_disk_space_info(path: &std::path::Path) -> Option<DiskSpaceInfo> {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+
+    let root = path.components().next()?;
+    let root_str = format!("{}\\", root.as_os_str().to_string_lossy());
+
+    let wide_path: Vec<u16> = OsStr::new(&root_str)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
+    let mut free_bytes_available: u64 = 0;
+    let mut total_bytes: u64 = 0;
+    let mut _total_free_bytes: u64 = 0;
+
+    let success = unsafe {
+        windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW(
+            wide_path.as_ptr(),
+            &mut free_bytes_available,
+            &mut total_bytes,
+            &mut _total_free_bytes,
+        )
+    };
+
+    if success != 0 {
+        Some(DiskSpaceInfo {
+            device: Some(root_str.trim_end_matches('\\').to_string()),
+            available: free_bytes_available,
+            total: total_bytes,
+        })
+    } else {
+        None
+    }
+}
+
+#[cfg(windows)]
+pub fn get_all_disk_space_info() -> Vec<DiskSpaceInfo> {
+    // Query drives A-Z using GetDiskFreeSpaceExW
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+
+    let mut result = Vec::new();
+    for letter in b'A'..=b'Z' {
+        let drive = format!("{}:\\", letter as char);
+        let wide_path: Vec<u16> = OsStr::new(&drive)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+
+        let mut free_bytes_available: u64 = 0;
+        let mut total_bytes: u64 = 0;
+        let mut _total_free_bytes: u64 = 0;
+
+        let success = unsafe {
+            windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW(
+                wide_path.as_ptr(),
+                &mut free_bytes_available,
+                &mut total_bytes,
+                &mut _total_free_bytes,
+            )
+        };
+
+        if success != 0 && total_bytes > 0 {
+            result.push(DiskSpaceInfo {
+                device: Some(format!("{}:", letter as char)),
+                available: free_bytes_available,
+                total: total_bytes,
+            });
+        }
+    }
+
     result
 }
 
@@ -712,6 +793,7 @@ mod tests {
         assert_eq!(names.len(), len_before);
     }
 
+    #[cfg(unix)]
     #[test]
     fn test_get_all_disk_space_info() {
         let disks = get_all_disk_space_info();

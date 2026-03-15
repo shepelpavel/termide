@@ -23,8 +23,6 @@ pub struct FileInfo {
 impl FileManager {
     /// Get information about the currently selected file
     pub fn get_current_file_info(&self) -> Option<FileInfo> {
-        use std::os::unix::fs::MetadataExt;
-
         let te = self.tree_entry_at(self.selected)?;
         let entry = &te.file_entry;
 
@@ -120,11 +118,26 @@ impl FileManager {
             utils::format_size(metadata.len())
         };
 
-        let owner = utils::get_user_name(metadata.uid());
-        let group = utils::get_group_name(metadata.gid());
+        #[cfg(unix)]
+        let (owner, group, mode) = {
+            use std::os::unix::fs::MetadataExt;
+            (
+                utils::get_user_name(metadata.uid()),
+                utils::get_group_name(metadata.gid()),
+                format!("{:04o}", metadata.mode() & 0o7777),
+            )
+        };
 
-        // Format access permissions in octal format (e.g. "0755")
-        let mode = format!("{:04o}", metadata.mode() & 0o7777);
+        #[cfg(not(unix))]
+        let (owner, group, mode) = {
+            let owner = std::env::var("USERNAME").unwrap_or_else(|_| "owner".to_string());
+            let mode = if metadata.permissions().readonly() {
+                "0444".to_string()
+            } else {
+                "0644".to_string()
+            };
+            (owner, String::new(), mode)
+        };
 
         Some(FileInfo {
             name: entry.name.clone(),
@@ -140,7 +153,6 @@ impl FileManager {
 
     /// Show file/directory information (Space)
     pub(crate) fn show_file_info(&mut self) {
-        use std::os::unix::fs::MetadataExt;
         use std::time::SystemTime;
 
         // Clone the data we need to avoid borrow issues with self
@@ -241,8 +253,20 @@ impl FileManager {
                 utils::format_size(metadata.len())
             };
 
-            let owner = utils::get_user_name(metadata.uid());
-            let group = utils::get_group_name(metadata.gid());
+            #[cfg(unix)]
+            let (owner, group) = {
+                use std::os::unix::fs::MetadataExt;
+                (
+                    utils::get_user_name(metadata.uid()),
+                    utils::get_group_name(metadata.gid()),
+                )
+            };
+
+            #[cfg(not(unix))]
+            let (owner, group) = {
+                let owner = std::env::var("USERNAME").unwrap_or_else(|_| "owner".to_string());
+                (owner, String::new())
+            };
 
             let modified = metadata
                 .modified()
