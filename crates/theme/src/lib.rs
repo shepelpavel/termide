@@ -80,6 +80,7 @@ const THEME_NORTON_COMMANDER_TOML: &str = include_str!("../themes/norton-command
 const THEME_ONEDARK_TOML: &str = include_str!("../themes/onedark.toml");
 const THEME_PIP_BOY_TOML: &str = include_str!("../themes/pip-boy.toml");
 const THEME_SOLARIZED_DARK_TOML: &str = include_str!("../themes/solarized-dark.toml");
+const THEME_TERMINAL_TOML: &str = include_str!("../themes/terminal.toml");
 const THEME_TERMINATOR_TOML: &str = include_str!("../themes/terminator.toml");
 const THEME_SOLARIZED_LIGHT_TOML: &str = include_str!("../themes/solarized-light.toml");
 const THEME_VOLKOV_COMMANDER_TOML: &str = include_str!("../themes/volkov-commander.toml");
@@ -106,6 +107,7 @@ static THEME_NORTON_COMMANDER: OnceLock<Theme> = OnceLock::new();
 static THEME_ONEDARK: OnceLock<Theme> = OnceLock::new();
 static THEME_PIP_BOY: OnceLock<Theme> = OnceLock::new();
 static THEME_SOLARIZED_DARK: OnceLock<Theme> = OnceLock::new();
+static THEME_TERMINAL: OnceLock<Theme> = OnceLock::new();
 static THEME_TERMINATOR: OnceLock<Theme> = OnceLock::new();
 static THEME_SOLARIZED_LIGHT: OnceLock<Theme> = OnceLock::new();
 static THEME_VOLKOV_COMMANDER: OnceLock<Theme> = OnceLock::new();
@@ -219,6 +221,11 @@ static BUILTIN_THEMES: &[BuiltinThemeEntry] = &[
         name: "solarized-light",
         content: THEME_SOLARIZED_LIGHT_TOML,
         storage: &THEME_SOLARIZED_LIGHT,
+    },
+    BuiltinThemeEntry {
+        name: "terminal",
+        content: THEME_TERMINAL_TOML,
+        storage: &THEME_TERMINAL,
     },
     BuiltinThemeEntry {
         name: "terminator",

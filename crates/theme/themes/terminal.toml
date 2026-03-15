@@ -1,0 +1,25 @@
+# Classic terminal theme for TermIDE
+# Pure black background with bright text, like a traditional terminal
+name = "terminal"
+is_light = false
+
+[colors]
+# Base - pure black background, bright white text
+bg = { rgb = [0, 0, 0] }
+fg = { rgb = [204, 204, 204] }
+
+# Accented - dark gray panel headers with white text
+accented_bg = { rgb = [30, 30, 30] }
+accented_fg = { rgb = [255, 255, 255] }
+
+# Selection - medium gray highlight
+selected_bg = { rgb = [60, 60, 60] }
+selected_fg = { rgb = [255, 255, 255] }
+
+# Disabled - bright enough to survive DIM modifier against black
+disabled = { rgb = [200, 200, 200] }
+
+# Semantic
+success = { rgb = [78, 201, 76] }
+warning = { rgb = [229, 192, 56] }
+error = { rgb = [232, 72, 85] }
