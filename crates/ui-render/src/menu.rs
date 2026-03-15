@@ -13,7 +13,7 @@ use ratatui::{
 use unicode_width::UnicodeWidthStr;
 
 use termide_i18n as i18n;
-use termide_system_monitor::RamUnit;
+use termide_system_monitor::{format_net_speed, RamUnit};
 use termide_theme::Theme;
 
 /// Parameters for rendering the menu bar.
@@ -25,6 +25,10 @@ pub struct MenuRenderParams<'a> {
     pub ram_percent: u8,
     pub ram_value: String,
     pub ram_unit: RamUnit,
+    /// Network download rate in bytes per second
+    pub net_down_rate: u64,
+    /// Network upload rate in bytes per second
+    pub net_up_rate: u64,
     /// Toggle menu keybinding display string (e.g., "Alt+M")
     pub toggle_menu_key: &'a str,
 }
@@ -146,6 +150,8 @@ pub fn get_resource_indicator_ranges(
         format!("{} {}", params.toggle_menu_key, t.menu_open_hint_label()).into()
     };
 
+    let net_down_text = format!("↓{} ", format_net_speed(params.net_down_rate));
+    let net_up_text = format!("↑{} ", format_net_speed(params.net_up_rate));
     let cpu_text = format!("CPU {}% ", params.cpu_usage);
     let ram_text = format!("RAM {}{} ", params.ram_value, ram_unit_str);
     let current_time = chrono::Local::now().format("%H:%M").to_string();
@@ -154,13 +160,22 @@ pub fn get_resource_indicator_ranges(
     let hint_with_padding = format!(" {} ", hint);
 
     // Calculate positions from the right side
-    // Layout order: ... [padding] [hint] [cpu] [ram] [clock]
+    // Layout order: ... [padding] [hint] [net_down] [net_up] [cpu] [ram] [clock]
     let remaining = (area_width as usize).saturating_sub(
-        used_width + hint.width() + 2 + cpu_text.width() + ram_text.width() + clock_text.width(),
+        used_width
+            + hint.width()
+            + 2
+            + net_down_text.width()
+            + net_up_text.width()
+            + cpu_text.width()
+            + ram_text.width()
+            + clock_text.width(),
     );
 
     let mut x = used_width + remaining;
     x += hint_with_padding.width(); // skip hint
+    x += net_down_text.width(); // skip net down
+    x += net_up_text.width(); // skip net up
 
     let cpu_start = x as u16;
     let cpu_end = cpu_start + cpu_text.width() as u16;
@@ -206,6 +221,10 @@ pub fn render_menu(frame: &mut Frame, area: Rect, params: &MenuRenderParams) {
         RamUnit::Megabytes => t.size_megabytes(),
     };
 
+    // Network indicators
+    let net_down_text = format!("↓{} ", format_net_speed(params.net_down_rate));
+    let net_up_text = format!("↑{} ", format_net_speed(params.net_up_rate));
+
     // CPU indicator
     let cpu_text = format!("CPU {}% ", params.cpu_usage);
     let cpu_color = resource_color(params.cpu_usage, params.theme);
@@ -221,7 +240,14 @@ pub fn render_menu(frame: &mut Frame, area: Rect, params: &MenuRenderParams) {
     // Calculate spacing
     let used_width: usize = spans.iter().map(|s| s.width()).sum();
     let remaining = (area.width as usize).saturating_sub(
-        used_width + hint.width() + 2 + cpu_text.width() + ram_text.width() + clock_text.width(),
+        used_width
+            + hint.width()
+            + 2
+            + net_down_text.width()
+            + net_up_text.width()
+            + cpu_text.width()
+            + ram_text.width()
+            + clock_text.width(),
     );
 
     if remaining > 0 {
@@ -238,6 +264,12 @@ pub fn render_menu(frame: &mut Frame, area: Rect, params: &MenuRenderParams) {
 
     // Add hint
     spans.push(Span::styled(format!(" {} ", hint), hint_style));
+
+    // Add network indicators
+    let net_down_style = Style::default().fg(params.theme.success);
+    let net_up_style = Style::default().fg(Color::Cyan);
+    spans.push(Span::styled(net_down_text, net_down_style));
+    spans.push(Span::styled(net_up_text, net_up_style));
 
     // Add CPU indicator
     spans.push(Span::styled(cpu_text, cpu_style));
