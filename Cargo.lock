@@ -3103,6 +3103,8 @@ version = "0.15.3"
 dependencies = [
  "anyhow",
  "arboard",
+ "base64",
+ "log",
 ]
 
 [[package]]

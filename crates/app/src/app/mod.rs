@@ -13,6 +13,7 @@ use std::time::Duration;
 
 use termide_app_core::{LayoutController, PanelProvider};
 use termide_app_event::DefaultHotkeyProcessor;
+use crossterm::event::MouseEventKind;
 use termide_core::event::{Event, EventHandler};
 use termide_layout::{LayoutManager, PanelGroup};
 
@@ -370,12 +371,19 @@ impl App {
                     self.state.needs_redraw = true;
                 }
                 Event::Mouse(mouse) => {
-                    self.state.last_activity = std::time::Instant::now();
-                    self.event_handler.set_tick_rate(Duration::from_millis(
-                        termide_config::constants::EVENT_HANDLER_INTERVAL_MS,
-                    ));
+                    // Mouse movement (hover) should not reset idle timer or force redraws.
+                    // Only actionable events (clicks, drags) wake from idle.
+                    let is_move = matches!(mouse.kind, MouseEventKind::Moved);
+                    if !is_move {
+                        self.state.last_activity = std::time::Instant::now();
+                        self.event_handler.set_tick_rate(Duration::from_millis(
+                            termide_config::constants::EVENT_HANDLER_INTERVAL_MS,
+                        ));
+                    }
                     self.handle_mouse_event(mouse)?;
-                    self.state.needs_redraw = true;
+                    if !is_move {
+                        self.state.needs_redraw = true;
+                    }
                 }
                 Event::Resize(width, height) => {
                     // Update terminal dimensions in state

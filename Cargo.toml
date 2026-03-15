@@ -34,6 +34,7 @@ chrono = { version = "0.4", features = ["serde"] }
 portable-pty = "0.8"
 vte = "0.13"
 # Additional shared dependencies
+base64 = "0.22"
 tempfile = "3.12"
 log = "0.4"
 libc = "0.2"
@@ -101,7 +102,7 @@ auto-req = "no"
 [dependencies]
 anyhow = "1.0"
 arboard = "3.4"
-base64 = "0.22"
+base64.workspace = true
 chrono = "0.4"
 clap = { version = "4", features = ["derive"] }
 crossterm = "0.28"
