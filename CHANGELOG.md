@@ -5,6 +5,25 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.4] - 2026-03-15
+
+### Added
+- **Git Status**: Trigger background `git fetch` on Ctrl+R refresh
+- **App**: Bell notification for git push/pull completion and terminal exit
+- **Clipboard**: OSC 52 clipboard fallback for SSH/headless sessions
+
+### Fixed
+- **Terminal**: Prevent panic on UTF-8 search (Cyrillic, emoji) — advance by match length instead of 1 byte
+- **File Manager**: Use full path when entering nested directory in tree view
+
+### Changed
+- **Performance**: Skip mouse handler processing and simplify OSC 52 logic
+- **Performance**: Skip idle timer reset and forced redraw on mouse hover
+- **Performance**: Replace `.repeat()` padding with static `PAD` slice in file manager rendering
+- **Performance**: Cache menu layout in `MenuLayout` struct to avoid repeated allocations
+- **Refactor**: Improve VFS error logging in batch handler
+- **Refactor**: Remove dead `find_visible_by_path` method
+
 ## [0.15.3] - 2026-03-13
 
 ### Added
