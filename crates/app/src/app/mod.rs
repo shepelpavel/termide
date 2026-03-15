@@ -11,9 +11,9 @@ use ratatui::{backend::Backend, Terminal};
 use std::str::FromStr;
 use std::time::Duration;
 
+use crossterm::event::MouseEventKind;
 use termide_app_core::{LayoutController, PanelProvider};
 use termide_app_event::DefaultHotkeyProcessor;
-use crossterm::event::MouseEventKind;
 use termide_core::event::{Event, EventHandler};
 use termide_layout::{LayoutManager, PanelGroup};
 

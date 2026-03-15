@@ -967,6 +967,13 @@ impl Panel for GitStatusPanel {
         {
             self.refresh();
             self.status_message = Some(termide_i18n::t().git_refreshed().to_string());
+            if let Some(repo) = self.repo_manager.current() {
+                use termide_core::event::{GitOperationType, PanelEvent};
+                return vec![PanelEvent::GitOperation {
+                    operation: GitOperationType::Fetch,
+                    repo_path: repo.to_path_buf(),
+                }];
+            }
             return vec![];
         }
 
