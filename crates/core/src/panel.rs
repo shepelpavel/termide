@@ -7,7 +7,12 @@ use std::any::Any;
 use std::path::{Path, PathBuf};
 
 use crossterm::event::{KeyEvent, MouseEvent};
-use ratatui::{buffer::Buffer, layout::Rect, style::Color};
+use ratatui::{
+    buffer::Buffer,
+    layout::Rect,
+    style::{Color, Style},
+    text::{Line, Span},
+};
 use termide_config::Config;
 use termide_theme::Theme;
 
@@ -312,5 +317,13 @@ pub trait Panel: Any {
     /// Width preference for auto-stacking into existing groups.
     fn width_preference(&self) -> WidthPreference {
         WidthPreference::NoPreference
+    }
+
+    /// Colorize the truncated title for the panel header.
+    ///
+    /// Override this to apply per-segment coloring (e.g. git indicators).
+    /// Default implementation returns the title in a single style.
+    fn colorize_title(&self, truncated: &str, base_style: Style) -> Line<'static> {
+        Line::from(Span::styled(truncated.to_string(), base_style))
     }
 }

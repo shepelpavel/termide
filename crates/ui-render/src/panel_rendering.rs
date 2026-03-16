@@ -6,7 +6,7 @@ use ratatui::{
     buffer::Buffer,
     layout::Rect,
     style::{Modifier, Style},
-    text::Span,
+    text::{Line, Span},
     widgets::{Block, Borders, Widget},
 };
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -398,12 +398,15 @@ pub fn render_expanded_panel(
     // Available width: panel width - 2 (borders) - buttons - 1 (trailing space)
     let available_for_title = (area.width as usize).saturating_sub(2 + buttons_width + 1);
     let truncated_title = smart_truncate_title(&title, available_for_title);
-    let title_text = format!("{}{} ", buttons_text, truncated_title);
+    let title_line = panel.colorize_title(&truncated_title, style);
+    let mut title_spans = vec![Span::styled(buttons_text, style)];
+    title_spans.extend(title_line.spans);
+    title_spans.push(Span::styled(" ", style));
 
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(style)
-        .title(Span::styled(title_text, style));
+        .title(Line::from(title_spans));
 
     let inner = block.inner(area);
     block.render(area, buf);

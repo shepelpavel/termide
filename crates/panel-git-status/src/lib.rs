@@ -16,7 +16,12 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
-use ratatui::{buffer::Buffer, layout::Rect};
+use ratatui::{
+    buffer::Buffer,
+    layout::Rect,
+    style::Style,
+    text::{Line, Span},
+};
 use unicode_width::UnicodeWidthStr;
 
 use termide_config::{
@@ -826,6 +831,59 @@ impl Panel for GitStatusPanel {
         } else {
             format!("{} ({}) {}", repo_name, branch, status)
         }
+    }
+
+    fn colorize_title(&self, truncated: &str, base_style: Style) -> Line<'static> {
+        let markers: &[(&str, ratatui::style::Color)] = &[
+            ("*", self.cached_theme.error),
+            ("\u{2191}", self.cached_theme.success), // ↑
+            ("\u{2193}", self.cached_theme.warning), // ↓
+        ];
+
+        let mut spans: Vec<Span<'static>> = Vec::new();
+        let mut rest = truncated;
+
+        while !rest.is_empty() {
+            // Find the earliest marker
+            let mut earliest: Option<(usize, &str, ratatui::style::Color)> = None;
+            for &(marker, color) in markers {
+                if let Some(pos) = rest.find(marker) {
+                    if earliest.is_none() || pos < earliest.unwrap().0 {
+                        earliest = Some((pos, marker, color));
+                    }
+                }
+            }
+
+            match earliest {
+                Some((pos, marker, color)) => {
+                    // Text before marker
+                    if pos > 0 {
+                        spans.push(Span::styled(rest[..pos].to_string(), base_style));
+                    }
+                    // Marker + following digits
+                    let after_marker = &rest[pos + marker.len()..];
+                    let digit_count = after_marker
+                        .chars()
+                        .take_while(|c| c.is_ascii_digit())
+                        .count();
+                    let end = pos + marker.len() + digit_count;
+                    let value: usize = after_marker[..digit_count].parse().unwrap_or(0);
+                    let marker_style = if value > 0 {
+                        base_style.fg(color)
+                    } else {
+                        base_style
+                    };
+                    spans.push(Span::styled(rest[pos..end].to_string(), marker_style));
+                    rest = &rest[end..];
+                }
+                None => {
+                    spans.push(Span::styled(rest.to_string(), base_style));
+                    break;
+                }
+            }
+        }
+
+        Line::from(spans)
     }
 
     fn prepare_render(&mut self, theme: &Theme, config: &Config) {

@@ -360,15 +360,15 @@ pub fn format_net_speed(bytes_per_sec: u64) -> String {
     const MB: u64 = KB * 1024;
     const GB: u64 = MB * 1024;
 
-    if bytes_per_sec >= GB {
-        format!("{:.1}GB/s", bytes_per_sec as f64 / GB as f64)
-    } else if bytes_per_sec >= MB {
-        format!("{:.1}MB/s", bytes_per_sec as f64 / MB as f64)
-    } else if bytes_per_sec >= KB {
-        format!("{}kB/s", bytes_per_sec / KB)
+    let s = if bytes_per_sec >= 1000 * MB {
+        format!("{}GB/s", bytes_per_sec.div_ceil(GB))
+    } else if bytes_per_sec >= 1000 * KB {
+        format!("{}MB/s", bytes_per_sec.div_ceil(MB))
     } else {
-        format!("{}B/s", bytes_per_sec)
-    }
+        format!("{}kB/s", bytes_per_sec.div_ceil(KB))
+    };
+
+    format!("{s:<7}")
 }
 
 /// Format bytes as human-readable string.

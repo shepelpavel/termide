@@ -241,7 +241,7 @@ pub fn render_menu(frame: &mut Frame, area: Rect, params: &MenuRenderParams) {
 
     // Add network indicators
     let net_down_style = Style::default().fg(params.theme.success);
-    let net_up_style = Style::default().fg(Color::Cyan);
+    let net_up_style = Style::default().fg(params.theme.warning);
     spans.push(Span::styled(net_down_text, net_down_style));
     spans.push(Span::styled(net_up_text, net_up_style));
 
