@@ -1703,4 +1703,63 @@ impl Translation for RuntimeTranslation {
     fn vfs_username_prompt(&self) -> &str {
         self.get_string("vfs_username_prompt")
     }
+
+    // Calendar
+    fn calendar_mon(&self) -> &str {
+        self.get_string("calendar_mon")
+    }
+    fn calendar_tue(&self) -> &str {
+        self.get_string("calendar_tue")
+    }
+    fn calendar_wed(&self) -> &str {
+        self.get_string("calendar_wed")
+    }
+    fn calendar_thu(&self) -> &str {
+        self.get_string("calendar_thu")
+    }
+    fn calendar_fri(&self) -> &str {
+        self.get_string("calendar_fri")
+    }
+    fn calendar_sat(&self) -> &str {
+        self.get_string("calendar_sat")
+    }
+    fn calendar_sun(&self) -> &str {
+        self.get_string("calendar_sun")
+    }
+    fn calendar_january(&self) -> &str {
+        self.get_string("calendar_january")
+    }
+    fn calendar_february(&self) -> &str {
+        self.get_string("calendar_february")
+    }
+    fn calendar_march(&self) -> &str {
+        self.get_string("calendar_march")
+    }
+    fn calendar_april(&self) -> &str {
+        self.get_string("calendar_april")
+    }
+    fn calendar_may(&self) -> &str {
+        self.get_string("calendar_may")
+    }
+    fn calendar_june(&self) -> &str {
+        self.get_string("calendar_june")
+    }
+    fn calendar_july(&self) -> &str {
+        self.get_string("calendar_july")
+    }
+    fn calendar_august(&self) -> &str {
+        self.get_string("calendar_august")
+    }
+    fn calendar_september(&self) -> &str {
+        self.get_string("calendar_september")
+    }
+    fn calendar_october(&self) -> &str {
+        self.get_string("calendar_october")
+    }
+    fn calendar_november(&self) -> &str {
+        self.get_string("calendar_november")
+    }
+    fn calendar_december(&self) -> &str {
+        self.get_string("calendar_december")
+    }
 }

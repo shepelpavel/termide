@@ -22,6 +22,7 @@ pub use base::{
 };
 pub use input_keys::{handle_input_key, InputKeyResult};
 pub mod bookmark_add;
+pub mod calendar;
 pub mod choice;
 pub mod commit;
 pub mod confirm;
@@ -41,6 +42,7 @@ pub mod select;
 pub mod sessions;
 
 pub use bookmark_add::{BookmarkAddModal, BookmarkAddResult};
+pub use calendar::CalendarModal;
 pub use choice::ChoiceModal;
 pub use commit::CommitModal;
 pub use confirm::ConfirmModal;
@@ -98,6 +100,8 @@ pub enum ActiveModal {
     DirectorySwitcher(Box<DirectorySwitcherModal>),
     /// Bookmark add modal
     BookmarkAdd(Box<BookmarkAddModal>),
+    /// Calendar modal
+    Calendar(Box<CalendarModal>),
     /// Progress modal for long-running operations
     Progress(Box<ProgressModal>),
 }
@@ -133,6 +137,7 @@ macro_rules! dispatch_modal {
             ActiveModal::SaveAs(m) => m.$method($($arg),*),
             ActiveModal::DirectorySwitcher(m) => m.$method($($arg),*),
             ActiveModal::BookmarkAdd(m) => m.$method($($arg),*),
+            ActiveModal::Calendar(m) => m.$method($($arg),*),
             ActiveModal::Progress(m) => m.$method($($arg),*),
         }
     };
@@ -159,6 +164,7 @@ macro_rules! dispatch_modal_erased {
             ActiveModal::SaveAs(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::DirectorySwitcher(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::BookmarkAdd(m) => m.$method($($arg),*)?.map(erase_modal_result),
+            ActiveModal::Calendar(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::Progress(m) => m.$method($($arg),*)?.map(erase_modal_result),
         }
     };

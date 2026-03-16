@@ -8,6 +8,7 @@ license = "MIT"
 [dependencies]
 # External
 anyhow.workspace = true
+chrono.workspace = true
 crossterm.workspace = true
 glob.workspace = true
 ignore.workspace = true

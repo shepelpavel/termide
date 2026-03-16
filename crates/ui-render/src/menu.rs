@@ -123,14 +123,18 @@ pub fn resource_color(usage: u8, theme: &Theme) -> Color {
     }
 }
 
-/// Compute x-ranges of the CPU and RAM indicators in the menu bar.
+/// Compute x-ranges of the CPU, RAM and clock indicators in the menu bar.
 ///
-/// Returns `(cpu_range, ram_range)` as `Range<u16>` values relative to the area.
+/// Returns `(cpu_range, ram_range, clock_range)` as `Range<u16>` values relative to the area.
 /// These ranges correspond to the positions computed in `render_menu()`.
 pub fn get_resource_indicator_ranges(
     area_width: u16,
     params: &MenuRenderParams,
-) -> (std::ops::Range<u16>, std::ops::Range<u16>) {
+) -> (
+    std::ops::Range<u16>,
+    std::ops::Range<u16>,
+    std::ops::Range<u16>,
+) {
     let t = i18n::t();
     let layout = MenuLayout::compute();
 
@@ -170,7 +174,14 @@ pub fn get_resource_indicator_ranges(
     let ram_start = cpu_end;
     let ram_end = ram_start + ram_text.width() as u16;
 
-    (cpu_start..cpu_end, ram_start..ram_end)
+    let clock_start = ram_end;
+    let clock_end = clock_start + clock_text.width() as u16;
+
+    (
+        cpu_start..cpu_end,
+        ram_start..ram_end,
+        clock_start..clock_end,
+    )
 }
 
 /// Render top menu in Midnight Commander style

@@ -517,6 +517,27 @@ pub trait Translation: Send + Sync {
     fn resource_processes(&self) -> &str;
     fn resource_count(&self) -> &str;
 
+    // Calendar
+    fn calendar_mon(&self) -> &str;
+    fn calendar_tue(&self) -> &str;
+    fn calendar_wed(&self) -> &str;
+    fn calendar_thu(&self) -> &str;
+    fn calendar_fri(&self) -> &str;
+    fn calendar_sat(&self) -> &str;
+    fn calendar_sun(&self) -> &str;
+    fn calendar_january(&self) -> &str;
+    fn calendar_february(&self) -> &str;
+    fn calendar_march(&self) -> &str;
+    fn calendar_april(&self) -> &str;
+    fn calendar_may(&self) -> &str;
+    fn calendar_june(&self) -> &str;
+    fn calendar_july(&self) -> &str;
+    fn calendar_august(&self) -> &str;
+    fn calendar_september(&self) -> &str;
+    fn calendar_october(&self) -> &str;
+    fn calendar_november(&self) -> &str;
+    fn calendar_december(&self) -> &str;
+
     // VFS remote connections
     fn vfs_connecting(&self) -> &str;
     fn vfs_connection_failed(&self) -> &str;

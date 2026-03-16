@@ -3246,6 +3246,7 @@ name = "termide-modal"
 version = "0.16.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "crossterm 0.28.1",
  "glob",
  "ignore",

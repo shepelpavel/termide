@@ -441,8 +441,8 @@ impl App {
             current_x += item_width + 2; // +2 for spaces
         }
 
-        // Check CPU/RAM indicator clicks (right side of menu bar)
-        let (cpu_range, ram_range) = self.get_indicator_ranges();
+        // Check CPU/RAM/clock indicator clicks (right side of menu bar)
+        let (cpu_range, ram_range, clock_range) = self.get_indicator_ranges();
 
         if cpu_range.contains(&x) {
             self.open_cpu_modal();
@@ -452,12 +452,29 @@ impl App {
             self.open_ram_modal();
             return Ok(());
         }
+        if clock_range.contains(&x) {
+            self.open_calendar_modal();
+            return Ok(());
+        }
 
         Ok(())
     }
 
-    /// Compute CPU and RAM indicator x-ranges in the menu bar.
-    fn get_indicator_ranges(&self) -> (std::ops::Range<u16>, std::ops::Range<u16>) {
+    /// Open calendar modal.
+    fn open_calendar_modal(&mut self) {
+        let modal = modal::CalendarModal::new();
+        self.state.active_modal = Some(ActiveModal::Calendar(Box::new(modal)));
+        self.state.needs_redraw = true;
+    }
+
+    /// Compute CPU, RAM and clock indicator x-ranges in the menu bar.
+    fn get_indicator_ranges(
+        &self,
+    ) -> (
+        std::ops::Range<u16>,
+        std::ops::Range<u16>,
+        std::ops::Range<u16>,
+    ) {
         let (ram_value, ram_unit) = self.state.system_monitor.format_ram();
         let params = MenuRenderParams {
             theme: self.state.theme,
