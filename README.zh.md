@@ -27,7 +27,7 @@
 
 ## 功能特性
 
-- **基于终端的 IDE** - 支持 15+ 种语言的语法高亮、单词导航（Ctrl+Left/Right）、段落/符号导航（Ctrl+Up/Down）、自动缩进、自动关闭括号
+- **基于终端的 IDE** - 支持 21 种语言的语法高亮、单词导航（Ctrl+Left/Right）、段落/符号导航（Ctrl+Up/Down）、自动缩进、自动关闭括号
 - **LSP 支持** - 通过 rust-analyzer、pylsp、typescript-language-server 及其他 LSP 服务器实现代码补全
 - **智能文件管理器** - 可展开目录的树形视图、嵌套 Git 状态、批量操作、文件/内容搜索（glob/正则表达式）、树内增量搜索
 - **集成终端** - 完整的 PTY 支持、VT100 转义序列、鼠标跟踪
@@ -35,7 +35,7 @@
 - **多面板布局** - 手风琴系统，智能自动堆叠
 - **图片查看器** - 在 Kitty、WezTerm、iTerm2、Ghostty、foot 终端中原生渲染图形
 - **外部应用** - 使用系统默认应用程序打开文件（Shift+Enter）
-- **24 款内置主题** - 暗色、亮色、复古和电影主题（Dracula、Nord、Monokai、Solarized、Matrix、Pip-Boy 等）
+- **25 款内置主题** - 暗色、亮色、复古和电影主题（Dracula、Nord、Monokai、Solarized、Matrix、Pip-Boy 等）
 - **自定义主题** - 使用 TOML 格式创建自己的主题
 - **15 种界面语言** - 孟加拉语、中文、英语、法语、德语、印地语、印尼语、日语、韩语、葡萄牙语、俄语、西班牙语、泰语、土耳其语、越南语
 - **会话管理** - 自动保存和恢复面板布局
@@ -232,7 +232,6 @@ cargo build --release
 - **英文**: [doc/en/README.md](doc/en/README.md)
 - **俄文**: [doc/ru/README.md](doc/ru/README.md)
 - **中文**: [doc/zh/README.md](doc/zh/README.md)
-- **中文**: [doc/zh/README.md](doc/zh/README.md)
 
 ### 键盘快捷键（快速参考）
 
@@ -394,6 +393,9 @@ resource_monitor_interval = 1000
 - `matrix` - 黑客帝国数字雨（黑底绿字）
 - `pip-boy` - 辐射 Pip-Boy 3000 磷光 CRT
 - `terminator` - 天网 HUD / 火星红色调
+
+**其他主题：**
+- `terminal` - 经典终端风格（继承终端颜色）
 
 **主题示例：**
 

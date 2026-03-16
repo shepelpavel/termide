@@ -75,7 +75,7 @@ copyright = "2025, Nick Nizovtsev <nizovtsevnv@gmail.com>"
 license-file = ["LICENSE", "4"]
 extended-description = """\
 TermIDE is a cross-platform terminal-based IDE, file manager, and virtual terminal \
-written in Rust. It features syntax highlighting for 19 languages, Git integration, \
+written in Rust. It features syntax highlighting for 21 languages, Git integration, \
 multi-panel accordion layout with smart stacking, and an integrated virtual terminal \
 with full PTY support."""
 depends = "$auto"

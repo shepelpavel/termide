@@ -83,6 +83,9 @@ impl ScriptsRegistry {
             return Some(Self::default());
         }
 
+        // Canonicalize the scripts directory for symlink validation
+        let canonical_scripts_dir = std::fs::canonicalize(&scripts_dir).ok()?;
+
         let mut registry = Self::default();
 
         let entries = std::fs::read_dir(&scripts_dir).ok()?;
@@ -90,13 +93,24 @@ impl ScriptsRegistry {
         for entry in entries.flatten() {
             let path = entry.path();
 
+            // Validate symlinks: resolved path must stay within scripts_dir
+            if path.is_symlink() {
+                if let Ok(resolved) = std::fs::canonicalize(&path) {
+                    if !resolved.starts_with(&canonical_scripts_dir) {
+                        continue;
+                    }
+                } else {
+                    continue; // broken symlink
+                }
+            }
+
             if path.is_file() && Self::is_executable(&path) {
                 if let Some(item) = ScriptItem::from_path(path) {
                     registry.root_items.push(item);
                 }
             } else if path.is_dir() {
                 // Only one level of subdirectories allowed
-                if let Some(group) = Self::load_group(&path) {
+                if let Some(group) = Self::load_group(&path, &canonical_scripts_dir) {
                     if !group.items.is_empty() {
                         registry.groups.push(group);
                     }
@@ -112,7 +126,7 @@ impl ScriptsRegistry {
     }
 
     /// Load a group of scripts from a subdirectory.
-    fn load_group(dir: &PathBuf) -> Option<ScriptGroup> {
+    fn load_group(dir: &PathBuf, canonical_scripts_dir: &std::path::Path) -> Option<ScriptGroup> {
         let name = dir.file_name()?.to_str()?.to_string();
 
         let entries = std::fs::read_dir(dir).ok()?;
@@ -121,6 +135,18 @@ impl ScriptsRegistry {
             .flatten()
             .filter_map(|entry| {
                 let path = entry.path();
+
+                // Validate symlinks: resolved path must stay within scripts_dir
+                if path.is_symlink() {
+                    if let Ok(resolved) = std::fs::canonicalize(&path) {
+                        if !resolved.starts_with(canonical_scripts_dir) {
+                            return None;
+                        }
+                    } else {
+                        return None; // broken symlink
+                    }
+                }
+
                 if path.is_file() && Self::is_executable(&path) {
                     ScriptItem::from_path(path)
                 } else {
