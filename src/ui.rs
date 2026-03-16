@@ -70,7 +70,7 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
         dropdown.render(frame.buffer_mut());
 
         // Render shell picker nested submenu if open (Terminal selected)
-        if state.ui.tools_nested.open && state.ui.tools_submenu.selected == 1 {
+        if state.ui.tools_nested.open && state.ui.tools_submenu.selected == 0 {
             let shell_items = get_shell_items(
                 &state.cached_shells,
                 state.config.terminal.default_shell.as_deref(),

@@ -673,11 +673,6 @@ impl App {
     pub(super) fn execute_tools_submenu_action(&mut self) -> Result<()> {
         match self.state.ui.tools_submenu.selected {
             0 => {
-                // Files - open new file manager panel
-                self.state.close_menu();
-                self.handle_new_file_manager()?;
-            }
-            1 => {
                 // Terminal - open shell picker submenu (caches shells on open)
                 self.state.open_tools_nested_submenu(0);
                 // Adjust selection to match the current default shell
@@ -695,6 +690,11 @@ impl App {
                     })
                     .unwrap_or(0);
                 self.state.ui.tools_nested.selected = default_idx;
+            }
+            1 => {
+                // Files - open new file manager panel
+                self.state.close_menu();
+                self.handle_new_file_manager()?;
             }
             2 => {
                 // Editor - open new editor panel

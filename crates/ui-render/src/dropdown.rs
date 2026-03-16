@@ -211,8 +211,8 @@ pub const SESSIONS_SUBMENU_ITEM_COUNT: usize = 3;
 pub fn get_tools_items() -> Vec<DropdownItem> {
     let t = i18n::t();
     vec![
-        DropdownItem::new(t.tools_files(), "files"),
         DropdownItem::new(t.tools_terminal(), "terminal").with_submenu(),
+        DropdownItem::new(t.tools_files(), "files"),
         DropdownItem::new(t.tools_editor(), "editor"),
         DropdownItem::new(t.tools_git_status(), "git_status"),
         DropdownItem::new(t.tools_git_log(), "git_log"),
