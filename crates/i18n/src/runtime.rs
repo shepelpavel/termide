@@ -1486,6 +1486,10 @@ impl Translation for RuntimeTranslation {
         self.get_string("git_checkout_not_impl")
     }
 
+    fn git_no_remote_url(&self) -> &str {
+        self.get_string("git_no_remote_url")
+    }
+
     fn git_diff_staged_marker(&self) -> &str {
         self.get_string("git_diff_staged_marker")
     }

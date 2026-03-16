@@ -463,6 +463,7 @@ pub trait Translation: Send + Sync {
     fn git_stage_all_btn(&self) -> &str;
     fn git_unstage_all_btn(&self) -> &str;
     fn git_checkout_not_impl(&self) -> &str;
+    fn git_no_remote_url(&self) -> &str;
     fn git_diff_staged_marker(&self) -> &str;
     fn git_pushing(&self) -> &str;
     fn git_pulling(&self) -> &str;

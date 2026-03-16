@@ -545,7 +545,7 @@ impl HelpGenerator {
                 description: t.help_desc_view_commit_diff().to_string(),
             },
             HelpEntry {
-                keys: "o".to_string(),
+                keys: "o / Shift+Enter".to_string(),
                 description: t.help_desc_open_external().to_string(),
             },
         ];

@@ -350,6 +350,29 @@ impl GitLogPanel {
         ));
     }
 
+    /// Open selected commit in browser via remote URL, or show fallback message.
+    fn open_commit_external(&mut self) -> Vec<PanelEvent> {
+        let Some(commit) = self.selected_commit() else {
+            return vec![];
+        };
+        if commit.hash.is_empty() {
+            return vec![];
+        }
+        let hash = commit.hash.clone();
+
+        let Some(repo) = self.repo_manager.current() else {
+            return vec![];
+        };
+
+        if let Some(url) = git::get_commit_web_url(repo, &hash) {
+            return vec![PanelEvent::OpenExternal(PathBuf::from(url))];
+        }
+
+        let t = termide_i18n::t();
+        self.status_message = Some(t.git_no_remote_url().to_string());
+        vec![]
+    }
+
     /// View diff for selected commit
     fn view_diff(&mut self) -> Vec<PanelEvent> {
         let Some(commit) = self.selected_commit() else {
@@ -790,6 +813,9 @@ impl Panel for GitLogPanel {
             KeyCode::PageDown => {
                 self.page_down(page_size);
             }
+            KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                return self.open_commit_external();
+            }
             KeyCode::Enter | KeyCode::Char('d') => {
                 // View diff for selected commit
                 return self.view_diff();
@@ -802,6 +828,9 @@ impl Panel for GitLogPanel {
                 self.refresh();
                 let t = termide_i18n::t();
                 self.status_message = Some(t.git_refreshed().to_string());
+            }
+            KeyCode::Char('o') => {
+                return self.open_commit_external();
             }
             KeyCode::Char('c') | KeyCode::Char('C') => {
                 // Checkout commit (show message for now)
