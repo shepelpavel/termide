@@ -476,6 +476,8 @@ impl App {
             ram_percent: self.state.system_monitor.ram_usage_percent(),
             ram_value,
             ram_unit,
+            net_down_rate: self.state.system_monitor.net_download_rate(),
+            net_up_rate: self.state.system_monitor.net_upload_rate(),
             toggle_menu_key,
         };
         get_resource_indicator_ranges(self.state.terminal.width, &params)

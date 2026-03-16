@@ -380,7 +380,7 @@ impl App {
         }
     }
 
-    /// Update system resource monitoring (CPU, RAM)
+    /// Update system resource monitoring (CPU, RAM, network)
     /// Respects the configured update interval.
     /// Only triggers redraw if display values actually changed.
     pub(super) fn update_system_resources(&mut self) {
@@ -390,12 +390,18 @@ impl App {
 
         if elapsed >= interval {
             let old_stats = self.state.system_monitor.stats();
+            let old_net_down = self.state.system_monitor.net_download_rate();
+            let old_net_up = self.state.system_monitor.net_upload_rate();
             self.state.system_monitor.update();
             self.state.last_resource_update = std::time::Instant::now();
             let new_stats = self.state.system_monitor.stats();
-            // Only redraw if display values actually changed (rounded CPU% or MB of memory)
+            let new_net_down = self.state.system_monitor.net_download_rate();
+            let new_net_up = self.state.system_monitor.net_upload_rate();
+            // Only redraw if display values actually changed
             if old_stats.cpu_usage.round() as u8 != new_stats.cpu_usage.round() as u8
                 || old_stats.memory_used / (1024 * 1024) != new_stats.memory_used / (1024 * 1024)
+                || old_net_down / 1024 != new_net_down / 1024
+                || old_net_up / 1024 != new_net_up / 1024
             {
                 self.state.needs_redraw = true;
             }

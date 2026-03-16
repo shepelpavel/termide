@@ -1,11 +1,13 @@
 //! System resource monitoring for termide.
 //!
-//! Provides CPU and memory usage information.
+//! Provides CPU, memory, and network usage information.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use sysinfo::{
-    CpuRefreshKind, MemoryRefreshKind, ProcessRefreshKind, RefreshKind, System, UpdateKind,
+    CpuRefreshKind, MemoryRefreshKind, Networks, ProcessRefreshKind, RefreshKind, System,
+    UpdateKind,
 };
 
 /// System resource statistics.
@@ -37,10 +39,27 @@ pub enum RamUnit {
     Megabytes,
 }
 
+/// Network throughput state.
+struct NetworkState {
+    networks: Networks,
+    download_rate: u64,
+    upload_rate: u64,
+    last_refresh: Instant,
+}
+
 /// System monitor for tracking resource usage.
-#[derive(Debug)]
 pub struct SystemMonitor {
     system: Arc<Mutex<System>>,
+    net_state: Mutex<NetworkState>,
+}
+
+// Manual Debug impl because Networks doesn't implement Debug
+impl std::fmt::Debug for SystemMonitor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SystemMonitor")
+            .field("system", &self.system)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Default for SystemMonitor {
@@ -62,8 +81,16 @@ impl SystemMonitor {
         let mut system = System::new_with_specifics(refresh_kind);
         system.refresh_specifics(refresh_kind);
 
+        let networks = Networks::new_with_refreshed_list();
+
         Self {
             system: Arc::new(Mutex::new(system)),
+            net_state: Mutex::new(NetworkState {
+                networks,
+                download_rate: 0,
+                upload_rate: 0,
+                last_refresh: Instant::now(),
+            }),
         }
     }
 
@@ -83,6 +110,31 @@ impl SystemMonitor {
     pub fn refresh(&self) {
         if let Ok(mut sys) = self.system.lock() {
             sys.refresh_specifics(Self::refresh_kind());
+        }
+        self.refresh_networks();
+    }
+
+    /// Refresh network statistics and compute throughput rates.
+    fn refresh_networks(&self) {
+        if let Ok(mut state) = self.net_state.lock() {
+            let elapsed = state.last_refresh.elapsed();
+            let elapsed_secs = elapsed.as_secs_f64();
+
+            state.networks.refresh();
+
+            let mut total_rx: u64 = 0;
+            let mut total_tx: u64 = 0;
+            for (_name, data) in &state.networks {
+                total_rx += data.received();
+                total_tx += data.transmitted();
+            }
+
+            if elapsed_secs > 0.0 {
+                state.download_rate = (total_rx as f64 / elapsed_secs) as u64;
+                state.upload_rate = (total_tx as f64 / elapsed_secs) as u64;
+            }
+
+            state.last_refresh = Instant::now();
         }
     }
 
@@ -152,6 +204,22 @@ impl SystemMonitor {
             let (used_mb, total_mb) = self.ram_info_mb();
             (format!("{}/{}", used_mb, total_mb), RamUnit::Megabytes)
         }
+    }
+
+    /// Get network download rate in bytes per second.
+    pub fn net_download_rate(&self) -> u64 {
+        self.net_state
+            .lock()
+            .map(|s| s.download_rate)
+            .unwrap_or(0)
+    }
+
+    /// Get network upload rate in bytes per second.
+    pub fn net_upload_rate(&self) -> u64 {
+        self.net_state
+            .lock()
+            .map(|s| s.upload_rate)
+            .unwrap_or(0)
     }
 
     /// Get top N processes by CPU usage, grouped by binary name.
@@ -287,6 +355,25 @@ impl DiskSpaceInfo {
         self.device
             .as_ref()
             .map(|d| d.strip_prefix("/dev/").unwrap_or(d).to_uppercase())
+    }
+}
+
+/// Format network speed as compact human-readable string.
+///
+/// Returns strings like "0B", "4kB", "1.2MB", "2.5GB".
+pub fn format_net_speed(bytes_per_sec: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+
+    if bytes_per_sec >= GB {
+        format!("{:.1}GB", bytes_per_sec as f64 / GB as f64)
+    } else if bytes_per_sec >= MB {
+        format!("{:.1}MB", bytes_per_sec as f64 / MB as f64)
+    } else if bytes_per_sec >= KB {
+        format!("{}kB", bytes_per_sec / KB)
+    } else {
+        format!("{}B", bytes_per_sec)
     }
 }
 

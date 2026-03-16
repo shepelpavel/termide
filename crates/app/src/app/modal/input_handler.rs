@@ -96,12 +96,17 @@ impl App {
     ) -> Result<()> {
         // Store info needed for LSP notification (before mutable borrow)
         let mut lsp_info: Option<(String, PathBuf)> = None;
+        #[cfg(unix)]
         let mut saved_path: Option<PathBuf> = None;
+        #[cfg(unix)]
         let mut make_executable = false;
 
         if let Some(result) = value.downcast_ref::<SaveAsResult>() {
             let t = i18n::t();
-            make_executable = result.executable;
+            #[cfg(unix)]
+            {
+                make_executable = result.executable;
+            }
 
             // Get active Editor panel and save file
             if let Some(panel) = self.layout_manager.active_panel_mut() {
@@ -119,7 +124,10 @@ impl App {
                         Ok(_) => {
                             log::info!("File saved as: {}", display_path);
                             self.state.set_info(t.status_file_saved(&display_path));
-                            saved_path = Some(file_path.clone());
+                            #[cfg(unix)]
+                            {
+                                saved_path = Some(file_path.clone());
+                            }
 
                             // Collect LSP info for didSave notification
                             if let Some(lang) = editor.lsp_language() {
@@ -135,24 +143,21 @@ impl App {
             }
         }
 
-        // Set executable permission if requested
+        // Set executable permission if requested (Unix only — Windows has no executable bit)
+        #[cfg(unix)]
         if make_executable {
-            if let Some(ref _path) = saved_path {
-                #[cfg(unix)]
-                {
-                    let path = _path;
-                    use std::os::unix::fs::PermissionsExt;
-                    if let Ok(metadata) = std::fs::metadata(path) {
-                        let mut perms = metadata.permissions();
-                        let mode = perms.mode();
-                        // Add execute bits for user, group, and others (where read is set)
-                        let new_mode = mode | ((mode & 0o444) >> 2);
-                        perms.set_mode(new_mode);
-                        if let Err(e) = std::fs::set_permissions(path, perms) {
-                            log::warn!("Failed to set executable permission: {}", e);
-                        } else {
-                            log::info!("Set executable permission on: {}", path.display());
-                        }
+            if let Some(ref path) = saved_path {
+                use std::os::unix::fs::PermissionsExt;
+                if let Ok(metadata) = std::fs::metadata(path) {
+                    let mut perms = metadata.permissions();
+                    let mode = perms.mode();
+                    // Add execute bits for user, group, and others (where read is set)
+                    let new_mode = mode | ((mode & 0o444) >> 2);
+                    perms.set_mode(new_mode);
+                    if let Err(e) = std::fs::set_permissions(path, perms) {
+                        log::warn!("Failed to set executable permission: {}", e);
+                    } else {
+                        log::info!("Set executable permission on: {}", path.display());
                     }
                 }
             }
