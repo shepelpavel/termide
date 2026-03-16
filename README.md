@@ -270,7 +270,7 @@ For detailed documentation, see:
 - `Alt+F` - File Manager
 - `Alt+T` - Terminal
 - `Alt+E` - Editor
-- `Alt+L` - Log viewer
+- `Alt+L` - Journal
 - `Alt+G` - Git Status
 - `Alt+O` - Outline
 - `Alt+I` - Diagnostics
@@ -298,6 +298,7 @@ For detailed documentation, see:
 - `F3` - Preview file
 - `Shift+Enter` - Open with system app
 - `.` - Toggle hidden files
+- `Ctrl+G` - Go to path/URL
 
 **Editor:**
 - `Ctrl+S` - Save
@@ -325,6 +326,7 @@ For detailed documentation, see:
 - `Enter` / `d` - View diff
 - `c` - Copy commit hash
 - `g/G` - First/last commit
+- `o` / `Shift+Enter` - Open commit in browser
 
 ## Configuration
 

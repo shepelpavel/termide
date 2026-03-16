@@ -1,6 +1,6 @@
 # Themes
 
-TermIDE comes with 24 built-in themes and supports custom user themes. You can switch themes by editing the configuration file.
+TermIDE comes with 25 built-in themes and supports custom user themes. You can switch themes by editing the configuration file.
 
 ## Built-in Themes
 
@@ -48,11 +48,17 @@ TermIDE comes with 24 built-in themes and supports custom user themes. You can s
 | `pip-boy` | Fallout Pip-Boy 3000 — warm green phosphor CRT display |
 | `terminator` | Skynet HUD / Mars — deep red and crimson tones |
 
+### Other Themes
+
+| Theme Name | Description |
+|-----------|-------------|
+| `terminal` | Classic terminal style (inherits terminal colors) |
+
 ## Switching Themes
 
 ### Method 1: Using the Menu (Recommended)
 
-1. Click on **Preferences** in the menu bar
+1. Click on **Options** in the menu bar
 2. Select **Themes** from the dropdown
 3. Choose your desired theme from the list - each item shows a color preview of the theme
 4. The theme will be applied immediately and saved to config

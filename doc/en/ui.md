@@ -28,7 +28,7 @@ The application uses interactive modal windows for various operations:
 
 ## Menu Bar
 
-The menu bar is located at the top of the window and includes: menu items on the left, a menu activation hint, system resource indicators (CPU, RAM), and a clock in HH:MM format on the right.
+The menu bar is located at the top of the window and includes: menu items on the left, system resource indicators (CPU, RAM, network speed), and a clock in HH:MM format on the right.
 Menu activation/deactivation and each item can be accessed by mouse click or [keyboard shortcuts](#Keyboard-Navigation-and-Panel-Management).
 
 **Menu items:**
@@ -36,7 +36,7 @@ Menu activation/deactivation and each item can be accessed by mouse click or [ke
   - New session — create session in a new directory
   - Switch session — open session switcher modal
   - Change root path — move current session to another directory
-- `Tools` — panel creation submenu:
+- `Windows` — panel creation submenu:
   - Files — file manager panel
   - Terminal — terminal panel
   - Editor — text editor panel
@@ -60,6 +60,7 @@ Menu activation/deactivation and each item can be accessed by mouse click or [ke
 **System Resource Indicators:**
 - `CPU` - CPU usage percentage with color coding (green < 50%, yellow 50-75%, red > 75%)
 - `RAM` - RAM usage in GB/MB format with color coding based on usage level
+- `↓/↑` - Network download/upload speed
 
 ## Panels Area
 
@@ -70,7 +71,7 @@ By default, the area shows a two-panel file manager (like Midnight Commander). O
 - [file manager](file-manager.md) — `Alt+F`
 - [terminal](terminal.md) — `Alt+T`
 - [text editor](editor.md) — `Alt+E`
-- [git status](git-status.md) — `Alt+G`
+- git status — `Alt+G`
 - outline — `Alt+O`
 - diagnostics — `Alt+I`
 - git log — `Alt+C`
@@ -120,7 +121,7 @@ The device name is automatically detected from the filesystem:
 | `Alt+O`           | Open outline panel                         |
 | `Alt+I`           | Open diagnostics panel                     |
 | `Alt+C`           | Open git log panel                         |
-| `Alt+L`           | Open log panel                             |
+| `Alt+L`           | Open journal panel                             |
 | `Alt+P`           | Open configuration file in editor          |
 | `Alt+H`           | Open help window                           |
 | `Alt+Q`           | Close application                          |

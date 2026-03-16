@@ -257,7 +257,7 @@ cargo build --release
 - `Alt+F` - 文件管理器
 - `Alt+T` - 终端
 - `Alt+E` - 编辑器
-- `Alt+L` - 日志查看器
+- `Alt+L` - 日志
 - `Alt+G` - Git 状态
 - `Alt+O` - 大纲
 - `Alt+I` - 诊断
@@ -285,6 +285,7 @@ cargo build --release
 - `F3` - 预览文件
 - `Shift+Enter` - 使用系统应用打开
 - `.` - 切换隐藏文件
+- `Ctrl+G` - 转到路径/URL
 
 **编辑器：**
 - `Ctrl+S` - 保存
@@ -293,6 +294,7 @@ cargo build --release
 - `Ctrl+F` - 查找
 - `Ctrl+H` - 替换
 - `F3` / `Shift+F3` - 下一个/上一个匹配
+- `Ctrl+/` - 切换注释（行/块）
 - `Ctrl+D` - 复制行
 - `Ctrl+C/X/V` - 复制/剪切/粘贴
 - `Ctrl+Left/Right` - 按单词移动光标
@@ -311,6 +313,7 @@ cargo build --release
 - `Enter` / `d` - 查看差异
 - `c` - 复制提交哈希
 - `g/G` - 第一个/最后一个提交
+- `o` / `Shift+Enter` - 在浏览器中打开提交
 
 ## 配置
 
