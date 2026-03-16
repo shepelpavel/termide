@@ -424,7 +424,7 @@ impl App {
     /// Only triggers redraw if display values actually changed.
     pub(super) fn update_system_resources(&mut self) {
         let interval =
-            std::time::Duration::from_millis(self.state.config.logging.resource_monitor_interval);
+            std::time::Duration::from_millis(self.state.config.general.resource_monitor_interval);
         let elapsed = self.state.last_resource_update.elapsed();
 
         if elapsed >= interval {

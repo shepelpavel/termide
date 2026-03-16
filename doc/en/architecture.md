@@ -452,9 +452,8 @@ crates/i18n/
 
 **Detection:**
 1. `config.language` setting
-2. `TERMIDE_LANG` environment variable
-3. `LANG` / `LC_ALL` system variables
-4. Default to English
+2. `LANG` / `LC_ALL` system variables
+3. Default to English
 
 ### 8. Key Dependencies
 

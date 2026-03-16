@@ -359,6 +359,7 @@ vim_mode = false
 session_retention_days = 30
 bell_on_operation_complete = true
 icon_mode = "auto"  # auto, emoji, unicode
+resource_monitor_interval = 1000
 
 [editor]
 tab_size = 4
@@ -376,7 +377,6 @@ auto_completion = true
 
 [logging]
 min_level = "info"
-resource_monitor_interval = 1000
 ```
 
 ### Available Themes
@@ -465,14 +465,6 @@ chmod +x ~/.local/share/termide/scripts/hello.sh
 ```
 
 **Note:** On Unix systems, scripts must have the executable permission (`chmod +x`). Use `Options → Manage scripts` to open the scripts folder.
-
-### Language Configuration
-
-You can also set the language via environment variable:
-```bash
-export TERMIDE_LANG=ru  # Set Russian UI
-./termide
-```
 
 ## Development
 

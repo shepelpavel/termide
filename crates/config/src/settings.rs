@@ -94,6 +94,10 @@ pub struct GeneralSettings {
     #[serde(default)]
     pub icon_mode: IconMode,
 
+    /// System resource monitor update interval in ms
+    #[serde(default = "default_resource_monitor_interval")]
+    pub resource_monitor_interval: u64,
+
     /// Global keyboard shortcuts
     #[serde(default)]
     pub keybindings: GlobalKeybindings,
@@ -178,10 +182,6 @@ pub struct LoggingSettings {
     /// Minimum log level (debug, info, warn, error)
     #[serde(default = "default_min_level")]
     pub min_level: String,
-
-    /// System resource monitor update interval in ms
-    #[serde(default = "default_resource_monitor_interval")]
-    pub resource_monitor_interval: u64,
 }
 
 /// VFS (Virtual File System) settings.
@@ -424,6 +424,7 @@ impl From<LegacyConfig> for Config {
                 vim_mode: default_vim_mode(),
                 bell_on_operation_complete: default_bell_on_operation_complete(),
                 icon_mode: IconMode::default(),
+                resource_monitor_interval: legacy.resource_monitor_interval,
                 keybindings: GlobalKeybindings::default(),
             },
             editor: EditorSettings {
@@ -447,7 +448,6 @@ impl From<LegacyConfig> for Config {
             logging: LoggingSettings {
                 file_path: legacy.log_file_path,
                 min_level: legacy.min_log_level,
-                resource_monitor_interval: legacy.resource_monitor_interval,
             },
             vfs: VfsSettings::default(),
         }
@@ -466,6 +466,7 @@ impl Default for GeneralSettings {
             vim_mode: default_vim_mode(),
             bell_on_operation_complete: default_bell_on_operation_complete(),
             icon_mode: IconMode::default(),
+            resource_monitor_interval: default_resource_monitor_interval(),
             keybindings: GlobalKeybindings::default(),
         }
     }
@@ -501,7 +502,6 @@ impl Default for LoggingSettings {
         Self {
             file_path: None,
             min_level: default_min_level(),
-            resource_monitor_interval: default_resource_monitor_interval(),
         }
     }
 }

@@ -452,9 +452,8 @@ crates/i18n/
 
 **检测顺序：**
 1. `config.language` 设置
-2. `TERMIDE_LANG` 环境变量
-3. `LANG` / `LC_ALL` 系统变量
-4. 默认为英语
+2. `LANG` / `LC_ALL` 系统变量
+3. 默认为英语
 
 ### 8. 关键依赖
 

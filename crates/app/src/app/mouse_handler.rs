@@ -459,15 +459,6 @@ impl App {
     /// Compute CPU and RAM indicator x-ranges in the menu bar.
     fn get_indicator_ranges(&self) -> (std::ops::Range<u16>, std::ops::Range<u16>) {
         let (ram_value, ram_unit) = self.state.system_monitor.format_ram();
-        let toggle_menu_key = self
-            .state
-            .config
-            .general
-            .keybindings
-            .toggle_menu
-            .as_ref()
-            .map(|k| k.display())
-            .unwrap_or("Alt+M");
         let params = MenuRenderParams {
             theme: self.state.theme,
             selected_menu_item: self.state.ui.selected_menu_item,
@@ -478,7 +469,6 @@ impl App {
             ram_unit,
             net_down_rate: self.state.system_monitor.net_download_rate(),
             net_up_rate: self.state.system_monitor.net_upload_rate(),
-            toggle_menu_key,
         };
         get_resource_indicator_ranges(self.state.terminal.width, &params)
     }

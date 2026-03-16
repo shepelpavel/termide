@@ -354,20 +354,20 @@ impl DiskSpaceInfo {
 
 /// Format network speed as compact human-readable string.
 ///
-/// Returns strings like "0B", "4kB", "1.2MB", "2.5GB".
+/// Returns strings like "0B/s", "4kB/s", "1.2MB/s", "2.5GB/s".
 pub fn format_net_speed(bytes_per_sec: u64) -> String {
     const KB: u64 = 1024;
     const MB: u64 = KB * 1024;
     const GB: u64 = MB * 1024;
 
     if bytes_per_sec >= GB {
-        format!("{:.1}GB", bytes_per_sec as f64 / GB as f64)
+        format!("{:.1}GB/s", bytes_per_sec as f64 / GB as f64)
     } else if bytes_per_sec >= MB {
-        format!("{:.1}MB", bytes_per_sec as f64 / MB as f64)
+        format!("{:.1}MB/s", bytes_per_sec as f64 / MB as f64)
     } else if bytes_per_sec >= KB {
-        format!("{}kB", bytes_per_sec / KB)
+        format!("{}kB/s", bytes_per_sec / KB)
     } else {
-        format!("{}B", bytes_per_sec)
+        format!("{}B/s", bytes_per_sec)
     }
 }
 

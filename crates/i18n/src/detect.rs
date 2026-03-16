@@ -2,14 +2,9 @@
 
 /// Detect language from environment variables.
 ///
-/// Checks in order: TERMIDE_LANG, LANG, LC_ALL.
+/// Checks in order: LANG, LC_ALL.
 /// Falls back to "en" if none found.
 pub fn detect_language() -> String {
-    // Check TERMIDE_LANG first (app-specific)
-    if let Ok(lang) = std::env::var("TERMIDE_LANG") {
-        return normalize_lang(&lang);
-    }
-
     // Check LANG
     if let Ok(lang) = std::env::var("LANG") {
         return normalize_lang(&lang);

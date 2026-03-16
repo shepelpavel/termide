@@ -345,6 +345,7 @@ vim_mode = false
 session_retention_days = 30
 bell_on_operation_complete = true
 icon_mode = "auto"  # auto, emoji, unicode
+resource_monitor_interval = 1000
 
 [editor]
 tab_size = 4
@@ -360,7 +361,6 @@ auto_completion = true
 
 [logging]
 min_level = "info"
-resource_monitor_interval = 1000
 ```
 
 ### 可用主题
@@ -449,14 +449,6 @@ chmod +x ~/.local/share/termide/scripts/hello.sh
 ```
 
 **注意：** 在 Unix 系统上，脚本必须具有可执行权限（`chmod +x`）。使用 `选项 → 管理脚本` 打开脚本文件夹。
-
-### 语言配置
-
-您也可以通过环境变量设置语言：
-```bash
-export TERMIDE_LANG=zh  # 设置中文界面
-./termide
-```
 
 ## 开发
 
