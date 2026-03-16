@@ -198,11 +198,29 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_ftps_url() {
+        let path = parse_vfs_url("ftps://ftp.example.com/pub/file.zip").unwrap();
+        assert_eq!(path.protocol, VfsProtocol::Ftps);
+        assert_eq!(path.host, Some("ftp.example.com".to_string()));
+        assert_eq!(path.effective_port(), Some(990)); // default FTPS port
+        assert_eq!(path.path, PathBuf::from("/pub/file.zip"));
+    }
+
+    #[test]
+    fn test_parse_ftps_url_with_port() {
+        let path = parse_vfs_url("ftps://user@host:2121/data").unwrap();
+        assert_eq!(path.protocol, VfsProtocol::Ftps);
+        assert_eq!(path.port, Some(2121));
+        assert_eq!(path.username, Some("user".to_string()));
+    }
+
+    #[test]
     fn test_is_vfs_url() {
         assert!(!is_vfs_url("/local/path"));
         assert!(!is_vfs_url("./relative/path"));
         assert!(is_vfs_url("sftp://host/path"));
         assert!(is_vfs_url("ftp://host/path"));
+        assert!(is_vfs_url("ftps://host/path"));
         assert!(is_vfs_url("smb://server/share"));
         assert!(!is_vfs_url("unknown://host/path"));
     }

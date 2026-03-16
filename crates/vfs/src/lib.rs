@@ -217,6 +217,145 @@ impl VfsManager {
         VfsOperation::new(rx)
     }
 
+    /// Connect to an FTP or FTPS server.
+    #[cfg(feature = "ftp")]
+    pub fn connect_ftp(&self, path: &VfsPath, options: ConnectOptions) -> VfsOperation<()> {
+        use crate::ftp::FtpProvider;
+
+        let use_tls = matches!(path.protocol, VfsProtocol::Ftps);
+
+        log::info!(
+            "VfsManager::connect_ftp() called for {} (TLS: {})",
+            path.log_safe_key(),
+            use_tls
+        );
+
+        if !matches!(path.protocol, VfsProtocol::Ftp | VfsProtocol::Ftps) {
+            return VfsOperation::error(VfsError::InvalidPath(
+                "Expected FTP or FTPS path".to_string(),
+            ));
+        }
+
+        let host = match &path.host {
+            Some(h) => h.clone(),
+            None => {
+                return VfsOperation::error(VfsError::InvalidPath(
+                    "Missing host in FTP path".to_string(),
+                ))
+            }
+        };
+
+        let port = path.effective_port();
+        let username = path.username.clone();
+
+        let key = path.connection_key();
+        let providers = Arc::clone(&self.remote_providers);
+
+        let (tx, rx) = std::sync::mpsc::channel();
+
+        std::thread::spawn(move || {
+            let mut provider = FtpProvider::new(&host, port, username.as_deref(), use_tls);
+
+            let result = provider.connect(options).recv();
+
+            match &result {
+                Ok(()) => log::info!("VfsManager: FTP connection succeeded"),
+                Err(e) => log::error!("VfsManager: FTP connection failed: {}", e),
+            }
+
+            if result.is_ok() {
+                if let Ok(mut providers) = providers.write() {
+                    providers.insert(key.clone(), Box::new(provider));
+                    log::debug!("VfsManager: FTP provider stored for key '{}'", key);
+                }
+            }
+
+            match tx.send(result) {
+                Ok(()) => log::info!("VfsManager: FTP result sent to channel"),
+                Err(e) => log::error!("VfsManager: Failed to send FTP result: {:?}", e),
+            }
+        });
+
+        VfsOperation::new(rx)
+    }
+
+    /// Connect to an SMB/CIFS server.
+    #[cfg(feature = "smb")]
+    pub fn connect_smb(&self, path: &VfsPath, options: ConnectOptions) -> VfsOperation<()> {
+        use crate::smb::SmbProvider;
+
+        log::info!(
+            "VfsManager::connect_smb() called for {}",
+            path.log_safe_key()
+        );
+
+        if !matches!(path.protocol, VfsProtocol::Smb) {
+            return VfsOperation::error(VfsError::InvalidPath("Expected SMB path".to_string()));
+        }
+
+        let host = match &path.host {
+            Some(h) => h.clone(),
+            None => {
+                return VfsOperation::error(VfsError::InvalidPath(
+                    "Missing host in SMB path".to_string(),
+                ))
+            }
+        };
+
+        let port = path.effective_port();
+        let username = path.username.clone();
+
+        // Extract share from first path component: /share/rest/of/path
+        let path_str = path.path.display().to_string();
+        let trimmed = path_str.trim_start_matches('/');
+        let share = trimmed.split('/').next().filter(|s| !s.is_empty());
+
+        let key = path.connection_key();
+        let providers = Arc::clone(&self.remote_providers);
+
+        let (tx, rx) = std::sync::mpsc::channel();
+
+        let share_owned = share.map(String::from);
+        std::thread::spawn(move || {
+            let mut provider = SmbProvider::new(
+                &host,
+                port,
+                share_owned.as_deref(),
+                username.as_deref(),
+                None,
+            );
+
+            let result = provider.connect(options).recv();
+
+            match &result {
+                Ok(()) => log::info!("VfsManager: SMB connection succeeded"),
+                Err(e) => log::error!("VfsManager: SMB connection failed: {}", e),
+            }
+
+            if result.is_ok() {
+                if let Ok(mut providers) = providers.write() {
+                    providers.insert(key.clone(), Box::new(provider));
+                    log::debug!("VfsManager: SMB provider stored for key '{}'", key);
+                }
+            }
+
+            match tx.send(result) {
+                Ok(()) => log::info!("VfsManager: SMB result sent to channel"),
+                Err(e) => log::error!("VfsManager: Failed to send SMB result: {:?}", e),
+            }
+        });
+
+        VfsOperation::new(rx)
+    }
+
+    /// Connect to an SMB/CIFS server (stub when smb feature is disabled).
+    #[cfg(not(feature = "smb"))]
+    pub fn connect_smb(&self, _path: &VfsPath, _options: ConnectOptions) -> VfsOperation<()> {
+        VfsOperation::error(VfsError::NotSupported(
+            "SMB support not compiled. Enable the 'smb' feature.".to_string(),
+        ))
+    }
+
     /// Disconnect and remove a provider for the given connection key.
     pub fn disconnect(&self, connection_key: &str) {
         if let Ok(mut providers) = self.remote_providers.write() {

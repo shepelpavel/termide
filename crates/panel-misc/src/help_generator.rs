@@ -568,7 +568,7 @@ impl HelpGenerator {
         let key_style = Style::default().fg(theme.fg);
         let desc_style = Style::default().fg(theme.disabled);
 
-        // Version header: ═══════ Termide 0.10.1 ═══════
+        // Version header: ═══════ Termide x.y.z ═══════
         let version = env!("CARGO_PKG_VERSION");
         let version_text = format!("Termide {}", version);
         let version_len = version_text.chars().count();

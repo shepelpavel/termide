@@ -316,6 +316,12 @@ resource_processes = "proses"
 resource_count = "jml"
 resource_ram_top_title = "RAM — Proses Teratas"
 terminal_kill_confirm = "Hentikan proses yang berjalan?"
+vfs_connecting = "Menghubungkan..."
+vfs_connection_failed = "Koneksi gagal"
+vfs_ftp_connected = "FTP terhubung"
+vfs_password_prompt = "Kata sandi"
+vfs_smb_connected = "SMB terhubung"
+vfs_username_prompt = "Nama pengguna"
 
 [formats]
 batch_result_errors_fmt = "kesalahan: {count}"

@@ -316,6 +316,12 @@ resource_processes = "proc"
 resource_count = "cant"
 resource_ram_top_title = "RAM — Procesos principales"
 terminal_kill_confirm = "¿Terminar procesos en ejecución?"
+vfs_connecting = "Conectando..."
+vfs_connection_failed = "Conexión fallida"
+vfs_ftp_connected = "FTP conectado"
+vfs_password_prompt = "Contraseña"
+vfs_smb_connected = "SMB conectado"
+vfs_username_prompt = "Usuario"
 
 [formats]
 language_changed = "Idioma cambiado a {name}"

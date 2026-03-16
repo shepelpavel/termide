@@ -15,6 +15,8 @@ pub enum VfsProtocol {
     Sftp,
     /// FTP (File Transfer Protocol).
     Ftp,
+    /// FTPS (FTP over TLS/SSL).
+    Ftps,
     /// SMB/CIFS (Server Message Block).
     Smb,
     /// NFS (Network File System) via FUSE mount.
@@ -28,6 +30,7 @@ impl VfsProtocol {
             Self::Local => "file",
             Self::Sftp => "sftp",
             Self::Ftp => "ftp",
+            Self::Ftps => "ftps",
             Self::Smb => "smb",
             Self::Nfs => "nfs",
         }
@@ -39,6 +42,7 @@ impl VfsProtocol {
             "file" | "" => Some(Self::Local),
             "sftp" => Some(Self::Sftp),
             "ftp" => Some(Self::Ftp),
+            "ftps" => Some(Self::Ftps),
             "smb" | "cifs" => Some(Self::Smb),
             "nfs" => Some(Self::Nfs),
             _ => None,
@@ -208,6 +212,7 @@ impl VfsPath {
             VfsProtocol::Local => None,
             VfsProtocol::Sftp => Some(22),
             VfsProtocol::Ftp => Some(21),
+            VfsProtocol::Ftps => Some(990),
             VfsProtocol::Smb => Some(445),
             VfsProtocol::Nfs => Some(2049),
         }

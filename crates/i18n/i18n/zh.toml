@@ -316,6 +316,12 @@ resource_processes = "进程"
 resource_count = "数量"
 resource_ram_top_title = "RAM — 进程排行"
 terminal_kill_confirm = "终止运行中的进程？"
+vfs_connecting = "正在连接..."
+vfs_connection_failed = "连接失败"
+vfs_ftp_connected = "FTP 已连接"
+vfs_password_prompt = "密码"
+vfs_smb_connected = "SMB 已连接"
+vfs_username_prompt = "用户名"
 
 [formats]
 language_changed = "语言已更改为 {name}"

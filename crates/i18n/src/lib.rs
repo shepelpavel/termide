@@ -515,6 +515,14 @@ pub trait Translation: Send + Sync {
     fn resource_disk_total(&self) -> &str;
     fn resource_processes(&self) -> &str;
     fn resource_count(&self) -> &str;
+
+    // VFS remote connections
+    fn vfs_connecting(&self) -> &str;
+    fn vfs_connection_failed(&self) -> &str;
+    fn vfs_ftp_connected(&self) -> &str;
+    fn vfs_password_prompt(&self) -> &str;
+    fn vfs_smb_connected(&self) -> &str;
+    fn vfs_username_prompt(&self) -> &str;
 }
 
 /// Initialize translation system.

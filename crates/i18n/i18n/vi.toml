@@ -316,6 +316,12 @@ resource_processes = "tiến trình"
 resource_count = "sl"
 resource_ram_top_title = "RAM — Tiến trình hàng đầu"
 terminal_kill_confirm = "Dừng các tiến trình đang chạy?"
+vfs_connecting = "Đang kết nối..."
+vfs_connection_failed = "Kết nối thất bại"
+vfs_ftp_connected = "Đã kết nối FTP"
+vfs_password_prompt = "Mật khẩu"
+vfs_smb_connected = "Đã kết nối SMB"
+vfs_username_prompt = "Tên người dùng"
 
 [formats]
 batch_result_errors_fmt = "lỗi: {count}"

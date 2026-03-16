@@ -261,16 +261,10 @@ impl VfsState {
                 // SFTP is enabled by default in termide-vfs
                 self.manager.connect_sftp(&path, ConnectOptions::default())
             }
-            VfsProtocol::Ftp => {
-                return Err(VfsError::NotSupported(
-                    "FTP connections not yet fully implemented".to_string(),
-                ));
+            VfsProtocol::Ftp | VfsProtocol::Ftps => {
+                self.manager.connect_ftp(&path, ConnectOptions::default())
             }
-            VfsProtocol::Smb => {
-                return Err(VfsError::NotSupported(
-                    "SMB connections not yet fully implemented".to_string(),
-                ));
-            }
+            VfsProtocol::Smb => self.manager.connect_smb(&path, ConnectOptions::default()),
             VfsProtocol::Nfs => {
                 return Err(VfsError::NotSupported(
                     "NFS connections not yet fully implemented".to_string(),
@@ -446,10 +440,35 @@ impl VfsState {
     }
 
     /// Provide password for pending authentication.
-    pub fn provide_password(&mut self, _password: String) {
+    ///
+    /// Retries the connection to the current remote path using password auth.
+    pub fn provide_password(&mut self, password: String) {
         self.awaiting_password = false;
-        // Password authentication will be implemented when SFTP support is complete
-        self.connection_status = Some("Password auth not yet implemented".to_string());
+
+        if !self.current_path.is_remote() {
+            return;
+        }
+
+        let options = ConnectOptions::with_password(password);
+        self.connection_status = Some(format!(
+            "Connecting to {}...",
+            self.current_path.host.as_deref().unwrap_or("remote")
+        ));
+        self.connection_started = Some(Instant::now());
+
+        let operation = match self.current_path.protocol {
+            VfsProtocol::Sftp => self.manager.connect_sftp(&self.current_path, options),
+            VfsProtocol::Ftp | VfsProtocol::Ftps => {
+                self.manager.connect_ftp(&self.current_path, options)
+            }
+            VfsProtocol::Smb => self.manager.connect_smb(&self.current_path, options),
+            _ => {
+                self.connection_status = None;
+                return;
+            }
+        };
+
+        self.pending_operation = Some(PendingVfsOperation::Connect(operation));
     }
 
     /// Cancel pending authentication.

@@ -316,6 +316,12 @@ resource_processes = "प्रक्रिया"
 resource_count = "संख्या"
 resource_ram_top_title = "RAM — शीर्ष प्रक्रियाएँ"
 terminal_kill_confirm = "चल रही प्रक्रियाओं को बंद करें?"
+vfs_connecting = "कनेक्ट हो रहा है..."
+vfs_connection_failed = "कनेक्शन विफल"
+vfs_ftp_connected = "FTP कनेक्टेड"
+vfs_password_prompt = "पासवर्ड"
+vfs_smb_connected = "SMB कनेक्टेड"
+vfs_username_prompt = "उपयोगकर्ता नाम"
 
 [formats]
 language_changed = "भाषा {name} में बदली गई"

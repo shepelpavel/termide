@@ -316,6 +316,12 @@ resource_processes = "işlem"
 resource_count = "adet"
 resource_ram_top_title = "RAM — En Çok Kullanan İşlemler"
 terminal_kill_confirm = "Çalışan işlemler sonlandırılsın mı?"
+vfs_connecting = "Bağlanıyor..."
+vfs_connection_failed = "Bağlantı başarısız"
+vfs_ftp_connected = "FTP bağlandı"
+vfs_password_prompt = "Şifre"
+vfs_smb_connected = "SMB bağlandı"
+vfs_username_prompt = "Kullanıcı adı"
 
 [formats]
 batch_result_errors_fmt = "hata: {count}"

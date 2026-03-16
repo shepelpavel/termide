@@ -57,6 +57,46 @@ impl SmbProvider {
             context: None,
         }
     }
+
+    /// Convert a VfsPath to an SMB URL string (smb://server/share/path).
+    pub fn to_smb_url(&self, path: &VfsPath) -> VfsResult<String> {
+        if !matches!(path.protocol, VfsProtocol::Smb) {
+            return Err(VfsError::InvalidPath(format!(
+                "Expected SMB path, got: {}",
+                path
+            )));
+        }
+
+        let host = path.host.as_deref().unwrap_or(&self.host);
+
+        // The share can come from the provider or from the first path component
+        let (share, remaining_path) = if let Some(ref share) = self.share {
+            (share.as_str(), path.path.display().to_string())
+        } else {
+            // Extract share from path: /share/rest/of/path
+            let path_str = path.path.display().to_string();
+            let trimmed = path_str.trim_start_matches('/');
+            if let Some(pos) = trimmed.find('/') {
+                (&trimmed[..pos], format!("/{}", &trimmed[pos + 1..]))
+            } else if !trimmed.is_empty() {
+                (trimmed, "/".to_string())
+            } else {
+                return Err(VfsError::InvalidPath(
+                    "SMB path must include a share name".to_string(),
+                ));
+            }
+        };
+
+        Ok(format!("smb://{}/{}{}", host, share, remaining_path))
+    }
+
+    /// Extract password from ConnectOptions.
+    fn extract_password(options: &ConnectOptions) -> String {
+        match &options.auth {
+            AuthMethod::Password(pwd) => pwd.clone(),
+            _ => String::new(),
+        }
+    }
 }
 
 #[cfg(not(feature = "smb"))]
@@ -190,7 +230,7 @@ impl VfsProvider for SmbProvider {
 
         let host = self.host.clone();
         let username = self.username.clone().unwrap_or_default();
-        let password = options.password.clone().unwrap_or_default();
+        let password = Self::extract_password(&options);
         let workgroup = self
             .workgroup
             .clone()
@@ -209,8 +249,8 @@ impl VfsProvider for SmbProvider {
                         .password(&password)
                         .workgroup(&workgroup),
                 )
-                .map_err(|e| VfsError::ConnectionFailed {
-                    message: format!("SMB connection failed: {:?}", e),
+                .map_err(|e| {
+                    VfsError::ConnectionFailed(format!("SMB connection failed: {:?}", e))
                 })?;
 
                 log::info!("SMB: Connected to {}", host);
@@ -262,10 +302,11 @@ impl VfsProvider for SmbProvider {
 
         std::thread::spawn(move || {
             let result = (|| -> VfsResult<Vec<VfsEntry>> {
-                let dir = context.opendir(&smb_url).map_err(|e| VfsError::NotFound {
-                    path: smb_url.clone(),
-                    message: format!("Failed to open directory: {:?}", e),
-                })?;
+                let dir = context
+                    .opendir(&smb_url)
+                    .map_err(|e| VfsError::RemoteError {
+                        message: format!("Failed to open directory '{}': {:?}", smb_url, e),
+                    })?;
 
                 let mut entries = Vec::new();
                 for entry in dir {
@@ -285,14 +326,17 @@ impl VfsProvider for SmbProvider {
                         _ => VfsFileType::File,
                     };
 
-                    entries.push(VfsEntry {
-                        name: name.clone(),
-                        path: parent_path.join(&name),
+                    let metadata = VfsMetadata {
                         file_type,
-                        size: 0, // Would need separate stat call
+                        size: 0,
                         modified: None,
-                        is_hidden: name.starts_with('.'),
-                    });
+                        created: None,
+                        accessed: None,
+                        readonly: false,
+                        permissions: None,
+                    };
+
+                    entries.push(VfsEntry::new(name, parent_path.join(&name), metadata));
                 }
 
                 Ok(entries)
@@ -373,9 +417,8 @@ impl VfsProvider for SmbProvider {
 
         std::thread::spawn(move || {
             let result = (|| -> VfsResult<VfsMetadata> {
-                let stat = context.stat(&smb_url).map_err(|e| VfsError::NotFound {
-                    path: smb_url,
-                    message: format!("Failed to stat: {:?}", e),
+                let stat = context.stat(&smb_url).map_err(|_| VfsError::NotFound {
+                    path: PathBuf::from(&smb_url),
                 })?;
 
                 let file_type = if stat.is_dir() {
@@ -431,13 +474,12 @@ impl VfsProvider for SmbProvider {
             let result = (|| -> VfsResult<Vec<u8>> {
                 let mut file = context
                     .open_with(&smb_url, pavao::SmbOpenOptions::default().read(true))
-                    .map_err(|e| VfsError::NotFound {
-                        path: smb_url,
-                        message: format!("Failed to open file: {:?}", e),
+                    .map_err(|_| VfsError::NotFound {
+                        path: PathBuf::from(&smb_url),
                     })?;
 
                 let mut data = Vec::new();
-                file.read_to_end(&mut data).map_err(|e| VfsError::Io(e))?;
+                file.read_to_end(&mut data).map_err(VfsError::Io)?;
 
                 Ok(data)
             })();
@@ -478,7 +520,7 @@ impl VfsProvider for SmbProvider {
                         message: format!("Failed to open file for writing: {:?}", e),
                     })?;
 
-                file.write_all(&data).map_err(|e| VfsError::Io(e))?;
+                file.write_all(&data).map_err(VfsError::Io)?;
 
                 Ok(())
             })();
@@ -585,17 +627,15 @@ impl VfsProvider for SmbProvider {
             let result = (|| -> VfsResult<PathBuf> {
                 let mut file = context
                     .open_with(&smb_url, pavao::SmbOpenOptions::default().read(true))
-                    .map_err(|e| VfsError::NotFound {
-                        path: smb_url,
-                        message: format!("Failed to open remote file: {:?}", e),
+                    .map_err(|_| VfsError::NotFound {
+                        path: PathBuf::from(&smb_url),
                     })?;
 
                 let mut data = Vec::new();
-                file.read_to_end(&mut data).map_err(|e| VfsError::Io(e))?;
+                file.read_to_end(&mut data).map_err(VfsError::Io)?;
 
-                let mut local_file =
-                    std::fs::File::create(&local_path).map_err(|e| VfsError::Io(e))?;
-                local_file.write_all(&data).map_err(|e| VfsError::Io(e))?;
+                let mut local_file = std::fs::File::create(&local_path).map_err(VfsError::Io)?;
+                local_file.write_all(&data).map_err(VfsError::Io)?;
 
                 Ok(local_path)
             })();
@@ -624,7 +664,7 @@ impl VfsProvider for SmbProvider {
 
         std::thread::spawn(move || {
             let result = (|| -> VfsResult<()> {
-                let data = std::fs::read(&local_path).map_err(|e| VfsError::Io(e))?;
+                let data = std::fs::read(&local_path).map_err(VfsError::Io)?;
 
                 let mut file = context
                     .open_with(
@@ -638,7 +678,7 @@ impl VfsProvider for SmbProvider {
                         message: format!("Failed to open remote file for writing: {:?}", e),
                     })?;
 
-                file.write_all(&data).map_err(|e| VfsError::Io(e))?;
+                file.write_all(&data).map_err(VfsError::Io)?;
 
                 Ok(())
             })();

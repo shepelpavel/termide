@@ -316,6 +316,12 @@ resource_processes = "প্রক্রিয়া"
 resource_count = "সংখ্যা"
 resource_ram_top_title = "RAM — শীর্ষ প্রক্রিয়া"
 terminal_kill_confirm = "চলমান প্রক্রিয়াগুলো বন্ধ করবেন?"
+vfs_connecting = "সংযোগ হচ্ছে..."
+vfs_connection_failed = "সংযোগ ব্যর্থ"
+vfs_ftp_connected = "FTP সংযুক্ত"
+vfs_password_prompt = "পাসওয়ার্ড"
+vfs_smb_connected = "SMB সংযুক্ত"
+vfs_username_prompt = "ব্যবহারকারী নাম"
 
 [formats]
 batch_result_errors_fmt = "ত্রুটি: {count}"

@@ -1675,4 +1675,28 @@ impl Translation for RuntimeTranslation {
     fn resource_count(&self) -> &str {
         self.get_string("resource_count")
     }
+
+    fn vfs_connecting(&self) -> &str {
+        self.get_string("vfs_connecting")
+    }
+
+    fn vfs_connection_failed(&self) -> &str {
+        self.get_string("vfs_connection_failed")
+    }
+
+    fn vfs_ftp_connected(&self) -> &str {
+        self.get_string("vfs_ftp_connected")
+    }
+
+    fn vfs_password_prompt(&self) -> &str {
+        self.get_string("vfs_password_prompt")
+    }
+
+    fn vfs_smb_connected(&self) -> &str {
+        self.get_string("vfs_smb_connected")
+    }
+
+    fn vfs_username_prompt(&self) -> &str {
+        self.get_string("vfs_username_prompt")
+    }
 }

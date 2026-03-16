@@ -43,6 +43,8 @@ pub struct InputModal {
     checkbox_label: Option<String>,
     checkbox_checked: bool,
     last_checkbox_area: Option<Rect>,
+    /// Whether to mask input with asterisks (password mode).
+    is_password: bool,
 }
 
 impl InputModal {
@@ -59,6 +61,7 @@ impl InputModal {
             checkbox_label: None,
             checkbox_checked: false,
             last_checkbox_area: None,
+            is_password: false,
         }
     }
 
@@ -79,7 +82,14 @@ impl InputModal {
             checkbox_label: None,
             checkbox_checked: false,
             last_checkbox_area: None,
+            is_password: false,
         }
+    }
+
+    /// Enable password mode (mask input with asterisks).
+    pub fn with_password_mode(mut self) -> Self {
+        self.is_password = true;
+        self
     }
 
     /// Add an optional checkbox to the modal
@@ -226,12 +236,21 @@ impl Modal for InputModal {
         self.last_input_area = Some(input_inner);
 
         // Render input content with cursor and selection
+        // In password mode, display asterisks instead of actual characters
+        let display_text;
+        let text = if self.is_password {
+            display_text = "*".repeat(self.input_handler.text().chars().count());
+            &display_text
+        } else {
+            self.input_handler.text()
+        };
+
         render_input_field(
             buf,
             input_inner.x,
             input_inner.y,
             input_inner.width,
-            self.input_handler.text(),
+            text,
             self.input_handler.cursor_pos(),
             self.input_handler.selection_range(),
             self.focus == FocusArea::Input,

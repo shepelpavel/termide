@@ -316,6 +316,12 @@ resource_processes = "กระบวนการ"
 resource_count = "จน"
 resource_ram_top_title = "RAM — กระบวนการหลัก"
 terminal_kill_confirm = "ยุติโปรเซสที่กำลังทำงาน?"
+vfs_connecting = "กำลังเชื่อมต่อ..."
+vfs_connection_failed = "การเชื่อมต่อล้มเหลว"
+vfs_ftp_connected = "เชื่อมต่อ FTP แล้ว"
+vfs_password_prompt = "รหัสผ่าน"
+vfs_smb_connected = "เชื่อมต่อ SMB แล้ว"
+vfs_username_prompt = "ชื่อผู้ใช้"
 
 [formats]
 language_changed = "เปลี่ยนภาษาเป็น {name}"

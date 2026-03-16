@@ -316,6 +316,12 @@ resource_processes = "プロセス"
 resource_count = "数"
 resource_ram_top_title = "RAM — プロセス一覧"
 terminal_kill_confirm = "実行中のプロセスを終了しますか？"
+vfs_connecting = "接続中..."
+vfs_connection_failed = "接続に失敗しました"
+vfs_ftp_connected = "FTP接続完了"
+vfs_password_prompt = "パスワード"
+vfs_smb_connected = "SMB接続完了"
+vfs_username_prompt = "ユーザー名"
 
 [formats]
 batch_result_errors_fmt = "エラー: {count}"

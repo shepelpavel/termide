@@ -316,6 +316,12 @@ resource_processes = "프로세스"
 resource_count = "수"
 resource_ram_top_title = "RAM — 상위 프로세스"
 terminal_kill_confirm = "실행 중인 프로세스를 종료하시겠습니까?"
+vfs_connecting = "연결 중..."
+vfs_connection_failed = "연결 실패"
+vfs_ftp_connected = "FTP 연결됨"
+vfs_password_prompt = "비밀번호"
+vfs_smb_connected = "SMB 연결됨"
+vfs_username_prompt = "사용자 이름"
 
 [formats]
 batch_result_errors_fmt = "오류: {count}"

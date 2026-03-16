@@ -316,6 +316,12 @@ resource_processes = "прц"
 resource_count = "кол-во"
 resource_ram_top_title = "RAM — Топ процессов"
 terminal_kill_confirm = "Завершить запущенные процессы?"
+vfs_connecting = "Подключение..."
+vfs_connection_failed = "Ошибка подключения"
+vfs_ftp_connected = "FTP подключён"
+vfs_password_prompt = "Пароль"
+vfs_smb_connected = "SMB подключён"
+vfs_username_prompt = "Имя пользователя"
 
 [formats]
 batch_result_errors_fmt = "ошибок: {count}"

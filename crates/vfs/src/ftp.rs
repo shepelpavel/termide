@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::SystemTime;
 
-use suppaftp::FtpStream;
+use suppaftp::{NativeTlsConnector, NativeTlsFtpStream};
 
 use crate::error::{VfsError, VfsResult};
 use crate::traits::{DiskSpace, VfsProvider};
@@ -21,7 +21,9 @@ use crate::types::{
 const DEFAULT_PORT: u16 = 21;
 
 /// Acquire FTP stream mutex lock, converting poison error to VfsError.
-fn lock_ftp(stream: &Arc<Mutex<FtpStream>>) -> VfsResult<std::sync::MutexGuard<'_, FtpStream>> {
+fn lock_ftp(
+    stream: &Arc<Mutex<NativeTlsFtpStream>>,
+) -> VfsResult<std::sync::MutexGuard<'_, NativeTlsFtpStream>> {
     stream.lock().map_err(|e| VfsError::RemoteError {
         message: format!("Failed to acquire FTP stream lock: {e}"),
     })
@@ -37,20 +39,23 @@ pub struct FtpProvider {
     username: Option<String>,
     /// Password (stored in memory for reconnection).
     password: Option<String>,
+    /// Whether to use TLS (FTPS).
+    use_tls: bool,
     /// Current connection state.
     state: ConnectionState,
     /// FTP stream (shared for thread safety).
-    stream: Option<Arc<Mutex<FtpStream>>>,
+    stream: Option<Arc<Mutex<NativeTlsFtpStream>>>,
 }
 
 impl FtpProvider {
     /// Create a new FTP provider.
-    pub fn new(host: &str, port: Option<u16>, username: Option<&str>) -> Self {
+    pub fn new(host: &str, port: Option<u16>, username: Option<&str>, use_tls: bool) -> Self {
         Self {
             host: host.to_string(),
-            port: port.unwrap_or(DEFAULT_PORT),
+            port: port.unwrap_or(if use_tls { 990 } else { DEFAULT_PORT }),
             username: username.map(String::from),
             password: None,
+            use_tls,
             state: ConnectionState::Disconnected,
             stream: None,
         }
@@ -58,9 +63,9 @@ impl FtpProvider {
 
     /// Convert VfsPath to remote path string.
     fn to_remote_path(path: &VfsPath) -> VfsResult<String> {
-        if !matches!(path.protocol, VfsProtocol::Ftp) {
+        if !matches!(path.protocol, VfsProtocol::Ftp | VfsProtocol::Ftps) {
             return Err(VfsError::InvalidPath(format!(
-                "Expected FTP path, got: {}",
+                "Expected FTP/FTPS path, got: {}",
                 path
             )));
         }
@@ -68,7 +73,7 @@ impl FtpProvider {
     }
 
     /// Check if connected and return the stream.
-    fn get_stream(&self) -> VfsResult<Arc<Mutex<FtpStream>>> {
+    fn get_stream(&self) -> VfsResult<Arc<Mutex<NativeTlsFtpStream>>> {
         match &self.stream {
             Some(stream) => Ok(Arc::clone(stream)),
             None => Err(VfsError::NotConnected),
@@ -141,7 +146,11 @@ impl Drop for FtpProvider {
 
 impl VfsProvider for FtpProvider {
     fn name(&self) -> &'static str {
-        "ftp"
+        if self.use_tls {
+            "ftps"
+        } else {
+            "ftp"
+        }
     }
 
     fn connection_state(&self) -> ConnectionState {
@@ -151,6 +160,7 @@ impl VfsProvider for FtpProvider {
     fn connect(&mut self, options: ConnectOptions) -> VfsOperation<()> {
         let host = self.host.clone();
         let port = self.port;
+        let use_tls = self.use_tls;
         let username = self
             .username
             .clone()
@@ -163,21 +173,38 @@ impl VfsProvider for FtpProvider {
         let (tx, rx) = std::sync::mpsc::channel();
 
         thread::spawn(move || {
-            let result = (|| -> VfsResult<FtpStream> {
+            let result = (|| -> VfsResult<NativeTlsFtpStream> {
                 // Connect to FTP server
                 let addr = format!("{}:{}", host, port);
-                log::info!("FTP: Connecting to {}", addr);
+                log::info!(
+                    "FTP: Connecting to {} (TLS: {})",
+                    addr,
+                    if use_tls { "yes" } else { "no" }
+                );
 
-                let mut stream = FtpStream::connect(&addr).map_err(|e| {
+                let mut stream = NativeTlsFtpStream::connect(&addr).map_err(|e| {
                     VfsError::ConnectionFailed(format!("FTP connection failed: {}", e))
                 })?;
+
+                // Upgrade to TLS if requested (explicit FTPS / STARTTLS)
+                if use_tls {
+                    let tls_connector = NativeTlsConnector::from(
+                        suppaftp::native_tls::TlsConnector::new().map_err(|e| {
+                            VfsError::ConnectionFailed(format!("TLS initialization failed: {}", e))
+                        })?,
+                    );
+                    stream = stream.into_secure(tls_connector, &host).map_err(|e| {
+                        VfsError::ConnectionFailed(format!("TLS upgrade failed: {}", e))
+                    })?;
+                    log::info!("FTP: TLS connection established to {}", addr);
+                }
 
                 // Login
                 stream.login(&username, &password).map_err(|e| {
                     VfsError::AuthenticationFailed(format!("FTP login failed: {}", e))
                 })?;
 
-                // Enable passive mode (more firewall-friendly)
+                // Set binary transfer mode
                 stream.transfer_type(suppaftp::types::FileType::Binary).ok();
 
                 log::info!("FTP: Connected and logged in to {}", addr);
@@ -243,7 +270,7 @@ impl VfsProvider for FtpProvider {
                 })?;
 
                 // Parse listing into entries
-                let provider = FtpProvider::new("", None, None);
+                let provider = FtpProvider::new("", None, None, false);
                 let entries: Vec<VfsEntry> = listing
                     .iter()
                     .filter_map(|line| provider.parse_list_line(line, &parent_path))
@@ -632,7 +659,7 @@ mod tests {
 
     #[test]
     fn test_ftp_provider_creation() {
-        let provider = FtpProvider::new("ftp.example.com", None, Some("user"));
+        let provider = FtpProvider::new("ftp.example.com", None, Some("user"), false);
         assert_eq!(provider.name(), "ftp");
         assert_eq!(provider.connection_state(), ConnectionState::Disconnected);
     }

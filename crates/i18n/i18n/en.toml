@@ -316,6 +316,12 @@ resource_disk_total = "total"
 resource_processes = "proc"
 resource_count = "qty"
 terminal_kill_confirm = "Kill running processes?"
+vfs_connecting = "Connecting..."
+vfs_connection_failed = "Connection failed"
+vfs_ftp_connected = "FTP connected"
+vfs_password_prompt = "Password"
+vfs_smb_connected = "SMB connected"
+vfs_username_prompt = "Username"
 
 [formats]
 batch_result_errors_fmt = "errors: {count}"
