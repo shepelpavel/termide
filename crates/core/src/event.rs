@@ -83,9 +83,7 @@ impl EventHandler {
                 {
                     self.coalesce_scroll_events(mouse)
                 }
-                CrosstermEvent::Mouse(mouse)
-                    if matches!(mouse.kind, MouseEventKind::Drag(_)) =>
-                {
+                CrosstermEvent::Mouse(mouse) if matches!(mouse.kind, MouseEventKind::Drag(_)) => {
                     self.coalesce_drag_events(mouse)
                 }
                 CrosstermEvent::Mouse(mouse) => Ok(Event::Mouse(mouse)),

@@ -2557,12 +2557,12 @@ fn is_source_file(filename: &str) -> bool {
         // Docker / misc
         "dockerfile"
     ) || filename.eq_ignore_ascii_case("Makefile")
-      || filename.eq_ignore_ascii_case("Dockerfile")
-      || filename.eq_ignore_ascii_case("Rakefile")
-      || filename.eq_ignore_ascii_case("Gemfile")
-      || filename.eq_ignore_ascii_case("Vagrantfile")
-      || filename.eq_ignore_ascii_case(".gitignore")
-      || filename.eq_ignore_ascii_case(".env")
+        || filename.eq_ignore_ascii_case("Dockerfile")
+        || filename.eq_ignore_ascii_case("Rakefile")
+        || filename.eq_ignore_ascii_case("Gemfile")
+        || filename.eq_ignore_ascii_case("Vagrantfile")
+        || filename.eq_ignore_ascii_case(".gitignore")
+        || filename.eq_ignore_ascii_case(".env")
 }
 
 #[cfg(test)]
