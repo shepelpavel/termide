@@ -823,11 +823,18 @@ pub fn get_ahead_behind(repo: &Path) -> (usize, usize) {
         }
     })
     .unwrap_or_else(|| {
-        // No upstream tracking branch — count all local commits as ahead
-        let ahead = git_command_stdout(repo, &["rev-list", "--count", "HEAD"])
+        // No upstream tracking branch — try to find remote default branch
+        for remote_ref in &["origin/HEAD", "origin/main", "origin/master"] {
+            if let Some(count) = git_command_stdout(
+                repo,
+                &["rev-list", "--count", &format!("{}..HEAD", remote_ref)],
+            )
             .and_then(|s| s.trim().parse().ok())
-            .unwrap_or(0);
-        (ahead, 0)
+            {
+                return (count, 0);
+            }
+        }
+        (0, 0)
     })
 }
 
