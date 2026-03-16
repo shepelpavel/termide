@@ -5,6 +5,20 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.1] - 2026-03-16
+
+### Added
+- **UI**: Calendar modal on clock click — monthly grid with day navigation (arrows, PgUp/PgDn for months, Home to jump to today)
+- **UI**: Colorized panel titles and improved status bar styling
+- **Git Log**: Open commit in browser with `o` / `Shift+Enter`
+- **VFS**: FTP/FTPS and SMB connection support via address bar input
+
+### Changed
+- **Refactor**: Deduplicate grapheme utilities into shared `termide-ui` crate
+- **Refactor**: Clean up menu bar rendering, remove `TERMIDE_LANG` env variable
+- **Performance**: Fix render allocations and SMB error handling
+- **Docs**: Sync documentation with recent feature changes
+
 ## [0.16.0] - 2026-03-16
 
 ### Added
