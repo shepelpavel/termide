@@ -42,7 +42,7 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 - **System Monitor** - Real-time CPU, RAM, disk usage in status bar
 - **Search & Replace** - Live preview, match counter, regex support
 - **Custom Scripts** - Run user-defined scripts from the Scripts menu (supports `.bg.` for background, `.report.` for modal output)
-- **Cross-platform** - Linux (x86_64, ARM64), macOS (Intel, Apple Silicon), Windows (WSL)
+- **Cross-platform** - Linux (x86_64, ARM64), macOS (Intel, Apple Silicon), Windows (native via ConPTY, WSL)
 - **Full Mouse Support** - Click navigation, scroll, double-click actions
 - **Keyboard Layouts** - Cyrillic support with automatic hotkey translation
 - **Vim Mode** - Optional Vim-style editing with Cyrillic keyboard support
@@ -53,7 +53,7 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 
 **Quick Start:** Download pre-built binaries from [GitHub Releases](https://github.com/termide/termide/releases) or install via your package manager.
 
-**Supported Platforms:** Linux (x86_64, ARM64, WSL), macOS (Intel, Apple Silicon)
+**Supported Platforms:** Linux (x86_64, ARM64), macOS (Intel, Apple Silicon), Windows (x86_64)
 
 ### Choose Your Installation Method
 
@@ -82,6 +82,9 @@ tar xzf termide-0.15.4-aarch64-apple-darwin.tar.gz
 wget https://github.com/termide/termide/releases/latest/download/termide-0.15.4-aarch64-unknown-linux-gnu.tar.gz
 tar xzf termide-0.15.4-aarch64-unknown-linux-gnu.tar.gz
 ./termide
+
+# Windows x86_64 (download .zip from Releases, extract, run in Windows Terminal)
+# https://github.com/termide/termide/releases/latest/download/termide-0.15.4-x86_64-pc-windows-msvc.zip
 ```
 
 </details>

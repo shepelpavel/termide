@@ -166,9 +166,23 @@ Alternatively, remove the quarantine attribute:
 xattr -d com.apple.quarantine termide
 ```
 
+### Windows (Native)
+
+TermIDE runs natively on Windows 10+ using ConPTY. Requires Windows Terminal for best experience.
+
+1. Download the `.zip` archive from [GitHub Releases](https://github.com/termide/termide/releases):
+   - `termide-VERSION-x86_64-pc-windows-msvc.zip`
+2. Extract the archive
+3. Run `termide.exe` in Windows Terminal
+
+**Configuration paths:**
+- Config: `%APPDATA%\termide\config.toml`
+- Sessions: `%APPDATA%\termide\sessions\`
+- Logs: `%LOCALAPPDATA%\termide\cache\termide.log`
+
 ### Windows (WSL)
 
-TermIDE works in Windows Subsystem for Linux (WSL and WSL2):
+TermIDE also works in Windows Subsystem for Linux (WSL and WSL2):
 
 1. Install WSL2 if you haven't already
 2. Download the Linux x86_64 binary inside WSL:

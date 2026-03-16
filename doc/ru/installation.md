@@ -166,9 +166,23 @@ sudo dnf install gcc
 xattr -d com.apple.quarantine termide
 ```
 
+### Windows (нативный)
+
+TermIDE работает нативно на Windows 10+ через ConPTY. Для лучшего опыта рекомендуется Windows Terminal.
+
+1. Скачайте `.zip` архив со страницы [GitHub Releases](https://github.com/termide/termide/releases):
+   - `termide-VERSION-x86_64-pc-windows-msvc.zip`
+2. Распакуйте архив
+3. Запустите `termide.exe` в Windows Terminal
+
+**Пути конфигурации:**
+- Конфиг: `%APPDATA%\termide\config.toml`
+- Сессии: `%APPDATA%\termide\sessions\`
+- Логи: `%LOCALAPPDATA%\termide\cache\termide.log`
+
 ### Windows (WSL)
 
-TermIDE работает в Windows Subsystem for Linux (WSL и WSL2):
+TermIDE также работает в Windows Subsystem for Linux (WSL и WSL2):
 
 1. Установите WSL2, если еще не установлен
 2. Скачайте Linux x86_64 бинарный файл внутри WSL:

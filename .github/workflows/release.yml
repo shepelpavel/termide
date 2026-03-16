@@ -64,6 +64,10 @@ jobs:
           - target: aarch64-apple-darwin
             os: macos-latest
             archive: tar.gz
+          # Windows x86_64 (native)
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: zip
 
     steps:
       - name: Checkout
@@ -88,7 +92,8 @@ jobs:
       - name: Build
         run: cargo build --release --target ${{ matrix.target }} --features vendored-openssl
 
-      - name: Package
+      - name: Package (Unix)
+        if: matrix.archive == 'tar.gz'
         run: |
           mkdir -p package
           cp target/${{ matrix.target }}/release/termide package/
@@ -96,6 +101,15 @@ jobs:
           cd package
           tar czvf ../termide-${{ github.ref_name }}-${{ matrix.target }}.tar.gz *
           cd ..
+
+      - name: Package (Windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path package
+          Copy-Item "target/${{ matrix.target }}/release/termide.exe" package/
+          Copy-Item README.md, LICENSE package/
+          Compress-Archive -Path package/* -DestinationPath "termide-${{ github.ref_name }}-${{ matrix.target }}.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

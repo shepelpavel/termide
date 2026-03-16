@@ -166,9 +166,23 @@ sudo dnf install gcc
 xattr -d com.apple.quarantine termide
 ```
 
+### Windows（原生）
+
+TermIDE 通过 ConPTY 在 Windows 10+ 上原生运行。建议使用 Windows Terminal 以获得最佳体验。
+
+1. 从 [GitHub Releases](https://github.com/termide/termide/releases) 下载 `.zip` 压缩包：
+   - `termide-VERSION-x86_64-pc-windows-msvc.zip`
+2. 解压压缩包
+3. 在 Windows Terminal 中运行 `termide.exe`
+
+**配置路径：**
+- 配置文件: `%APPDATA%\termide\config.toml`
+- 会话数据: `%APPDATA%\termide\sessions\`
+- 日志文件: `%LOCALAPPDATA%\termide\cache\termide.log`
+
 ### Windows (WSL)
 
-TermIDE 可在 Windows Subsystem for Linux（WSL 和 WSL2）中运行：
+TermIDE 也可在 Windows Subsystem for Linux（WSL 和 WSL2）中运行：
 
 1. 如果尚未安装，请先安装 WSL2
 2. 在 WSL 中下载 Linux x86_64 二进制文件：

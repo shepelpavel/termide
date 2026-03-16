@@ -42,7 +42,7 @@
 - **系统监控** - 状态栏实时显示 CPU、内存、磁盘使用情况
 - **搜索和替换** - 实时预览、匹配计数、正则表达式支持
 - **自定义脚本** - 从脚本菜单运行用户定义的脚本（支持 `.bg.` 后台执行、`.report.` 模态输出）
-- **跨平台** - Linux（x86_64、ARM64）、macOS（Intel、Apple Silicon）、Windows（WSL）
+- **跨平台** - Linux（x86_64、ARM64）、macOS（Intel、Apple Silicon）、Windows（原生 ConPTY、WSL）
 - **完整鼠标支持** - 点击导航、滚动、双击操作
 - **键盘布局** - 西里尔文支持，自动快捷键翻译
 - **Vim 模式** - 可选的 Vim 风格编辑，支持西里尔文键盘
@@ -53,7 +53,7 @@
 
 **快速开始：** 从 [GitHub Releases](https://github.com/termide/termide/releases) 下载预编译的二进制文件，或通过包管理器安装。
 
-**支持的平台：** Linux（x86_64、ARM64、WSL）、macOS（Intel、Apple Silicon）
+**支持的平台：** Linux（x86_64、ARM64）、macOS（Intel、Apple Silicon）、Windows（x86_64）
 
 ### 选择安装方式
 
@@ -82,6 +82,9 @@ tar xzf termide-0.15.4-aarch64-apple-darwin.tar.gz
 wget https://github.com/termide/termide/releases/latest/download/termide-0.15.4-aarch64-unknown-linux-gnu.tar.gz
 tar xzf termide-0.15.4-aarch64-unknown-linux-gnu.tar.gz
 ./termide
+
+# Windows x86_64（从 Releases 下载 .zip，解压后在 Windows Terminal 中运行）
+# https://github.com/termide/termide/releases/latest/download/termide-0.15.4-x86_64-pc-windows-msvc.zip
 ```
 
 </details>
