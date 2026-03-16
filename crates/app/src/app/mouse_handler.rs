@@ -1091,39 +1091,46 @@ impl App {
         Ok(false)
     }
 
-    /// Handle divider drag (update widths)
+    /// Handle divider drag — track cursor position and draw ghost line.
+    /// Only the ghost divider line is rendered (lightweight), while actual
+    /// panel resize is deferred to mouse release.
     fn handle_divider_drag(&mut self, current_x: u16) -> Result<()> {
-        let drag = &self.state.ui.drag;
-        let Some(divider_idx) = drag.active_divider else {
+        if self.state.ui.drag.last_applied_x == Some(current_x) {
             return Ok(());
-        };
-
-        let delta = current_x as i32 - drag.start_x as i32;
-        let (start_left, start_right) = drag.start_widths;
-
-        // Calculate new widths with min_panel_width constraint
-        let min_width = self.state.config.general.min_panel_width;
-        let total_width = start_left + start_right;
-
-        let new_left = (start_left as i32 + delta)
-            .max(min_width as i32)
-            .min((total_width - min_width) as i32) as u16;
-        let new_right = total_width - new_left;
-
-        // Apply new widths
-        self.layout_manager
-            .resize_groups(divider_idx, new_left, new_right);
+        }
+        self.state.ui.drag.last_applied_x = Some(current_x);
+        // Trigger redraw for the ghost line — this is lightweight because
+        // only ~2 columns change (ratatui diff rendering sends minimal data).
         self.state.needs_redraw = true;
-
         Ok(())
     }
 
-    /// Handle divider drag end (save session)
+    /// Handle divider drag end — apply final widths and redraw once.
     fn handle_divider_drag_end(&mut self) -> Result<()> {
+        // Apply the accumulated drag position as a single resize
+        if let (Some(divider_idx), Some(final_x)) = (
+            self.state.ui.drag.active_divider,
+            self.state.ui.drag.last_applied_x,
+        ) {
+            let delta = final_x as i32 - self.state.ui.drag.start_x as i32;
+            let (start_left, start_right) = self.state.ui.drag.start_widths;
+
+            let min_width = self.state.config.general.min_panel_width;
+            let total_width = start_left + start_right;
+
+            let new_left = (start_left as i32 + delta)
+                .max(min_width as i32)
+                .min((total_width - min_width) as i32) as u16;
+            let new_right = total_width - new_left;
+
+            self.layout_manager
+                .resize_groups(divider_idx, new_left, new_right);
+        }
+
         self.state.ui.drag.end();
         self.state.needs_redraw = true;
 
-        // Save session with new widths (debounce: only on mouse up)
+        // Save session with new widths
         self.auto_save_session();
 
         Ok(())

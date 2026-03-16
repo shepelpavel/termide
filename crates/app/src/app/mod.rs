@@ -447,8 +447,10 @@ impl App {
                         .map(|t| t.elapsed() < Duration::from_millis(100))
                         .unwrap_or(false);
 
-                    // Skip heavy operations during active scrolling
-                    if !is_scrolling {
+                    let is_dragging = self.state.ui.drag.is_dragging();
+
+                    // Skip heavy operations during active scrolling or divider drag
+                    if !is_scrolling && !is_dragging {
                         // Single combined loop: terminal output + panel tick + FM spinner
                         let mut all_panel_events = Vec::new();
                         for (panel, is_expanded) in self

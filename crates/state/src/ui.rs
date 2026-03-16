@@ -70,6 +70,8 @@ pub struct DragState {
     pub start_x: u16,
     /// Initial widths of left and right groups
     pub start_widths: (u16, u16),
+    /// Last column applied (skip redraw if unchanged)
+    pub last_applied_x: Option<u16>,
 }
 
 impl DragState {
@@ -83,6 +85,7 @@ impl DragState {
     /// End dragging
     pub fn end(&mut self) {
         self.active_divider = None;
+        self.last_applied_x = None;
     }
 
     /// Check if currently dragging

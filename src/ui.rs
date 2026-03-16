@@ -310,12 +310,13 @@ fn render_main_area_with_accordion(
             render_panel_group(frame, group_area, state, group, group_idx, is_active_group);
         }
 
-        // Render dividers between groups
+        // Render dividers between groups (ghost line during drag)
         let divider_positions = layout_manager.get_divider_positions();
         render_dividers(
             frame.buffer_mut(),
             &divider_positions,
             state.ui.drag.active_divider,
+            state.ui.drag.last_applied_x,
             state.terminal.height,
             state.theme,
         );

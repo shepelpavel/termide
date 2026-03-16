@@ -83,6 +83,11 @@ impl EventHandler {
                 {
                     self.coalesce_scroll_events(mouse)
                 }
+                CrosstermEvent::Mouse(mouse)
+                    if matches!(mouse.kind, MouseEventKind::Drag(_)) =>
+                {
+                    self.coalesce_drag_events(mouse)
+                }
                 CrosstermEvent::Mouse(mouse) => Ok(Event::Mouse(mouse)),
                 CrosstermEvent::Resize(width, height) => Ok(Event::Resize(width, height)),
                 CrosstermEvent::FocusLost => Ok(Event::FocusLost),
@@ -142,6 +147,32 @@ impl EventHandler {
             event: first,
             delta,
         })
+    }
+
+    /// Coalesce multiple drag events into a single event with the latest position.
+    /// This prevents processing dozens of intermediate drag positions when the
+    /// user moves the mouse quickly, significantly reducing lag over SSH.
+    fn coalesce_drag_events(&self, first: MouseEvent) -> Result<Event> {
+        let mut latest = first;
+
+        // Drain queue with zero timeout to collect pending drag events
+        while event::poll(Duration::ZERO)? {
+            let raw = event::read()?;
+            match &raw {
+                CrosstermEvent::Mouse(m) if matches!(m.kind, MouseEventKind::Drag(_)) => {
+                    latest = *m;
+                }
+                _ => {
+                    // Queue non-drag event for later processing
+                    if let Some(ev) = self.convert_crossterm_event(raw) {
+                        self.pending_events.borrow_mut().push_back(ev);
+                    }
+                    break;
+                }
+            }
+        }
+
+        Ok(Event::Mouse(latest))
     }
 
     /// Convert crossterm event to our Event type.

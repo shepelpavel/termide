@@ -87,5 +87,9 @@ pub const IDLE_TICK_MS: u64 = 200;
 /// Duration of inactivity before switching to idle tick rate (in milliseconds).
 pub const IDLE_THRESHOLD_MS: u64 = 500;
 
+/// Tick rate during divider drag in milliseconds (83ms = ~12 FPS).
+/// Lower frame rate reduces data sent over SSH while dragging panel dividers.
+pub const DRAG_TICK_MS: u64 = 83;
+
 /// Double-click detection interval in milliseconds.
 pub const DOUBLE_CLICK_INTERVAL_MS: u128 = 500;
