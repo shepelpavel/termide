@@ -1060,6 +1060,7 @@ impl App {
             receiver: rx,
             pid,
             operation: cmd_str,
+            started_at: std::time::Instant::now(),
         });
 
         Ok(())

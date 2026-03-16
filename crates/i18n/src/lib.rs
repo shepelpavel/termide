@@ -317,6 +317,7 @@ pub trait Translation: Send + Sync {
     fn git_pull_success(&self) -> String;
     fn git_pull_failed(&self) -> String;
     fn git_completed(&self) -> String;
+    fn git_operation_timed_out(&self) -> &str;
 
     // Preferences submenu
     fn preferences_themes(&self) -> &str;

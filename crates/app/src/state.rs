@@ -62,6 +62,8 @@ pub struct GitOperationHandle {
     pub pid: u32,
     /// Operation type: "push" or "pull"
     pub operation: String,
+    /// When the operation was started (for timeout detection)
+    pub started_at: std::time::Instant,
 }
 
 impl std::fmt::Debug for GitOperationHandle {

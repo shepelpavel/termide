@@ -986,6 +986,10 @@ impl Translation for RuntimeTranslation {
         self.get_string("git_completed").to_string()
     }
 
+    fn git_operation_timed_out(&self) -> &str {
+        self.get_string("git_operation_timed_out")
+    }
+
     fn preferences_themes(&self) -> &str {
         self.get_string("preferences_themes")
     }

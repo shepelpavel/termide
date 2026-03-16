@@ -151,6 +151,45 @@ impl App {
                 }
             }
             Err(TryRecvError::Empty) => {
+                // Check timeout (30 seconds)
+                const GIT_OPERATION_TIMEOUT: std::time::Duration =
+                    std::time::Duration::from_secs(30);
+                if handle.started_at.elapsed() >= GIT_OPERATION_TIMEOUT {
+                    log::warn!(
+                        "Git {} timed out after {}s (PID: {})",
+                        handle.operation,
+                        GIT_OPERATION_TIMEOUT.as_secs(),
+                        handle.pid
+                    );
+
+                    // Kill the process
+                    #[cfg(unix)]
+                    {
+                        let _ = std::process::Command::new("kill")
+                            .arg("-KILL")
+                            .arg(handle.pid.to_string())
+                            .status();
+                    }
+                    #[cfg(windows)]
+                    {
+                        let _ = std::process::Command::new("taskkill")
+                            .args(["/PID", &handle.pid.to_string(), "/F"])
+                            .status();
+                    }
+
+                    self.state.ui.git_operation_in_progress = false;
+                    self.state.clear_status();
+                    self.notify_git_operation_state(false, None, 0);
+
+                    let t = termide_i18n::t();
+                    self.state.set_error(format!(
+                        "git {} {}",
+                        handle.operation,
+                        t.git_operation_timed_out()
+                    ));
+                    return;
+                }
+
                 // Operation still in progress
                 // Throttle spinner animation to 125ms (8 FPS) to reduce CPU usage
                 const GIT_SPINNER_INTERVAL: std::time::Duration =
