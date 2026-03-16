@@ -208,18 +208,12 @@ impl SystemMonitor {
 
     /// Get network download rate in bytes per second.
     pub fn net_download_rate(&self) -> u64 {
-        self.net_state
-            .lock()
-            .map(|s| s.download_rate)
-            .unwrap_or(0)
+        self.net_state.lock().map(|s| s.download_rate).unwrap_or(0)
     }
 
     /// Get network upload rate in bytes per second.
     pub fn net_upload_rate(&self) -> u64 {
-        self.net_state
-            .lock()
-            .map(|s| s.upload_rate)
-            .unwrap_or(0)
+        self.net_state.lock().map(|s| s.upload_rate).unwrap_or(0)
     }
 
     /// Get top N processes by CPU usage, grouped by binary name.
