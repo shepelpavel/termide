@@ -5,6 +5,19 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.2] - 2026-03-16
+
+### Added
+- **Terminal**: Shell picker submenu under Windows > Terminal — lists all available shells, marks default with ●, saves selection to config (#12)
+- **Docs**: Document shell picker feature (en, ru, zh)
+
+### Fixed
+- **Terminal**: Deduplicate shells in picker by canonical path + basename — eliminates duplicates on NixOS and merged-usr distros while keeping sh/bash as separate entries
+- **Windows**: Coalesce pasted text into bracketed paste events (#13)
+- **Git**: Unpushed commits indicator was showing total project commits instead of ahead count
+- **App**: Clear cached shells when closing menu by clicking outside it
+- **UI**: Move Terminal to top of Windows submenu for faster access
+
 ## [0.16.1] - 2026-03-16
 
 ### Added
