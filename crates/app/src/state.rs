@@ -400,6 +400,7 @@ impl AppState {
         self.ui.selected_menu_item = None;
         self.ui.selected_dropdown_item = 0;
         self.ui.close_all_submenus();
+        self.cached_shells.clear();
     }
 
     /// Open submenu (e.g., Preferences dropdown)
