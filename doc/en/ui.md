@@ -38,7 +38,7 @@ Menu activation/deactivation and each item can be accessed by mouse click or [ke
   - Change root path — move current session to another directory
 - `Windows` — panel creation submenu:
   - Files — file manager panel
-  - Terminal — terminal panel
+  - Terminal — terminal panel (has submenu for choosing a shell: lists all available shells on the system, the default shell is marked with ●)
   - Editor — text editor panel
   - Git Status — git status panel
   - Git Log — commit history panel

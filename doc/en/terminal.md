@@ -40,6 +40,22 @@ Press `Ctrl+F` to open the search modal. The search works across the entire scro
 
 The search keybinding defaults to `Ctrl+F` (instead of `Ctrl+Shift+F`) because most host terminals intercept `Ctrl+Shift+F` for their own search.
 
+## Shell Selection
+
+You can choose which shell to launch via the **Windows > Terminal** submenu. The submenu lists all shells detected on your system:
+
+- **Linux/macOS**: shells from `/etc/shells`, plus common paths (`/usr/bin/fish`, `/usr/bin/zsh`, `/bin/bash`, `/bin/sh`) and NixOS-specific paths
+- **Windows**: Git Bash, PowerShell Core (`pwsh`), Windows PowerShell, Command Prompt (`cmd`), and WSL distributions
+
+The currently configured default shell is marked with **●**. Selecting a shell opens a new terminal with that shell and saves it as the default for future terminals.
+
+You can also set the default shell in `config.toml`:
+
+```toml
+[terminal]
+default_shell = "/usr/bin/fish"
+```
+
 ## Mouse Support
 
 - **Text Selection**: Click and hold the left mouse button to select text. Selected text is automatically copied to the clipboard after releasing the button

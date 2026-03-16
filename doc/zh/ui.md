@@ -38,7 +38,7 @@
   - 更改根路径 — 将当前会话移至其他目录
 - `Windows` — 面板创建子菜单：
   - Files — 文件管理器面板
-  - Terminal — 终端面板
+  - Terminal — 终端面板（有子菜单可选择 shell：列出系统中所有可用的 shell，默认 shell 以 ● 标记）
   - Editor — 文本编辑器面板
   - Git Status — Git 状态面板
   - Git Log — 提交历史面板
