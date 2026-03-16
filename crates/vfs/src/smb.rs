@@ -417,9 +417,9 @@ impl VfsProvider for SmbProvider {
 
         std::thread::spawn(move || {
             let result = (|| -> VfsResult<VfsMetadata> {
-                let stat = context.stat(&smb_url).map_err(|_| VfsError::NotFound {
-                    path: PathBuf::from(&smb_url),
-                })?;
+                let stat = context
+                    .stat(&smb_url)
+                    .map_err(|e| VfsError::Smb(format!("stat {}: {}", smb_url, e)))?;
 
                 let file_type = if stat.is_dir() {
                     VfsFileType::Directory
@@ -474,9 +474,7 @@ impl VfsProvider for SmbProvider {
             let result = (|| -> VfsResult<Vec<u8>> {
                 let mut file = context
                     .open_with(&smb_url, pavao::SmbOpenOptions::default().read(true))
-                    .map_err(|_| VfsError::NotFound {
-                        path: PathBuf::from(&smb_url),
-                    })?;
+                    .map_err(|e| VfsError::Smb(format!("open {}: {}", smb_url, e)))?;
 
                 let mut data = Vec::new();
                 file.read_to_end(&mut data).map_err(VfsError::Io)?;
@@ -627,9 +625,7 @@ impl VfsProvider for SmbProvider {
             let result = (|| -> VfsResult<PathBuf> {
                 let mut file = context
                     .open_with(&smb_url, pavao::SmbOpenOptions::default().read(true))
-                    .map_err(|_| VfsError::NotFound {
-                        path: PathBuf::from(&smb_url),
-                    })?;
+                    .map_err(|e| VfsError::Smb(format!("open {}: {}", smb_url, e)))?;
 
                 let mut data = Vec::new();
                 file.read_to_end(&mut data).map_err(VfsError::Io)?;

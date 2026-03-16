@@ -4,6 +4,7 @@
 
 pub mod click_tracker;
 pub mod config;
+pub mod grapheme_utils;
 pub mod path_utils;
 pub mod scrollbar;
 pub mod selection_style;

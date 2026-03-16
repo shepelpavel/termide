@@ -5,7 +5,7 @@
 
 #[cfg(not(unix))]
 use std::ffi::OsStr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use super::get_data_dir;
 
@@ -162,7 +162,7 @@ impl ScriptsRegistry {
 
     /// Check if a file is executable (has execute permission on Unix).
     #[cfg(unix)]
-    fn is_executable(path: &PathBuf) -> bool {
+    fn is_executable(path: &Path) -> bool {
         use std::os::unix::fs::PermissionsExt;
 
         std::fs::metadata(path)
@@ -171,7 +171,7 @@ impl ScriptsRegistry {
     }
 
     #[cfg(not(unix))]
-    fn is_executable(path: &PathBuf) -> bool {
+    fn is_executable(path: &Path) -> bool {
         // On non-Unix, check for common script extensions
         let extensions = ["sh", "bat", "cmd", "ps1", "py", "rb", "pl"];
         path.extension()

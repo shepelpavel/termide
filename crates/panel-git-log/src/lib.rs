@@ -659,57 +659,32 @@ impl GitLogPanel {
             }
 
             // Determine ref type and color
-            let (text, style) = if ref_part.contains("HEAD") {
-                // HEAD - red/magenta
-                let head_style = if is_selected {
-                    Style::default()
-                        .fg(theme.selection_fg)
-                        .bg(theme.selection_bg)
-                } else {
-                    Style::default().fg(theme.error)
-                };
-                (ref_part.to_string(), head_style)
-            } else if ref_part.starts_with("tag:") {
-                // Tag - yellow
-                let tag_style = if is_selected {
-                    Style::default()
-                        .fg(theme.selection_fg)
-                        .bg(theme.selection_bg)
-                } else {
-                    Style::default().fg(theme.warning)
-                };
-                (ref_part.to_string(), tag_style)
-            } else if ref_part.contains('/') {
-                // Remote branch - cyan
-                let remote_style = if is_selected {
-                    Style::default()
-                        .fg(theme.selection_fg)
-                        .bg(theme.selection_bg)
-                } else {
-                    Style::default().fg(theme.info)
-                };
-                (ref_part.to_string(), remote_style)
+            let style = if is_selected {
+                Style::default()
+                    .fg(theme.selection_fg)
+                    .bg(theme.selection_bg)
             } else {
-                // Local branch - green
-                let branch_style = if is_selected {
-                    Style::default()
-                        .fg(theme.selection_fg)
-                        .bg(theme.selection_bg)
+                let fg = if ref_part.contains("HEAD") {
+                    theme.error
+                } else if ref_part.starts_with("tag:") {
+                    theme.warning
+                } else if ref_part.contains('/') {
+                    theme.info
                 } else {
-                    Style::default().fg(theme.success)
+                    theme.success
                 };
-                (ref_part.to_string(), branch_style)
+                Style::default().fg(fg)
             };
 
-            let text_width = text.width() as u16;
+            let text_width = ref_part.width() as u16;
             if x + text_width <= max_x {
-                buf.set_string(x, y, &text, style);
+                buf.set_string(x, y, ref_part, style);
                 x += text_width;
             } else {
                 // Truncate
                 let remaining = (max_x - x) as usize;
                 if remaining > 0 {
-                    let truncated = truncate_to_width(&text, remaining);
+                    let truncated = truncate_to_width(ref_part, remaining);
                     buf.set_string(x, y, &truncated, style);
                     x = max_x;
                 }

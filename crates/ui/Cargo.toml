@@ -11,6 +11,7 @@ description = "UI components for termide"
 ratatui.workspace = true
 crossterm.workspace = true
 anyhow.workspace = true
+unicode-segmentation.workspace = true
 unicode-width.workspace = true
 dirs.workspace = true
 

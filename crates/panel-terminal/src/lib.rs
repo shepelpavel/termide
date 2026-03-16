@@ -1357,9 +1357,13 @@ impl Panel for Terminal {
         // Clear the render area with background color to prevent visual artifacts
         // from previous content (modal borders, old status lines, etc.)
         let bg_style = Style::default().bg(theme.bg);
-        let blank_line = " ".repeat(area.width as usize);
         for y in area.top()..area.bottom() {
-            buf.set_string(area.x, y, &blank_line, bg_style);
+            for x in area.left()..area.right() {
+                if let Some(cell) = buf.cell_mut((x, y)) {
+                    cell.set_char(' ');
+                    cell.set_style(bg_style);
+                }
+            }
         }
 
         let paragraph = Paragraph::new(lines);
