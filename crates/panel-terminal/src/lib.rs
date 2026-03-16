@@ -4,7 +4,7 @@
 mod clipboard;
 mod disk_space;
 mod link_detection;
-mod shell_utils;
+pub mod shell_utils;
 mod terminal;
 mod terminal_info;
 
@@ -216,8 +216,19 @@ impl Terminal {
         }
     }
 
-    /// Create new terminal with specified working directory
+    /// Create new terminal with specified working directory (auto-detects shell)
     pub fn new_with_cwd(rows: u16, cols: u16, cwd: Option<std::path::PathBuf>) -> Result<Self> {
+        let shell = shell_utils::detect_shell();
+        Self::new_with_shell(rows, cols, &shell, cwd)
+    }
+
+    /// Create new terminal with a specific shell and optional working directory.
+    pub fn new_with_shell(
+        rows: u16,
+        cols: u16,
+        shell_path: &str,
+        cwd: Option<std::path::PathBuf>,
+    ) -> Result<Self> {
         let pty_system = native_pty_system();
         let size = PtySize {
             rows,
@@ -227,20 +238,32 @@ impl Terminal {
         };
         let pair = pty_system.openpty(size)?;
 
-        // Detect shell
-        let shell = shell_utils::detect_shell();
-        let shell_args = shell_utils::get_shell_args(&shell);
+        let shell_args = shell_utils::get_shell_args(shell_path);
 
-        let mut cmd = CommandBuilder::new(&shell);
-        for arg in shell_args {
-            cmd.arg(arg);
-        }
+        // WSL entries use "wsl -d distro" format
+        let mut cmd = if shell_path.starts_with("wsl ") {
+            let parts: Vec<&str> = shell_path.split_whitespace().collect();
+            if parts.is_empty() {
+                anyhow::bail!("empty shell path");
+            }
+            let mut cmd = CommandBuilder::new(parts[0]);
+            for arg in &parts[1..] {
+                cmd.arg(arg);
+            }
+            cmd
+        } else {
+            let mut cmd = CommandBuilder::new(shell_path);
+            for arg in shell_args {
+                cmd.arg(arg);
+            }
+            cmd
+        };
 
         let working_dir =
             cwd.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| "/".into()));
         cmd.cwd(&working_dir);
         Self::set_env(&mut cmd, &working_dir);
-        cmd.env("SHELL", &shell);
+        cmd.env("SHELL", shell_path);
 
         let child = pair.slave.spawn_command(cmd)?;
         let shell_pid = child.process_id();
