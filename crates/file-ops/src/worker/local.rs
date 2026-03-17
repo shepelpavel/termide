@@ -166,12 +166,12 @@ impl LocalCopyWorker {
 
             // Verify file size
             if file_bytes_copied != file_size {
-                return Err(OperationError::Io(format!(
+                return Err(OperationError::Io(std::io::Error::other(format!(
                     "File size mismatch for {}: expected {}, got {}",
                     source.display(),
                     file_size,
                     file_bytes_copied
-                )));
+                ))));
             }
         }
 
@@ -547,7 +547,7 @@ impl OperationWorker for LocalDeleteWorker {
                 return OperationResult::Cancelled;
             }
 
-            let meta = fs::symlink_metadata(path).map_err(|e| OperationError::Io(e.to_string()));
+            let meta = fs::symlink_metadata(path).map_err(OperationError::Io);
             let is_real_dir = meta.as_ref().is_ok_and(|m| m.is_dir() && !m.is_symlink());
             if is_real_dir {
                 match self.count_files(path, control) {
@@ -567,7 +567,7 @@ impl OperationWorker for LocalDeleteWorker {
                 return OperationResult::Cancelled;
             }
 
-            let meta = fs::symlink_metadata(path).map_err(|e| OperationError::Io(e.to_string()));
+            let meta = fs::symlink_metadata(path).map_err(OperationError::Io);
             let is_real_dir = meta.as_ref().is_ok_and(|m| m.is_dir() && !m.is_symlink());
             let result = if is_real_dir {
                 self.delete_directory(path, control, progress_tx, &mut files_deleted, total_files)
@@ -590,7 +590,7 @@ impl OperationWorker for LocalDeleteWorker {
                         files_deleted += 1;
                         Ok(())
                     }
-                    Err(e) => Err(OperationError::Io(e.to_string())),
+                    Err(e) => Err(OperationError::Io(e)),
                 }
             };
 

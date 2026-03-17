@@ -390,7 +390,7 @@ impl OperationResult {
 }
 
 /// Error type for file operations.
-#[derive(Debug, Clone, thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum OperationError {
     /// Operation was cancelled.
     #[error("Operation cancelled")]
@@ -398,11 +398,11 @@ pub enum OperationError {
 
     /// I/O error.
     #[error("I/O error: {0}")]
-    Io(String),
+    Io(#[from] std::io::Error),
 
     /// VFS error.
     #[error("VFS error: {0}")]
-    Vfs(String),
+    Vfs(#[from] termide_vfs::VfsError),
 
     /// Operation not found.
     #[error("Operation not found: {0}")]
@@ -415,18 +415,6 @@ pub enum OperationError {
     /// Invalid operation.
     #[error("Invalid operation: {0}")]
     Invalid(String),
-}
-
-impl From<std::io::Error> for OperationError {
-    fn from(e: std::io::Error) -> Self {
-        Self::Io(e.to_string())
-    }
-}
-
-impl From<termide_vfs::VfsError> for OperationError {
-    fn from(e: termide_vfs::VfsError) -> Self {
-        Self::Vfs(e.to_string())
-    }
 }
 
 /// Events emitted by the operation system.

@@ -46,12 +46,6 @@ use termide_ui::ScrollBar;
 
 /// State for terminal text search across scrollback and visible buffer.
 struct TerminalSearchState {
-    /// Search query (kept for re-search when scrollback changes).
-    #[allow(dead_code)]
-    query: String,
-    /// Case sensitivity flag (kept for re-search).
-    #[allow(dead_code)]
-    case_sensitive: bool,
     /// Matches: (absolute_row, column_start, match_length)
     matches: Vec<(usize, usize, usize)>,
     current_match: Option<usize>,
@@ -1189,10 +1183,11 @@ impl Terminal {
 
             // Extract text from cells
             let line_text: String = row.iter().map(|c| c.ch).collect();
-            let search_text = if case_sensitive {
-                line_text.clone()
+            // Cow avoids cloning the String in the case-sensitive branch
+            let search_text: std::borrow::Cow<str> = if case_sensitive {
+                std::borrow::Cow::Borrowed(&line_text)
             } else {
-                line_text.to_lowercase()
+                std::borrow::Cow::Owned(line_text.to_lowercase())
             };
 
             // Find all occurrences in this line
@@ -1246,8 +1241,6 @@ impl Searchable for Terminal {
         };
 
         self.search_state = Some(TerminalSearchState {
-            query,
-            case_sensitive,
             matches,
             current_match,
         });
@@ -1380,14 +1373,7 @@ impl Panel for Terminal {
         // Clear the render area with background color to prevent visual artifacts
         // from previous content (modal borders, old status lines, etc.)
         let bg_style = Style::default().bg(theme.bg);
-        for y in area.top()..area.bottom() {
-            for x in area.left()..area.right() {
-                if let Some(cell) = buf.cell_mut((x, y)) {
-                    cell.set_char(' ');
-                    cell.set_style(bg_style);
-                }
-            }
-        }
+        buf.set_style(area, bg_style);
 
         let paragraph = Paragraph::new(lines);
         paragraph.render(area, buf);

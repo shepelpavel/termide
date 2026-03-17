@@ -116,7 +116,7 @@ impl RemoteDeleteWorker {
             .vfs_manager
             .metadata(path)
             .recv()
-            .map_err(|e| OperationError::Vfs(e.to_string()))?;
+            .map_err(OperationError::Vfs)?;
 
         if !metadata.file_type.is_dir() {
             // Single file — count as 1
@@ -128,7 +128,7 @@ impl RemoteDeleteWorker {
             .vfs_manager
             .list_dir(path)
             .recv()
-            .map_err(|e| OperationError::Vfs(e.to_string()))?;
+            .map_err(OperationError::Vfs)?;
 
         let mut count: usize = 0;
         for entry in &entries {
@@ -174,7 +174,7 @@ impl RemoteDeleteWorker {
             .vfs_manager
             .metadata(path)
             .recv()
-            .map_err(|e| OperationError::Vfs(e.to_string()))?;
+            .map_err(OperationError::Vfs)?;
 
         if metadata.file_type.is_dir() {
             // List directory entries
@@ -182,7 +182,7 @@ impl RemoteDeleteWorker {
                 .vfs_manager
                 .list_dir(path)
                 .recv()
-                .map_err(|e| OperationError::Vfs(e.to_string()))?;
+                .map_err(OperationError::Vfs)?;
 
             // Delete children first (depth-first)
             for entry in &entries {
@@ -276,7 +276,7 @@ impl RemoteDeleteWorker {
                             if matches!(e, termide_vfs::VfsError::Cancelled) {
                                 Err(OperationError::Cancelled)
                             } else {
-                                Err(OperationError::Vfs(e.to_string()))
+                                Err(OperationError::Vfs(e))
                             }
                         }
                     };
@@ -284,15 +284,17 @@ impl RemoteDeleteWorker {
                 std::thread::sleep(std::time::Duration::from_millis(50));
             };
 
-            match &result {
-                Err(OperationError::Vfs(error_msg)) | Err(OperationError::Io(error_msg)) => {
-                    if is_retryable_error(error_msg) && retry_state.record_failure(error_msg) {
-                        continue;
-                    }
-                    return result;
+            let retryable_msg: Option<String> = match &result {
+                Err(OperationError::Vfs(e)) => Some(e.to_string()),
+                Err(OperationError::Io(e)) => Some(e.to_string()),
+                _ => None,
+            };
+            if let Some(msg) = retryable_msg {
+                if is_retryable_error(&msg) && retry_state.record_failure(&msg) {
+                    continue;
                 }
-                _ => return result,
             }
+            return result;
         }
     }
 }

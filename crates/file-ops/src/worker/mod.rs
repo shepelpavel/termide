@@ -37,7 +37,7 @@ pub(super) fn poll_vfs_delete(
         if let Some(result) = operation.try_recv() {
             return match result {
                 Ok(()) => Ok(()),
-                Err(e) => Err(OperationError::Vfs(e.to_string())),
+                Err(e) => Err(OperationError::Vfs(e)),
             };
         }
         std::thread::sleep(std::time::Duration::from_millis(50));
