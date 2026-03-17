@@ -5,6 +5,16 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.3] - 2026-03-17
+
+### Fixed
+- **App**: Disk space in status bar is now cached per tick instead of calling `statvfs` on every render — eliminates potential blocking on NFS mounts under high input rate
+- **App**: Resource modal auto-refresh interval unified — CPU, RAM and Disk modals all use `resource_monitor_interval` config (was hardcoded 3 s for process modals); default interval changed from 1 s to 2 s
+
+### Changed
+- **App**: Disk modal now auto-refreshes on tick like CPU/RAM modals
+- **Refactor**: Preserve original error types in VFS/file-ops paths; remove dead code; optimize rendering hot path
+
 ## [0.16.2] - 2026-03-16
 
 ### Added
