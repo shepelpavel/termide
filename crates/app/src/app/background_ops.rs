@@ -444,6 +444,17 @@ impl App {
             {
                 self.state.needs_redraw = true;
             }
+            self.update_disk_space();
+        }
+    }
+
+    /// Update cached disk space for the active panel.
+    /// Called on each resource tick so status bar reads from cache instead of per-render statvfs.
+    fn update_disk_space(&mut self) {
+        let disk = self.get_active_panel_disk_space();
+        if disk != self.state.cached_disk_space {
+            self.state.cached_disk_space = disk;
+            self.state.needs_redraw = true;
         }
     }
 
@@ -488,13 +499,14 @@ impl App {
             _ => {}
         }
 
-        // Auto-refresh resource modal (CPU/RAM top processes) every 2 seconds
+        // Auto-refresh resource modal per resource_monitor_interval config
         self.refresh_resource_modal();
     }
 
     /// Refresh resource modal content if one is open and interval has elapsed.
     fn refresh_resource_modal(&mut self) {
-        const RESOURCE_REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(3);
+        let interval =
+            std::time::Duration::from_millis(self.state.config.general.resource_monitor_interval);
 
         let Some(kind) = self.state.resource_modal_kind else {
             return;
@@ -503,13 +515,17 @@ impl App {
         let should_refresh = self
             .state
             .last_resource_modal_refresh
-            .is_none_or(|t| t.elapsed() >= RESOURCE_REFRESH_INTERVAL);
+            .is_none_or(|t| t.elapsed() >= interval);
 
         if !should_refresh {
             return;
         }
 
-        let lines = self.build_process_lines(kind);
+        use crate::state::ResourceModalKind;
+        let lines = match kind {
+            ResourceModalKind::Cpu | ResourceModalKind::Ram => self.build_process_lines(kind),
+            ResourceModalKind::Disk => self.build_disk_modal_lines(),
+        };
 
         if let Some(ActiveModal::Info(ref mut modal)) = self.state.active_modal {
             modal.set_lines(lines);

@@ -513,7 +513,9 @@ impl App {
     }
 
     /// Get disk space info from the active panel (if available).
-    fn get_active_panel_disk_space(&self) -> Option<termide_system_monitor::DiskSpaceInfo> {
+    pub(super) fn get_active_panel_disk_space(
+        &self,
+    ) -> Option<termide_system_monitor::DiskSpaceInfo> {
         use std::any::Any;
         let panel = self.layout_manager.active_panel()?;
         let panel_any = &**panel as &dyn Any;
@@ -611,6 +613,7 @@ impl App {
         let processes = match kind {
             ResourceModalKind::Cpu => self.state.system_monitor.top_cpu_processes(10),
             ResourceModalKind::Ram => self.state.system_monitor.top_memory_processes(10),
+            ResourceModalKind::Disk => unreachable!("build_process_lines called with Disk kind"),
         };
         let total_mem = self.state.system_monitor.stats().memory_total;
 
@@ -678,8 +681,8 @@ impl App {
         lines
     }
 
-    /// Open disk space modal.
-    fn open_disk_modal(&mut self) {
+    /// Build disk space modal lines (header + data rows).
+    pub(super) fn build_disk_modal_lines(&self) -> Vec<(String, termide_modal::info::ModalValue)> {
         use termide_modal::info::{ModalValue, SegmentStyle, StyledSegment};
         use termide_system_monitor::{format_bytes, get_all_disk_space_info};
         use termide_ui_render::resource_color;
@@ -733,8 +736,19 @@ impl App {
             lines.push((name, ModalValue::Segments(segments)));
         }
 
+        lines
+    }
+
+    /// Open disk space modal.
+    fn open_disk_modal(&mut self) {
+        use crate::state::ResourceModalKind;
+
+        let t = i18n::t();
+        let lines = self.build_disk_modal_lines();
         let modal = modal::InfoModal::new_rich(t.resource_disk_title(), lines);
         self.state.active_modal = Some(ActiveModal::Info(Box::new(modal)));
+        self.state.resource_modal_kind = Some(ResourceModalKind::Disk);
+        self.state.last_resource_modal_refresh = Some(std::time::Instant::now());
         self.state.needs_redraw = true;
     }
 

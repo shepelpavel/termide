@@ -39,6 +39,7 @@ pub use termide_modal::ActiveModal;
 pub enum ResourceModalKind {
     Cpu,
     Ram,
+    Disk,
 }
 
 /// Result of background git operation (push/pull)
@@ -274,6 +275,8 @@ pub struct AppState {
     batch_id_counter: u64,
     /// Cached shell list for the shell picker submenu (populated on open, cleared on close).
     pub cached_shells: Vec<termide_panel_terminal::shell_utils::ShellInfo>,
+    /// Cached disk space for the active panel (updated on tick, used in status bar rendering).
+    pub cached_disk_space: Option<termide_system_monitor::DiskSpaceInfo>,
 }
 
 impl Default for AppState {
@@ -355,6 +358,7 @@ impl AppState {
             batch_sub_operation_id: None,
             batch_id_counter: u64::MAX / 2,
             cached_shells: Vec::new(),
+            cached_disk_space: None,
         }
     }
 

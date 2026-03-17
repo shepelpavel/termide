@@ -10,7 +10,6 @@ use termide_app::AppState;
 use termide_layout::LayoutManager;
 use termide_panel_editor::Editor;
 use termide_panel_file_manager::FileManager;
-use termide_panel_git_status::GitStatusPanel;
 use termide_panel_terminal::Terminal;
 use termide_theme::Theme;
 use termide_ui_render::{
@@ -427,33 +426,24 @@ fn render_status_bar_for_active(
 
     if let Some(panel) = active_panel {
         // Get information depending on panel type
-        let (selected_count, file_info, disk_space, editor_info, terminal_info) = if let Some(fm) =
+        let (selected_count, file_info, editor_info, terminal_info) = if let Some(fm) =
             (&mut **panel as &mut dyn Any).downcast_mut::<FileManager>()
         {
             (
                 Some(fm.get_selected_count()),
                 fm.get_current_file_info(),
-                fm.get_disk_space_info(),
                 None,
                 None,
             )
         } else if let Some(editor) = (&mut **panel as &mut dyn Any).downcast_mut::<Editor>() {
-            (
-                None,
-                None,
-                editor.get_disk_space_info(),
-                Some(editor.get_editor_info()),
-                None,
-            )
+            (None, None, Some(editor.get_editor_info()), None)
         } else if let Some(terminal) = (&mut **panel as &mut dyn Any).downcast_mut::<Terminal>() {
-            (None, None, None, None, Some(terminal.get_terminal_info()))
-        } else if let Some(git_panel) =
-            (&mut **panel as &mut dyn Any).downcast_mut::<GitStatusPanel>()
-        {
-            (None, None, git_panel.get_disk_space_info(), None, None)
+            (None, None, None, Some(terminal.get_terminal_info()))
         } else {
-            (None, None, None, None, None)
+            (None, None, None, None)
         };
+        // Disk space is read from the tick-updated cache instead of calling statvfs per render.
+        let disk_space = state.cached_disk_space.as_ref();
 
         // Build background operations summary if available
         let background_ops = state.background_operations_summary().map(|summary| {
@@ -479,7 +469,7 @@ fn render_status_bar_for_active(
             &panel.title(),
             selected_count,
             file_info.as_ref(),
-            disk_space.as_ref(),
+            disk_space,
             editor_info.as_ref(),
             terminal_info.as_ref(),
         );

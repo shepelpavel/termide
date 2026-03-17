@@ -308,7 +308,7 @@ pub struct ProcessInfo {
 }
 
 /// Disk space information.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DiskSpaceInfo {
     /// Device name (e.g., "NVME0N1", "SDA1").
     pub device: Option<String>,
