@@ -259,6 +259,9 @@ jobs:
           GIT_SSH_COMMAND="ssh -i ~/.ssh/aur -o StrictHostKeyChecking=accept-new" git clone ssh://aur@aur.archlinux.org/termide.git /tmp/aur-termide
           cd /tmp/aur-termide
 
+          # Sync package() and other sections from repo
+          cp $GITHUB_WORKSPACE/packaging/aur/PKGBUILD PKGBUILD
+
           # Update PKGBUILD
           sed -i "s/pkgver=.*/pkgver=${VERSION}/" PKGBUILD
           sed -i "s/pkgrel=.*/pkgrel=1/" PKGBUILD
@@ -284,6 +287,9 @@ jobs:
           cd /tmp
           GIT_SSH_COMMAND="ssh -i ~/.ssh/aur -o StrictHostKeyChecking=accept-new" git clone ssh://aur@aur.archlinux.org/termide-bin.git /tmp/aur-termide-bin
           cd /tmp/aur-termide-bin
+
+          # Sync package() and other sections from repo
+          cp $GITHUB_WORKSPACE/packaging/aur/PKGBUILD-bin PKGBUILD
 
           # Update PKGBUILD
           sed -i "s/pkgver=.*/pkgver=${VERSION}/" PKGBUILD
