@@ -28,7 +28,7 @@ impl GitStatusPanel {
             return;
         }
 
-        let theme = self.cached_theme.clone();
+        let theme = self.cached_theme;
         let content_area = area;
 
         // Layout constants
@@ -113,23 +113,8 @@ impl GitStatusPanel {
             let line_y = files_y + screen_row as u16;
 
             if vline == unstaged_header_line {
-                // Unstaged header
-                let title = format!(
-                    "{} ({})",
-                    t.git_unstaged_header(),
-                    self.unstaged_files.len()
-                );
-                let stage_all_btn = format!("[{}]", t.git_stage_all_btn());
-                let btn = if !self.unstaged_files.is_empty() {
-                    Some(stage_all_btn.as_str())
-                } else {
-                    None
-                };
-                let is_selected = self.cursor == vline && files_active;
-                self.stage_all_btn_area = self.render_section_header_simple(
-                    &title,
-                    btn,
-                    is_selected,
+                self.render_unstaged_header(
+                    self.cursor == vline && files_active,
                     content_area.x,
                     line_y,
                     files_width,
@@ -151,19 +136,8 @@ impl GitStatusPanel {
                     files_active,
                 );
             } else if vline == staged_header_line {
-                // Staged header
-                let title = format!("{} ({})", t.git_staged_header(), self.staged_files.len());
-                let unstage_all_btn = format!("[{}]", t.git_unstage_all_btn());
-                let btn = if !self.staged_files.is_empty() {
-                    Some(unstage_all_btn.as_str())
-                } else {
-                    None
-                };
-                let is_selected = self.cursor == vline && files_active;
-                self.unstage_all_btn_area = self.render_section_header_simple(
-                    &title,
-                    btn,
-                    is_selected,
+                self.render_staged_header(
+                    self.cursor == vline && files_active,
                     content_area.x,
                     line_y,
                     files_width,
@@ -216,22 +190,8 @@ impl GitStatusPanel {
             && !staged_sticky;
 
         if unstaged_sticky {
-            let title = format!(
-                "{} ({})",
-                t.git_unstaged_header(),
-                self.unstaged_files.len()
-            );
-            let stage_all_btn = format!("[{}]", t.git_stage_all_btn());
-            let btn = if !self.unstaged_files.is_empty() {
-                Some(stage_all_btn.as_str())
-            } else {
-                None
-            };
-            let is_selected = self.cursor == unstaged_header_line && files_active;
-            self.stage_all_btn_area = self.render_section_header_simple(
-                &title,
-                btn,
-                is_selected,
+            self.render_unstaged_header(
+                self.cursor == unstaged_header_line && files_active,
                 content_area.x,
                 files_y,
                 files_width,
@@ -241,18 +201,8 @@ impl GitStatusPanel {
         }
 
         if staged_sticky {
-            let title = format!("{} ({})", t.git_staged_header(), self.staged_files.len());
-            let unstage_all_btn = format!("[{}]", t.git_unstage_all_btn());
-            let btn = if !self.staged_files.is_empty() {
-                Some(unstage_all_btn.as_str())
-            } else {
-                None
-            };
-            let is_selected = self.cursor == staged_header_line && files_active;
-            self.unstage_all_btn_area = self.render_section_header_simple(
-                &title,
-                btn,
-                is_selected,
+            self.render_staged_header(
+                self.cursor == staged_header_line && files_active,
                 content_area.x,
                 files_y,
                 files_width,
@@ -354,6 +304,54 @@ impl GitStatusPanel {
     }
 
     /// Render section header with optional button selection highlighting
+    /// Render the unstaged files section header, updating `stage_all_btn_area`.
+    fn render_unstaged_header(
+        &mut self,
+        is_selected: bool,
+        x: u16,
+        y: u16,
+        width: u16,
+        buf: &mut Buffer,
+        theme: &ThemeColors,
+    ) {
+        let t = termide_i18n::t();
+        let title = format!(
+            "{} ({})",
+            t.git_unstaged_header(),
+            self.unstaged_files.len()
+        );
+        let btn_str = format!("[{}]", t.git_stage_all_btn());
+        let btn = if !self.unstaged_files.is_empty() {
+            Some(btn_str.as_str())
+        } else {
+            None
+        };
+        self.stage_all_btn_area =
+            self.render_section_header_simple(&title, btn, is_selected, x, y, width, buf, theme);
+    }
+
+    /// Render the staged files section header, updating `unstage_all_btn_area`.
+    fn render_staged_header(
+        &mut self,
+        is_selected: bool,
+        x: u16,
+        y: u16,
+        width: u16,
+        buf: &mut Buffer,
+        theme: &ThemeColors,
+    ) {
+        let t = termide_i18n::t();
+        let title = format!("{} ({})", t.git_staged_header(), self.staged_files.len());
+        let btn_str = format!("[{}]", t.git_unstage_all_btn());
+        let btn = if !self.staged_files.is_empty() {
+            Some(btn_str.as_str())
+        } else {
+            None
+        };
+        self.unstage_all_btn_area =
+            self.render_section_header_simple(&title, btn, is_selected, x, y, width, buf, theme);
+    }
+
     pub(crate) fn render_section_header_simple(
         &self,
         title: &str,
@@ -452,19 +450,12 @@ impl GitStatusPanel {
         theme: &ThemeColors,
         is_focused: bool,
     ) {
-        let (tree_nodes, visible, prefixes) = if is_unstaged {
-            (
-                &self.unstaged_tree,
-                &self.unstaged_visible,
-                &self.unstaged_tree_prefixes,
-            )
+        let ft = if is_unstaged {
+            &self.unstaged
         } else {
-            (
-                &self.staged_tree,
-                &self.staged_visible,
-                &self.staged_tree_prefixes,
-            )
+            &self.staged
         };
+        let (tree_nodes, visible, prefixes) = (&ft.tree, &ft.visible, &ft.prefixes);
 
         let Some(&tree_idx) = visible.get(visible_idx) else {
             return;

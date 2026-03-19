@@ -1633,7 +1633,7 @@ impl Panel for FileManager {
 
         // If file search is active, render search results instead of normal tree
         if let Some(ref search) = self.file_search {
-            self.render_search_results(area, buf, search, &self.cached_theme.clone());
+            self.render_search_results(area, buf, search, &self.cached_theme);
             return;
         }
 

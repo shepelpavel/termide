@@ -72,7 +72,7 @@ pub struct RenderContext<'a> {
 ///
 /// This is a subset of the full Theme, containing only
 /// the colors needed for panel rendering.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct ThemeColors {
     pub fg: Color,
     pub bg: Color,

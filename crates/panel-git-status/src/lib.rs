@@ -9,6 +9,7 @@ mod rendering;
 pub mod tree;
 mod types;
 
+use types::FileTree;
 pub use types::{Button, Section, Selection};
 
 use std::any::Any;
@@ -116,22 +117,10 @@ pub struct GitStatusPanel {
     vim_mode: bool,
     /// Whether panel missed updates while collapsed (stale-on-collapse)
     is_stale: bool,
-    /// Full tree for unstaged files
-    unstaged_tree: Vec<tree::TreeNode>,
-    /// Indices of visible nodes in unstaged_tree
-    unstaged_visible: Vec<usize>,
-    /// Tree-drawing prefixes for visible unstaged nodes
-    unstaged_tree_prefixes: Vec<String>,
-    /// Full tree for staged files
-    staged_tree: Vec<tree::TreeNode>,
-    /// Indices of visible nodes in staged_tree
-    staged_visible: Vec<usize>,
-    /// Tree-drawing prefixes for visible staged nodes
-    staged_tree_prefixes: Vec<String>,
-    /// Collapsed directories in unstaged tree
-    unstaged_collapsed: HashSet<PathBuf>,
-    /// Collapsed directories in staged tree
-    staged_collapsed: HashSet<PathBuf>,
+    /// Tree state for unstaged files (modified + untracked)
+    unstaged: FileTree,
+    /// Tree state for staged files
+    staged: FileTree,
     /// Pending initial fetch to update ahead/behind counts
     pending_init_fetch: bool,
 }
@@ -188,14 +177,8 @@ impl GitStatusPanel {
             initial_paths,
             vim_mode: false,
             is_stale: false,
-            unstaged_tree: Vec::new(),
-            unstaged_visible: Vec::new(),
-            unstaged_tree_prefixes: Vec::new(),
-            staged_tree: Vec::new(),
-            staged_visible: Vec::new(),
-            staged_tree_prefixes: Vec::new(),
-            unstaged_collapsed: HashSet::new(),
-            staged_collapsed: HashSet::new(),
+            unstaged: FileTree::new(),
+            staged: FileTree::new(),
             pending_init_fetch: true,
         };
 
@@ -312,12 +295,12 @@ impl GitStatusPanel {
 
     /// Number of items in unstaged section (visible tree nodes)
     fn unstaged_item_count(&self) -> usize {
-        self.unstaged_visible.len()
+        self.unstaged.visible.len()
     }
 
     /// Number of items in staged section (visible tree nodes)
     fn staged_item_count(&self) -> usize {
-        self.staged_visible.len()
+        self.staged.visible.len()
     }
 
     /// Get current selection based on cursor position (virtual line)
@@ -332,8 +315,8 @@ impl GitStatusPanel {
             Some(Selection::UnstagedHeader)
         } else if self.cursor >= unstaged_start && self.cursor < unstaged_end {
             let idx = self.cursor - unstaged_start;
-            if let Some(&tree_idx) = self.unstaged_visible.get(idx) {
-                match self.unstaged_tree[tree_idx].kind {
+            if let Some(&tree_idx) = self.unstaged.visible.get(idx) {
+                match self.unstaged.tree[tree_idx].kind {
                     tree::TreeNodeKind::Directory { .. } => Some(Selection::UnstagedDir(tree_idx)),
                     tree::TreeNodeKind::File { file_index, .. } => {
                         Some(Selection::UnstagedFile(file_index))
@@ -346,8 +329,8 @@ impl GitStatusPanel {
             Some(Selection::StagedHeader)
         } else if self.cursor >= staged_start {
             let idx = self.cursor - staged_start;
-            if let Some(&tree_idx) = self.staged_visible.get(idx) {
-                match self.staged_tree[tree_idx].kind {
+            if let Some(&tree_idx) = self.staged.visible.get(idx) {
+                match self.staged.tree[tree_idx].kind {
                     tree::TreeNodeKind::Directory { .. } => Some(Selection::StagedDir(tree_idx)),
                     tree::TreeNodeKind::File { file_index, .. } => {
                         Some(Selection::StagedFile(file_index))
@@ -473,7 +456,7 @@ impl GitStatusPanel {
                 .into_iter()
                 .collect(),
             Some(Selection::UnstagedDir(idx)) if !staged => {
-                tree::collect_files_under(&self.unstaged_tree, idx)
+                tree::collect_files_under(&self.unstaged.tree, idx)
             }
             Some(Selection::StagedFile(idx)) if staged => self
                 .staged_files
@@ -482,7 +465,7 @@ impl GitStatusPanel {
                 .into_iter()
                 .collect(),
             Some(Selection::StagedDir(idx)) if staged => {
-                tree::collect_files_under(&self.staged_tree, idx)
+                tree::collect_files_under(&self.staged.tree, idx)
             }
             _ => vec![],
         }
@@ -517,10 +500,10 @@ impl GitStatusPanel {
             .map(|(i, f)| (f.path.clone(), i, f.status, f.untracked))
             .collect();
         let (tree, visible, prefixes) =
-            Self::build_section_tree(&unstaged_data, &self.unstaged_collapsed);
-        self.unstaged_tree = tree;
-        self.unstaged_visible = visible;
-        self.unstaged_tree_prefixes = prefixes;
+            Self::build_section_tree(&unstaged_data, &self.unstaged.collapsed);
+        self.unstaged.tree = tree;
+        self.unstaged.visible = visible;
+        self.unstaged.prefixes = prefixes;
 
         let staged_data: Vec<_> = self
             .staged_files
@@ -529,18 +512,18 @@ impl GitStatusPanel {
             .map(|(i, f)| (f.path.clone(), i, f.status, false))
             .collect();
         let (tree, visible, prefixes) =
-            Self::build_section_tree(&staged_data, &self.staged_collapsed);
-        self.staged_tree = tree;
-        self.staged_visible = visible;
-        self.staged_tree_prefixes = prefixes;
+            Self::build_section_tree(&staged_data, &self.staged.collapsed);
+        self.staged.tree = tree;
+        self.staged.visible = visible;
+        self.staged.prefixes = prefixes;
     }
 
     /// Toggle expand/collapse for a directory node.
     fn toggle_dir_expand(&mut self, is_unstaged: bool, tree_idx: usize) {
         let (tree, collapsed) = if is_unstaged {
-            (&mut self.unstaged_tree, &mut self.unstaged_collapsed)
+            (&mut self.unstaged.tree, &mut self.unstaged.collapsed)
         } else {
-            (&mut self.staged_tree, &mut self.staged_collapsed)
+            (&mut self.staged.tree, &mut self.staged.collapsed)
         };
 
         if matches!(tree[tree_idx].kind, tree::TreeNodeKind::Directory { .. }) {
@@ -557,13 +540,9 @@ impl GitStatusPanel {
 
         // Recompute visible nodes and prefixes
         if is_unstaged {
-            self.unstaged_visible = tree::compute_visible_nodes(&self.unstaged_tree);
-            self.unstaged_tree_prefixes =
-                tree::compute_tree_prefixes(&self.unstaged_tree, &self.unstaged_visible);
+            self.unstaged.recompute_visible();
         } else {
-            self.staged_visible = tree::compute_visible_nodes(&self.staged_tree);
-            self.staged_tree_prefixes =
-                tree::compute_tree_prefixes(&self.staged_tree, &self.staged_visible);
+            self.staged.recompute_visible();
         }
 
         // Clamp cursor
@@ -735,19 +714,12 @@ impl GitStatusPanel {
             return None;
         };
 
-        let (tree_nodes, visible, prefixes) = if is_unstaged {
-            (
-                &self.unstaged_tree,
-                &self.unstaged_visible,
-                &self.unstaged_tree_prefixes,
-            )
+        let ft = if is_unstaged {
+            &self.unstaged
         } else {
-            (
-                &self.staged_tree,
-                &self.staged_visible,
-                &self.staged_tree_prefixes,
-            )
+            &self.staged
         };
+        let (tree_nodes, visible, prefixes) = (&ft.tree, &ft.visible, &ft.prefixes);
 
         let &tree_idx = visible.get(visible_idx)?;
         if !matches!(
@@ -851,7 +823,7 @@ impl Panel for GitStatusPanel {
             let mut earliest: Option<(usize, &str, ratatui::style::Color)> = None;
             for &(marker, color) in markers {
                 if let Some(pos) = rest.find(marker) {
-                    if earliest.is_none() || pos < earliest.unwrap().0 {
+                    if earliest.is_none_or(|(e_pos, _, _)| pos < e_pos) {
                         earliest = Some((pos, marker, color));
                     }
                 }
@@ -1235,7 +1207,7 @@ impl Panel for GitStatusPanel {
                     match self.get_selection() {
                         Some(Selection::UnstagedDir(idx)) => {
                             if matches!(
-                                self.unstaged_tree[idx].kind,
+                                self.unstaged.tree[idx].kind,
                                 tree::TreeNodeKind::Directory { expanded: true }
                             ) {
                                 self.toggle_dir_expand(true, idx);
@@ -1243,7 +1215,7 @@ impl Panel for GitStatusPanel {
                         }
                         Some(Selection::StagedDir(idx)) => {
                             if matches!(
-                                self.staged_tree[idx].kind,
+                                self.staged.tree[idx].kind,
                                 tree::TreeNodeKind::Directory { expanded: true }
                             ) {
                                 self.toggle_dir_expand(false, idx);
@@ -1263,7 +1235,7 @@ impl Panel for GitStatusPanel {
                     match self.get_selection() {
                         Some(Selection::UnstagedDir(idx)) => {
                             if matches!(
-                                self.unstaged_tree[idx].kind,
+                                self.unstaged.tree[idx].kind,
                                 tree::TreeNodeKind::Directory { expanded: false }
                             ) {
                                 self.toggle_dir_expand(true, idx);
@@ -1271,7 +1243,7 @@ impl Panel for GitStatusPanel {
                         }
                         Some(Selection::StagedDir(idx)) => {
                             if matches!(
-                                self.staged_tree[idx].kind,
+                                self.staged.tree[idx].kind,
                                 tree::TreeNodeKind::Directory { expanded: false }
                             ) {
                                 self.toggle_dir_expand(false, idx);

@@ -1,5 +1,35 @@
 //! Type definitions for Git Status Panel.
 
+use std::collections::HashSet;
+use std::path::PathBuf;
+
+use crate::tree;
+
+/// Grouped tree state for one file section (unstaged or staged).
+pub(crate) struct FileTree {
+    pub tree: Vec<tree::TreeNode>,
+    pub visible: Vec<usize>,
+    pub prefixes: Vec<String>,
+    pub collapsed: HashSet<PathBuf>,
+}
+
+impl FileTree {
+    pub fn new() -> Self {
+        Self {
+            tree: Vec::new(),
+            visible: Vec::new(),
+            prefixes: Vec::new(),
+            collapsed: HashSet::new(),
+        }
+    }
+
+    /// Recompute `visible` and `prefixes` from the current `tree`.
+    pub fn recompute_visible(&mut self) {
+        self.visible = tree::compute_visible_nodes(&self.tree);
+        self.prefixes = tree::compute_tree_prefixes(&self.tree, &self.visible);
+    }
+}
+
 /// Section of the Git Status panel
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Section {
