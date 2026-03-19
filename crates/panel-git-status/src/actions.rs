@@ -269,6 +269,31 @@ impl GitStatusPanel {
             return buttons;
         }
 
+        // Show spinner button if push/pull in progress; fetch doesn't block Push/Pull
+        if self.git_operation_in_progress {
+            match self.current_operation.as_deref() {
+                Some("push") => {
+                    buttons.push(Button::Pushing);
+                    return buttons;
+                }
+                Some("pull") => {
+                    buttons.push(Button::Pulling);
+                    return buttons;
+                }
+                _ => {} // fetch or other: fall through to show Push/Pull
+            }
+        }
+
+        // Pull - only if behind > 0
+        if self.behind > 0 {
+            buttons.push(Button::Pull);
+        }
+
+        // Push - only if ahead > 0
+        if self.ahead > 0 {
+            buttons.push(Button::Push);
+        }
+
         // Diff - show if there are any changes (unstaged or staged)
         if !self.unstaged_files.is_empty() || !self.staged_files.is_empty() {
             buttons.push(Button::Diff);
@@ -277,25 +302,6 @@ impl GitStatusPanel {
         // Commit - only if there are staged files
         if !self.staged_files.is_empty() {
             buttons.push(Button::Commit);
-        }
-
-        // Show spinner button if operation in progress
-        if self.git_operation_in_progress {
-            match self.current_operation.as_deref() {
-                Some("push") => buttons.push(Button::Pushing),
-                Some("pull") => buttons.push(Button::Pulling),
-                _ => {} // Unknown operation, don't show button
-            }
-        } else {
-            // Push - only if ahead > 0
-            if self.ahead > 0 {
-                buttons.push(Button::Push);
-            }
-
-            // Pull - only if behind > 0
-            if self.behind > 0 {
-                buttons.push(Button::Pull);
-            }
         }
 
         buttons

@@ -58,6 +58,15 @@ impl App {
                 }
             }
         }
+
+        // Sync git panel repo lists with current panel paths so that git-status
+        // and git-log panels update when the user navigates to a new directory.
+        let paths = self.collect_panel_paths();
+        for panel in self.layout_manager.iter_all_panels_mut() {
+            panel.handle_command(PanelCommand::UpdateRepoPaths {
+                paths: paths.clone(),
+            });
+        }
     }
 
     /// Poll watcher for filesystem and git events (no registration).

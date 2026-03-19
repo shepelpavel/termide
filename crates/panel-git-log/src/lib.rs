@@ -10,7 +10,10 @@ use ratatui::{buffer::Buffer, layout::Rect, style::Style};
 use unicode_width::UnicodeWidthStr;
 
 use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up, Config};
-use termide_core::{Panel, PanelEvent, RenderContext, SessionPanel, ThemeColors, WidthPreference};
+use termide_core::{
+    CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel, ThemeColors,
+    WidthPreference,
+};
 use termide_git::{self as git, truncate_right, truncate_to_width, CommitInfo, RepoManager};
 use termide_modal::{ActiveModal, InfoModal, ModalValue, SegmentStyle, StyledSegment};
 use termide_state::PendingAction;
@@ -730,6 +733,20 @@ impl Panel for GitLogPanel {
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         self.last_area = area;
         self.render_content(area, buf, ctx.is_focused, ctx.border_right_x);
+    }
+
+    fn handle_command(&mut self, cmd: PanelCommand<'_>) -> CommandResult {
+        match cmd {
+            PanelCommand::Reload => {
+                self.refresh();
+                CommandResult::NeedsRedraw(true)
+            }
+            PanelCommand::UpdateRepoPaths { paths } => {
+                self.update_repos(&paths);
+                CommandResult::NeedsRedraw(true)
+            }
+            _ => CommandResult::None,
+        }
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {

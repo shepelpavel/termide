@@ -1947,7 +1947,8 @@ impl Panel for FileManager {
             | PanelCommand::GetModificationStatus
             | PanelCommand::Save
             | PanelCommand::CloseWithoutSaving
-            | PanelCommand::SetGitOperationInProgress { .. } => CommandResult::None,
+            | PanelCommand::SetGitOperationInProgress { .. }
+            | PanelCommand::UpdateRepoPaths { .. } => CommandResult::None,
         }
     }
 

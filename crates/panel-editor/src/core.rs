@@ -1864,7 +1864,8 @@ impl Panel for Editor {
             PanelCommand::SetFsWatchRoot { .. }
             | PanelCommand::Resize { .. }
             | PanelCommand::RefreshDirectory
-            | PanelCommand::SetGitOperationInProgress { .. } => CommandResult::None,
+            | PanelCommand::SetGitOperationInProgress { .. }
+            | PanelCommand::UpdateRepoPaths { .. } => CommandResult::None,
         }
     }
 

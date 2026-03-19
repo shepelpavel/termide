@@ -1968,7 +1968,8 @@ impl Panel for Terminal {
             | PanelCommand::Save
             | PanelCommand::CloseWithoutSaving
             | PanelCommand::RefreshDirectory
-            | PanelCommand::SetGitOperationInProgress { .. } => CommandResult::None,
+            | PanelCommand::SetGitOperationInProgress { .. }
+            | PanelCommand::UpdateRepoPaths { .. } => CommandResult::None,
         }
     }
 

@@ -108,6 +108,14 @@ pub enum PanelCommand<'a> {
     /// Refresh panel if stale (just expanded, catch up on missed updates).
     /// Response: `CommandResult::NeedsRedraw(bool)`
     RefreshIfStale,
+
+    /// Update the repository path list for git panels (git-status, git-log).
+    /// Called after navigation to sync panels with current FM directories.
+    /// Response: `CommandResult::NeedsRedraw(bool)`
+    UpdateRepoPaths {
+        /// All current working directory paths from all panels
+        paths: Vec<PathBuf>,
+    },
 }
 
 /// Result of handling a panel command.

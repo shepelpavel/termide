@@ -34,7 +34,7 @@ impl GitStatusPanel {
         // Layout constants
         let selector_height: u16 = 1;
         let separator_height: u16 = 1;
-        let buttons_height: u16 = 1;
+        let buttons_height = self.calc_buttons_height(content_area.width);
         let fixed_height = selector_height + separator_height + buttons_height;
         let files_area_height = content_area.height.saturating_sub(fixed_height) as usize;
 
@@ -269,6 +269,7 @@ impl GitStatusPanel {
 
         // === BOTTOM ZONE: Buttons ===
         self.buttons_y = y;
+        self.cached_buttons_height = buttons_height;
         self.render_buttons(
             content_area.x,
             y,
@@ -528,6 +529,27 @@ impl GitStatusPanel {
         }
     }
 
+    /// Calculate how many rows the buttons need at the given width.
+    pub(crate) fn calc_buttons_height(&self, width: u16) -> u16 {
+        let buttons = self.get_visible_buttons();
+        if buttons.is_empty() {
+            return 1;
+        }
+        let mut current_x: u16 = 0;
+        let mut rows: u16 = 1;
+        for button in &buttons {
+            let label = format!("[{}]", button.label(self.spinner_frame));
+            let w = label.width() as u16;
+            if current_x > 0 && current_x + w > width {
+                rows += 1;
+                current_x = w + 1;
+            } else {
+                current_x += w + 1;
+            }
+        }
+        rows
+    }
+
     /// Render action buttons
     pub(crate) fn render_buttons(
         &self,
@@ -540,6 +562,7 @@ impl GitStatusPanel {
     ) {
         let buttons = self.get_visible_buttons();
         let mut current_x = x;
+        let mut current_y = y;
 
         for (i, button) in buttons.iter().enumerate() {
             let is_selected = self.current_section == Section::Buttons && i == self.selected_button;
@@ -555,13 +578,14 @@ impl GitStatusPanel {
                 Style::default().fg(theme.fg)
             };
 
-            if current_x + label.width() as u16 > x + width {
-                // Wrap to next line (not implemented for simplicity)
-                break;
+            let lw = label.width() as u16;
+            if current_x > x && current_x + lw > x + width {
+                current_y += 1;
+                current_x = x;
             }
 
-            buf.set_string(current_x, y, &label, style);
-            current_x += label.width() as u16 + 1;
+            buf.set_string(current_x, current_y, &label, style);
+            current_x += lw + 1;
         }
     }
 

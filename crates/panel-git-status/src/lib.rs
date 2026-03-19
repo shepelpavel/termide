@@ -86,6 +86,8 @@ pub struct GitStatusPanel {
     files_area: Rect,
     /// Buttons row Y position
     buttons_y: u16,
+    /// Cached height of the buttons area (may span multiple rows)
+    cached_buttons_height: u16,
     /// Repo dropdown area (for mouse click detection)
     repo_dropdown_area: Option<Rect>,
     /// Branch dropdown area (for mouse click detection)
@@ -171,6 +173,7 @@ impl GitStatusPanel {
             branch_selector_x: 0,
             files_area: Rect::default(),
             buttons_y: 0,
+            cached_buttons_height: 1,
             repo_dropdown_area: None,
             branch_dropdown_area: None,
             dropdown_scroll: 0,
@@ -968,6 +971,10 @@ impl Panel for GitStatusPanel {
                     CommandResult::None
                 }
             }
+            PanelCommand::UpdateRepoPaths { paths } => {
+                self.update_repos(&paths);
+                CommandResult::NeedsRedraw(true)
+            }
             _ => CommandResult::None,
         }
     }
@@ -1475,21 +1482,28 @@ impl Panel for GitStatusPanel {
                     // Reset click state for non-file areas
                     self.reset_click_state();
                 }
-                // Check if click is on buttons row
-                else if row == self.buttons_y {
+                // Check if click is on buttons area (may span multiple rows)
+                else if row >= self.buttons_y && row < self.buttons_y + self.cached_buttons_height
+                {
                     // Close any open dropdown
                     self.repo_dropdown_open = false;
                     self.branch_dropdown_open = false;
 
                     self.current_section = Section::Buttons;
-                    // Calculate which button was clicked based on position
+                    // Calculate which button was clicked, accounting for wrapping
                     let buttons = self.get_visible_buttons();
                     let content_x = self.last_area.x + 1;
+                    let content_width = self.last_area.width.saturating_sub(2);
                     let mut btn_x = content_x;
+                    let mut btn_y = self.buttons_y;
                     for (i, button) in buttons.iter().enumerate() {
                         let label = format!("[{}]", button.label(self.spinner_frame));
                         let btn_width = label.width() as u16;
-                        if col >= btn_x && col < btn_x + btn_width {
+                        if btn_x > content_x && btn_x + btn_width > content_x + content_width {
+                            btn_y += 1;
+                            btn_x = content_x;
+                        }
+                        if row == btn_y && col >= btn_x && col < btn_x + btn_width {
                             self.selected_button = i;
                             // Execute button action on click
                             return self.execute_button();

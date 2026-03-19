@@ -310,6 +310,20 @@ impl GitStatusCache {
         false
     }
 
+    fn is_parent_untracked(&self, path: &Path) -> bool {
+        let mut current = path;
+        while let Some(parent) = current.parent() {
+            if let Some(&GitStatus::Added) = self.status_map.get(parent) {
+                return true;
+            }
+            current = parent;
+            if parent.as_os_str().is_empty() {
+                break;
+            }
+        }
+        false
+    }
+
     pub fn get_status(&self, file_name: &str) -> GitStatus {
         let full_path = if self.relative_path.as_os_str().is_empty() {
             PathBuf::from(file_name)
@@ -327,6 +341,10 @@ impl GitStatusCache {
 
         if self.is_parent_ignored(&full_path) {
             return GitStatus::Ignored;
+        }
+
+        if self.is_parent_untracked(&full_path) {
+            return GitStatus::Added;
         }
 
         GitStatus::Unmodified

@@ -94,6 +94,13 @@ impl App {
 
                 // Fetch is silent - no modal, just refresh
                 if result.operation == "fetch" {
+                    if !result.success {
+                        let msg = format!(
+                            "git fetch failed: {}",
+                            result.stderr.lines().next().unwrap_or("unknown error")
+                        );
+                        self.state.set_error(msg);
+                    }
                     // Refresh all git panels silently
                     for panel in self.layout_manager.iter_all_panels_mut() {
                         panel.handle_command(PanelCommand::Reload);
