@@ -5,6 +5,22 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] - 2026-03-20
+
+### Added
+- **UI / Editor / Terminal**: Hex color preview popup on `Ctrl+click` — clicking on a `#rgb` or `#rrggbb` value shows a color swatch while the button is held; works in both the editor and terminal panels
+- **Theme**: 9 new built-in themes: `ayu-dark`, `catppuccin-macchiato`, `everforest`, `github-dark`, `gruvbox`, `kanagawa`, `material-ocean`, `rosepine`, `tokyonight`
+
+### Fixed
+- **Theme**: Menu bar items and editor cursor line now use `accented_fg` on `accented_bg` surfaces — fixes low-contrast rendering in `windows-98`, `dos-navigator`, and similar themes
+- **Theme**: Disabled color contrast improved in classic retro themes (`norton-commander`, `volkov-commander`, `far-manager`, `windows-95`); `github-light` error color corrected to GitHub red
+- **UI**: Indic script cursor desync fixed via unicode-width fork — cursor no longer drifts when editing text containing Devanagari, Bengali, or other complex scripts
+- **File Manager**: Right arrow key now only expands directories in tree view; no longer also triggers directory entry
+- **App**: Fixed double-nesting when copying a directory with OverwriteAll conflict mode selected
+
+### Changed
+- **Refactor**: Removed leaky pub exports, dead methods, and simplified regex statics across multiple crates (no behavior change)
+
 ## [0.16.4] - 2026-03-19
 
 ### Fixed
