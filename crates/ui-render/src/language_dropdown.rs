@@ -8,15 +8,13 @@ use ratatui::{
     layout::Rect,
     prelude::Widget,
     style::{Modifier, Style},
-    text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem},
+    widgets::{Block, Borders, Clear},
 };
-use unicode_width::UnicodeWidthStr;
 
 use termide_core::ThemeColors;
 use termide_i18n as i18n;
 use termide_theme::Theme;
-use termide_ui::ScrollBar;
+use termide_ui::{render_text_cells, str_display_width, ScrollBar};
 
 /// Language dropdown with live preview on cursor navigation
 pub struct LanguageDropdown<'a> {
@@ -64,7 +62,7 @@ impl<'a> LanguageDropdown<'a> {
         let max_name_len = self
             .languages
             .iter()
-            .map(|(_, name)| name.width())
+            .map(|(_, name)| str_display_width(name))
             .max()
             .unwrap_or(10);
         // " " + name + padding
@@ -116,49 +114,59 @@ impl<'a> LanguageDropdown<'a> {
         // Clear area under dropdown
         Clear.render(area, buf);
 
-        // Build list items - use panel colors (not modal colors)
+        // Render border
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(self.app_theme.accented_fg))
+            .style(Style::default().bg(self.app_theme.bg));
+        block.render(area, buf);
+
+        let inner = Rect {
+            x: area.x + 1,
+            y: area.y + 1,
+            width: area.width.saturating_sub(2),
+            height: area.height.saturating_sub(2),
+        };
+
+        // Get visible items
         let visible_end = (self.scroll_offset + self.max_visible).min(self.languages.len());
         let visible_items = &self.languages[self.scroll_offset..visible_end];
 
-        let items: Vec<ListItem> = visible_items
-            .iter()
-            .enumerate()
-            .map(|(i, (_code, name))| {
-                let actual_index = self.scroll_offset + i;
-                let is_selected = actual_index == self.selected;
+        for (i, (_code, name)) in visible_items.iter().enumerate() {
+            let actual_index = self.scroll_offset + i;
+            let is_selected = actual_index == self.selected;
 
-                // Panel-style colors: normal text on panel background, selection highlighted
-                let item_style = if is_selected {
-                    Style::default()
-                        .fg(self.app_theme.selected_fg)
-                        .bg(self.app_theme.selected_bg)
-                        .add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default().fg(self.app_theme.fg).bg(self.app_theme.bg)
-                };
+            let item_style = if is_selected {
+                Style::default()
+                    .fg(self.app_theme.selected_fg)
+                    .bg(self.app_theme.selected_bg)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(self.app_theme.fg).bg(self.app_theme.bg)
+            };
 
-                // Build line with padding
-                let content = format!(" {}", name);
-                let padding_len = (width as usize).saturating_sub(content.width() + 2);
-                let padded = if padding_len > 0 {
-                    format!("{}{}", content, " ".repeat(padding_len))
-                } else {
-                    content
-                };
+            let row_y = inner.y + i as u16;
+            if row_y >= inner.y + inner.height {
+                break;
+            }
 
-                ListItem::new(Line::from(Span::styled(padded, item_style)))
-            })
-            .collect();
+            // Fill row background
+            for col in inner.x..inner.x + inner.width {
+                buf[(col, row_y)].set_style(item_style);
+            }
 
-        // Use modal-style colors: bg background, accented_fg for border
-        let list = List::new(items).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(self.app_theme.accented_fg))
-                .style(Style::default().bg(self.app_theme.bg)),
-        );
-
-        list.render(area, buf);
+            // " " + name
+            let mut cursor_x = inner.x;
+            cursor_x += render_text_cells(buf, cursor_x, row_y, " ", inner.width, item_style);
+            render_text_cells(
+                buf,
+                cursor_x,
+                row_y,
+                name,
+                inner.width.saturating_sub(cursor_x - inner.x),
+                item_style,
+            );
+        }
 
         // Render scrollbar on right edge (inside border)
         let visible_count = self.languages.len().min(self.max_visible);

@@ -15,6 +15,7 @@ use unicode_width::UnicodeWidthStr;
 use termide_i18n as i18n;
 use termide_system_monitor::{format_net_speed, RamUnit};
 use termide_theme::Theme;
+use termide_ui::str_display_width;
 
 /// Parameters for rendering the menu bar.
 pub struct MenuRenderParams<'a> {
@@ -81,7 +82,7 @@ impl MenuLayout {
 
         for (i, item) in menu_items.iter().enumerate() {
             x_positions[i] = x;
-            widths[i] = item.width() as u16;
+            widths[i] = str_display_width(item) as u16;
             x += widths[i] + 2; // item + "  " separator
         }
 

@@ -130,6 +130,9 @@ Press `Ctrl+H` to open an interactive replace modal with two input fields:
 - **Triple click**: Select entire line
 - **Hold + move**: Text selection
 - **Scroll wheel**: Scroll editor content
+- **Ctrl+Click**: Go to definition (LSP); or show color preview if cursor is on a hex color (e.g. `#ff0000`, `#abc`)
+
+**Color preview:** When you hold Ctrl and click on a hex color value, a small popup appears showing a color swatch and the hex code. The popup stays visible while the mouse button is held and disappears on release.
 
 **Note:** Mouse selection works correctly in word wrap mode, accounting for wrapped lines.
 

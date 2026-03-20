@@ -1,0 +1,13 @@
+[package]
+name = "unicode-width"
+version = "0.2.2"
+edition = "2021"
+
+[features]
+cjk = []
+default = ["cjk"]
+no_std = []
+
+[lib]
+name = "unicode_width"
+path = "src/lib.rs"

@@ -16,6 +16,7 @@ pub mod viewport;
 
 pub use click_tracker::{ClickTracker, IndexClickTracker, PositionClickTracker};
 pub use color_popup::{extract_hex_color_at_col, ColorPreview};
+pub use grapheme_utils::{grapheme_display_width, render_text_cells, str_display_width};
 pub use path_utils::expand_tilde;
 pub use scrollbar::ScrollBar;
 pub use selection_style::{

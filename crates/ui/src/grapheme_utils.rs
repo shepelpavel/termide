@@ -3,6 +3,7 @@
 //! Shared helpers for truncating and windowing text with proper
 //! Unicode grapheme cluster awareness.
 
+use ratatui::{buffer::Buffer, style::Style};
 use unicode_segmentation::UnicodeSegmentation;
 
 /// Truncate text from the start to fit within `max_chars` graphemes.
@@ -85,4 +86,108 @@ pub fn prepare_matched_line(
 
     let result_len = result.graphemes(true).count();
     (result, new_match_start, new_match_end.min(result_len))
+}
+
+/// Display width of a single grapheme cluster in terminal columns.
+///
+/// Uses the sum of codepoint widths (UnicodeWidthStr), which matches what
+/// the terminal's wcwidth() returns for Spacing Combining Marks (Mc).
+/// Mc characters like Devanagari ा (U+093E) have wcwidth=1 and advance the
+/// terminal cursor — so a cluster like "भा" occupies 2 terminal columns.
+/// Non-spacing marks (Mn) like ु (U+0941) have wcwidth=0 and are truly
+/// zero-width. CJK wide characters (e.g. 漢) return 2 as expected.
+/// Falls back to 1 for clusters that consist entirely of zero-width codepoints.
+pub fn grapheme_display_width(g: &str) -> usize {
+    use unicode_width::UnicodeWidthStr;
+    let w = g.width();
+    if w > 0 {
+        w
+    } else {
+        1
+    }
+}
+
+/// Display width of a string, counting each grapheme cluster via `grapheme_display_width`.
+pub fn str_display_width(s: &str) -> usize {
+    s.graphemes(true).map(grapheme_display_width).sum()
+}
+
+/// Render text into buffer cells with correct complex-script support.
+///
+/// Iterates Unicode codepoints rather than grapheme clusters:
+/// - Spacing characters (wcwidth ≥ 1) each occupy their own cell.
+/// - Zero-width characters (Mn combining marks, wcwidth = 0) are appended
+///   to the previous cell's symbol so the terminal font can shape them
+///   together with the base character without creating a skip cell.
+/// - Wide characters (CJK, wcwidth = 2) write a space to the following cell.
+///
+/// This avoids the ratatui diff `to_skip` bug where a continuation cell is
+/// never output even when it held non-empty content in the previous frame,
+/// which caused persistent Mc-symbol artifacts during redraws in Indic locales.
+///
+/// Returns the number of columns consumed.
+pub fn render_text_cells(
+    buf: &mut Buffer,
+    x: u16,
+    y: u16,
+    text: &str,
+    max_cols: u16,
+    style: Style,
+) -> u16 {
+    use unicode_width::UnicodeWidthChar;
+    let mut col = 0u16;
+    for ch in text.chars() {
+        let cw = UnicodeWidthChar::width(ch).unwrap_or(0) as u16;
+        if cw == 0 {
+            // Zero-width (Mn combining marks, etc.): append to the last written cell
+            // so the terminal font can shape them with their base character.
+            if col > 0 {
+                let cell = &mut buf[(x + col - 1, y)];
+                let mut sym = cell.symbol().to_string();
+                sym.push(ch);
+                cell.set_symbol(&sym);
+            }
+        } else {
+            if col + cw > max_cols {
+                break;
+            }
+            let cell = &mut buf[(x + col, y)];
+            cell.set_symbol(&ch.to_string());
+            cell.set_style(style);
+            if cw == 2 && col + 1 < max_cols {
+                // Fill second cell of CJK wide char so it doesn't bleed
+                let next = &mut buf[(x + col + 1, y)];
+                next.set_symbol(" ");
+                next.set_style(style);
+            }
+            col += cw;
+        }
+    }
+    col
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_devanagari_grapheme_width() {
+        // Mc (Spacing Combining Marks) have wcwidth=1 in the terminal — they advance the
+        // cursor just like base consonants. So "थी" cluster = थ(1) + ी(Mc,1) = 2 terminal cols.
+        assert_eq!(str_display_width("थीम"), 3); // थी(Mc→2) + म(1) = 3
+        assert_eq!(str_display_width("भाषा"), 4); // भा(Mc→2) + षा(Mc→2) = 4
+                                                  // Mn (Non-spacing marks) have wcwidth=0 — truly zero-width, no cursor advance.
+                                                  // े (U+0947) and ै (U+0948) are Mn, so the cluster "ह+े" = 1 terminal col.
+        assert_eq!(str_display_width("है"), 1); // ह(1) + े(Mn,0) = 1
+        assert_eq!(str_display_width("हैं"), 1); // ह(1) + ै(Mn,0) + ं(Mn,0) = 1
+        assert_eq!(str_display_width("करें"), 2); // क(1) + र+े+ं cluster(1, all Mn) = 2
+                                                // Bengali: U+09BE (া) has Grapheme_Extend but wcwidth=1 — must be treated as width 1.
+        assert_eq!(str_display_width("ভাষা"), 4); // ভা(Mc→2) + ষা(Mc→2) = 4
+        assert_eq!(str_display_width("বাংলা"), 5); // ব(1)+া(Mc,1)+ং(Mc,1)+ল(1)+া(Mc,1) = 5
+                                                 // CJK must remain 2-wide
+        assert_eq!(str_display_width("漢"), 2);
+        assert_eq!(str_display_width("日本"), 4);
+        // Basic ASCII unaffected
+        assert_eq!(str_display_width("abc"), 3);
+    }
 }

@@ -5,15 +5,13 @@ use ratatui::{
     layout::Rect,
     prelude::Widget,
     style::{Modifier, Style},
-    text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem},
+    widgets::{Block, Borders, Clear},
 };
-use unicode_width::UnicodeWidthStr;
 
 use termide_core::ThemeColors;
 use termide_i18n as i18n;
 use termide_theme::Theme;
-use termide_ui::ScrollBar;
+use termide_ui::{render_text_cells, str_display_width, ScrollBar};
 
 /// Dropdown menu item
 #[derive(Debug, Clone)]
@@ -86,7 +84,7 @@ impl<'a> Dropdown<'a> {
         let max_label_len = self
             .items
             .iter()
-            .map(|item| item.label.width())
+            .map(|item| str_display_width(&item.label))
             .max()
             .unwrap_or(0);
         // 2 (borders) + 1 (space) + label + 3 (" ▶ ") = label + 6
@@ -123,59 +121,75 @@ impl<'a> Dropdown<'a> {
         // Clear area under dropdown
         Clear.render(area, buf);
 
+        // Render border
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(self.theme.accented_fg))
+            .style(Style::default().bg(self.theme.bg));
+        block.render(area, buf);
+
+        // Inner area (without border)
+        let inner = Rect {
+            x: area.x + 1,
+            y: area.y + 1,
+            width: area.width.saturating_sub(2),
+            height: area.height.saturating_sub(2),
+        };
+
+        // Fill inner background
+        for row in inner.y..inner.y + inner.height {
+            for col in inner.x..inner.x + inner.width {
+                buf[(col, row)].set_style(Style::default().bg(self.theme.bg));
+            }
+        }
+
         // Get visible items
         let visible_end = (self.scroll_offset + self.max_visible).min(self.items.len());
         let visible_items = &self.items[self.scroll_offset..visible_end];
 
-        // Create list of items
-        let items: Vec<ListItem> = visible_items
-            .iter()
-            .enumerate()
-            .map(|(i, item)| {
-                let actual_index = self.scroll_offset + i;
-                let is_selected = actual_index == self.selected;
+        // Render rows
+        for (i, item) in visible_items.iter().enumerate() {
+            let actual_index = self.scroll_offset + i;
+            let is_selected = actual_index == self.selected;
 
-                let base_style = if is_selected {
-                    Style::default()
-                        .bg(self.theme.selected_bg)
-                        .fg(self.theme.selected_fg)
-                        .add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default().fg(self.theme.fg)
-                };
+            let base_style = if is_selected {
+                Style::default()
+                    .bg(self.theme.selected_bg)
+                    .fg(self.theme.selected_fg)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(self.theme.fg).bg(self.theme.bg)
+            };
 
-                let mut spans = vec![Span::styled(" ", base_style)];
-                spans.push(Span::styled(&item.label, base_style));
+            let row_y = inner.y + i as u16;
+            if row_y >= inner.y + inner.height {
+                break;
+            }
 
-                // Add submenu indicator or padding
-                let label_width = item.label.width();
-                // -6: borders(2) + leading space(1) + suffix " ▶ "(3)
-                let padding_len = (width as usize).saturating_sub(label_width + 6);
-                if padding_len > 0 {
-                    // Use a static buffer to avoid per-item allocation
-                    const SPACES: &str = "                                                                                                                                ";
-                    let pad = &SPACES[..padding_len.min(SPACES.len())];
-                    spans.push(Span::styled(pad, base_style));
-                }
+            // Fill row background
+            for col in inner.x..inner.x + inner.width {
+                buf[(col, row_y)].set_style(base_style);
+            }
 
-                if item.has_submenu {
-                    spans.push(Span::styled(" ▶ ", base_style));
-                } else {
-                    spans.push(Span::styled("   ", base_style));
-                }
+            // " " + label
+            let mut cursor_x = inner.x;
+            cursor_x += render_text_cells(buf, cursor_x, row_y, " ", inner.width, base_style);
+            let label_width = str_display_width(&item.label) as u16;
+            cursor_x += render_text_cells(
+                buf,
+                cursor_x,
+                row_y,
+                &item.label,
+                inner.width.saturating_sub(cursor_x - inner.x),
+                base_style,
+            );
 
-                ListItem::new(Line::from(spans))
-            })
-            .collect();
-
-        let list = List::new(items).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(self.theme.accented_fg))
-                .style(Style::default().bg(self.theme.bg)),
-        );
-
-        list.render(area, buf);
+            // Suffix " ▶ " or "   " — always 3 columns wide, right-aligned
+            let suffix = if item.has_submenu { " ▶ " } else { "   " };
+            let suffix_x = inner.x + inner.width.saturating_sub(3);
+            render_text_cells(buf, suffix_x, row_y, suffix, 3, base_style);
+            let _ = (cursor_x, label_width); // suppress warnings
+        }
 
         // Render scrollbar on right edge (inside border)
         let visible_count = self.items.len().min(self.max_visible);

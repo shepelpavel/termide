@@ -2,6 +2,9 @@
 members = ["crates/*"]
 resolver = "2"
 
+[patch.crates-io]
+unicode-width = { path = "crates/unicode-width-fix" }
+
 [workspace.package]
 version = "0.16.4"
 edition = "2021"

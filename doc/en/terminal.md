@@ -60,4 +60,6 @@ default_shell = "/usr/bin/fish"
 
 - **Text Selection**: Click and hold the left mouse button to select text. Selected text is automatically copied to the clipboard after releasing the button
 - **Scroll Wheel**: Scroll through terminal output history
+- **Ctrl+Click on URL/path**: Open link in browser or file manager
+- **Ctrl+Click on hex color**: Show color preview popup (e.g. `#ff0000`, `#abc`) — visible while button is held, disappears on release
 - **Application Interaction**: If a console application (e.g., `htop` or `mc`) supports mouse input, the terminal will pass mouse events to it
