@@ -200,7 +200,7 @@ pub fn render_menu(frame: &mut Frame, area: Rect, params: &MenuRenderParams) {
                 .bg(params.theme.selected_bg)
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(params.theme.fg)
+            Style::default().fg(params.theme.accented_fg)
         };
 
         spans.push(Span::styled(item.as_str(), style));

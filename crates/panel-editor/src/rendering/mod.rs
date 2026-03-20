@@ -94,7 +94,7 @@ pub fn render_editor_content<H: LineHighlighter>(
     // Create rendering styles from theme
     let text_style = Style::default().fg(theme.fg);
     let line_number_style = Style::default().fg(theme.disabled);
-    let cursor_line_style = Style::default().bg(theme.accented_bg).fg(theme.fg);
+    let cursor_line_style = Style::default().bg(theme.accented_bg).fg(theme.accented_fg);
 
     let search_match_style = Style::default().bg(theme.warning).fg(theme.bg);
 
