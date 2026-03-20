@@ -1,6 +1,6 @@
 # Themes
 
-TermIDE comes with 25 built-in themes and supports custom user themes. You can switch themes by editing the configuration file.
+TermIDE comes with 34 built-in themes and supports custom user themes. You can switch themes by editing the configuration file.
 
 ## Built-in Themes
 
@@ -16,6 +16,15 @@ TermIDE comes with 25 built-in themes and supports custom user themes. You can s
 | `solarized-dark` | Dark variant of the Solarized color scheme |
 | `midnight` | Midnight Commander inspired classic blue theme |
 | `macos-dark` | macOS dark style theme |
+| `ayu-dark` | Ayu Dark theme with warm amber accents |
+| `catppuccin-macchiato` | Catppuccin Macchiato — pastel dark with mauve accents |
+| `everforest` | Everforest — muted green woodland palette |
+| `github-dark` | GitHub Dark theme |
+| `gruvbox` | Gruvbox — retro warm browns and muted greens |
+| `kanagawa` | Kanagawa — Japanese woodblock inspired dark theme |
+| `material-ocean` | Material Ocean — deep blue Material Design variant |
+| `rosepine` | Rosé Pine — soho vibes with dusty rose accents |
+| `tokyonight` | Tokyo Night — neon-lit dark city palette |
 
 ### Light Themes
 
