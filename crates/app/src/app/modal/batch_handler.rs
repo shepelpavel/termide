@@ -842,9 +842,17 @@ impl App {
                             use termide_file_ops::ConflictMode as FileOpsConflictMode;
 
                             let is_move = operation.operation_type == BatchOperationType::Move;
+                            let worker_dest = if source.is_dir() && final_dest.is_dir() {
+                                final_dest
+                                    .parent()
+                                    .map(|p| p.to_path_buf())
+                                    .unwrap_or_else(|| final_dest.clone())
+                            } else {
+                                final_dest.clone()
+                            };
                             let request = make_copy_or_move_request(
                                 OperationPath::Local(source.clone()),
-                                OperationPath::Local(final_dest.clone()),
+                                OperationPath::Local(worker_dest),
                                 is_move,
                             )
                             .with_conflict_mode(FileOpsConflictMode::OverwriteAll);
@@ -1273,9 +1281,17 @@ impl App {
                 ConflictMode::SkipAll => FileOpsConflictMode::SkipAll,
                 _ => FileOpsConflictMode::Ask,
             };
+            let worker_dest = if source.is_dir() && final_dest.is_dir() {
+                final_dest
+                    .parent()
+                    .map(|p| p.to_path_buf())
+                    .unwrap_or_else(|| final_dest.clone())
+            } else {
+                final_dest.clone()
+            };
             let request = make_copy_or_move_request(
                 OperationPath::Local(source.clone()),
-                OperationPath::Local(final_dest),
+                OperationPath::Local(worker_dest),
                 is_move,
             )
             .with_conflict_mode(worker_conflict_mode);
