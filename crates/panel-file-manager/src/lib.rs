@@ -2460,15 +2460,9 @@ impl FileManager {
 
             // Tree expand/collapse
             FmCommand::ExpandDir => {
-                // If current item is a collapsed dir, expand it
-                // Otherwise, if it's a file or "..", Enter into it
                 if let Some(te) = self.tree_entry_at(self.selected) {
                     if te.expanded == Some(false) {
                         self.expand_dir(self.selected);
-                    } else if te.file_entry.is_dir || te.file_entry.name == ".." {
-                        if let Some(event) = self.enter() {
-                            events.push(event);
-                        }
                     }
                 }
             }
