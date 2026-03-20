@@ -8,8 +8,6 @@ pub mod shell_utils;
 mod terminal;
 mod terminal_info;
 
-pub use terminal::vt100_parser::VtPerformer;
-pub use terminal::{Cell, CellStyle, MouseTrackingMode, TerminalScreen};
 pub use terminal_info::TerminalInfo;
 
 use anyhow::Result;
@@ -34,6 +32,7 @@ use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
+use terminal::{Cell, CellStyle, MouseTrackingMode, TerminalScreen};
 use vte::Parser;
 
 use termide_config::{matches_binding_or_default, Config, TerminalKeybindings};

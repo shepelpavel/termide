@@ -14,7 +14,7 @@ mod utils;
 mod vfs_state;
 
 pub use file_info::FileInfo;
-pub use vfs_state::VfsState;
+use vfs_state::VfsState;
 
 /// Case-insensitive string comparison without allocation.
 fn cmp_ignore_case(a: &str, b: &str) -> std::cmp::Ordering {

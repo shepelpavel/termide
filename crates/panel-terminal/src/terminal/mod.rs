@@ -432,41 +432,6 @@ impl TerminalScreen {
         self.scroll_offset = 0;
     }
 
-    /// Check if cell (row, col) is in current selection
-    pub fn is_in_selection(&self, row: usize, col: usize) -> bool {
-        let (start, end) = match (self.selection_start, self.selection_end) {
-            (Some(s), Some(e)) => (s, e),
-            _ => return false,
-        };
-
-        // Normalize: start should be before end
-        let (start, end) = if start <= end {
-            (start, end)
-        } else {
-            (end, start)
-        };
-
-        // Simple rectangular selection by lines
-        // More correct: linear selection like in regular terminals
-        if row < start.0 || row > end.0 {
-            return false;
-        }
-
-        if row == start.0 && row == end.0 {
-            // Single line
-            col >= start.1 && col <= end.1
-        } else if row == start.0 {
-            // First line
-            col >= start.1
-        } else if row == end.0 {
-            // Last line
-            col <= end.1
-        } else {
-            // Middle lines - all selected
-            true
-        }
-    }
-
     /// Move cursor
     pub fn move_cursor(&mut self, row: usize, col: usize) {
         self.wrap_pending = false;
@@ -512,27 +477,6 @@ impl TerminalScreen {
             // view_start is the absolute index of visual row 0
             let view_start = self.scrollback.len().saturating_sub(self.scroll_offset);
             view_start + visual_row
-        }
-    }
-
-    /// Convert absolute buffer index to visual row (if visible)
-    /// Returns None if the row is not currently visible
-    pub fn absolute_to_visual(&self, abs_row: usize) -> Option<usize> {
-        if self.use_alt_screen {
-            if abs_row < self.rows {
-                Some(abs_row)
-            } else {
-                None
-            }
-        } else {
-            let view_start = self.scrollback.len().saturating_sub(self.scroll_offset);
-            let view_end = view_start + self.rows;
-
-            if abs_row >= view_start && abs_row < view_end {
-                Some(abs_row - view_start)
-            } else {
-                None
-            }
         }
     }
 

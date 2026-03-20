@@ -152,10 +152,14 @@ fn parse_key(s: &str) -> Result<KeyCode, String> {
         "f11" => Ok(KeyCode::F(11)),
         "f12" => Ok(KeyCode::F(12)),
 
-        // Single character
-        _ if s.len() == 1 => Ok(KeyCode::Char(s.chars().next().unwrap())),
-
-        _ => Err(format!("Unknown key: {}", s)),
+        // Single character (works for ASCII and multi-byte Unicode)
+        _ => {
+            let mut chars = s.chars();
+            match (chars.next(), chars.next()) {
+                (Some(c), None) => Ok(KeyCode::Char(c)),
+                _ => Err(format!("Unknown key: {}", s)),
+            }
+        }
     }
 }
 

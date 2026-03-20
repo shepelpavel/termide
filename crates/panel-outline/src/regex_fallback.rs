@@ -1,55 +1,32 @@
 //! Regex fallback for symbol extraction from markdown, HTML, YAML, and XML files.
 
 use regex::Regex;
-use std::sync::OnceLock;
+use std::sync::LazyLock;
 
 use crate::symbols::{SymbolInfo, SymbolKind};
 
-static MD_HEADING_RE: OnceLock<Regex> = OnceLock::new();
-static HTML_HEADING_RE: OnceLock<Regex> = OnceLock::new();
-static TOML_SECTION_RE: OnceLock<Regex> = OnceLock::new();
-static YAML_KEY_RE: OnceLock<Regex> = OnceLock::new();
-static XML_OPEN_RE: OnceLock<Regex> = OnceLock::new();
-static XML_CLOSE_RE: OnceLock<Regex> = OnceLock::new();
-static XML_SELF_CLOSE_RE: OnceLock<Regex> = OnceLock::new();
+static MD_HEADING_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^(#{1,6})\s+(.+)$").expect("valid regex"));
 
-fn md_heading_regex() -> &'static Regex {
-    MD_HEADING_RE.get_or_init(|| Regex::new(r"^(#{1,6})\s+(.+)$").expect("valid regex"))
-}
+static HTML_HEADING_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"<h([1-6])[^>]*>([^<]+)").expect("valid regex"));
 
-fn html_heading_regex() -> &'static Regex {
-    HTML_HEADING_RE.get_or_init(|| Regex::new(r"<h([1-6])[^>]*>([^<]+)").expect("valid regex"))
-}
+// Matches [section], [section.sub]; only bare TOML keys: alphanumeric, '_', '-', joined by '.'
+static TOML_SECTION_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^\s*\[(\[?)\s*([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*)\s*\]?\]").expect("valid regex")
+});
 
-fn toml_section_regex() -> &'static Regex {
-    // Matches [section], [section.sub], [[array]], [[array.sub]]
-    // Only bare TOML keys: alphanumeric, '_', '-', joined by '.'
-    TOML_SECTION_RE.get_or_init(|| {
-        Regex::new(r"^\s*\[(\[?)\s*([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*)\s*\]?\]")
-            .expect("valid regex")
-    })
-}
+static YAML_KEY_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^(\s*)([a-zA-Z0-9_][a-zA-Z0-9_ .-]*)\s*:").expect("valid regex"));
 
-fn yaml_key_regex() -> &'static Regex {
-    YAML_KEY_RE.get_or_init(|| {
-        Regex::new(r"^(\s*)([a-zA-Z0-9_][a-zA-Z0-9_ .-]*)\s*:").expect("valid regex")
-    })
-}
+static XML_OPEN_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"<([a-zA-Z][a-zA-Z0-9_:-]*)[>\s/]").expect("valid regex"));
 
-fn xml_open_regex() -> &'static Regex {
-    XML_OPEN_RE
-        .get_or_init(|| Regex::new(r"<([a-zA-Z][a-zA-Z0-9_:-]*)[>\s/]").expect("valid regex"))
-}
+static XML_CLOSE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"</([a-zA-Z][a-zA-Z0-9_:-]*)\s*>").expect("valid regex"));
 
-fn xml_close_regex() -> &'static Regex {
-    XML_CLOSE_RE
-        .get_or_init(|| Regex::new(r"</([a-zA-Z][a-zA-Z0-9_:-]*)\s*>").expect("valid regex"))
-}
-
-fn xml_self_close_regex() -> &'static Regex {
-    XML_SELF_CLOSE_RE
-        .get_or_init(|| Regex::new(r"<([a-zA-Z][a-zA-Z0-9_:-]*)[^>]*/\s*>").expect("valid regex"))
-}
+static XML_SELF_CLOSE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"<([a-zA-Z][a-zA-Z0-9_:-]*)[^>]*/\s*>").expect("valid regex"));
 
 /// Extract symbols using regex patterns for languages without tree-sitter support.
 pub fn extract_symbols_regex(source: &str, language: &str) -> Vec<SymbolInfo> {
@@ -64,11 +41,10 @@ pub fn extract_symbols_regex(source: &str, language: &str) -> Vec<SymbolInfo> {
 }
 
 fn extract_markdown_headings(source: &str) -> Vec<SymbolInfo> {
-    let re = md_heading_regex();
     let mut symbols = Vec::new();
 
     for (line_idx, line) in source.lines().enumerate() {
-        if let Some(caps) = re.captures(line) {
+        if let Some(caps) = MD_HEADING_RE.captures(line) {
             let hashes = caps.get(1).map(|m| m.as_str().len()).unwrap_or(1);
             let name = caps.get(2).map(|m| m.as_str().trim()).unwrap_or("");
             if name.is_empty() {
@@ -97,12 +73,11 @@ fn extract_markdown_headings(source: &str) -> Vec<SymbolInfo> {
 }
 
 fn extract_toml_sections(source: &str) -> Vec<SymbolInfo> {
-    let re = toml_section_regex();
     let mut symbols = Vec::new();
     let mut emitted: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
 
     for (line_idx, line) in source.lines().enumerate() {
-        if let Some(caps) = re.captures(line) {
+        if let Some(caps) = TOML_SECTION_RE.captures(line) {
             let is_array = caps.get(1).is_some_and(|m| !m.as_str().is_empty());
             if is_array {
                 continue;
@@ -152,11 +127,10 @@ fn extract_toml_sections(source: &str) -> Vec<SymbolInfo> {
 }
 
 fn extract_html_headings(source: &str) -> Vec<SymbolInfo> {
-    let re = html_heading_regex();
     let mut symbols = Vec::new();
 
     for (line_idx, line) in source.lines().enumerate() {
-        for caps in re.captures_iter(line) {
+        for caps in HTML_HEADING_RE.captures_iter(line) {
             let level: usize = caps
                 .get(1)
                 .and_then(|m| m.as_str().parse().ok())
@@ -188,7 +162,6 @@ fn extract_html_headings(source: &str) -> Vec<SymbolInfo> {
 }
 
 fn extract_yaml_keys(source: &str) -> Vec<SymbolInfo> {
-    let re = yaml_key_regex();
     let mut symbols = Vec::new();
 
     for (line_idx, line) in source.lines().enumerate() {
@@ -198,7 +171,7 @@ fn extract_yaml_keys(source: &str) -> Vec<SymbolInfo> {
             continue;
         }
 
-        if let Some(caps) = re.captures(line) {
+        if let Some(caps) = YAML_KEY_RE.captures(line) {
             let indent = caps.get(1).map(|m| m.as_str().len()).unwrap_or(0);
             let depth = indent / 2;
             if depth > 1 {
@@ -223,9 +196,6 @@ fn extract_yaml_keys(source: &str) -> Vec<SymbolInfo> {
 }
 
 fn extract_xml_elements(source: &str) -> Vec<SymbolInfo> {
-    let open_re = xml_open_regex();
-    let close_re = xml_close_regex();
-    let self_close_re = xml_self_close_regex();
     let mut symbols = Vec::new();
     let mut stack: Vec<String> = Vec::new();
 
@@ -259,7 +229,7 @@ fn extract_xml_elements(source: &str) -> Vec<SymbolInfo> {
 
             // Closing tag (must start with </)
             if tag_rest.starts_with("</") {
-                if let Some(caps) = close_re.captures(tag_rest) {
+                if let Some(caps) = XML_CLOSE_RE.captures(tag_rest) {
                     let m = caps.get(0).unwrap();
                     let tag = caps.get(1).map(|c| c.as_str()).unwrap_or("");
                     if let Some(p) = stack.iter().rposition(|t| t == tag) {
@@ -273,7 +243,7 @@ fn extract_xml_elements(source: &str) -> Vec<SymbolInfo> {
             }
 
             // Self-closing tag (check before open since both start with <tag)
-            if let Some(caps) = self_close_re.captures(tag_rest) {
+            if let Some(caps) = XML_SELF_CLOSE_RE.captures(tag_rest) {
                 let m = caps.get(0).unwrap();
                 // Ensure the match starts at position 0 in tag_rest
                 if m.start() == 0 {
@@ -294,7 +264,7 @@ fn extract_xml_elements(source: &str) -> Vec<SymbolInfo> {
             }
 
             // Opening tag
-            if let Some(caps) = open_re.captures(tag_rest) {
+            if let Some(caps) = XML_OPEN_RE.captures(tag_rest) {
                 let m = caps.get(0).unwrap();
                 if m.start() == 0 {
                     let tag = caps.get(1).map(|c| c.as_str()).unwrap_or("");
