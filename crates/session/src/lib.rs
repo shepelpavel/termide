@@ -104,8 +104,9 @@ fn get_data_dir() -> Result<PathBuf> {
 impl Session {
     /// Get the session directory for a specific project
     ///
-    /// Creates nested subdirectories matching the project path.
-    /// Example: /home/user/project1 -> ~/.local/share/termide/sessions/home/user/project1/
+    /// Creates nested subdirectories matching the project path with root stripped.
+    /// Example (Unix):    /home/user/project1 -> ~/.local/share/termide/sessions/home/user/project1/
+    /// Example (Windows): C:\Users\user\proj  -> %APPDATA%\termide\sessions\Users\user\proj\
     pub fn get_session_dir(project_root: &Path) -> Result<PathBuf> {
         let data_dir = get_data_dir()?;
 
@@ -114,10 +115,18 @@ impl Session {
             .canonicalize()
             .unwrap_or_else(|_| project_root.to_path_buf());
 
-        // Strip the leading "/" or drive letter to create a relative path
-        let relative_path = canonical_project
-            .strip_prefix("/")
-            .unwrap_or(&canonical_project);
+        // Strip root components (leading "/" on Unix; drive prefix + "\" on Windows)
+        // so that PathBuf::join does not treat the result as absolute and replace the base.
+        // Component::Prefix covers "C:" / "\\server\share"; Component::RootDir covers "/" or "\".
+        let relative_path: PathBuf = canonical_project
+            .components()
+            .filter(|c| {
+                !matches!(
+                    c,
+                    std::path::Component::Prefix(_) | std::path::Component::RootDir
+                )
+            })
+            .collect();
 
         Ok(data_dir.join("sessions").join(relative_path))
     }
