@@ -1179,7 +1179,7 @@ impl App {
             let term_height = height.saturating_sub(3);
             let term_width = width.saturating_sub(2);
 
-            let command = script.path.to_string_lossy().to_string();
+            let command = script.path.to_string_lossy().into_owned();
 
             match Terminal::new_with_cwd(term_height, term_width, Some(cwd)) {
                 Ok(mut terminal) => {

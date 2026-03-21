@@ -45,7 +45,7 @@ impl App {
                 let source_display = if paths.len() == 1 {
                     paths[0]
                         .file_name()
-                        .map(|n| n.to_string_lossy().to_string())
+                        .map(|n| n.to_string_lossy().into_owned())
                         .unwrap_or_else(|| "file".to_string())
                 } else {
                     format!("{} items", paths.len())

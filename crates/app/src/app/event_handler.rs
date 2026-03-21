@@ -408,7 +408,7 @@ impl App {
         let working_dir = file_path.parent().map(|p| p.to_path_buf());
 
         // Command to execute
-        let command = file_path.to_string_lossy().to_string();
+        let command = file_path.to_string_lossy().into_owned();
 
         match self.create_terminal_panel(working_dir) {
             Ok(mut terminal) => {

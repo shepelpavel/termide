@@ -325,7 +325,7 @@ impl GitDiffPanel {
         let hunks = Self::parse_diff(&diff_text);
 
         Some(FileDiff {
-            path: path.to_string_lossy().to_string(),
+            path: path.to_string_lossy().into_owned(),
             status,
             staged,
             additions: stats.additions,

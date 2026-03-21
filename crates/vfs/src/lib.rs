@@ -610,7 +610,7 @@ impl VfsManager {
 
         let filename = remote
             .file_name()
-            .map(|n| n.to_string_lossy().to_string())
+            .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| "download".to_string());
 
         let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S_%3f");

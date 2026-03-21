@@ -262,7 +262,7 @@ impl SystemMonitor {
             if process.exe().is_none_or(|p| p.as_os_str().is_empty()) {
                 continue;
             }
-            let name = process.name().to_string_lossy().to_string();
+            let name = process.name().to_string_lossy().into_owned();
             if name.is_empty() {
                 continue;
             }

@@ -21,7 +21,7 @@ use termide_vfs::VfsPath;
 /// Extract the file name from a path, defaulting to "file" if unavailable.
 fn source_name(path: &Path) -> String {
     path.file_name()
-        .map(|n| n.to_string_lossy().to_string())
+        .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "file".to_string())
 }
 
@@ -778,7 +778,7 @@ impl App {
                 ConflictResolution::Overwrite => {
                     // Overwrite this file - execute operation directly
                     if let Some(source) = operation.current_source().cloned() {
-                        let dest_str_ow = operation.destination.to_string_lossy().to_string();
+                        let dest_str_ow = operation.destination.to_string_lossy().into_owned();
                         let is_remote_dest_ow = termide_vfs::is_vfs_url(&dest_str_ow);
                         let item_name_ow = path_utils::get_file_name_string(&source);
 
@@ -1150,7 +1150,7 @@ impl App {
 
         let item_name = path_utils::get_file_name_string(&source);
 
-        let dest_str = operation.destination.to_string_lossy().to_string();
+        let dest_str = operation.destination.to_string_lossy().into_owned();
         let is_remote_dest = termide_vfs::is_vfs_url(&dest_str);
 
         // Determine target path (considering rename pattern if set).
@@ -1241,7 +1241,7 @@ impl App {
             if let Some((vfs_manager, vfs_current_path)) = self.find_remote_file_manager_info() {
                 let source_name = source
                     .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
+                    .map(|n| n.to_string_lossy().into_owned())
                     .unwrap_or_default();
                 let vfs_source = vfs_current_path.join(&source_name);
 
@@ -1437,7 +1437,7 @@ impl App {
                         {
                             let source_name = source
                                 .file_name()
-                                .map(|n| n.to_string_lossy().to_string())
+                                .map(|n| n.to_string_lossy().into_owned())
                                 .unwrap_or_default();
                             let vfs_source = vfs_current_path.join(&source_name);
 

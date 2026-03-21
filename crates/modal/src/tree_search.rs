@@ -1258,7 +1258,7 @@ fn build_tree_nodes(items: Vec<TreeBuildItem<'_>>) -> (Vec<ResultTreeNode>, Vec<
             let dir_path: PathBuf = components[..=depth].iter().collect();
             if !added_dirs.contains(&dir_path) {
                 added_dirs.insert(dir_path.clone());
-                let dir_name = components[depth].to_string_lossy().to_string();
+                let dir_name = components[depth].to_string_lossy().into_owned();
                 nodes.push(ResultTreeNode {
                     name: dir_name,
                     full_path: Path::new(item.full_path)
@@ -1278,7 +1278,7 @@ fn build_tree_nodes(items: Vec<TreeBuildItem<'_>>) -> (Vec<ResultTreeNode>, Vec<
         let depth = components.len().saturating_sub(1);
         let name = components
             .last()
-            .map(|c| c.to_string_lossy().to_string())
+            .map(|c| c.to_string_lossy().into_owned())
             .unwrap_or_default();
 
         nodes.push(ResultTreeNode {

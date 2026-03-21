@@ -110,7 +110,7 @@ impl DirectoryPickerModal {
                     if !path.is_dir() {
                         return None;
                     }
-                    let name = entry.file_name().to_string_lossy().to_string();
+                    let name = entry.file_name().to_string_lossy().into_owned();
                     // Skip hidden directories
                     if name.starts_with('.') {
                         return None;

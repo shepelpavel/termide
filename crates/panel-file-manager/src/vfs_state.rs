@@ -241,7 +241,7 @@ impl VfsState {
         let current_name = self
             .current_path
             .file_name()
-            .map(|n| n.to_string_lossy().to_string());
+            .map(|n| n.to_string_lossy().into_owned());
 
         self.current_path = parent;
         current_name

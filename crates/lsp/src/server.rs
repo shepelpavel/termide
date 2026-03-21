@@ -139,7 +139,9 @@ impl LspServer {
             thread::spawn(move || {
                 let mut stdin = stdin;
                 while let Ok(msg) = writer_rx.recv() {
-                    if *status.lock().unwrap() == ServerStatus::ShuttingDown {
+                    if *status.lock().unwrap_or_else(|e| e.into_inner())
+                        == ServerStatus::ShuttingDown
+                    {
                         break;
                     }
                     if let Err(e) = stdin.write_all(msg.as_bytes()) {
@@ -208,7 +210,7 @@ impl LspServer {
         let mut header = String::new();
 
         loop {
-            if *status.lock().unwrap() == ServerStatus::ShuttingDown {
+            if *status.lock().unwrap_or_else(|e| e.into_inner()) == ServerStatus::ShuttingDown {
                 break;
             }
 
@@ -305,14 +307,15 @@ impl LspServer {
         response: JsonRpcResponse,
     ) {
         // Find and notify the waiting request
-        let mut pending = pending.lock().unwrap();
+        let mut pending = pending.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(tx) = pending.remove(&response.id) {
             if let Some(result) = response.result {
                 // Try to parse as InitializeResult before sending
                 // This avoids cloning the entire JSON value
                 if let Ok(init_result) = serde_json::from_value::<InitializeResult>(result.clone())
                 {
-                    *capabilities.lock().unwrap() = Some(init_result.capabilities);
+                    *capabilities.lock().unwrap_or_else(|e| e.into_inner()) =
+                        Some(init_result.capabilities);
                     log::info!("LSP server initialized, waiting for indexing");
                     log::info!("LSP: Initialized, starting indexing...");
                 }
@@ -323,7 +326,8 @@ impl LspServer {
         } else if let Some(result) = response.result {
             // No pending request - might be initialize response
             if let Ok(init_result) = serde_json::from_value::<InitializeResult>(result) {
-                *capabilities.lock().unwrap() = Some(init_result.capabilities);
+                *capabilities.lock().unwrap_or_else(|e| e.into_inner()) =
+                    Some(init_result.capabilities);
                 log::info!("LSP server initialized, waiting for indexing");
                 log::info!("LSP: Initialized, starting indexing...");
             }
@@ -379,8 +383,11 @@ impl LspServer {
 
             match progress.value {
                 ProgressParamsValue::WorkDone(WorkDoneProgress::Begin(begin)) => {
-                    active_progress.lock().unwrap().insert(token);
-                    *status.lock().unwrap() = ServerStatus::Indexing;
+                    active_progress
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .insert(token);
+                    *status.lock().unwrap_or_else(|e| e.into_inner()) = ServerStatus::Indexing;
                     log::info!("LSP: {}", begin.title);
                 }
                 ProgressParamsValue::WorkDone(WorkDoneProgress::Report(report)) => {
@@ -390,11 +397,11 @@ impl LspServer {
                     }
                 }
                 ProgressParamsValue::WorkDone(WorkDoneProgress::End(_)) => {
-                    let mut progress = active_progress.lock().unwrap();
+                    let mut progress = active_progress.lock().unwrap_or_else(|e| e.into_inner());
                     progress.remove(&token);
                     if progress.is_empty() {
                         drop(progress); // Release before acquiring status lock
-                        *status.lock().unwrap() = ServerStatus::Running;
+                        *status.lock().unwrap_or_else(|e| e.into_inner()) = ServerStatus::Running;
                         log::info!("LSP: Ready");
                     }
                 }
@@ -468,7 +475,7 @@ impl LspServer {
         self.send_notification("initialized", serde_json::json!({}));
 
         // Set to Indexing - will become Running when all progress tokens complete
-        *self.status.lock().unwrap() = ServerStatus::Indexing;
+        *self.status.lock().unwrap_or_else(|e| e.into_inner()) = ServerStatus::Indexing;
         Ok(())
     }
 
@@ -490,7 +497,10 @@ impl LspServer {
         let (result_tx, result_rx) = mpsc::channel();
 
         // Store the sender for when response arrives
-        self.pending.lock().unwrap().insert(id, tx);
+        self.pending
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(id, tx);
 
         // Spawn thread to convert Value to T
         thread::spawn(move || {
@@ -632,18 +642,21 @@ impl LspServer {
 
     /// Get current server status
     pub fn status(&self) -> ServerStatus {
-        *self.status.lock().unwrap()
+        *self.status.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     /// Check if server is effectively ready (Running, or Indexing with no active progress)
     pub fn is_ready(&self) -> bool {
-        let status = *self.status.lock().unwrap();
+        let status = *self.status.lock().unwrap_or_else(|e| e.into_inner());
         match status {
             ServerStatus::Running => true,
             ServerStatus::Indexing => {
                 // If no active progress, consider it ready
                 // (server might not support/send progress notifications)
-                self.active_progress.lock().unwrap().is_empty()
+                self.active_progress
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .is_empty()
             }
             _ => false,
         }
@@ -651,13 +664,18 @@ impl LspServer {
 
     /// Check if server is actively indexing (has active progress tokens)
     pub fn is_indexing(&self) -> bool {
-        let status = *self.status.lock().unwrap();
-        status == ServerStatus::Indexing && !self.active_progress.lock().unwrap().is_empty()
+        let status = *self.status.lock().unwrap_or_else(|e| e.into_inner());
+        status == ServerStatus::Indexing
+            && !self
+                .active_progress
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_empty()
     }
 
     /// Shutdown the server
     pub fn shutdown(mut self) {
-        *self.status.lock().unwrap() = ServerStatus::ShuttingDown;
+        *self.status.lock().unwrap_or_else(|e| e.into_inner()) = ServerStatus::ShuttingDown;
 
         // Send shutdown request
         let _ = self.send_request::<()>("shutdown", serde_json::json!(null));
@@ -677,6 +695,6 @@ impl LspServer {
         let _ = self.process.kill();
         let _ = self.process.wait();
 
-        *self.status.lock().unwrap() = ServerStatus::Stopped;
+        *self.status.lock().unwrap_or_else(|e| e.into_inner()) = ServerStatus::Stopped;
     }
 }

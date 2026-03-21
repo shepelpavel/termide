@@ -28,7 +28,7 @@ pub fn stage_files(repo: &Path, files: &[PathBuf]) -> Result<(), String> {
     let mut args = vec!["add", "--"];
     let file_strs: Vec<String> = files
         .iter()
-        .map(|f| f.to_string_lossy().to_string())
+        .map(|f| f.to_string_lossy().into_owned())
         .collect();
     args.extend(file_strs.iter().map(|s| s.as_str()));
 
@@ -56,7 +56,7 @@ pub fn unstage_files(repo: &Path, files: &[PathBuf]) -> Result<(), String> {
     let mut args = vec!["reset", "HEAD", "--"];
     let file_strs: Vec<String> = files
         .iter()
-        .map(|f| f.to_string_lossy().to_string())
+        .map(|f| f.to_string_lossy().into_owned())
         .collect();
     args.extend(file_strs.iter().map(|s| s.as_str()));
 

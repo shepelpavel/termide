@@ -1,7 +1,96 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 use super::FileManager;
 use termide_vfs::VfsPath;
+
+/// Drag selection mode
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum DragMode {
+    Select, // Shift+drag - selection
+    Toggle, // Ctrl+drag - toggle selection
+}
+
+/// Selection state for file manager (multi-select and drag selection)
+#[derive(Clone, Default)]
+pub(crate) struct SelectionState {
+    /// Set of selected items (indices)
+    pub(crate) items: HashSet<usize>,
+    /// Starting index for drag selection
+    pub(crate) drag_start: Option<usize>,
+    /// Drag mode (Shift/Ctrl)
+    drag_mode: Option<DragMode>,
+    /// Set of items already processed during current drag (to avoid re-toggling)
+    pub(crate) dragged: HashSet<usize>,
+}
+
+impl SelectionState {
+    pub(crate) fn clear(&mut self) {
+        self.items.clear();
+    }
+
+    pub(crate) fn toggle(&mut self, index: usize) {
+        if self.items.contains(&index) {
+            self.items.remove(&index);
+        } else {
+            self.items.insert(index);
+        }
+    }
+
+    pub(crate) fn select(&mut self, index: usize) {
+        self.items.insert(index);
+    }
+
+    pub(crate) fn is_selected(&self, index: usize) -> bool {
+        self.items.contains(&index)
+    }
+
+    pub(crate) fn start_shift_drag(&mut self, index: usize) {
+        self.dragged.clear();
+        self.select(index);
+        self.dragged.insert(index);
+        self.drag_start = Some(index);
+        self.drag_mode = Some(DragMode::Select);
+    }
+
+    pub(crate) fn start_ctrl_drag(&mut self, index: usize) {
+        self.toggle(index);
+        self.drag_start = Some(index);
+        self.drag_mode = Some(DragMode::Toggle);
+        self.dragged.clear();
+        self.dragged.insert(index);
+    }
+
+    pub(crate) fn end_drag(&mut self) {
+        self.drag_start = None;
+        self.drag_mode = None;
+        self.dragged.clear();
+    }
+
+    pub(crate) fn is_dragging(&self) -> bool {
+        self.drag_mode.is_some()
+    }
+
+    pub(crate) fn process_drag(&mut self, index: usize) -> bool {
+        if !self.dragged.contains(&index) {
+            match self.drag_mode {
+                Some(DragMode::Select) => {
+                    self.select(index);
+                    self.dragged.insert(index);
+                    true
+                }
+                Some(DragMode::Toggle) => {
+                    self.toggle(index);
+                    self.dragged.insert(index);
+                    true
+                }
+                None => false,
+            }
+        } else {
+            false
+        }
+    }
+}
 
 impl FileManager {
     /// Check if entry at visible index is ".." (not selectable)

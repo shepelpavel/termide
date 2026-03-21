@@ -409,7 +409,7 @@ impl GitStatusCache {
 
             let parent = path.parent();
             let parent_str = parent
-                .map(|p| p.to_string_lossy().to_string())
+                .map(|p| p.to_string_lossy().into_owned())
                 .unwrap_or_default();
 
             let parent_match = match parent {
@@ -489,7 +489,7 @@ pub fn get_repo_status(repo_path: &Path, item_path: &Path) -> Option<GitRepoStat
     let git_path_str = if is_repo_root {
         ".".to_string()
     } else {
-        relative_path.to_string_lossy().to_string()
+        relative_path.to_string_lossy().into_owned()
     };
 
     // Single git status call with branch info and ignored files

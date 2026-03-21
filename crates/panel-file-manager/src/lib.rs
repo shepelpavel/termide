@@ -4,6 +4,7 @@
 
 mod file_info;
 mod file_search;
+mod git_status;
 mod keyboard;
 mod navigation;
 mod operations;
@@ -14,6 +15,8 @@ mod utils;
 mod vfs_state;
 
 pub use file_info::FileInfo;
+use navigation::NavigationState;
+use selection::SelectionState;
 use vfs_state::VfsState;
 
 /// Case-insensitive string comparison without allocation.
@@ -54,266 +57,13 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 
 use termide_config::{constants, Config, FileManagerSettings};
-use termide_core::{
-    util::is_binary_file, CommandResult, Panel, PanelCommand, PanelEvent, RenderContext,
-    SessionPanel,
-};
+use termide_core::{CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel};
 use termide_git::{get_git_status_async, GitStatus, GitStatusAsyncResult, GitStatusCache};
 use termide_modal::{ActionButton, ActiveModal, ConfirmModal, InfoActionModal, InputModal};
 use termide_state::{DirSizeResult, PendingAction};
 use termide_theme::Theme;
 use termide_ui::{clipboard, path_utils, IndexClickTracker, ScrollBar};
 use termide_vfs::{VfsEntry, VfsFileType};
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum DragMode {
-    Select, // Shift+drag - selection
-    Toggle, // Ctrl+drag - toggle selection
-}
-
-/// How a file should be opened
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum FileOpenMode {
-    /// Open with default action (Enter): auto-detect type
-    Default,
-    /// Force open in editor (F4): treat everything as text
-    ForceEdit,
-    /// View mode (F3): similar to Default but executables are treated as text
-    View,
-    /// Open with system default app (Shift+Enter)
-    External,
-}
-
-/// Determine the appropriate PanelEvent for opening a file based on its type and open mode.
-/// Returns None if the operation should not proceed (e.g., deleted files, directories).
-fn determine_file_open_event(
-    entry: &FileEntry,
-    file_path: &std::path::Path,
-    mode: FileOpenMode,
-) -> Option<PanelEvent> {
-    // Prohibit operations on deleted files
-    if entry.git_status == GitStatus::Deleted {
-        return None;
-    }
-
-    // Directories and ".." - do nothing for file operations
-    if entry.is_dir || entry.name == ".." {
-        return None;
-    }
-
-    match mode {
-        FileOpenMode::External => {
-            // Always open with system default
-            Some(PanelEvent::OpenExternal(file_path.to_path_buf()))
-        }
-        FileOpenMode::ForceEdit => {
-            // Force open in editor regardless of type
-            Some(PanelEvent::OpenFile(file_path.to_path_buf()))
-        }
-        FileOpenMode::View => {
-            // View mode: open in read-only editor
-            // 1. Raster images → ImagePanel
-            if is_raster_image(&entry.name) {
-                return Some(PanelEvent::PreviewMedia(file_path.to_path_buf()));
-            }
-
-            // 2. Vector images, video → xdg-open
-            if is_vector_image(&entry.name) || is_video(&entry.name) {
-                return Some(PanelEvent::OpenExternal(file_path.to_path_buf()));
-            }
-
-            // 3. Binary files → xdg-open
-            if is_binary_file(file_path) {
-                return Some(PanelEvent::OpenExternal(file_path.to_path_buf()));
-            }
-
-            // 4. Text files → read-only editor
-            Some(PanelEvent::ViewFile(file_path.to_path_buf()))
-        }
-        FileOpenMode::Default => {
-            // Default mode: auto-detect action
-            // 1. Raster images → ImagePanel
-            if is_raster_image(&entry.name) {
-                return Some(PanelEvent::PreviewMedia(file_path.to_path_buf()));
-            }
-
-            // 2. Vector images, video → xdg-open
-            if is_vector_image(&entry.name) || is_video(&entry.name) {
-                return Some(PanelEvent::OpenExternal(file_path.to_path_buf()));
-            }
-
-            // 3. Source/text files with known extensions → editor (even if executable)
-            if is_source_file(&entry.name) {
-                return Some(PanelEvent::OpenFile(file_path.to_path_buf()));
-            }
-
-            // 4. Executable binary → run in terminal
-            if entry.is_executable {
-                return Some(PanelEvent::ExecuteFile(file_path.to_path_buf()));
-            }
-
-            // 5. Binary files → xdg-open
-            if is_binary_file(file_path) {
-                return Some(PanelEvent::OpenExternal(file_path.to_path_buf()));
-            }
-
-            // 6. Text files → editor (editable)
-            Some(PanelEvent::OpenFile(file_path.to_path_buf()))
-        }
-    }
-}
-
-/// Selection state for file manager (multi-select and drag selection)
-#[derive(Clone, Default)]
-pub(crate) struct SelectionState {
-    /// Set of selected items (indices)
-    pub(crate) items: HashSet<usize>,
-    /// Starting index for drag selection
-    pub(crate) drag_start: Option<usize>,
-    /// Drag mode (Shift/Ctrl)
-    drag_mode: Option<DragMode>,
-    /// Set of items already processed during current drag (to avoid re-toggling)
-    pub(crate) dragged: HashSet<usize>,
-}
-
-impl SelectionState {
-    pub(crate) fn clear(&mut self) {
-        self.items.clear();
-    }
-
-    pub(crate) fn toggle(&mut self, index: usize) {
-        if self.items.contains(&index) {
-            self.items.remove(&index);
-        } else {
-            self.items.insert(index);
-        }
-    }
-
-    pub(crate) fn select(&mut self, index: usize) {
-        self.items.insert(index);
-    }
-
-    pub(crate) fn is_selected(&self, index: usize) -> bool {
-        self.items.contains(&index)
-    }
-
-    pub(crate) fn start_shift_drag(&mut self, index: usize) {
-        self.dragged.clear();
-        self.select(index);
-        self.dragged.insert(index);
-        self.drag_start = Some(index);
-        self.drag_mode = Some(DragMode::Select);
-    }
-
-    pub(crate) fn start_ctrl_drag(&mut self, index: usize) {
-        self.toggle(index);
-        self.drag_start = Some(index);
-        self.drag_mode = Some(DragMode::Toggle);
-        self.dragged.clear();
-        self.dragged.insert(index);
-    }
-
-    pub(crate) fn end_drag(&mut self) {
-        self.drag_start = None;
-        self.drag_mode = None;
-        self.dragged.clear();
-    }
-
-    pub(crate) fn is_dragging(&self) -> bool {
-        self.drag_mode.is_some()
-    }
-
-    pub(crate) fn process_drag(&mut self, index: usize) -> bool {
-        if !self.dragged.contains(&index) {
-            match self.drag_mode {
-                Some(DragMode::Select) => {
-                    self.select(index);
-                    self.dragged.insert(index);
-                    true
-                }
-                Some(DragMode::Toggle) => {
-                    self.toggle(index);
-                    self.dragged.insert(index);
-                    true
-                }
-                None => false,
-            }
-        } else {
-            false
-        }
-    }
-}
-
-/// Navigation state for directory traversal (cursor restoration, debouncing).
-///
-/// Groups related navigation fields together:
-/// - `previous_dir_name`: Saved directory name when going up (for cursor restoration)
-/// - `navigating_down`: Flag signaling entry into subdirectory (cursor resets to 0)
-/// - `last_reload_time`: Timestamp for debouncing rapid reload_directory() calls
-/// - `newly_created_item`: Name of newly created file/directory (for cursor positioning)
-#[derive(Clone, Default)]
-pub(crate) struct NavigationState {
-    /// Name of directory we came from (for cursor restoration when going up)
-    pub(crate) previous_dir_name: Option<String>,
-    /// Flag indicating we're navigating down into a subdirectory (cursor should reset to 0)
-    pub(crate) navigating_down: bool,
-    /// Last reload time for debouncing rapid reload_directory() calls
-    pub(crate) last_reload_time: Option<std::time::Instant>,
-    /// Name of newly created item to navigate to after reload
-    pub(crate) newly_created_item: Option<String>,
-}
-
-impl NavigationState {
-    pub(crate) const fn new() -> Self {
-        Self {
-            previous_dir_name: None,
-            navigating_down: false,
-            last_reload_time: None,
-            newly_created_item: None,
-        }
-    }
-
-    pub(crate) fn save_for_going_up(&mut self, dir_name: String) {
-        self.previous_dir_name = Some(dir_name);
-    }
-
-    pub(crate) fn prepare_for_going_down(&mut self) {
-        self.previous_dir_name = None;
-        self.navigating_down = true;
-    }
-
-    pub(crate) fn take_previous_dir_name(&mut self) -> Option<String> {
-        self.previous_dir_name.take()
-    }
-
-    pub(crate) fn check_and_reset_navigating_down(&mut self) -> bool {
-        if self.navigating_down {
-            self.navigating_down = false;
-            true
-        } else {
-            false
-        }
-    }
-
-    pub(crate) fn should_reload(&mut self, debounce_ms: u128) -> bool {
-        let now = std::time::Instant::now();
-        if let Some(last) = self.last_reload_time {
-            if now.duration_since(last).as_millis() < debounce_ms {
-                return false;
-            }
-        }
-        self.last_reload_time = Some(now);
-        true
-    }
-
-    pub(crate) fn set_newly_created(&mut self, name: String) {
-        self.newly_created_item = Some(name);
-    }
-
-    pub(crate) fn take_newly_created(&mut self) -> Option<String> {
-        self.newly_created_item.take()
-    }
-}
 
 /// Smart file manager with advanced features
 pub struct FileManager {
@@ -839,7 +589,7 @@ impl FileManager {
         if let Ok(read_dir) = fs::read_dir(dir_path) {
             for entry in read_dir.flatten() {
                 if let Ok(metadata) = entry.metadata() {
-                    let name = entry.file_name().to_string_lossy().to_string();
+                    let name = entry.file_name().to_string_lossy().into_owned();
 
                     if !self.show_hidden && name.starts_with('.') {
                         continue;
@@ -1351,246 +1101,9 @@ impl FileManager {
         &self.current_path
     }
 
-    /// Enter directory or open file
-    /// Returns `Some(PanelEvent::OpenFile)` if a file should be opened
-    fn enter(&mut self) -> Option<PanelEvent> {
-        // Extract all needed data upfront to avoid borrow conflicts
-        let te = self.tree_entry_at(self.selected)?;
-        let is_deleted = te.file_entry.git_status == GitStatus::Deleted;
-        let is_parent = te.file_entry.name == "..";
-        let is_dir = te.file_entry.is_dir;
-        let entry_name = te.file_entry.name.clone();
-        let full_path = te.full_path.clone();
-
-        if is_deleted {
-            return None;
-        }
-
-        if is_parent {
-            if let Some(dir_name) = self.current_path.file_name() {
-                self.navigation
-                    .save_for_going_up(dir_name.to_string_lossy().to_string());
-            }
-
-            if self.vfs.is_remote() {
-                self.vfs.navigate_up();
-                self.vfs.start_list_dir();
-            } else if let Some(parent) = self.current_path.parent() {
-                self.current_path = parent.to_path_buf();
-                let _ = self.load_directory();
-            }
-            return None;
-        }
-
-        if is_dir {
-            self.navigation.prepare_for_going_down();
-
-            if self.vfs.is_remote() {
-                self.vfs.navigate_down(&entry_name);
-                self.vfs.start_list_dir();
-            } else {
-                self.current_path = full_path;
-                let _ = self.load_directory();
-            }
-            return None;
-        }
-
-        // File — check if remote
-        if self.vfs.is_remote() {
-            let vfs_path = self.vfs.current_path().join(&entry_name);
-            return Some(PanelEvent::OpenRemoteFile(vfs_path.to_url_string()));
-        }
-
-        // Re-borrow entry for determine_file_open_event
-        let entry = &self.tree_entry_at(self.selected)?.file_entry;
-        determine_file_open_event(entry, &full_path, FileOpenMode::Default)
-    }
-
-    /// Open file for editing (F4)
-    fn edit_file(&mut self) -> Option<PanelEvent> {
-        let te = self.tree_entry_at(self.selected)?;
-        if te.file_entry.git_status == GitStatus::Deleted {
-            return None;
-        }
-        if te.file_entry.is_dir || te.file_entry.name == ".." {
-            return None;
-        }
-        let entry_name = te.file_entry.name.clone();
-        let full_path = te.full_path.clone();
-
-        if self.vfs.is_remote() {
-            let vfs_path = self.vfs.current_path().join(&entry_name);
-            return Some(PanelEvent::OpenRemoteFile(vfs_path.to_url_string()));
-        }
-
-        let entry = &self.tree_entry_at(self.selected)?.file_entry;
-        determine_file_open_event(entry, &full_path, FileOpenMode::ForceEdit)
-    }
-
-    /// View file without executing (F3)
-    fn view_file(&mut self) -> Option<PanelEvent> {
-        let te = self.tree_entry_at(self.selected)?;
-        if te.file_entry.git_status == GitStatus::Deleted {
-            return None;
-        }
-        if te.file_entry.is_dir || te.file_entry.name == ".." {
-            return None;
-        }
-        let entry_name = te.file_entry.name.clone();
-        let full_path = te.full_path.clone();
-
-        if self.vfs.is_remote() {
-            let vfs_path = self.vfs.current_path().join(&entry_name);
-            return Some(PanelEvent::OpenRemoteFile(vfs_path.to_url_string()));
-        }
-
-        let entry = &self.tree_entry_at(self.selected)?.file_entry;
-        determine_file_open_event(entry, &full_path, FileOpenMode::View)
-    }
-
-    /// Force open file with system default application (Shift+Enter)
-    fn open_external(&mut self) -> Option<PanelEvent> {
-        let te = self.tree_entry_at(self.selected)?;
-        let full_path = te.full_path.clone();
-
-        let entry = &self.tree_entry_at(self.selected)?.file_entry;
-        determine_file_open_event(entry, &full_path, FileOpenMode::External)
-    }
-
     /// Format file size in human-readable format (public method for external use)
     pub fn format_size_static(bytes: u64) -> String {
         utils::format_size(bytes)
-    }
-
-    /// Check for async git status results and update entries if available.
-    /// Returns true if git status was updated.
-    pub fn check_git_status_async(&mut self) -> bool {
-        let result = if let Some(ref rx) = self.git_status_receiver {
-            rx.try_recv().ok()
-        } else {
-            None
-        };
-
-        if let Some(git_result) = result {
-            // Verify the result is for the current directory
-            if git_result.dir == self.current_path {
-                self.git_status_cache = git_result.cache;
-                self.git_status_receiver = None;
-
-                // Re-apply git statuses to entries
-                self.apply_git_statuses();
-                return true;
-            }
-            // Result is for a different directory - discard it
-            self.git_status_receiver = None;
-        }
-        false
-    }
-
-    /// Refresh git status without full directory reload.
-    /// Used when git watcher detects repository changes (e.g., after commits).
-    fn refresh_git_status(&mut self) {
-        // Start async git status request for current directory
-        self.git_status_receiver = Some(get_git_status_async(self.current_path.clone()));
-    }
-
-    /// Apply git statuses from cache to entries
-    fn apply_git_statuses(&mut self) {
-        let current_path = self.current_path.clone();
-        for te in &mut self.tree_entries {
-            if te.file_entry.name == ".." {
-                continue;
-            }
-
-            // For nested entries, compute relative path from panel's current_path
-            let git_name = if te.depth == 0 {
-                te.file_entry.name.clone()
-            } else {
-                te.full_path
-                    .strip_prefix(&current_path)
-                    .ok()
-                    .and_then(|p| p.to_str())
-                    .unwrap_or(&te.file_entry.name)
-                    .to_string()
-            };
-
-            te.file_entry.git_status = if te.file_entry.is_dir {
-                self.git_status_cache
-                    .as_ref()
-                    .map(|cache| cache.get_directory_status(&git_name))
-                    .unwrap_or(GitStatus::Unmodified)
-            } else {
-                self.git_status_cache
-                    .as_ref()
-                    .map(|cache| cache.get_status(&git_name))
-                    .unwrap_or(GitStatus::Unmodified)
-            };
-        }
-
-        // Also add deleted files that weren't in the directory listing
-        if let Some(cache) = &self.git_status_cache {
-            let deleted_files = cache.get_deleted_files();
-            if !deleted_files.is_empty() {
-                let existing_names: HashSet<String> = self
-                    .tree_entries
-                    .iter()
-                    .filter(|te| te.depth == 0)
-                    .map(|te| te.file_entry.name.clone())
-                    .collect();
-
-                let new_entries: Vec<tree::TreeEntry> = deleted_files
-                    .into_iter()
-                    .filter(|deleted_name| !existing_names.contains(deleted_name))
-                    .map(|deleted_name| {
-                        let full_path = self.current_path.join(&deleted_name);
-                        tree::TreeEntry {
-                            file_entry: FileEntry {
-                                name: deleted_name,
-                                is_dir: false,
-                                is_symlink: false,
-                                is_executable: false,
-                                is_readonly: false,
-                                git_status: GitStatus::Deleted,
-                                size: None,
-                                modified: None,
-                            },
-                            full_path,
-                            depth: 0,
-                            expanded: None,
-                        }
-                    })
-                    .collect();
-
-                if !new_entries.is_empty() {
-                    // Insert deleted files among top-level entries and re-sort
-                    // Find the end of depth-0 entries to insert before any expanded children
-                    self.tree_entries.extend(new_entries);
-                    // Re-sort only depth-0 entries while preserving subtree structure
-                    // For simplicity, rebuild entire tree
-                    self.rebuild_with_expanded_subtrees();
-                }
-            }
-        }
-    }
-
-    /// Rebuild tree_entries preserving expanded state (used after adding deleted files).
-    fn rebuild_with_expanded_subtrees(&mut self) {
-        // Extract top-level entries, sort them, then re-expand
-        let mut top_entries: Vec<FileEntry> = self
-            .tree_entries
-            .iter()
-            .filter(|te| te.depth == 0)
-            .map(|te| te.file_entry.clone())
-            .collect();
-        sort_entries(&mut top_entries);
-        self.tree_entries = self.build_top_level_tree(top_entries);
-        self.load_expanded_subtrees();
-        self.recompute_visible();
-    }
-
-    /// Check if git status is still loading
-    pub fn is_git_status_loading(&self) -> bool {
-        self.git_status_receiver.is_some()
     }
 }
 
@@ -2249,7 +1762,7 @@ impl FileManager {
                         let title = if vfs_paths.len() == 1 {
                             let file_name = vfs_paths[0]
                                 .file_name()
-                                .map(|n| n.to_string_lossy().to_string())
+                                .map(|n| n.to_string_lossy().into_owned())
                                 .unwrap_or_else(|| "file".to_string());
                             t.modal_delete_single_title(&file_name)
                         } else {
@@ -2491,73 +2004,6 @@ impl Default for FileManager {
     fn default() -> Self {
         Self::new()
     }
-}
-
-/// Get file extension in lowercase
-fn get_extension(filename: &str) -> String {
-    filename
-        .rsplit('.')
-        .next()
-        .map(|e| e.to_lowercase())
-        .unwrap_or_default()
-}
-
-/// Check if file is a raster image supported by ImagePanel
-fn is_raster_image(filename: &str) -> bool {
-    matches!(
-        get_extension(filename).as_str(),
-        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "tiff" | "tif"
-    )
-}
-
-/// Check if file is a vector image (requires external viewer)
-fn is_vector_image(filename: &str) -> bool {
-    matches!(get_extension(filename).as_str(), "svg" | "ico")
-}
-
-/// Check if file is a video (requires external viewer)
-fn is_video(filename: &str) -> bool {
-    matches!(
-        get_extension(filename).as_str(),
-        "mp4" | "mkv" | "avi" | "mov" | "webm" | "flv" | "wmv" | "m4v"
-    )
-}
-
-/// Check if file has a known source/text extension that should open in the editor
-/// even if the executable bit is set (e.g. `.sh`, `.py` scripts).
-fn is_source_file(filename: &str) -> bool {
-    matches!(
-        get_extension(filename).as_str(),
-        // Shell scripts
-        "sh" | "bash" | "zsh" | "fish" | "ksh" | "csh" |
-        // Scripting languages
-        "py" | "rb" | "pl" | "pm" | "lua" | "tcl" | "awk" |
-        // Compiled languages (source files)
-        "rs" | "go" | "c" | "h" | "cpp" | "cc" | "cxx" | "hpp" |
-        "java" | "kt" | "scala" | "cs" | "hs" | "lhs" |
-        // Web / JS / TS
-        "js" | "mjs" | "cjs" | "ts" | "tsx" | "jsx" |
-        "html" | "htm" | "css" | "scss" | "sass" | "less" |
-        // Config / data
-        "json" | "yaml" | "yml" | "toml" | "xml" | "ini" | "cfg" |
-        "conf" | "env" | "properties" |
-        // Markup / docs
-        "md" | "rst" | "txt" | "tex" | "adoc" |
-        // Nix / PHP / other
-        "nix" | "php" | "r" | "jl" | "ex" | "exs" | "erl" |
-        // Build / CI
-        "cmake" | "make" | "mk" | "gradle" | "sbt" |
-        // SQL / DB
-        "sql" |
-        // Docker / misc
-        "dockerfile"
-    ) || filename.eq_ignore_ascii_case("Makefile")
-        || filename.eq_ignore_ascii_case("Dockerfile")
-        || filename.eq_ignore_ascii_case("Rakefile")
-        || filename.eq_ignore_ascii_case("Gemfile")
-        || filename.eq_ignore_ascii_case("Vagrantfile")
-        || filename.eq_ignore_ascii_case(".gitignore")
-        || filename.eq_ignore_ascii_case(".env")
 }
 
 #[cfg(test)]

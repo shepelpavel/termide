@@ -67,7 +67,7 @@ impl LocalFileSystem {
 
         for entry in read_dir {
             let entry = entry?;
-            let name = entry.file_name().to_string_lossy().to_string();
+            let name = entry.file_name().to_string_lossy().into_owned();
             let entry_path = vfs_path.join(&name);
 
             // Get metadata, handling symlinks
@@ -223,7 +223,7 @@ impl LocalFileSystem {
                 total_files,
                 current_file: Some(
                     src.file_name()
-                        .map(|n| n.to_string_lossy().to_string())
+                        .map(|n| n.to_string_lossy().into_owned())
                         .unwrap_or_default(),
                 ),
             });

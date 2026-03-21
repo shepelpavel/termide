@@ -233,7 +233,7 @@ impl App {
                                         .clone();
                                     let source_name = next_source
                                         .file_name()
-                                        .map(|n| n.to_string_lossy().to_string())
+                                        .map(|n| n.to_string_lossy().into_owned())
                                         .unwrap_or_else(|| "file".to_string());
 
                                     // Parse remote base path and join with filename

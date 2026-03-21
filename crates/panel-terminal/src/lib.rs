@@ -283,7 +283,7 @@ impl Terminal {
             .unwrap_or_else(|_| "localhost".to_string());
         let current_dir = std::env::current_dir()
             .ok()
-            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
+            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
             .unwrap_or_else(|| "~".to_string());
         let title_prefix = format!("{}@{}//{}", username, hostname, current_dir);
 
@@ -458,7 +458,7 @@ impl Terminal {
                         {
                             let cstr =
                                 std::ffi::CStr::from_ptr(buf.as_ptr() as *const libc::c_char);
-                            return cstr.to_string_lossy().to_string();
+                            return cstr.to_string_lossy().into_owned();
                         }
                     }
                 }
