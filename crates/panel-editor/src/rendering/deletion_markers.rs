@@ -53,12 +53,14 @@ fn render_deletion_gutter(buf: &mut Buffer, area: Rect, row: usize, theme: &Them
         }
     }
 
-    // Dimmed marker ▶ (shows deletion occurred here)
+    // Dimmed marker ▶/► (shows deletion occurred here)
     // Use dimmed color to differentiate from LSP error marker (which uses theme.error)
+    // On Windows, U+25B6 ▶ is outside WGL4; use U+25BA ► instead.
+    const DELETION_MARKER: char = if cfg!(windows) { '►' } else { '▶' };
     let marker_style = Style::default().fg(theme.disabled);
     let x = area.x + 4; // Position after spaces
     if let Some(cell) = buf.cell_mut((x, y)) {
-        cell.set_char('▶');
+        cell.set_char(DELETION_MARKER);
         cell.set_style(marker_style);
     }
 
@@ -160,7 +162,8 @@ mod tests {
 
         // Check marker (position 4)
         if let Some(cell) = buf.cell((4, 2)) {
-            assert_eq!(cell.symbol(), "▶");
+            let expected = if cfg!(windows) { "►" } else { "▶" };
+            assert_eq!(cell.symbol(), expected);
             assert_eq!(cell.fg, Color::Gray); // disabled color (dimmed to differentiate from LSP errors)
         }
 
@@ -219,7 +222,8 @@ mod tests {
 
         // Verify marker is present
         if let Some(cell) = buf.cell((4, 1)) {
-            assert_eq!(cell.symbol(), "▶");
+            let expected = if cfg!(windows) { "►" } else { "▶" };
+            assert_eq!(cell.symbol(), expected);
             assert_eq!(cell.fg, Color::Gray); // disabled color (dimmed to differentiate from LSP errors)
         }
 

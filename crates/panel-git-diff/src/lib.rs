@@ -600,7 +600,12 @@ impl GitDiffPanel {
                 };
 
                 // Build header components
-                let collapse_btn = if is_collapsed { "[▶]" } else { "[▼]" };
+                const SECTION_COLLAPSED: &str = if cfg!(windows) { "[►]" } else { "[▶]" };
+                let collapse_btn = if is_collapsed {
+                    SECTION_COLLAPSED
+                } else {
+                    "[▼]"
+                };
                 let status_char = match diff.status {
                     FileStatus::Added => "+",
                     FileStatus::Deleted => "-",

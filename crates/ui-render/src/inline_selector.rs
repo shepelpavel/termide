@@ -30,8 +30,9 @@ impl<'a> InlineSelector<'a> {
     /// Render the selector at the given position
     /// Returns the rendered width
     pub fn render(&self, x: u16, y: u16, max_width: u16, buf: &mut Buffer) -> u16 {
-        // Arrow: ▶ when collapsed, ▼ when expanded
-        let arrow = if self.is_open { "▼" } else { "▶" };
+        // Arrow: ▶/► when collapsed, ▼ when expanded
+        const ARROW_CLOSED: &str = if cfg!(windows) { "►" } else { "▶" };
+        let arrow = if self.is_open { "▼" } else { ARROW_CLOSED };
 
         let style = if self.is_focused {
             // Inverted cursor style

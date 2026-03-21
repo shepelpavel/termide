@@ -29,6 +29,14 @@ fn git_status_style(status: GitStatus, theme: &Theme) -> Style {
     }
 }
 
+// On Windows, U+25B6 ▶ and U+25B7 ▷ are outside WGL4 and render as tofu squares.
+// U+25BA ► is in WGL4 and displays correctly on all Windows console fonts.
+const DIR_COLLAPSED: &str = if cfg!(windows) { "►" } else { "▶" };
+const DIR_COLLAPSED_SYMLINK: &str = if cfg!(windows) { "►" } else { "▷" };
+const DIR_EXPANDED_SYMLINK: &str = if cfg!(windows) { "▼" } else { "▽" };
+const DIR_COLLAPSED_SPACE: &str = if cfg!(windows) { "► " } else { "▶ " };
+const DIR_COLLAPSED_SLASH: &str = if cfg!(windows) { "► /" } else { "▶ /" };
+
 /// Get icon for entry, accounting for expand/collapse state.
 fn get_icon(entry: &super::FileEntry, expanded: Option<bool>) -> &'static str {
     if entry.git_status == GitStatus::Deleted {
@@ -41,16 +49,16 @@ fn get_icon(entry: &super::FileEntry, expanded: Option<bool>) -> &'static str {
         return match expanded {
             Some(true) => {
                 if entry.is_symlink {
-                    "▽"
+                    DIR_EXPANDED_SYMLINK
                 } else {
                     "▼"
                 }
             }
             Some(false) | None => {
                 if entry.is_symlink {
-                    "▷"
+                    DIR_COLLAPSED_SYMLINK
                 } else {
-                    "▶"
+                    DIR_COLLAPSED
                 }
             }
         };
@@ -328,7 +336,7 @@ impl FileManager {
                 Style::default().fg(theme.disabled)
             };
 
-            let icon_text = if node.is_dir { "▶ " } else { "" };
+            let icon_text = if node.is_dir { DIR_COLLAPSED_SPACE } else { "" };
 
             let mut spans = Vec::new();
             if !prefix.is_empty() {
@@ -408,7 +416,7 @@ impl FileManager {
                     buf.set_string(x, y, prefix, prefix_style);
                     x += prefix.width() as u16;
                 }
-                let dir_prefix = "▶ /";
+                let dir_prefix = DIR_COLLAPSED_SLASH;
                 buf.set_string(x, y, dir_prefix, style);
                 x += dir_prefix.width() as u16;
                 buf.set_string(x, y, &node.name, style);

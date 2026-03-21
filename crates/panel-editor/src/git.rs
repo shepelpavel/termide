@@ -234,22 +234,25 @@ pub fn get_git_status_marker(
 /// Get LSP diagnostic marker for gutter.
 ///
 /// Returns the marker character and color for diagnostic severity.
-/// - ▶ (red) for ERROR
-/// - ▶ (yellow) for WARNING
+/// - ▶/► (red) for ERROR
+/// - ▶/► (yellow) for WARNING
 /// - ' ' (space) for no diagnostic or INFO/HINT
+///
+/// On Windows U+25B6 ▶ is outside WGL4; U+25BA ► is used instead.
 pub fn get_lsp_marker(
     diagnostic_severity: Option<lsp_types::DiagnosticSeverity>,
     theme: &Theme,
 ) -> LspMarkerInfo {
+    const LSP_MARKER: char = if cfg!(windows) { '►' } else { '▶' };
     if let Some(severity) = diagnostic_severity {
         use lsp_types::DiagnosticSeverity;
         match severity {
             DiagnosticSeverity::ERROR => LspMarkerInfo {
-                marker: '▶',
+                marker: LSP_MARKER,
                 color: theme.error,
             },
             DiagnosticSeverity::WARNING => LspMarkerInfo {
-                marker: '▶',
+                marker: LSP_MARKER,
                 color: theme.warning,
             },
             _ => LspMarkerInfo {

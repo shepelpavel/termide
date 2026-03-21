@@ -723,7 +723,8 @@ impl TreeSearchModal {
                     Style::default().fg(theme.disabled)
                 };
 
-                let icon = if node.is_dir { "▶" } else { " " };
+                const DIR_ICON: &str = if cfg!(windows) { "►" } else { "▶" };
+                let icon = if node.is_dir { DIR_ICON } else { " " };
                 let dir_slash = if node.is_dir { "/" } else { "" };
                 let display_name = format!("{}{}", dir_slash, node.name);
 
@@ -794,7 +795,8 @@ impl TreeSearchModal {
                     Style::default().fg(theme.disabled)
                 };
 
-                let text = format!("{}▶ /{}", prefix, node.name);
+                const DIR_ICON: &str = if cfg!(windows) { "►" } else { "▶" };
+                let text = format!("{}{} /{}", prefix, DIR_ICON, node.name);
                 let padding =
                     " ".repeat(content_width.saturating_sub(text.chars().count()));
                 buf.set_string(area.x, y, &text, Style::default());
@@ -804,8 +806,9 @@ impl TreeSearchModal {
                     buf.set_string(x, y, prefix, prefix_style);
                     x += prefix.chars().count() as u16;
                 }
-                buf.set_string(x, y, &format!("▶ /{}", node.name), style);
-                x += format!("▶ /{}", node.name).chars().count() as u16;
+                const DIR_ICON2: &str = if cfg!(windows) { "►" } else { "▶" };
+                buf.set_string(x, y, &format!("{} /{}", DIR_ICON2, node.name), style);
+                x += format!("{} /{}", DIR_ICON2, node.name).chars().count() as u16;
                 buf.set_string(x, y, &padding, style);
 
                 y += 1;

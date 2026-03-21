@@ -468,7 +468,8 @@ impl GitStatusPanel {
             crate::tree::TreeNodeKind::Directory { expanded } => {
                 let (status, untracked) = crate::tree::aggregate_dir_status(tree_nodes, tree_idx);
                 let (color, _modifier) = Self::get_file_style(status, untracked, theme);
-                let arrow = if expanded { "▼" } else { "▶" };
+                const DIR_COLLAPSED: &str = if cfg!(windows) { "►" } else { "▶" };
+                let arrow = if expanded { "▼" } else { DIR_COLLAPSED };
                 (
                     color,
                     Modifier::empty(),

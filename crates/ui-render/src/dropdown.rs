@@ -184,8 +184,13 @@ impl<'a> Dropdown<'a> {
                 base_style,
             );
 
-            // Suffix " ▶ " or "   " — always 3 columns wide, right-aligned
-            let suffix = if item.has_submenu { " ▶ " } else { "   " };
+            // Suffix " ▶ "/" ► " or "   " — always 3 columns wide, right-aligned
+            const SUBMENU_ARROW: &str = if cfg!(windows) { " ► " } else { " ▶ " };
+            let suffix = if item.has_submenu {
+                SUBMENU_ARROW
+            } else {
+                "   "
+            };
             let suffix_x = inner.x + inner.width.saturating_sub(3);
             render_text_cells(buf, suffix_x, row_y, suffix, 3, base_style);
             let _ = (cursor_x, label_width); // suppress warnings
