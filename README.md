@@ -32,14 +32,14 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 - **Smart File Manager** - Tree view with expandable directories, nested git status, batch operations, file/content search (glob/regex), in-tree incremental search
 - **Integrated Terminal** - Full PTY support, VT100 escape sequences, mouse tracking
 - **Git Integration** - Status panel, commit log with ASCII graph, staging/unstaging, branch switching
-- **Multi-panel Layout** - Accordion system with smart auto-stacking
+- **Multi-panel Layout** - Accordion system with smart auto-stacking; new panels open after the currently active one
 - **Image Viewer** - Native graphics in Kitty, WezTerm, iTerm2, Ghostty, foot terminals
 - **External Apps** - Open files with system default applications (Shift+Enter)
 - **25 Built-in Themes** - Dark, light, retro, and cinematic themes (Dracula, Nord, Monokai, Solarized, Matrix, Pip-Boy, etc.)
 - **Custom Themes** - Create your own themes in TOML format
 - **15 UI Languages** - Bengali, Chinese, English, French, German, Hindi, Indonesian, Japanese, Korean, Portuguese, Russian, Spanish, Thai, Turkish, Vietnamese
 - **Session Management** - Auto-save and restore panel layouts
-- **System Monitor** - Real-time CPU, RAM, disk usage in status bar
+- **System Monitor** - Real-time CPU, RAM, network I/O in menu bar and disk usage in status bar; click any indicator to open a detail modal (top processes by CPU/RAM, top processes by network connections with listening ports)
 - **Search & Replace** - Live preview, match counter, regex support
 - **Custom Scripts** - Run user-defined scripts from the Scripts menu (supports `.bg.` for background, `.report.` for modal output)
 - **Cross-platform** - Linux (x86_64, ARM64), macOS (Intel, Apple Silicon), Windows (native via ConPTY, WSL)
