@@ -124,14 +124,15 @@ pub fn resource_color(usage: u8, theme: &Theme) -> Color {
     }
 }
 
-/// Compute x-ranges of the CPU, RAM and clock indicators in the menu bar.
+/// Compute x-ranges of the network, CPU, RAM and clock indicators in the menu bar.
 ///
-/// Returns `(cpu_range, ram_range, clock_range)` as `Range<u16>` values relative to the area.
+/// Returns `(net_range, cpu_range, ram_range, clock_range)` as `Range<u16>` values.
 /// These ranges correspond to the positions computed in `render_menu()`.
 pub fn get_resource_indicator_ranges(
     area_width: u16,
     params: &MenuRenderParams,
 ) -> (
+    std::ops::Range<u16>,
     std::ops::Range<u16>,
     std::ops::Range<u16>,
     std::ops::Range<u16>,
@@ -165,11 +166,10 @@ pub fn get_resource_indicator_ranges(
             + clock_text.width(),
     );
 
-    let mut x = used_width + remaining;
-    x += net_down_text.width(); // skip net down
-    x += net_up_text.width(); // skip net up
+    let net_start = (used_width + remaining) as u16;
+    let net_end = net_start + (net_down_text.width() + net_up_text.width()) as u16;
 
-    let cpu_start = x as u16;
+    let cpu_start = net_end;
     let cpu_end = cpu_start + cpu_text.width() as u16;
 
     let ram_start = cpu_end;
@@ -179,6 +179,7 @@ pub fn get_resource_indicator_ranges(
     let clock_end = clock_start + clock_text.width() as u16;
 
     (
+        net_start..net_end,
         cpu_start..cpu_end,
         ram_start..ram_end,
         clock_start..clock_end,

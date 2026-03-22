@@ -39,6 +39,7 @@ pub use termide_modal::ActiveModal;
 pub enum ResourceModalKind {
     Cpu,
     Ram,
+    Network,
     Disk,
 }
 

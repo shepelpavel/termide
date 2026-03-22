@@ -1680,6 +1680,10 @@ impl Translation for RuntimeTranslation {
         self.get_string("resource_count")
     }
 
+    fn resource_net_title(&self) -> &str {
+        self.get_string("resource_net_title")
+    }
+
     fn vfs_connecting(&self) -> &str {
         self.get_string("vfs_connecting")
     }

@@ -441,9 +441,13 @@ impl App {
             current_x += item_width + 2; // +2 for spaces
         }
 
-        // Check CPU/RAM/clock indicator clicks (right side of menu bar)
-        let (cpu_range, ram_range, clock_range) = self.get_indicator_ranges();
+        // Check network/CPU/RAM/clock indicator clicks (right side of menu bar)
+        let (net_range, cpu_range, ram_range, clock_range) = self.get_indicator_ranges();
 
+        if net_range.contains(&x) {
+            self.open_resource_modal(crate::state::ResourceModalKind::Network);
+            return Ok(());
+        }
         if cpu_range.contains(&x) {
             self.open_resource_modal(crate::state::ResourceModalKind::Cpu);
             return Ok(());
@@ -467,10 +471,11 @@ impl App {
         self.state.needs_redraw = true;
     }
 
-    /// Compute CPU, RAM and clock indicator x-ranges in the menu bar.
+    /// Compute network, CPU, RAM and clock indicator x-ranges in the menu bar.
     fn get_indicator_ranges(
         &self,
     ) -> (
+        std::ops::Range<u16>,
         std::ops::Range<u16>,
         std::ops::Range<u16>,
         std::ops::Range<u16>,
@@ -534,17 +539,29 @@ impl App {
         None
     }
 
-    /// Open CPU or RAM processes modal.
+    /// Open CPU, RAM or Network processes modal.
     fn open_resource_modal(&mut self, kind: crate::state::ResourceModalKind) {
         use crate::state::ResourceModalKind;
 
         let t = i18n::t();
-        let title: String = match kind {
-            ResourceModalKind::Cpu => t.resource_cpu_top_title().to_owned(),
-            ResourceModalKind::Ram => t.resource_ram_top_title().to_owned(),
+        let (title, lines) = match kind {
+            ResourceModalKind::Cpu => {
+                let title = t.resource_cpu_top_title().to_owned();
+                let lines = self.build_process_lines(kind);
+                (title, lines)
+            }
+            ResourceModalKind::Ram => {
+                let title = t.resource_ram_top_title().to_owned();
+                let lines = self.build_process_lines(kind);
+                (title, lines)
+            }
+            ResourceModalKind::Network => {
+                let title = t.resource_net_title().to_owned();
+                let lines = self.build_network_modal_lines();
+                (title, lines)
+            }
             ResourceModalKind::Disk => return,
         };
-        let lines = self.build_process_lines(kind);
         let modal = modal::InfoModal::new_rich(title, lines).with_min_width(57);
         self.state.active_modal = Some(ActiveModal::Info(Box::new(modal)));
         self.state.resource_modal_kind = Some(kind);
@@ -603,7 +620,9 @@ impl App {
         let processes = match kind {
             ResourceModalKind::Cpu => self.state.system_monitor.top_cpu_processes(10),
             ResourceModalKind::Ram => self.state.system_monitor.top_memory_processes(10),
-            ResourceModalKind::Disk => unreachable!("build_process_lines called with Disk kind"),
+            ResourceModalKind::Network | ResourceModalKind::Disk => {
+                unreachable!("build_process_lines called with {:?} kind", kind)
+            }
         };
         let total_mem = self.state.system_monitor.stats().memory_total;
 
@@ -725,6 +744,140 @@ impl App {
             ];
             lines.push((name, ModalValue::Segments(segments)));
         }
+
+        lines
+    }
+
+    /// Build network activity modal lines (header + data rows + speed footer).
+    ///
+    /// Columns: Application | Ports | Conn
+    pub(super) fn build_network_modal_lines(
+        &self,
+    ) -> Vec<(String, termide_modal::info::ModalValue)> {
+        use termide_modal::info::{ModalValue, SegmentStyle, StyledSegment};
+        use termide_system_monitor::format_net_speed;
+        use unicode_width::UnicodeWidthStr;
+
+        const NAME_COL: usize = 20;
+        const PORTS_COL: usize = 14;
+
+        fn fit_name(s: &str, width: usize) -> String {
+            let w = s.width();
+            if w <= width {
+                let mut out = s.to_string();
+                for _ in 0..(width - w) {
+                    out.push(' ');
+                }
+                out
+            } else {
+                let mut out = String::new();
+                let mut cur = 0;
+                for ch in s.chars() {
+                    let cw = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+                    if cur + cw > width - 1 {
+                        break;
+                    }
+                    out.push(ch);
+                    cur += cw;
+                }
+                out.push('…');
+                cur += 1;
+                for _ in 0..(width - cur) {
+                    out.push(' ');
+                }
+                out
+            }
+        }
+
+        fn fit_ports(ports: &[u16], width: usize) -> String {
+            if ports.is_empty() {
+                let mut s = "—".to_string();
+                s.push_str(&" ".repeat(width - 1));
+                return s;
+            }
+            let full: String = ports
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            if full.width() <= width {
+                let pad = width - full.width();
+                format!("{}{}", full, " ".repeat(pad))
+            } else {
+                // Truncate with …
+                let mut out = String::new();
+                let mut cur = 0;
+                for ch in full.chars() {
+                    let cw = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+                    if cur + cw > width - 1 {
+                        break;
+                    }
+                    out.push(ch);
+                    cur += cw;
+                }
+                out.push('…');
+                for _ in 0..(width - cur - 1) {
+                    out.push(' ');
+                }
+                out
+            }
+        }
+
+        let processes = self.state.system_monitor.top_network_processes(10);
+
+        // Header row
+        let mut lines: Vec<(String, ModalValue)> = vec![(
+            fit_name("", NAME_COL),
+            ModalValue::Segments(vec![
+                StyledSegment {
+                    text: format!("{:<width$}", "Ports", width = PORTS_COL),
+                    style: SegmentStyle::Default,
+                },
+                StyledSegment {
+                    text: format!("{:>5}", "Conn"),
+                    style: SegmentStyle::Default,
+                },
+            ]),
+        )];
+
+        // Data rows
+        for p in &processes {
+            let ports_text = fit_ports(&p.listening_ports, PORTS_COL);
+            let ports_style = if p.listening_ports.is_empty() {
+                SegmentStyle::Disabled
+            } else {
+                SegmentStyle::Success
+            };
+            let conn_text = format!("{:>5}", p.connections);
+            let conn_style = if p.connections == 0 {
+                SegmentStyle::Disabled
+            } else {
+                SegmentStyle::Default
+            };
+            let segments = vec![
+                StyledSegment {
+                    text: ports_text,
+                    style: ports_style,
+                },
+                StyledSegment {
+                    text: conn_text,
+                    style: conn_style,
+                },
+            ];
+            lines.push((fit_name(&p.name, NAME_COL), ModalValue::Segments(segments)));
+        }
+
+        // Speed footer
+        let down = format_net_speed(self.state.system_monitor.net_download_rate());
+        let up = format_net_speed(self.state.system_monitor.net_upload_rate());
+        let speed_text = format!("↓{}  ↑{}", down, up);
+        lines.push((
+            fit_name("", NAME_COL),
+            ModalValue::Segments(vec![StyledSegment {
+                text: speed_text,
+                style: SegmentStyle::Disabled,
+            }]),
+        ));
 
         lines
     }

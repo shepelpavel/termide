@@ -516,6 +516,7 @@ pub trait Translation: Send + Sync {
     fn resource_disk_total(&self) -> &str;
     fn resource_processes(&self) -> &str;
     fn resource_count(&self) -> &str;
+    fn resource_net_title(&self) -> &str;
 
     // Calendar
     fn calendar_mon(&self) -> &str;

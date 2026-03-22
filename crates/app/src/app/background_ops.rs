@@ -531,6 +531,7 @@ impl App {
         use crate::state::ResourceModalKind;
         let lines = match kind {
             ResourceModalKind::Cpu | ResourceModalKind::Ram => self.build_process_lines(kind),
+            ResourceModalKind::Network => self.build_network_modal_lines(),
             ResourceModalKind::Disk => self.build_disk_modal_lines(),
         };
 
