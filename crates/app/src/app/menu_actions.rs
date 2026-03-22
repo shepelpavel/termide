@@ -51,7 +51,10 @@ use termide_i18n as i18n;
 use termide_panel_file_manager::FileManager;
 use termide_panel_terminal::Terminal;
 use termide_theme::Theme;
-use termide_ui_render::menu::MENU_ITEM_COUNT;
+use termide_ui_render::menu::{
+    INDICATOR_CLOCK_INDEX, INDICATOR_CPU_INDEX, INDICATOR_NET_INDEX, INDICATOR_RAM_INDEX,
+    MENU_TOTAL_COUNT,
+};
 
 impl App {
     /// Handle keyboard event in menu
@@ -61,10 +64,10 @@ impl App {
                 self.state.close_menu();
             }
             KeyCode::Left => {
-                self.state.prev_menu_item(MENU_ITEM_COUNT);
+                self.state.prev_menu_item(MENU_TOTAL_COUNT);
             }
             KeyCode::Right => {
-                self.state.next_menu_item(MENU_ITEM_COUNT);
+                self.state.next_menu_item(MENU_TOTAL_COUNT);
             }
             KeyCode::Enter => {
                 self.execute_menu_action()?;
@@ -97,6 +100,22 @@ impl App {
                 4 => {
                     // Options - open submenu dropdown (keep menu open)
                     self.state.open_submenu();
+                }
+                INDICATOR_NET_INDEX => {
+                    self.open_resource_modal(crate::state::ResourceModalKind::Network);
+                    self.state.close_menu();
+                }
+                INDICATOR_CPU_INDEX => {
+                    self.open_resource_modal(crate::state::ResourceModalKind::Cpu);
+                    self.state.close_menu();
+                }
+                INDICATOR_RAM_INDEX => {
+                    self.open_resource_modal(crate::state::ResourceModalKind::Ram);
+                    self.state.close_menu();
+                }
+                INDICATOR_CLOCK_INDEX => {
+                    self.open_calendar_modal();
+                    self.state.close_menu();
                 }
                 _ => {}
             }

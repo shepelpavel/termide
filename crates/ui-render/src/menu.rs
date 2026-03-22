@@ -47,6 +47,21 @@ pub fn get_menu_items() -> Vec<String> {
 /// Number of menu items
 pub const MENU_ITEM_COUNT: usize = 5;
 
+/// Number of right-side indicators (net, cpu, ram, clock)
+pub const MENU_INDICATOR_COUNT: usize = 4;
+
+/// Total navigation positions: menu items + indicators
+pub const MENU_TOTAL_COUNT: usize = MENU_ITEM_COUNT + MENU_INDICATOR_COUNT;
+
+/// Virtual navigation index for the network (↓/↑) indicator
+pub const INDICATOR_NET_INDEX: usize = MENU_ITEM_COUNT;
+/// Virtual navigation index for the CPU indicator
+pub const INDICATOR_CPU_INDEX: usize = MENU_ITEM_COUNT + 1;
+/// Virtual navigation index for the RAM indicator
+pub const INDICATOR_RAM_INDEX: usize = MENU_ITEM_COUNT + 2;
+/// Virtual navigation index for the clock indicator
+pub const INDICATOR_CLOCK_INDEX: usize = MENU_ITEM_COUNT + 3;
+
 /// Index of Sessions menu item (no keyboard accelerator highlighting)
 pub const SESSIONS_MENU_INDEX: usize = 0;
 
@@ -245,16 +260,47 @@ pub fn render_menu(frame: &mut Frame, area: Rect, params: &MenuRenderParams) {
         spans.push(Span::raw(" ".repeat(remaining)));
     }
 
-    // Pre-compute styles to avoid repeated Style::default() calls
-    let cpu_style = Style::default().fg(cpu_color);
-    let ram_style = Style::default().fg(ram_color);
-    let clock_style = Style::default()
-        .fg(params.theme.fg)
+    // Keyboard-selected indicator style (same as selected menu item)
+    let indicator_selected_style = Style::default()
+        .fg(params.theme.selected_fg)
+        .bg(params.theme.selected_bg)
         .add_modifier(Modifier::BOLD);
 
+    let net_kbd = params.menu_open && params.selected_menu_item == Some(INDICATOR_NET_INDEX);
+    let cpu_kbd = params.menu_open && params.selected_menu_item == Some(INDICATOR_CPU_INDEX);
+    let ram_kbd = params.menu_open && params.selected_menu_item == Some(INDICATOR_RAM_INDEX);
+    let clock_kbd = params.menu_open && params.selected_menu_item == Some(INDICATOR_CLOCK_INDEX);
+
+    // Pre-compute styles to avoid repeated Style::default() calls
+    let cpu_style = if cpu_kbd {
+        indicator_selected_style
+    } else {
+        Style::default().fg(cpu_color)
+    };
+    let ram_style = if ram_kbd {
+        indicator_selected_style
+    } else {
+        Style::default().fg(ram_color)
+    };
+    let clock_style = if clock_kbd {
+        indicator_selected_style
+    } else {
+        Style::default()
+            .fg(params.theme.fg)
+            .add_modifier(Modifier::BOLD)
+    };
+
     // Add network indicators
-    let net_down_style = Style::default().fg(params.theme.success);
-    let net_up_style = Style::default().fg(params.theme.warning);
+    let net_down_style = if net_kbd {
+        indicator_selected_style
+    } else {
+        Style::default().fg(params.theme.success)
+    };
+    let net_up_style = if net_kbd {
+        indicator_selected_style
+    } else {
+        Style::default().fg(params.theme.warning)
+    };
     spans.push(Span::styled(net_down_text, net_down_style));
     spans.push(Span::styled(net_up_text, net_up_style));
 

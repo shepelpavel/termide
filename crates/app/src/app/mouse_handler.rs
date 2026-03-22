@@ -465,7 +465,7 @@ impl App {
     }
 
     /// Open calendar modal.
-    fn open_calendar_modal(&mut self) {
+    pub(super) fn open_calendar_modal(&mut self) {
         let modal = modal::CalendarModal::new();
         self.state.active_modal = Some(ActiveModal::Calendar(Box::new(modal)));
         self.state.needs_redraw = true;
@@ -540,7 +540,7 @@ impl App {
     }
 
     /// Open CPU, RAM or Network processes modal.
-    fn open_resource_modal(&mut self, kind: crate::state::ResourceModalKind) {
+    pub(super) fn open_resource_modal(&mut self, kind: crate::state::ResourceModalKind) {
         use crate::state::ResourceModalKind;
 
         let t = i18n::t();
@@ -755,7 +755,7 @@ impl App {
         &self,
     ) -> Vec<(String, termide_modal::info::ModalValue)> {
         use termide_modal::info::{ModalValue, SegmentStyle, StyledSegment};
-        use termide_system_monitor::format_net_speed;
+
         use unicode_width::UnicodeWidthStr;
 
         const NAME_COL: usize = 20;
@@ -866,18 +866,6 @@ impl App {
             ];
             lines.push((fit_name(&p.name, NAME_COL), ModalValue::Segments(segments)));
         }
-
-        // Speed footer
-        let down = format_net_speed(self.state.system_monitor.net_download_rate());
-        let up = format_net_speed(self.state.system_monitor.net_upload_rate());
-        let speed_text = format!("↓{}  ↑{}", down, up);
-        lines.push((
-            fit_name("", NAME_COL),
-            ModalValue::Segments(vec![StyledSegment {
-                text: speed_text,
-                style: SegmentStyle::Disabled,
-            }]),
-        ));
 
         lines
     }
