@@ -117,6 +117,8 @@ pub struct GitStatusPanel {
     vim_mode: bool,
     /// Whether panel missed updates while collapsed (stale-on-collapse)
     is_stale: bool,
+    /// Watched root registered with the watcher (None = not yet registered)
+    watched_root: Option<PathBuf>,
     /// Tree state for unstaged files (modified + untracked)
     unstaged: FileTree,
     /// Tree state for staged files
@@ -177,6 +179,7 @@ impl GitStatusPanel {
             initial_paths,
             vim_mode: false,
             is_stale: false,
+            watched_root: None,
             unstaged: FileTree::new(),
             staged: FileTree::new(),
             pending_init_fetch: true,
@@ -189,6 +192,8 @@ impl GitStatusPanel {
     /// Update repository list based on new paths from panels
     pub fn update_repos(&mut self, paths: &[PathBuf]) {
         if self.repo_manager.update(paths) {
+            // Reset watched_root so the app watcher re-registers the new repo
+            self.watched_root = None;
             self.refresh();
         }
     }
@@ -946,6 +951,25 @@ impl Panel for GitStatusPanel {
             PanelCommand::UpdateRepoPaths { paths } => {
                 self.update_repos(&paths);
                 CommandResult::NeedsRedraw(true)
+            }
+            PanelCommand::GetFsWatchInfo => {
+                // Return watch info so the app watcher registers the repo root.
+                // current_path is the repo root (used by app to call find_repo_root).
+                let current_path = self
+                    .repo_manager
+                    .current()
+                    .map(|p| p.to_path_buf())
+                    .or_else(|| self.initial_paths.first().cloned())
+                    .unwrap_or_default();
+                CommandResult::FsWatchInfo {
+                    watched_root: self.watched_root.clone(),
+                    current_path,
+                    is_git_repo: self.repo_manager.current().is_some(),
+                }
+            }
+            PanelCommand::SetFsWatchRoot { root, .. } => {
+                self.watched_root = root;
+                CommandResult::None
             }
             _ => CommandResult::None,
         }

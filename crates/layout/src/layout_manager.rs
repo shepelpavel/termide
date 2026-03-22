@@ -42,8 +42,9 @@ impl LayoutManager {
             // Auto-stacking: pick group by width preference
             let target_group_idx = self.find_preferred_group(&*panel);
             let group = &mut self.panel_groups[target_group_idx];
-            group.add_panel(panel);
-            group.set_expanded(group.len() - 1);
+            let insert_pos = group.expanded_index() + 1;
+            group.insert_panel(insert_pos, panel);
+            group.set_expanded(insert_pos);
             self.focus = target_group_idx;
         } else {
             // Create new group horizontally
