@@ -445,11 +445,11 @@ impl App {
         let (cpu_range, ram_range, clock_range) = self.get_indicator_ranges();
 
         if cpu_range.contains(&x) {
-            self.open_cpu_modal();
+            self.open_resource_modal(crate::state::ResourceModalKind::Cpu);
             return Ok(());
         }
         if ram_range.contains(&x) {
-            self.open_ram_modal();
+            self.open_resource_modal(crate::state::ResourceModalKind::Ram);
             return Ok(());
         }
         if clock_range.contains(&x) {
@@ -534,30 +534,20 @@ impl App {
         None
     }
 
-    /// Open CPU processes modal.
-    fn open_cpu_modal(&mut self) {
+    /// Open CPU or RAM processes modal.
+    fn open_resource_modal(&mut self, kind: crate::state::ResourceModalKind) {
         use crate::state::ResourceModalKind;
 
         let t = i18n::t();
-        let lines = self.build_process_lines(ResourceModalKind::Cpu);
-        let modal =
-            modal::InfoModal::new_rich(t.resource_cpu_top_title(), lines).with_min_width(57);
+        let title: String = match kind {
+            ResourceModalKind::Cpu => t.resource_cpu_top_title().to_owned(),
+            ResourceModalKind::Ram => t.resource_ram_top_title().to_owned(),
+            ResourceModalKind::Disk => return,
+        };
+        let lines = self.build_process_lines(kind);
+        let modal = modal::InfoModal::new_rich(title, lines).with_min_width(57);
         self.state.active_modal = Some(ActiveModal::Info(Box::new(modal)));
-        self.state.resource_modal_kind = Some(ResourceModalKind::Cpu);
-        self.state.last_resource_modal_refresh = Some(std::time::Instant::now());
-        self.state.needs_redraw = true;
-    }
-
-    /// Open RAM processes modal.
-    fn open_ram_modal(&mut self) {
-        use crate::state::ResourceModalKind;
-
-        let t = i18n::t();
-        let lines = self.build_process_lines(ResourceModalKind::Ram);
-        let modal =
-            modal::InfoModal::new_rich(t.resource_ram_top_title(), lines).with_min_width(57);
-        self.state.active_modal = Some(ActiveModal::Info(Box::new(modal)));
-        self.state.resource_modal_kind = Some(ResourceModalKind::Ram);
+        self.state.resource_modal_kind = Some(kind);
         self.state.last_resource_modal_refresh = Some(std::time::Instant::now());
         self.state.needs_redraw = true;
     }

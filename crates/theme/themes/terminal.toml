@@ -16,8 +16,8 @@ accented_fg = { rgb = [255, 255, 255] }
 selected_bg = { rgb = [60, 60, 60] }
 selected_fg = { rgb = [255, 255, 255] }
 
-# Disabled - bright enough to survive DIM modifier against black
-disabled = { rgb = [200, 200, 200] }
+# Disabled - visually distinct from fg (59% brightness of fg)
+disabled = { rgb = [120, 120, 120] }
 
 # Semantic
 success = { rgb = [78, 201, 76] }

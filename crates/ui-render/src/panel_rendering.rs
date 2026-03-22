@@ -9,6 +9,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Widget},
 };
+use std::borrow::Cow;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 /// Braille spinner characters used for loading indicators.
@@ -22,16 +23,17 @@ const SPINNER_CHARS: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦'
 /// - Main text in the middle is truncated with "…" from the left
 ///
 /// Returns the truncated title that fits within `max_width`.
-fn smart_truncate_title(title: &str, max_width: usize) -> String {
+/// Returns a borrowed slice when no truncation is needed, avoiding allocation.
+fn smart_truncate_title(title: &str, max_width: usize) -> Cow<'_, str> {
     let title_width = title.width();
     if title_width <= max_width {
-        return title.to_string();
+        return Cow::Borrowed(title);
     }
 
     // Parse title parts: [spinner] [main_text] [(status)]
     let chars: Vec<char> = title.chars().collect();
     if chars.is_empty() {
-        return String::new();
+        return Cow::Owned(String::new());
     }
 
     // Detect spinner prefix (braille char + space)
@@ -78,7 +80,7 @@ fn smart_truncate_title(title: &str, max_width: usize) -> String {
             result.push(ch);
             width += ch_width;
         }
-        return result;
+        return Cow::Owned(result);
     }
 
     // Available width for main text (with "…" if needed)
@@ -119,7 +121,7 @@ fn smart_truncate_title(title: &str, max_width: usize) -> String {
         String::new()
     };
 
-    format!("{}{}{}", spinner, truncated_main, status)
+    Cow::Owned(format!("{}{}{}", spinner, truncated_main, status))
 }
 
 use termide_config::Config;

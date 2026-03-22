@@ -151,6 +151,8 @@ impl FileManager {
                 Style::default()
                     .fg(theme.accented_fg)
                     .add_modifier(Modifier::BOLD)
+            } else if attr == "R" {
+                Style::default().fg(theme.disabled)
             } else {
                 fg_style
             };
