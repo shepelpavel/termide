@@ -1080,10 +1080,39 @@ impl Panel for GitLogPanel {
                         }
                         return vec![];
                     }
-                    // Click outside dropdown closes it
+                    // Click outside dropdown: close it, but check if click landed on a
+                    // selector — if so, open that selector (or keep closed if it was
+                    // already the open one, to preserve toggle-off behavior).
+                    let was_repo_open = self.repo_dropdown_open;
+                    let was_branch_open = self.branch_dropdown_open;
                     self.repo_dropdown_open = false;
                     self.branch_dropdown_open = false;
                     self.dropdown_area = None;
+
+                    if let Some(area) = self.repo_selector_area {
+                        if row == area.y && col >= area.x && col < area.x + area.width {
+                            self.current_section = Section::RepoSelector;
+                            if !was_repo_open {
+                                self.dropdown_cursor = self.repo_manager.selected_index();
+                                self.repo_dropdown_open = true;
+                            }
+                            return vec![];
+                        }
+                    }
+                    if let Some(area) = self.branch_selector_area {
+                        if row == area.y && col >= area.x && col < area.x + area.width {
+                            self.current_section = Section::BranchSelector;
+                            if !was_branch_open {
+                                self.dropdown_cursor = self
+                                    .branches
+                                    .iter()
+                                    .position(|b| Some(b.as_str()) == self.branch.as_deref())
+                                    .unwrap_or(0);
+                                self.branch_dropdown_open = true;
+                            }
+                            return vec![];
+                        }
+                    }
                     return vec![];
                 }
 
