@@ -1084,6 +1084,7 @@ impl Panel for GitLogPanel {
                     self.repo_dropdown_open = false;
                     self.branch_dropdown_open = false;
                     self.dropdown_area = None;
+                    return vec![];
                 }
 
                 // Repo selector click
