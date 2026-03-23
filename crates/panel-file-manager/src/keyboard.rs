@@ -254,12 +254,15 @@ impl FmCommand {
             return Self::ViewFile;
         }
 
-        // Open external (Ctrl+Enter)
-        if matches_binding_or_default(
+        // Open external (o, Ctrl+Enter)
+        if matches_binding_or_defaults(
             &keybindings.open_external,
             &key,
-            KeyCode::Enter,
-            KeyModifiers::CONTROL,
+            &[
+                (KeyCode::Char('o'), KeyModifiers::NONE),
+                (KeyCode::Char('O'), KeyModifiers::NONE),
+                (KeyCode::Enter, KeyModifiers::CONTROL),
+            ],
         ) {
             return Self::OpenExternal;
         }
