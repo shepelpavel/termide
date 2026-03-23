@@ -5,6 +5,27 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.3] - 2026-03-23
+
+### Added
+- **Session Switcher**: Filter input field in the session switching modal — typing filters sessions by path (case-insensitive substring match); backspace removes last character; navigation (↑↓/Enter/Esc) works on filtered results
+- **Git Log**: Repo and branch selector dropdowns — click `[repo ▼]` or `[branch ▼]` widgets to open inline dropdown lists for switching repositories and branches directly from the git log panel
+
+### Fixed
+- **Git Log**: Clicking an open selector now toggles it closed (instead of reopening); clicking one selector while another is open now switches immediately in one click
+- **Git Log**: Branch dropdown aligned with its selector position; branch selector placed immediately after repo selector
+- **File Manager**: Bare Cyrillic hotkeys now translated to Latin (e.g., pressing `щ` on ЙЦУКЕН layout acts as `o`)
+- **File Manager**: `o` key added as fallback for open-with-external-viewer (in addition to `Ctrl+Enter`)
+- **Git Status**: Modifiers cleared when rendering dropdown items to prevent strikethrough style bleeding from previous render
+- **Git**: Repository paths canonicalized to deduplicate symlinked repos (prevents same repo appearing twice in repo selector)
+- **Editor**: Render cache invalidated after file reload from disk — ensures updated content is displayed immediately
+
+### Changed
+- **Assets**: Theme screenshots refreshed, 15 new theme previews added
+- **Refactor**: Magic submenu index numbers replaced with named constants (`SESSIONS_SUBMENU_SWITCH`, `TOOLS_SUBMENU_GIT_LOG`, etc.) across all menu action handlers
+
+[0.17.3]: https://github.com/termide/termide/releases/tag/0.17.3
+
 ## [0.17.2] - 2026-03-22
 
 ### Added
