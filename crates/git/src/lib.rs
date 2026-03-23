@@ -652,10 +652,12 @@ pub fn find_repos_from_paths(paths: &[PathBuf], submodule_depth: usize) -> Vec<P
         return Vec::new();
     }
 
+    // Resolve symlinks so that paths like /home/user/docs -> /Data/docs
+    // don't create duplicate entries for the same physical directory.
     // Deduplicate and sort paths
     let mut unique_paths: Vec<PathBuf> = paths
         .iter()
-        .cloned()
+        .map(|p| std::fs::canonicalize(p).unwrap_or_else(|_| p.clone()))
         .collect::<HashSet<_>>()
         .into_iter()
         .collect();
