@@ -427,6 +427,7 @@ impl GitLogPanel {
         vec![PanelEvent::OpenGitDiff {
             repo_path: repo.to_path_buf(),
             commit_hash: Some(commit.hash.clone()),
+            file_path: None,
         }]
     }
 

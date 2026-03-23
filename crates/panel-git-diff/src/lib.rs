@@ -83,6 +83,10 @@ pub struct GitDiffPanel {
     repo_path: PathBuf,
     /// Commit hash (None = working directory changes, Some = specific commit)
     commit_hash: Option<String>,
+    /// Current branch name
+    branch: Option<String>,
+    /// Optional file path filter (show diff for single file only)
+    file_filter: Option<String>,
     /// All file diffs
     diffs: Vec<FileDiff>,
     /// Vertical scroll offset (in lines)
@@ -108,9 +112,12 @@ pub struct GitDiffPanel {
 impl GitDiffPanel {
     /// Create a new Git Diff panel for working directory changes
     pub fn new(repo_path: PathBuf) -> Self {
+        let branch = git::get_current_branch(&repo_path);
         let mut panel = Self {
             repo_path,
             commit_hash: None,
+            branch,
+            file_filter: None,
             diffs: Vec::new(),
             scroll: 0,
             collapsed: HashSet::new(),
@@ -128,9 +135,36 @@ impl GitDiffPanel {
 
     /// Create a new Git Diff panel for a specific commit
     pub fn new_for_commit(repo_path: PathBuf, commit_hash: String) -> Self {
+        let branch = git::get_current_branch(&repo_path);
         let mut panel = Self {
             repo_path,
             commit_hash: Some(commit_hash),
+            branch,
+            file_filter: None,
+            diffs: Vec::new(),
+            scroll: 0,
+            collapsed: HashSet::new(),
+            selected_file: 0,
+            cached_theme: ThemeColors::default(),
+            last_area: Rect::default(),
+            total_lines: 0,
+            visible_height: 0,
+            status_message: None,
+            vim_mode: false,
+        };
+        panel.refresh();
+        panel
+    }
+
+    /// Create a new Git Diff panel filtered to a single file
+    pub fn new_with_file_filter(repo_path: PathBuf, file_path: PathBuf) -> Self {
+        let branch = git::get_current_branch(&repo_path);
+        let file_filter = file_path.to_string_lossy().to_string();
+        let mut panel = Self {
+            repo_path,
+            commit_hash: None,
+            branch,
+            file_filter: Some(file_filter),
             diffs: Vec::new(),
             scroll: 0,
             collapsed: HashSet::new(),
@@ -170,6 +204,11 @@ impl GitDiffPanel {
                     self.diffs.push(diff);
                 }
             }
+        }
+
+        // Apply file filter if set
+        if let Some(ref filter) = self.file_filter {
+            self.diffs.retain(|d| &d.path == filter);
         }
 
         // Reset selection if needed
@@ -784,13 +823,21 @@ impl Panel for GitDiffPanel {
     fn title(&self) -> String {
         let t = termide_i18n::t();
         let repo_name = git::get_repo_name(&self.repo_path);
-        let file_count = self.diffs.len();
+        let branch = self.branch.as_deref().unwrap_or("detached");
+
+        // Build files string: "N files" or single filename
+        let files = if self.diffs.len() == 1 {
+            self.diffs[0].path.clone()
+        } else {
+            format!("{} files", self.diffs.len())
+        };
+
         if let Some(ref hash) = self.commit_hash {
             // Show short hash (first 7 characters)
             let short_hash = if hash.len() > 7 { &hash[..7] } else { hash };
-            t.git_diff_title_commit_fmt(&repo_name, short_hash, file_count)
+            t.git_diff_title_commit_fmt(&repo_name, branch, short_hash, &files)
         } else {
-            t.git_diff_title_fmt(&repo_name, file_count)
+            t.git_diff_title_fmt(&repo_name, branch, &files)
         }
     }
 

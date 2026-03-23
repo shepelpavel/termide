@@ -473,8 +473,14 @@ pub trait Translation: Send + Sync {
     fn git_checkout_error_fmt(&self, error: &str) -> String;
     fn git_init_failed_fmt(&self, error: &str) -> String;
     fn git_log_title_fmt(&self, repo: &str, branch: &str) -> String;
-    fn git_diff_title_commit_fmt(&self, repo: &str, hash: &str, count: usize) -> String;
-    fn git_diff_title_fmt(&self, repo: &str, count: usize) -> String;
+    fn git_diff_title_commit_fmt(
+        &self,
+        repo: &str,
+        branch: &str,
+        hash: &str,
+        files: &str,
+    ) -> String;
+    fn git_diff_title_fmt(&self, repo: &str, branch: &str, files: &str) -> String;
 
     // Git commit info modal
     fn git_commit_info_title(&self, hash: &str) -> String;

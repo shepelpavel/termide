@@ -1537,21 +1537,28 @@ impl Translation for RuntimeTranslation {
         self.format("git_log_title_fmt", &[("repo", repo), ("branch", branch)])
     }
 
-    fn git_diff_title_commit_fmt(&self, repo: &str, hash: &str, count: usize) -> String {
+    fn git_diff_title_commit_fmt(
+        &self,
+        repo: &str,
+        branch: &str,
+        hash: &str,
+        files: &str,
+    ) -> String {
         self.format(
             "git_diff_title_commit_fmt",
             &[
                 ("repo", repo),
+                ("branch", branch),
                 ("hash", hash),
-                ("count", &count.to_string()),
+                ("files", files),
             ],
         )
     }
 
-    fn git_diff_title_fmt(&self, repo: &str, count: usize) -> String {
+    fn git_diff_title_fmt(&self, repo: &str, branch: &str, files: &str) -> String {
         self.format(
             "git_diff_title_fmt",
-            &[("repo", repo), ("count", &count.to_string())],
+            &[("repo", repo), ("branch", branch), ("files", files)],
         )
     }
 

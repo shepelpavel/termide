@@ -5,6 +5,7 @@ use anyhow::Result;
 use super::App;
 use crate::panel_ext::PanelExt;
 use crate::state::ActiveModal;
+use termide_core::PanelEvent;
 use termide_modal::{
     ModalResult, ReplaceAction, ReplaceModalResult, SearchAction, SearchModalResult,
 };
@@ -807,10 +808,18 @@ impl App {
                             self.state.set_info("File unstaged".to_string());
                         }
                     }
-                    "edit" | "diff" => {
+                    "edit" => {
                         // Open file in editor (editor shows git diff markers automatically)
                         let full_path = repo_path.join(file_path);
                         let _ = self.open_editor_for_file(full_path);
+                    }
+                    "diff" => {
+                        // Open git diff panel filtered to this file
+                        self.process_single_event(PanelEvent::OpenGitDiff {
+                            repo_path: repo_path.to_path_buf(),
+                            commit_hash: None,
+                            file_path: Some(file_path.to_path_buf()),
+                        })?;
                     }
                     "revert" => {
                         // Open confirmation modal before reverting

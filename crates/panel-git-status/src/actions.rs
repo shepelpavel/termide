@@ -210,11 +210,12 @@ impl GitStatusPanel {
             (t.git_props_diff().to_string(), diff_info),
         ];
 
-        // Build action buttons (Edit only for existing files, Revert for all)
+        // Build action buttons (Edit only for existing files, Diff for all, Revert for all)
         let mut buttons = Vec::new();
         if full_path.exists() {
             buttons.push(ActionButton::new(t.git_action_edit(), "edit"));
         }
+        buttons.push(ActionButton::new(t.git_action_diff(), "diff"));
         buttons.push(ActionButton::new(t.git_action_revert(), "revert"));
         buttons.push(ActionButton::new(t.git_action_close(), "close"));
 
@@ -321,6 +322,7 @@ impl GitStatusPanel {
                     vec![PanelEvent::OpenGitDiff {
                         repo_path: repo.to_path_buf(),
                         commit_hash: None,
+                        file_path: None,
                     }]
                 } else {
                     vec![]

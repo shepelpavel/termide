@@ -240,8 +240,9 @@ impl App {
             PanelEvent::OpenGitDiff {
                 repo_path,
                 commit_hash,
+                file_path,
             } => {
-                self.event_open_git_diff(repo_path, commit_hash)?;
+                self.event_open_git_diff(repo_path, commit_hash, file_path)?;
             }
 
             // === Operations panel ===
@@ -1118,19 +1119,22 @@ impl App {
         &mut self,
         repo_path: PathBuf,
         commit_hash: Option<String>,
+        file_path: Option<PathBuf>,
     ) -> Result<()> {
         use termide_panel_git_diff::GitDiffPanel;
 
         log::debug!(
-            "Opening Git Diff panel for {:?} (commit: {:?})",
+            "Opening Git Diff panel for {:?} (commit: {:?}, file: {:?})",
             repo_path,
-            commit_hash
+            commit_hash,
+            file_path
         );
         self.close_help_panels();
 
-        let panel = match commit_hash {
-            Some(hash) => GitDiffPanel::new_for_commit(repo_path, hash),
-            None => GitDiffPanel::new(repo_path),
+        let panel = match (&commit_hash, &file_path) {
+            (_, Some(file)) => GitDiffPanel::new_with_file_filter(repo_path, file.clone()),
+            (Some(hash), None) => GitDiffPanel::new_for_commit(repo_path, hash.clone()),
+            (None, None) => GitDiffPanel::new(repo_path),
         };
         self.add_panel(Box::new(panel));
         self.auto_save_session();

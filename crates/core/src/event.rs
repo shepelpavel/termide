@@ -431,9 +431,11 @@ pub enum PanelEvent {
 
     /// Open git diff panel for repository
     /// If commit_hash is Some, shows diff for that commit; otherwise shows working directory changes
+    /// If file_path is Some, filters diff to show only that file
     OpenGitDiff {
         repo_path: PathBuf,
         commit_hash: Option<String>,
+        file_path: Option<PathBuf>,
     },
 
     // === Clipboard ===
