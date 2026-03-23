@@ -46,8 +46,8 @@ pub struct SessionsModal {
 /// Maximum number of items visible at once (each item takes 2 lines)
 const MAX_VISIBLE_ITEMS: usize = 6;
 
-/// Height of the filter row + separator above the list
-const FILTER_ROWS: u16 = 2;
+/// Height of the empty line + filter row + separator above the list
+const FILTER_ROWS: u16 = 3;
 
 impl SessionsModal {
     /// Create a new sessions modal
@@ -198,17 +198,17 @@ impl Modal for SessionsModal {
             Span::styled(padding, filter_style),
         ]);
 
-        // Render filter row at inner.y
+        // Render filter row on inner.y + 1 (row 0 is blank padding)
         let filter_area = Rect {
             x: inner.x,
-            y: inner.y,
+            y: inner.y + 1,
             width: inner.width,
             height: 1,
         };
         ratatui::widgets::Paragraph::new(filter_line).render(filter_area, buf);
 
         // --- Separator row ---
-        let sep_y = inner.y + 1;
+        let sep_y = inner.y + 2;
         let sep_char = "─";
         for x in inner.x..inner.x + inner.width {
             buf[(x, sep_y)]
