@@ -210,12 +210,13 @@ impl GitStatusPanel {
             (t.git_props_diff().to_string(), diff_info),
         ];
 
-        // Build action buttons (Revert shown for all files - staged files will be unstaged first)
-        let buttons = vec![
-            ActionButton::new(t.git_action_edit(), "edit"),
-            ActionButton::new(t.git_action_revert(), "revert"),
-            ActionButton::new(t.git_action_close(), "close"),
-        ];
+        // Build action buttons (Edit only for existing files, Revert for all)
+        let mut buttons = Vec::new();
+        if full_path.exists() {
+            buttons.push(ActionButton::new(t.git_action_edit(), "edit"));
+        }
+        buttons.push(ActionButton::new(t.git_action_revert(), "revert"));
+        buttons.push(ActionButton::new(t.git_action_close(), "close"));
 
         // Select Close button by default
         let selected_button = buttons.len().saturating_sub(1);

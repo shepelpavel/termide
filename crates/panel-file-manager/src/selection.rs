@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use super::FileManager;
+use termide_git::GitStatus;
 use termide_vfs::VfsPath;
 
 /// Drag selection mode
@@ -286,18 +287,18 @@ impl FileManager {
     pub fn get_selected_paths(&self) -> Vec<PathBuf> {
         if self.selection.items.is_empty() {
             if let Some(te) = self.tree_entry_at(self.selected) {
-                if te.file_entry.name != ".." {
+                if te.file_entry.name != ".." && te.file_entry.git_status != GitStatus::Deleted {
                     return vec![te.full_path.clone()];
                 }
             }
             return Vec::new();
         }
 
-        // Collect all selected paths
+        // Collect all selected paths (excluding deleted files)
         let mut paths: Vec<PathBuf> = Vec::with_capacity(self.selection.items.len());
         for &vis_idx in &self.selection.items {
             if let Some(te) = self.tree_entry_at(vis_idx) {
-                if te.file_entry.name != ".." {
+                if te.file_entry.name != ".." && te.file_entry.git_status != GitStatus::Deleted {
                     paths.push(te.full_path.clone());
                 }
             }
@@ -326,19 +327,19 @@ impl FileManager {
         let base_path = self.vfs.current_path();
 
         if self.selection.items.is_empty() {
-            if let Some(entry) = self.entry_at(self.selected) {
-                if entry.name != ".." {
-                    return vec![base_path.join(&entry.name)];
+            if let Some(te) = self.tree_entry_at(self.selected) {
+                if te.file_entry.name != ".." && te.file_entry.git_status != GitStatus::Deleted {
+                    return vec![base_path.join(&te.file_entry.name)];
                 }
             }
             return Vec::new();
         }
 
-        // Collect all selected tree entries with their full_path for dedup
+        // Collect all selected tree entries with their full_path for dedup (excluding deleted)
         let mut entries: Vec<(PathBuf, String)> = Vec::with_capacity(self.selection.items.len());
         for &vis_idx in &self.selection.items {
             if let Some(te) = self.tree_entry_at(vis_idx) {
-                if te.file_entry.name != ".." {
+                if te.file_entry.name != ".." && te.file_entry.git_status != GitStatus::Deleted {
                     entries.push((te.full_path.clone(), te.file_entry.name.clone()));
                 }
             }
