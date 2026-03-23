@@ -180,8 +180,7 @@ impl Modal for SessionsModal {
         // --- Filter input row ---
         let filter_label = "  Filter: ";
         let filter_text = format!("{}{}", filter_label, self.filter);
-        let cursor_col = filter_text.width();
-        // Pad to full inner width
+        // Pad to full inner width, reserving 1 cell for the block cursor
         let padding_len = (inner.width as usize).saturating_sub(filter_text.width() + 1);
         let padding = " ".repeat(padding_len);
 
@@ -190,7 +189,6 @@ impl Modal for SessionsModal {
             .fg(theme.bg)
             .bg(theme.fg)
             .add_modifier(Modifier::BOLD);
-        let _ = cursor_col;
 
         let filter_line = Line::from(vec![
             Span::styled(filter_text, filter_style),

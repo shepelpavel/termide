@@ -52,8 +52,17 @@ use termide_panel_file_manager::FileManager;
 use termide_panel_terminal::Terminal;
 use termide_theme::Theme;
 use termide_ui_render::menu::{
-    INDICATOR_CLOCK_INDEX, INDICATOR_CPU_INDEX, INDICATOR_NET_INDEX, INDICATOR_RAM_INDEX,
-    MENU_TOTAL_COUNT,
+    BOOKMARKS_MENU_INDEX, INDICATOR_CLOCK_INDEX, INDICATOR_CPU_INDEX, INDICATOR_NET_INDEX,
+    INDICATOR_RAM_INDEX, MENU_TOTAL_COUNT, OPTIONS_MENU_INDEX, SCRIPTS_MENU_INDEX,
+    SESSIONS_MENU_INDEX, WINDOWS_MENU_INDEX,
+};
+use termide_ui_render::{
+    OPTIONS_SUBMENU_BOOKMARKS, OPTIONS_SUBMENU_HELP, OPTIONS_SUBMENU_LANGUAGE,
+    OPTIONS_SUBMENU_PREFERENCES, OPTIONS_SUBMENU_QUIT, OPTIONS_SUBMENU_SCRIPTS,
+    OPTIONS_SUBMENU_THEMES, SESSIONS_SUBMENU_CHANGE_ROOT, SESSIONS_SUBMENU_NEW,
+    SESSIONS_SUBMENU_SWITCH, TOOLS_SUBMENU_DIAGNOSTICS, TOOLS_SUBMENU_EDITOR, TOOLS_SUBMENU_FILES,
+    TOOLS_SUBMENU_GIT_LOG, TOOLS_SUBMENU_GIT_STATUS, TOOLS_SUBMENU_JOURNAL,
+    TOOLS_SUBMENU_OPERATIONS, TOOLS_SUBMENU_OUTLINE, TOOLS_SUBMENU_TERMINAL,
 };
 
 impl App {
@@ -81,24 +90,19 @@ impl App {
     pub(super) fn execute_menu_action(&mut self) -> Result<()> {
         if let Some(menu_index) = self.state.ui.selected_menu_item {
             match menu_index {
-                0 => {
-                    // Sessions - open submenu dropdown (keep menu open)
+                SESSIONS_MENU_INDEX => {
                     self.state.open_sessions_submenu();
                 }
-                1 => {
-                    // Tools - open submenu dropdown (keep menu open)
+                WINDOWS_MENU_INDEX => {
                     self.state.open_tools_submenu();
                 }
-                2 => {
-                    // Scripts - open submenu dropdown (keep menu open)
+                SCRIPTS_MENU_INDEX => {
                     self.state.open_scripts_submenu();
                 }
-                3 => {
-                    // Bookmarks - open submenu dropdown (keep menu open)
+                BOOKMARKS_MENU_INDEX => {
                     self.state.open_bookmarks_submenu();
                 }
-                4 => {
-                    // Options - open submenu dropdown (keep menu open)
+                OPTIONS_MENU_INDEX => {
                     self.state.open_submenu();
                 }
                 INDICATOR_NET_INDEX => {
@@ -325,47 +329,38 @@ impl App {
     /// Execute action for selected Options submenu item
     fn execute_submenu_action(&mut self) -> Result<()> {
         match self.state.ui.options_submenu.selected {
-            0 => {
-                // Themes - open nested submenu with live preview
+            OPTIONS_SUBMENU_THEMES => {
                 let theme_names = Theme::all_theme_names();
                 let current_idx = theme_names
                     .iter()
                     .position(|n| n == self.state.theme.name)
                     .unwrap_or(0);
-                // Save current theme for restoration on cancel
                 self.state.ui.theme_preview_original = Some(self.state.theme.name.to_string());
                 self.state.open_nested_submenu(current_idx);
             }
-            1 => {
-                // Language - open nested submenu with live preview
+            OPTIONS_SUBMENU_LANGUAGE => {
                 use termide_ui_render::find_current_language_index;
                 let current_idx = find_current_language_index();
-                // Save current language for restoration on cancel
                 self.state.ui.language_preview_original = Some(i18n::current_language());
                 self.state.open_nested_submenu(current_idx);
             }
-            2 => {
-                // Manage actions - open actions folder in file manager
+            OPTIONS_SUBMENU_SCRIPTS => {
                 self.state.close_menu();
                 self.handle_manage_scripts()?;
             }
-            3 => {
-                // Manage bookmarks - open bookmarks.toml in editor
+            OPTIONS_SUBMENU_BOOKMARKS => {
                 self.state.close_menu();
                 self.handle_manage_bookmarks()?;
             }
-            4 => {
-                // Edit preferences - close menu and open config
+            OPTIONS_SUBMENU_PREFERENCES => {
                 self.state.close_menu();
                 self.open_config_in_editor()?;
             }
-            5 => {
-                // Help - show help
+            OPTIONS_SUBMENU_HELP => {
                 self.state.close_menu();
                 self.handle_new_help()?;
             }
-            6 => {
-                // Quit - exit
+            OPTIONS_SUBMENU_QUIT => {
                 self.state.close_menu();
                 if self.has_panels_requiring_confirmation() {
                     let t = i18n::t();
@@ -388,8 +383,8 @@ impl App {
     fn handle_nested_submenu_key(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
         // Determine which nested submenu is open based on parent submenu item
         match self.state.ui.options_submenu.selected {
-            0 => self.handle_themes_nested_submenu_key(key),
-            1 => self.handle_language_nested_submenu_key(key),
+            OPTIONS_SUBMENU_THEMES => self.handle_themes_nested_submenu_key(key),
+            OPTIONS_SUBMENU_LANGUAGE => self.handle_language_nested_submenu_key(key),
             _ => Ok(()),
         }
     }
@@ -543,18 +538,15 @@ impl App {
     /// Execute action for selected Sessions submenu item
     pub(super) fn execute_sessions_submenu_action(&mut self) -> Result<()> {
         match self.state.ui.sessions_submenu.selected {
-            0 => {
-                // New session - open directory picker
+            SESSIONS_SUBMENU_NEW => {
                 self.state.close_menu();
                 self.handle_new_session()?;
             }
-            1 => {
-                // Switch session - open sessions modal
+            SESSIONS_SUBMENU_SWITCH => {
                 self.state.close_menu();
                 self.handle_open_sessions_modal()?;
             }
-            2 => {
-                // Change root path - open directory picker
+            SESSIONS_SUBMENU_CHANGE_ROOT => {
                 self.state.close_menu();
                 self.handle_change_root_path()?;
             }
@@ -691,10 +683,8 @@ impl App {
     /// Execute action for selected Tools submenu item
     pub(super) fn execute_tools_submenu_action(&mut self) -> Result<()> {
         match self.state.ui.tools_submenu.selected {
-            0 => {
-                // Terminal - open shell picker submenu (caches shells on open)
+            TOOLS_SUBMENU_TERMINAL => {
                 self.state.open_tools_nested_submenu(0);
-                // Adjust selection to match the current default shell
                 let default_idx = self
                     .state
                     .config
@@ -710,43 +700,35 @@ impl App {
                     .unwrap_or(0);
                 self.state.ui.tools_nested.selected = default_idx;
             }
-            1 => {
-                // Files - open new file manager panel
+            TOOLS_SUBMENU_FILES => {
                 self.state.close_menu();
                 self.handle_new_file_manager()?;
             }
-            2 => {
-                // Editor - open new editor panel
+            TOOLS_SUBMENU_EDITOR => {
                 self.state.close_menu();
                 self.handle_new_editor()?;
             }
-            3 => {
-                // Git Status - open Git Status panel
+            TOOLS_SUBMENU_GIT_STATUS => {
                 self.state.close_menu();
                 self.handle_open_git_status()?;
             }
-            4 => {
-                // Git Log - open Git Log panel
+            TOOLS_SUBMENU_GIT_LOG => {
                 self.state.close_menu();
                 self.handle_open_git_log()?;
             }
-            5 => {
-                // Journal - open journal panel
+            TOOLS_SUBMENU_JOURNAL => {
                 self.state.close_menu();
                 self.handle_new_journal()?;
             }
-            6 => {
-                // Diagnostics - open diagnostics panel
+            TOOLS_SUBMENU_DIAGNOSTICS => {
                 self.state.close_menu();
                 self.handle_open_diagnostics()?;
             }
-            7 => {
-                // Operations - open operations panel
+            TOOLS_SUBMENU_OPERATIONS => {
                 self.state.close_menu();
                 self.open_operations_panel()?;
             }
-            8 => {
-                // Outline - open outline panel
+            TOOLS_SUBMENU_OUTLINE => {
                 self.state.close_menu();
                 self.handle_open_outline()?;
             }

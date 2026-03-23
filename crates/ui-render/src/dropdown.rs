@@ -226,6 +226,11 @@ pub fn get_sessions_items() -> Vec<DropdownItem> {
 /// Number of items in Sessions submenu
 pub const SESSIONS_SUBMENU_ITEM_COUNT: usize = 3;
 
+/// Index of Sessions submenu items
+pub const SESSIONS_SUBMENU_NEW: usize = 0;
+pub const SESSIONS_SUBMENU_SWITCH: usize = 1;
+pub const SESSIONS_SUBMENU_CHANGE_ROOT: usize = 2;
+
 /// Get tools submenu items
 pub fn get_tools_items() -> Vec<DropdownItem> {
     let t = i18n::t();
@@ -244,6 +249,17 @@ pub fn get_tools_items() -> Vec<DropdownItem> {
 
 /// Number of items in Tools submenu
 pub const TOOLS_SUBMENU_ITEM_COUNT: usize = 9;
+
+/// Index of Tools submenu items
+pub const TOOLS_SUBMENU_TERMINAL: usize = 0;
+pub const TOOLS_SUBMENU_FILES: usize = 1;
+pub const TOOLS_SUBMENU_EDITOR: usize = 2;
+pub const TOOLS_SUBMENU_GIT_STATUS: usize = 3;
+pub const TOOLS_SUBMENU_GIT_LOG: usize = 4;
+pub const TOOLS_SUBMENU_JOURNAL: usize = 5;
+pub const TOOLS_SUBMENU_DIAGNOSTICS: usize = 6;
+pub const TOOLS_SUBMENU_OPERATIONS: usize = 7;
+pub const TOOLS_SUBMENU_OUTLINE: usize = 8;
 
 /// Get shell picker submenu items from discovered shells.
 ///
@@ -282,6 +298,15 @@ pub fn get_options_items() -> Vec<DropdownItem> {
 
 /// Number of items in Options submenu
 pub const OPTIONS_SUBMENU_ITEM_COUNT: usize = 7;
+
+/// Index of Options submenu items
+pub const OPTIONS_SUBMENU_THEMES: usize = 0;
+pub const OPTIONS_SUBMENU_LANGUAGE: usize = 1;
+pub const OPTIONS_SUBMENU_SCRIPTS: usize = 2;
+pub const OPTIONS_SUBMENU_BOOKMARKS: usize = 3;
+pub const OPTIONS_SUBMENU_PREFERENCES: usize = 4;
+pub const OPTIONS_SUBMENU_HELP: usize = 5;
+pub const OPTIONS_SUBMENU_QUIT: usize = 6;
 
 /// Special script ID for "Add script..." menu item
 pub const SCRIPT_ADD_NEW: &str = "__add_script__";
