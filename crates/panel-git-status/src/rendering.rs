@@ -626,7 +626,9 @@ impl GitStatusPanel {
 
         // Border style
         let border_style = Style::default().fg(theme.border_focused);
-        let bg_style = Style::default().bg(theme.bg);
+        let bg_style = Style::default()
+            .bg(theme.bg)
+            .remove_modifier(Modifier::all());
 
         // Clear area and draw border
         let dropdown_height = visible_count as u16 + 2; // +2 for borders
@@ -666,10 +668,15 @@ impl GitStatusPanel {
                 Style::default()
                     .fg(theme.selection_fg)
                     .bg(theme.selection_bg)
+                    .remove_modifier(Modifier::all())
             } else if is_selected {
-                Style::default().fg(theme.cursor)
+                Style::default()
+                    .fg(theme.cursor)
+                    .remove_modifier(Modifier::all())
             } else {
-                Style::default().fg(theme.fg)
+                Style::default()
+                    .fg(theme.fg)
+                    .remove_modifier(Modifier::all())
             };
 
             // Truncate item
