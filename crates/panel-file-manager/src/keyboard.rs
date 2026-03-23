@@ -254,12 +254,12 @@ impl FmCommand {
             return Self::ViewFile;
         }
 
-        // Open external (Shift+Enter)
+        // Open external (Ctrl+Enter)
         if matches_binding_or_default(
             &keybindings.open_external,
             &key,
             KeyCode::Enter,
-            KeyModifiers::SHIFT,
+            KeyModifiers::CONTROL,
         ) {
             return Self::OpenExternal;
         }

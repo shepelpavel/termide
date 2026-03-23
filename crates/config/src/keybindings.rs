@@ -475,7 +475,7 @@ impl FileManagerKeybindings {
         set_default_single!(select_all, "Ctrl+A");
 
         // Other
-        set_default_single!(open_external, "Shift+Enter");
+        set_default_single!(open_external, "Ctrl+Enter");
         set_default_single!(toggle_hidden, ".");
     }
 }
