@@ -431,6 +431,7 @@ impl GitLogPanel {
     }
 
     /// Render repo selector
+    /// Returns the rendered width so the caller can position the next widget.
     fn render_repo_selector(
         &mut self,
         x: u16,
@@ -438,7 +439,7 @@ impl GitLogPanel {
         max_width: u16,
         buf: &mut Buffer,
         theme: &ThemeColors,
-    ) {
+    ) -> u16 {
         let name = self.repo_manager.current().map(git::get_repo_name);
         if let Some(name) = name {
             let is_focused = self.current_section == Section::RepoSelector;
@@ -450,7 +451,9 @@ impl GitLogPanel {
                 width: w,
                 height: 1,
             });
+            return w;
         }
+        0
     }
 
     /// Render branch selector
@@ -500,16 +503,17 @@ impl GitLogPanel {
             height: area.height.saturating_sub(2),
         };
 
-        // Always render header row: [repo ▼] [branch ▼]
-        let half = content_area.width / 2;
-        self.render_repo_selector(content_area.x, content_area.y, half, buf, &theme);
-        self.render_branch_selector(
-            content_area.x + half,
+        // Always render header row: [repo ▼] [branch ▼] (branch follows repo with 2-char gap)
+        let repo_w = self.render_repo_selector(
+            content_area.x,
             content_area.y,
-            content_area.width - half,
+            content_area.width / 2,
             buf,
             &theme,
         );
+        let branch_x = content_area.x + repo_w + 2;
+        let branch_max_w = content_area.width.saturating_sub(repo_w + 2);
+        self.render_branch_selector(branch_x, content_area.y, branch_max_w, buf, &theme);
         let y_offset = 2u16;
 
         let commits_area_height = content_area.height.saturating_sub(y_offset) as usize;
