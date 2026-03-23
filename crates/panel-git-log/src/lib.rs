@@ -19,12 +19,15 @@ use termide_modal::{ActiveModal, InfoModal, ModalValue, SegmentStyle, StyledSegm
 use termide_state::PendingAction;
 use termide_theme::Theme;
 use termide_ui::ScrollBar;
+use termide_ui_render::{render_simple_dropdown, InlineSelector};
 
 /// Section of the Git Log panel
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Section {
-    /// Repository selector (when multiple repos)
+    /// Repository selector
     RepoSelector,
+    /// Branch selector
+    BranchSelector,
     /// Commit list
     Commits,
 }
@@ -35,8 +38,24 @@ pub struct GitLogPanel {
     repo_manager: RepoManager,
     /// Current section
     current_section: Section,
-    /// Current branch name
+    /// Current branch name (HEAD)
     branch: Option<String>,
+    /// All branches for the current repo
+    branches: Vec<String>,
+    /// Selected branch to view log for (None = current HEAD)
+    selected_branch: Option<String>,
+    /// Whether the repo dropdown is open
+    repo_dropdown_open: bool,
+    /// Whether the branch dropdown is open
+    branch_dropdown_open: bool,
+    /// Cursor position in the open dropdown
+    dropdown_cursor: usize,
+    /// Cached area of the open dropdown for click detection
+    dropdown_area: Option<Rect>,
+    /// Cached area of the repo selector widget
+    repo_selector_area: Option<Rect>,
+    /// Cached area of the branch selector widget
+    branch_selector_area: Option<Rect>,
     /// Commit log entries
     commits: Vec<CommitInfo>,
     /// Currently selected commit index
@@ -64,10 +83,18 @@ impl GitLogPanel {
             repo_manager: RepoManager::new(paths),
             current_section: Section::Commits,
             branch: None,
+            branches: Vec::new(),
+            selected_branch: None,
+            repo_dropdown_open: false,
+            branch_dropdown_open: false,
+            dropdown_cursor: 0,
+            dropdown_area: None,
+            repo_selector_area: None,
+            branch_selector_area: None,
             commits: Vec::new(),
             selected: 0,
             scroll: 0,
-            commit_count: 100, // Load last 100 commits by default
+            commit_count: 100,
             cached_theme: ThemeColors::default(),
             last_area: Rect::default(),
             status_message: None,
@@ -85,6 +112,14 @@ impl GitLogPanel {
             repo_manager: RepoManager::for_repo(repo_path),
             current_section: Section::Commits,
             branch: None,
+            branches: Vec::new(),
+            selected_branch: None,
+            repo_dropdown_open: false,
+            branch_dropdown_open: false,
+            dropdown_cursor: 0,
+            dropdown_area: None,
+            repo_selector_area: None,
+            branch_selector_area: None,
             commits: Vec::new(),
             selected: 0,
             scroll: 0,
@@ -115,27 +150,31 @@ impl GitLogPanel {
         let repo = repo.to_path_buf();
 
         self.branch = git::get_current_branch(&repo);
-        self.commits = git::get_log_with_graph(&repo, self.commit_count);
+        self.branches = git::get_all_branches(&repo);
+
+        // If the previously selected branch no longer exists, reset to HEAD
+        if let Some(ref b) = self.selected_branch {
+            if !self.branches.contains(b) {
+                self.selected_branch = None;
+            }
+        }
+
+        self.commits =
+            git::get_log_with_graph(&repo, self.commit_count, self.selected_branch.as_deref());
 
         // Adjust selection if needed
         if self.selected >= self.commits.len() && !self.commits.is_empty() {
             self.selected = self.commits.len() - 1;
         }
-        // Reset scroll when repo changes
         self.scroll = 0;
     }
 
-    /// Move to next section
+    /// Move to next section (cycles: RepoSelector → BranchSelector → Commits → RepoSelector)
     fn next_section(&mut self) {
         self.current_section = match self.current_section {
-            Section::RepoSelector => Section::Commits,
-            Section::Commits => {
-                if self.repo_manager.has_multiple() {
-                    Section::RepoSelector
-                } else {
-                    Section::Commits
-                }
-            }
+            Section::RepoSelector => Section::BranchSelector,
+            Section::BranchSelector => Section::Commits,
+            Section::Commits => Section::RepoSelector,
         };
     }
 
@@ -143,13 +182,8 @@ impl GitLogPanel {
     fn prev_section(&mut self) {
         self.current_section = match self.current_section {
             Section::RepoSelector => Section::Commits,
-            Section::Commits => {
-                if self.repo_manager.has_multiple() {
-                    Section::RepoSelector
-                } else {
-                    Section::Commits
-                }
-            }
+            Section::BranchSelector => Section::RepoSelector,
+            Section::Commits => Section::BranchSelector,
         };
     }
 
@@ -398,32 +432,56 @@ impl GitLogPanel {
 
     /// Render repo selector
     fn render_repo_selector(
-        &self,
+        &mut self,
         x: u16,
         y: u16,
-        _width: u16,
+        max_width: u16,
         buf: &mut Buffer,
         theme: &ThemeColors,
     ) {
-        let is_focused = self.current_section == Section::RepoSelector;
-        let style = if is_focused {
-            Style::default()
-                .fg(theme.selection_fg)
-                .bg(theme.selection_bg)
-        } else {
-            Style::default().fg(theme.fg)
-        };
-
-        if let Some(repo) = self.repo_manager.current() {
-            let name = git::get_repo_name(repo);
-            let text = format!("[{}]", name);
-            buf.set_string(x, y, &text, style);
+        let name = self.repo_manager.current().map(git::get_repo_name);
+        if let Some(name) = name {
+            let is_focused = self.current_section == Section::RepoSelector;
+            let w = InlineSelector::new(&name, self.repo_dropdown_open, is_focused, theme)
+                .render(x, y, max_width, buf);
+            self.repo_selector_area = Some(Rect {
+                x,
+                y,
+                width: w,
+                height: 1,
+            });
         }
+    }
+
+    /// Render branch selector
+    fn render_branch_selector(
+        &mut self,
+        x: u16,
+        y: u16,
+        max_width: u16,
+        buf: &mut Buffer,
+        theme: &ThemeColors,
+    ) {
+        let name: String = self
+            .selected_branch
+            .as_deref()
+            .or(self.branch.as_deref())
+            .unwrap_or("—")
+            .to_owned();
+        let is_focused = self.current_section == Section::BranchSelector;
+        let w = InlineSelector::new(&name, self.branch_dropdown_open, is_focused, theme)
+            .render(x, y, max_width, buf);
+        self.branch_selector_area = Some(Rect {
+            x,
+            y,
+            width: w,
+            height: 1,
+        });
     }
 
     /// Render the panel content
     fn render_content(
-        &self,
+        &mut self,
         area: Rect,
         buf: &mut Buffer,
         is_focused: bool,
@@ -433,7 +491,7 @@ impl GitLogPanel {
             return;
         }
 
-        let theme = &self.cached_theme;
+        let theme = self.cached_theme;
 
         let content_area = Rect {
             x: area.x + 1,
@@ -442,19 +500,17 @@ impl GitLogPanel {
             height: area.height.saturating_sub(2),
         };
 
-        let mut y_offset = 0u16;
-
-        // Render repo selector if multiple repos
-        if self.repo_manager.has_multiple() {
-            self.render_repo_selector(
-                content_area.x,
-                content_area.y,
-                content_area.width,
-                buf,
-                theme,
-            );
-            y_offset = 2;
-        }
+        // Always render header row: [repo ▼] [branch ▼]
+        let half = content_area.width / 2;
+        self.render_repo_selector(content_area.x, content_area.y, half, buf, &theme);
+        self.render_branch_selector(
+            content_area.x + half,
+            content_area.y,
+            content_area.width - half,
+            buf,
+            &theme,
+        );
+        let y_offset = 2u16;
 
         let commits_area_height = content_area.height.saturating_sub(y_offset) as usize;
         let commits_start_y = content_area.y + y_offset;
@@ -518,7 +574,7 @@ impl GitLogPanel {
                 // Refs (if any) - render with colors
                 if let Some(ref refs) = commit.refs {
                     if x_pos < max_x {
-                        x_pos = self.render_refs(x_pos, y, max_x, refs, is_selected, buf, theme);
+                        x_pos = self.render_refs(x_pos, y, max_x, refs, is_selected, buf, &theme);
                         x_pos += 1; // space after refs
                     }
                 }
@@ -582,10 +638,70 @@ impl GitLogPanel {
                     self.scroll,
                     commits_area_height,
                     self.commits.len(),
-                    theme,
+                    &theme,
                     is_focused,
                 );
             }
+        }
+
+        // Dropdown overlays (rendered last so they appear on top)
+        if self.repo_dropdown_open {
+            let repo_names: Vec<String> = self
+                .repo_manager
+                .repos()
+                .iter()
+                .map(|p| git::get_repo_name(p))
+                .collect();
+            let dropdown_y = content_area.y + 1;
+            let max_h = content_area.height.saturating_sub(3);
+            let selected_idx = self.repo_manager.selected_index();
+            let visible_count = repo_names.len().min(max_h as usize);
+            self.dropdown_area = Some(Rect {
+                x: content_area.x,
+                y: dropdown_y,
+                width: content_area.width / 2,
+                height: visible_count as u16 + 2,
+            });
+            render_simple_dropdown(
+                &repo_names,
+                selected_idx,
+                self.dropdown_cursor,
+                content_area.x,
+                dropdown_y,
+                content_area.width / 2,
+                max_h,
+                buf,
+                &theme,
+            );
+        } else if self.branch_dropdown_open {
+            let branches = self.branches.clone();
+            let current_branch_idx = branches
+                .iter()
+                .position(|b| Some(b.as_str()) == self.branch.as_deref())
+                .unwrap_or(0);
+            let dropdown_y = content_area.y + 1;
+            let max_h = content_area.height.saturating_sub(3);
+            let half = content_area.width / 2;
+            let visible_count = branches.len().min(max_h as usize);
+            self.dropdown_area = Some(Rect {
+                x: content_area.x + half,
+                y: dropdown_y,
+                width: content_area.width - half,
+                height: visible_count as u16 + 2,
+            });
+            render_simple_dropdown(
+                &branches,
+                current_branch_idx,
+                self.dropdown_cursor,
+                content_area.x + half,
+                dropdown_y,
+                content_area.width - half,
+                max_h,
+                buf,
+                &theme,
+            );
+        } else {
+            self.dropdown_area = None;
         }
 
         // Status message at bottom
@@ -755,8 +871,20 @@ impl Panel for GitLogPanel {
 
         let page_size = self.last_area.height.saturating_sub(4) as usize;
 
+        // Escape closes any open dropdown
+        if key.code == KeyCode::Esc && (self.repo_dropdown_open || self.branch_dropdown_open) {
+            self.repo_dropdown_open = false;
+            self.branch_dropdown_open = false;
+            self.dropdown_cursor = 0;
+            return vec![];
+        }
+
         // Vim-aware navigation (j/k/g/G when vim_mode is enabled)
         if is_move_up(&key, self.vim_mode) {
+            if self.repo_dropdown_open || self.branch_dropdown_open {
+                self.dropdown_cursor = self.dropdown_cursor.saturating_sub(1);
+                return vec![];
+            }
             match self.current_section {
                 Section::RepoSelector => {
                     if self.repo_manager.selected_index() > 0 {
@@ -765,11 +893,26 @@ impl Panel for GitLogPanel {
                         self.refresh();
                     }
                 }
+                Section::BranchSelector => {}
                 Section::Commits => self.move_up(),
             }
             return vec![];
         }
         if is_move_down(&key, self.vim_mode) {
+            if self.repo_dropdown_open {
+                let max = self.repo_manager.len().saturating_sub(1);
+                if self.dropdown_cursor < max {
+                    self.dropdown_cursor += 1;
+                }
+                return vec![];
+            }
+            if self.branch_dropdown_open {
+                let max = self.branches.len().saturating_sub(1);
+                if self.dropdown_cursor < max {
+                    self.dropdown_cursor += 1;
+                }
+                return vec![];
+            }
             match self.current_section {
                 Section::RepoSelector => {
                     if self.repo_manager.selected_index() + 1 < self.repo_manager.len() {
@@ -778,25 +921,34 @@ impl Panel for GitLogPanel {
                         self.refresh();
                     }
                 }
+                Section::BranchSelector => {}
                 Section::Commits => self.move_down(),
             }
             return vec![];
         }
         if is_go_home(&key, self.vim_mode) {
-            self.go_to_start();
+            if !self.repo_dropdown_open && !self.branch_dropdown_open {
+                self.go_to_start();
+            }
             return vec![];
         }
         if is_go_end(&key, self.vim_mode) {
-            self.go_to_end();
+            if !self.repo_dropdown_open && !self.branch_dropdown_open {
+                self.go_to_end();
+            }
             return vec![];
         }
 
         match key.code {
             // Tab switches sections
             KeyCode::Tab => {
+                self.repo_dropdown_open = false;
+                self.branch_dropdown_open = false;
                 self.next_section();
             }
             KeyCode::BackTab => {
+                self.repo_dropdown_open = false;
+                self.branch_dropdown_open = false;
                 self.prev_section();
             }
             KeyCode::PageUp => {
@@ -808,13 +960,50 @@ impl Panel for GitLogPanel {
             KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
                 return self.open_commit_external();
             }
-            KeyCode::Enter | KeyCode::Char('d') => {
-                // View diff for selected commit
-                return self.view_diff();
+            KeyCode::Enter | KeyCode::Char(' ') => {
+                match self.current_section {
+                    Section::RepoSelector => {
+                        if self.repo_dropdown_open {
+                            // Confirm repo selection
+                            let idx = self.dropdown_cursor;
+                            self.repo_manager.select(idx);
+                            self.repo_dropdown_open = false;
+                            self.selected_branch = None;
+                            self.refresh();
+                        } else {
+                            self.dropdown_cursor = self.repo_manager.selected_index();
+                            self.repo_dropdown_open = true;
+                        }
+                    }
+                    Section::BranchSelector => {
+                        if self.branch_dropdown_open {
+                            // Confirm branch selection
+                            let selected = self.branches.get(self.dropdown_cursor).cloned();
+                            let is_current = selected.as_deref() == self.branch.as_deref();
+                            self.selected_branch = if is_current { None } else { selected };
+                            self.branch_dropdown_open = false;
+                            self.refresh();
+                        } else {
+                            self.dropdown_cursor = self
+                                .branches
+                                .iter()
+                                .position(|b| Some(b.as_str()) == self.branch.as_deref())
+                                .unwrap_or(0);
+                            self.branch_dropdown_open = true;
+                        }
+                    }
+                    Section::Commits => {
+                        if key.code == KeyCode::Enter {
+                            return self.view_diff();
+                        } else {
+                            // Space on commits shows commit info
+                            self.show_commit_info();
+                        }
+                    }
+                }
             }
-            KeyCode::Char(' ') => {
-                // Show commit info modal
-                self.show_commit_info();
+            KeyCode::Char('d') => {
+                return self.view_diff();
             }
             KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.refresh();
@@ -846,11 +1035,85 @@ impl Panel for GitLogPanel {
     fn handle_mouse(&mut self, event: MouseEvent, _panel_area: Rect) -> Vec<PanelEvent> {
         match event.kind {
             MouseEventKind::Down(MouseButton::Left) => {
-                // Calculate which commit was clicked
+                let col = event.column;
+                let row = event.row;
+
+                // Dropdown overlay click handling (takes priority)
+                if let Some(area) = self.dropdown_area {
+                    if row >= area.y
+                        && row < area.y + area.height
+                        && col >= area.x
+                        && col < area.x + area.width
+                    {
+                        // Click inside dropdown: select item (skip border rows)
+                        if row > area.y && row < area.y + area.height - 1 {
+                            let visible_rows = (area.height as usize).saturating_sub(2);
+                            let scroll_offset = if self.dropdown_cursor >= visible_rows {
+                                self.dropdown_cursor - visible_rows + 1
+                            } else {
+                                0
+                            };
+                            let item_idx = scroll_offset + (row - area.y - 1) as usize;
+                            if self.repo_dropdown_open {
+                                self.repo_manager.select(item_idx);
+                                self.repo_dropdown_open = false;
+                                self.selected_branch = None;
+                                self.refresh();
+                            } else if self.branch_dropdown_open {
+                                let selected = self.branches.get(item_idx).cloned();
+                                let is_current = selected.as_deref() == self.branch.as_deref();
+                                self.selected_branch = if is_current { None } else { selected };
+                                self.branch_dropdown_open = false;
+                                self.refresh();
+                            }
+                        }
+                        return vec![];
+                    }
+                    // Click outside dropdown closes it
+                    self.repo_dropdown_open = false;
+                    self.branch_dropdown_open = false;
+                    self.dropdown_area = None;
+                }
+
+                // Repo selector click
+                if let Some(area) = self.repo_selector_area {
+                    if row == area.y && col >= area.x && col < area.x + area.width {
+                        self.current_section = Section::RepoSelector;
+                        if self.repo_dropdown_open {
+                            self.repo_dropdown_open = false;
+                        } else {
+                            self.dropdown_cursor = self.repo_manager.selected_index();
+                            self.repo_dropdown_open = true;
+                        }
+                        return vec![];
+                    }
+                }
+
+                // Branch selector click
+                if let Some(area) = self.branch_selector_area {
+                    if row == area.y && col >= area.x && col < area.x + area.width {
+                        self.current_section = Section::BranchSelector;
+                        if self.branch_dropdown_open {
+                            self.branch_dropdown_open = false;
+                        } else {
+                            self.dropdown_cursor = self
+                                .branches
+                                .iter()
+                                .position(|b| Some(b.as_str()) == self.branch.as_deref())
+                                .unwrap_or(0);
+                            self.branch_dropdown_open = true;
+                        }
+                        return vec![];
+                    }
+                }
+
+                // Commit list click (header takes y_offset=2 rows)
                 let content_y = self.last_area.y + 1;
-                if event.row >= content_y {
-                    let clicked_idx = self.scroll + (event.row - content_y) as usize;
+                let commits_start_y = content_y + 2;
+                if row >= commits_start_y {
+                    let clicked_idx = self.scroll + (row - commits_start_y) as usize;
                     if clicked_idx < self.commits.len() {
+                        self.current_section = Section::Commits;
                         self.selected = clicked_idx;
                     }
                 }

@@ -65,69 +65,72 @@ pub fn get_log(repo: &Path, count: usize) -> Vec<CommitInfo> {
     .unwrap_or_default()
 }
 
-/// Get commit log with graph
-pub fn get_log_with_graph(repo: &Path, count: usize) -> Vec<CommitInfo> {
-    let count_str = count.to_string();
+/// Get commit log with graph.
+///
+/// If `branch` is `Some(name)`, shows the log for that branch instead of HEAD.
+pub fn get_log_with_graph(repo: &Path, count: usize, branch: Option<&str>) -> Vec<CommitInfo> {
+    let count_flag = format!("-{}", count);
 
     // Use a special format that includes graph and refs
     // Format: hash, author, date, refs, message
-    git_command_stdout(
-        repo,
-        &[
-            "log",
-            &format!("-{}", count_str),
-            "--graph",
-            "--format=%h\t%an\t%ar\t%d\t%s",
-        ],
-    )
-    .map(|stdout| {
-        stdout
-            .lines()
-            .filter_map(|line| {
-                // Graph lines start with *, |, /, \ or space
-                // Find where the actual commit info starts
-                let graph_end = line.find(|c: char| c.is_ascii_hexdigit()).unwrap_or(0);
+    let mut args = vec![
+        "log",
+        count_flag.as_str(),
+        "--graph",
+        "--format=%h\t%an\t%ar\t%d\t%s",
+    ];
+    if let Some(b) = branch {
+        args.push(b);
+    }
+    git_command_stdout(repo, &args)
+        .map(|stdout| {
+            stdout
+                .lines()
+                .filter_map(|line| {
+                    // Graph lines start with *, |, /, \ or space
+                    // Find where the actual commit info starts
+                    let graph_end = line.find(|c: char| c.is_ascii_hexdigit()).unwrap_or(0);
 
-                let graph = if graph_end > 0 {
-                    Some(line[..graph_end].to_string())
-                } else {
-                    None
-                };
-
-                let info_part = &line[graph_end..];
-                let parts: Vec<&str> = info_part.splitn(5, '\t').collect();
-
-                if parts.len() == 5 {
-                    let refs = if parts[3].is_empty() {
-                        None
+                    let graph = if graph_end > 0 {
+                        Some(line[..graph_end].to_string())
                     } else {
-                        Some(parts[3].trim().to_string())
+                        None
                     };
-                    Some(CommitInfo {
-                        hash: parts[0].to_string(),
-                        author: parts[1].to_string(),
-                        date: parts[2].to_string(),
-                        message: parts[4].to_string(),
-                        graph,
-                        refs,
-                    })
-                } else if !info_part.trim().is_empty() {
-                    // Handle graph-only lines (merge indicators)
-                    Some(CommitInfo {
-                        hash: String::new(),
-                        author: String::new(),
-                        date: String::new(),
-                        message: String::new(),
-                        graph,
-                        refs: None,
-                    })
-                } else {
-                    None
-                }
-            })
-            .collect()
-    })
-    .unwrap_or_default()
+
+                    let info_part = &line[graph_end..];
+                    let parts: Vec<&str> = info_part.splitn(5, '\t').collect();
+
+                    if parts.len() == 5 {
+                        let refs = if parts[3].is_empty() {
+                            None
+                        } else {
+                            Some(parts[3].trim().to_string())
+                        };
+                        Some(CommitInfo {
+                            hash: parts[0].to_string(),
+                            author: parts[1].to_string(),
+                            date: parts[2].to_string(),
+                            message: parts[4].to_string(),
+                            graph,
+                            refs,
+                        })
+                    } else if !info_part.trim().is_empty() {
+                        // Handle graph-only lines (merge indicators)
+                        Some(CommitInfo {
+                            hash: String::new(),
+                            author: String::new(),
+                            date: String::new(),
+                            message: String::new(),
+                            graph,
+                            refs: None,
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Get diff for a specific commit (with full patch)

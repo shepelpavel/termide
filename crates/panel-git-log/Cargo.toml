@@ -22,3 +22,4 @@ termide-session = { path = "../session" }
 termide-state = { path = "../state" }
 termide-theme = { path = "../theme" }
 termide-ui = { path = "../ui" }
+termide-ui-render = { path = "../ui-render" }
