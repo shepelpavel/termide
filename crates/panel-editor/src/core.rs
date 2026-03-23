@@ -858,6 +858,12 @@ impl Editor {
             // Update git diff
             self.update_git_diff();
 
+            // Invalidate rendering cache so new content is displayed immediately
+            self.render_cache.invalidate_wrap_cache();
+            self.render_cache
+                .highlight
+                .invalidate_range(0, self.buffer.line_count());
+
             log::info!("File reloaded from disk: {}", path.display());
         }
         Ok(())
