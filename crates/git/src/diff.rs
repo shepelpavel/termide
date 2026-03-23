@@ -269,10 +269,10 @@ impl GitDiffCache {
             self.load_original_from_head()?;
         }
 
-        let original = match self.original_content.as_ref() {
-            Some(content) if !content.is_empty() => content,
-            _ => {
-                // File not in HEAD (new/untracked) — no git markers
+        let original = match self.original_content.as_deref() {
+            Some(content) => content,
+            None => {
+                // Not in a git repo — no git markers
                 self.line_statuses.clear();
                 self.deleted_after_lines.clear();
                 self.modified_line_mapping.clear();
@@ -280,9 +280,10 @@ impl GitDiffCache {
                 return Ok(());
             }
         };
+        // original may be "" for files not yet committed — all lines show as Added
 
         // Compute diff using similar crate
-        let diff = TextDiff::from_lines(original.as_str(), current_content);
+        let diff = TextDiff::from_lines(original, current_content);
         let result = compute_line_statuses_from_textdiff(&diff);
 
         // Use the computed results directly - they are the source of truth
@@ -305,11 +306,11 @@ impl GitDiffCache {
         // Load original content from HEAD
         self.load_original_from_head()?;
 
-        // If original content is empty (file not in HEAD or error), clear statuses
-        let original = match self.original_content.as_ref() {
-            Some(content) if !content.is_empty() => content,
-            _ => {
-                log::debug!("  original content empty - clearing statuses");
+        // If not in a git repo, clear statuses; empty original means new file (show all as Added)
+        let original = match self.original_content.as_deref() {
+            Some(content) => content,
+            None => {
+                log::debug!("  not in git repo - clearing statuses");
                 self.line_statuses.clear();
                 self.deleted_after_lines.clear();
                 return Ok(());
@@ -335,7 +336,7 @@ impl GitDiffCache {
         );
 
         // Use TextDiff for consistency with update_from_buffer()
-        let diff = TextDiff::from_lines(original.as_str(), &current_content);
+        let diff = TextDiff::from_lines(original, &current_content);
         let result = compute_line_statuses_from_textdiff(&diff);
 
         log::debug!(
@@ -415,15 +416,16 @@ impl GitDiffCache {
         self.original_content = async_result.original_content;
 
         // Recompute diff if we have original content
-        let original = match self.original_content.as_ref() {
-            Some(content) if !content.is_empty() => content,
-            _ => {
+        let original = match self.original_content.as_deref() {
+            Some(content) => content,
+            None => {
                 self.line_statuses.clear();
                 self.deleted_after_lines.clear();
                 self.modified_line_mapping.clear();
                 return;
             }
         };
+        // original may be "" for files not yet committed — all lines show as Added
 
         // Read current file content from disk
         let current_content = match std::fs::read_to_string(&self.file_path) {
@@ -437,7 +439,7 @@ impl GitDiffCache {
         };
 
         // Compute diff
-        let diff = TextDiff::from_lines(original.as_str(), &current_content);
+        let diff = TextDiff::from_lines(original, &current_content);
         let result = compute_line_statuses_from_textdiff(&diff);
 
         self.line_statuses = result.statuses;
@@ -744,7 +746,7 @@ mod tests {
     }
 
     #[test]
-    fn test_update_from_buffer_empty_original_clears_statuses() {
+    fn test_update_from_buffer_empty_original_marks_all_added() {
         use std::path::PathBuf;
 
         // Simulate a new/untracked file: original_content is empty string
@@ -757,16 +759,18 @@ mod tests {
             last_updated: std::time::Instant::now(),
         };
 
-        // Pre-populate with stale data to verify it gets cleared
-        cache.line_statuses.insert(0, LineStatus::Added);
-        cache.line_statuses.insert(1, LineStatus::Added);
-
         let result = cache.update_from_buffer("line1\nline2\n");
         assert!(result.is_ok());
-        assert!(
-            cache.line_statuses.is_empty(),
-            "Expected no git markers for untracked file, got {:?}",
-            cache.line_statuses
+        // All lines in an untracked file should show as Added
+        assert_eq!(
+            cache.line_statuses.get(&0),
+            Some(&LineStatus::Added),
+            "First line should be Added for untracked file"
+        );
+        assert_eq!(
+            cache.line_statuses.get(&1),
+            Some(&LineStatus::Added),
+            "Second line should be Added for untracked file"
         );
         assert!(cache.deleted_after_lines.is_empty());
         assert!(cache.modified_line_mapping.is_empty());
