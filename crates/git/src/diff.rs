@@ -217,7 +217,7 @@ impl GitDiffCache {
 
         if !git_root_output.status.success() {
             log::debug!("  git rev-parse failed - not a git repo");
-            self.original_content = Some(String::new());
+            self.original_content = None;
             return Ok(());
         }
 
@@ -233,7 +233,7 @@ impl GitDiffCache {
             Ok(p) => p,
             Err(e) => {
                 log::debug!("  file not in git repo: {}", e);
-                self.original_content = Some(String::new());
+                self.original_content = None;
                 return Ok(());
             }
         };
