@@ -10,7 +10,9 @@
 use std::path::Path;
 use std::sync::mpsc;
 
-use lsp_types::{CompletionResponse, Diagnostic, GotoDefinitionResponse, Hover, Position};
+use lsp_types::{
+    CompletionResponse, Diagnostic, GotoDefinitionResponse, Hover, Location, Position,
+};
 use ratatui::layout::Rect;
 use termide_lsp::{CompletionTriggerKind, LspManager};
 
@@ -50,6 +52,12 @@ pub struct LspState {
 
     /// Pending goto-definition request receiver
     pub definition_rx: Option<mpsc::Receiver<Option<GotoDefinitionResponse>>>,
+
+    /// Pending find-references request receiver
+    pub references_rx: Option<mpsc::Receiver<Option<Vec<Location>>>>,
+
+    /// Pending find-references request position - set by F12 handler, consumed by tick
+    pub pending_references_request: Option<(usize, usize)>,
 
     /// Current diagnostics for this file
     pub diagnostics: Vec<Diagnostic>,
@@ -123,6 +131,8 @@ impl LspState {
             completion_rx: None,
             hover_rx: None,
             definition_rx: None,
+            references_rx: None,
+            pending_references_request: None,
             diagnostics: Vec::new(),
             enabled: false,
             server_loading: false,
@@ -310,6 +320,33 @@ impl LspState {
             let position = Position::new(line as u32, column as u32);
             self.hover_rx = lsp_manager.hover(lang, file_path, position);
         }
+    }
+
+    /// Request find-references at position.
+    pub fn request_references(
+        &mut self,
+        file_path: &Path,
+        line: usize,
+        column: usize,
+        lsp_manager: &LspManager,
+    ) {
+        if !self.enabled {
+            return;
+        }
+
+        if let Some(ref lang) = self.language_id {
+            let position = Position::new(line as u32, column as u32);
+            self.references_rx = lsp_manager.references(lang, file_path, position, true);
+        }
+    }
+
+    /// Poll for references response (non-blocking).
+    pub fn poll_references(&mut self) -> Option<Vec<Location>> {
+        let result = poll_receiver(&mut self.references_rx);
+        if result.is_some() {
+            self.server_loading = false;
+        }
+        result
     }
 
     /// Request goto-definition at position.

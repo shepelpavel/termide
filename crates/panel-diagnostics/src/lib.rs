@@ -555,9 +555,12 @@ impl Panel for DiagnosticsPanel {
                 }
             }
             KeyCode::Enter => {
-                // Navigate to selected diagnostic - open file (line navigation TODO)
                 if let Some(entry) = self.selected_entry() {
-                    return vec![PanelEvent::OpenFile(entry.file_path.clone())];
+                    return vec![PanelEvent::OpenFileAt {
+                        path: entry.file_path.clone(),
+                        line: entry.line as usize,
+                        column: entry.column as usize,
+                    }];
                 }
             }
             KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {

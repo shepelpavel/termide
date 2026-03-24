@@ -8,9 +8,10 @@ use std::path::PathBuf;
 use super::App;
 use crate::PanelExt;
 
+use termide_core::ReferenceLocation;
 use termide_panel_editor::Editor;
 use termide_panel_file_manager::FileManager;
-use termide_panel_misc::{HelpPanel as Help, JournalPanel as Journal};
+use termide_panel_misc::{HelpPanel as Help, JournalPanel as Journal, ReferencesPanel};
 use termide_panel_terminal::Terminal;
 
 impl App {
@@ -205,6 +206,45 @@ impl App {
         self.close_help_panels();
 
         let _ = self.open_editor_for_file(config_path);
+        Ok(())
+    }
+
+    /// Open or refresh the References panel with LSP find-references results.
+    ///
+    /// If the panel is already open, updates its contents and focuses it.
+    /// Otherwise creates a new panel.
+    pub(super) fn handle_open_references_panel(
+        &mut self,
+        locations: Vec<ReferenceLocation>,
+        symbol_name: Option<String>,
+    ) -> Result<()> {
+        log::debug!(
+            "Opening References panel with {} locations",
+            locations.len()
+        );
+
+        // Find existing panel (immutable check)
+        let panel_exists = self
+            .layout_manager
+            .iter_all_panels_mut()
+            .any(|p| p.name() == "references");
+
+        if panel_exists {
+            // Update existing panel with new results, then focus it
+            let mut update_data = Some((locations, symbol_name));
+            for panel in self.layout_manager.iter_all_panels_mut() {
+                if let Some(refs_panel) = panel.as_any_mut().downcast_mut::<ReferencesPanel>() {
+                    if let Some((locs, sym)) = update_data.take() {
+                        refs_panel.update(locs, sym);
+                    }
+                    break;
+                }
+            }
+            self.find_and_focus_panel_by_name("references");
+        } else {
+            let panel = ReferencesPanel::new(locations, symbol_name, self.state.theme);
+            self.add_panel(Box::new(panel));
+        }
         Ok(())
     }
 

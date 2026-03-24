@@ -26,7 +26,8 @@ use std::sync::mpsc;
 
 use anyhow::{Context, Result};
 use lsp_types::{
-    CompletionResponse, GotoDefinitionResponse, Hover, Position, PublishDiagnosticsParams, Uri,
+    CompletionResponse, GotoDefinitionResponse, Hover, Location, Position,
+    PublishDiagnosticsParams, Uri,
 };
 use url::Url;
 
@@ -201,6 +202,19 @@ impl LspManager {
         let server = self.get_server(lang, file_path)?;
         let uri = path_to_uri(file_path)?;
         Some(server.goto_definition(uri, position))
+    }
+
+    /// Request find-references at position
+    pub fn references(
+        &self,
+        lang: &str,
+        file_path: &Path,
+        position: Position,
+        include_declaration: bool,
+    ) -> Option<mpsc::Receiver<Option<Vec<Location>>>> {
+        let server = self.get_server(lang, file_path)?;
+        let uri = path_to_uri(file_path)?;
+        Some(server.references(uri, position, include_declaration))
     }
 
     /// Send didOpen notification

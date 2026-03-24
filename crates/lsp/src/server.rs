@@ -14,7 +14,7 @@ use std::thread::{self, JoinHandle};
 use anyhow::{Context, Result};
 use lsp_types::{
     ClientCapabilities, CompletionContext, CompletionResponse, CompletionTriggerKind,
-    GotoDefinitionResponse, Hover, InitializeParams, InitializeResult, Position,
+    GotoDefinitionResponse, Hover, InitializeParams, InitializeResult, Location, Position,
     PublishDiagnosticsParams, ServerCapabilities, TextDocumentClientCapabilities,
     TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
     TextDocumentPositionParams, Uri, VersionedTextDocumentIdentifier,
@@ -588,6 +588,32 @@ impl LspServer {
         };
 
         self.send_request("textDocument/definition", params)
+            .unwrap_or_else(|_| {
+                let (_, rx) = mpsc::channel();
+                rx
+            })
+    }
+
+    /// Request find-references at position
+    pub fn references(
+        &self,
+        uri: Uri,
+        position: Position,
+        include_declaration: bool,
+    ) -> mpsc::Receiver<Option<Vec<Location>>> {
+        let params = lsp_types::ReferenceParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri },
+                position,
+            },
+            context: lsp_types::ReferenceContext {
+                include_declaration,
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        };
+
+        self.send_request("textDocument/references", params)
             .unwrap_or_else(|_| {
                 let (_, rx) = mpsc::channel();
                 rx

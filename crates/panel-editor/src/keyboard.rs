@@ -125,6 +125,10 @@ pub enum EditorCommand {
     /// Go to definition (F12)
     GotoDefinition,
 
+    // LSP Find References
+    /// Find all references (Shift+F12)
+    FindReferences,
+
     // No operation (for unhandled keys)
     None,
 }
@@ -404,6 +408,20 @@ impl EditorCommand {
             KeyModifiers::NONE,
         ) {
             return Self::GotoDefinition;
+        }
+
+        // LSP Find References (configurable, default Shift+F12)
+        // F(24) is the fallback for terminals (e.g. gnome-terminal/VTE) that encode
+        // Shift+F12 as F24 instead of F12+SHIFT.
+        if matches_binding_or_defaults(
+            &keybindings.find_references,
+            &key,
+            &[
+                (KeyCode::F(12), KeyModifiers::SHIFT),
+                (KeyCode::F(24), KeyModifiers::NONE),
+            ],
+        ) {
+            return Self::FindReferences;
         }
 
         // Non-configurable bindings (navigation, basic editing)
@@ -831,6 +849,10 @@ impl EditorCommand {
             }
             Self::GotoDefinition => {
                 editor.request_definition_at_cursor();
+                Ok(())
+            }
+            Self::FindReferences => {
+                editor.request_references_at_cursor();
                 Ok(())
             }
 

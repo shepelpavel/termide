@@ -482,6 +482,21 @@ pub enum PanelEvent {
 
     /// Open or focus the outline panel
     OpenOutlinePanel,
+
+    /// Open (or refresh) the references panel with LSP find-references results
+    OpenReferencesPanel {
+        locations: Vec<ReferenceLocation>,
+        /// Symbol name for the panel title (e.g. "Config")
+        symbol_name: Option<String>,
+    },
+}
+
+/// A single file location from LSP find-references.
+#[derive(Debug, Clone)]
+pub struct ReferenceLocation {
+    pub path: PathBuf,
+    pub line: usize,
+    pub column: usize,
 }
 
 /// Direction for Vim panel navigation (Ctrl+w h/j/k/l).

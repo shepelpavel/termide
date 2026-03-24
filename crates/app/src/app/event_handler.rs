@@ -261,6 +261,13 @@ impl App {
             PanelEvent::OpenOutlinePanel => {
                 self.handle_open_outline()?;
             }
+
+            PanelEvent::OpenReferencesPanel {
+                locations,
+                symbol_name,
+            } => {
+                self.handle_open_references_panel(locations, symbol_name)?;
+            }
         }
         Ok(())
     }

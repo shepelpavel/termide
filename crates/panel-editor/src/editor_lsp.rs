@@ -419,6 +419,34 @@ impl Editor {
     }
 
     // =========================================================================
+    // LSP Find References
+    // =========================================================================
+
+    /// Schedule a find-references request at cursor position (called from handle_key).
+    pub fn request_references_at_cursor(&mut self) {
+        self.lsp.pending_references_request = Some((self.cursor.line, self.cursor.column));
+    }
+
+    /// Check if find-references was requested and clear the flag.
+    pub fn take_references_request(&mut self) -> Option<(usize, usize)> {
+        self.lsp.pending_references_request.take()
+    }
+
+    /// Send find-references request to LSP at specified position.
+    pub fn request_references(&mut self, line: usize, column: usize, lsp_manager: &LspManager) {
+        if let Some(path) = self.buffer.file_path() {
+            self.lsp.request_references(path, line, column, lsp_manager);
+        }
+    }
+
+    /// Poll for references response (non-blocking).
+    ///
+    /// Returns `Some(locations)` if a response was received (may be empty if no references found).
+    pub fn poll_references(&mut self) -> Option<Vec<lsp_types::Location>> {
+        self.lsp.poll_references()
+    }
+
+    // =========================================================================
     // LSP Diagnostics
     // =========================================================================
 

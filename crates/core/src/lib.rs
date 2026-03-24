@@ -12,7 +12,7 @@ pub mod util;
 pub use command::{CommandResult, PanelCommand};
 pub use event::{
     ConfirmAction, ConflictResolution, Event, EventHandler, GitOperationType, InputAction,
-    PanelEvent, SearchMode, SelectAction, SplitDirection, VimPanelDirection,
+    PanelEvent, ReferenceLocation, SearchMode, SelectAction, SplitDirection, VimPanelDirection,
 };
 pub use panel::{
     Panel, PanelConfig, RenderContext, Searchable, SessionPanel, ThemeColors, WidthPreference,

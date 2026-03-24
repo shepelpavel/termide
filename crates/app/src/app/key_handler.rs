@@ -74,72 +74,114 @@ impl App {
         }
 
         // Pass event to active panel and collect results
-        let (events, modal_request, config_update) =
-            if let Some(panel) = self.layout_manager.active_panel_mut() {
-                // handle_key returns Vec<PanelEvent>
-                let mut events = panel.handle_key(key);
+        let (events, modal_request, config_update) = if let Some(panel) =
+            self.layout_manager.active_panel_mut()
+        {
+            // handle_key returns Vec<PanelEvent>
+            let mut events = panel.handle_key(key);
 
-                // Legacy methods still in use
-                let modal_request = panel.take_modal_request();
-                let config_update = if let Some(editor) = panel.as_editor_mut() {
-                    // Cancel hover timer and close popup on any key press
-                    editor.cancel_hover_and_close_popup();
+            // Legacy methods still in use
+            let modal_request = panel.take_modal_request();
+            let config_update = if let Some(editor) = panel.as_editor_mut() {
+                // Cancel hover timer and close popup on any key press
+                editor.cancel_hover_and_close_popup();
 
-                    // Flush pending LSP changes
+                // Flush pending LSP changes
+                if let Some(ref lsp_manager) = self.state.lsp_manager {
+                    editor.flush_lsp_changes(lsp_manager);
+                }
+
+                // Handle completion request (Ctrl+Space)
+                if editor.take_completion_request().is_some() {
                     if let Some(ref lsp_manager) = self.state.lsp_manager {
-                        editor.flush_lsp_changes(lsp_manager);
+                        editor.request_completion(lsp_manager);
                     }
+                }
 
-                    // Handle completion request (Ctrl+Space)
-                    if editor.take_completion_request().is_some() {
+                // Handle auto-completion on character insertion
+                if self.state.config.lsp.auto_completion {
+                    if let Some(ch) = editor.take_last_inserted_char() {
                         if let Some(ref lsp_manager) = self.state.lsp_manager {
-                            editor.request_completion(lsp_manager);
+                            editor.schedule_auto_completion(ch, lsp_manager);
                         }
                     }
+                }
 
-                    // Handle auto-completion on character insertion
-                    if self.state.config.lsp.auto_completion {
-                        if let Some(ch) = editor.take_last_inserted_char() {
-                            if let Some(ref lsp_manager) = self.state.lsp_manager {
-                                editor.schedule_auto_completion(ch, lsp_manager);
+                // Poll for completion response
+                editor.poll_completion();
+
+                // Handle hover request (mouse hover)
+                if let Some((line, col)) = editor.take_hover_request() {
+                    if let Some(ref lsp_manager) = self.state.lsp_manager {
+                        editor.request_hover(line, col, lsp_manager);
+                    }
+                }
+
+                // Poll for hover response
+                editor.poll_hover();
+
+                // Handle go-to-definition request (Ctrl+click)
+                if let Some((line, col)) = editor.take_definition_request() {
+                    if let Some(ref lsp_manager) = self.state.lsp_manager {
+                        editor.request_definition(line, col, lsp_manager);
+                    }
+                }
+
+                // Poll for definition response (returns PanelEvent::OpenFileAt)
+                if let Some(event) = editor.poll_definition() {
+                    events.push(event);
+                }
+
+                // Handle find-references request (Shift+F12)
+                if let Some((line, col)) = editor.take_references_request() {
+                    if let Some(ref lsp_manager) = self.state.lsp_manager {
+                        editor.request_references(line, col, lsp_manager);
+                    }
+                }
+
+                // Poll for references response
+                if let Some(locations) = editor.poll_references() {
+                    let ref_locations: Vec<termide_core::ReferenceLocation> = locations
+                        .into_iter()
+                        .filter_map(|loc| {
+                            let uri_str = loc.uri.as_str();
+                            if !uri_str.starts_with("file://") {
+                                return None;
                             }
-                        }
+                            let path_str = &uri_str[7..];
+                            #[cfg(unix)]
+                            let path = std::path::PathBuf::from(path_str);
+                            #[cfg(windows)]
+                            let path = std::path::PathBuf::from(path_str.trim_start_matches('/'));
+                            Some(termide_core::ReferenceLocation {
+                                path,
+                                line: loc.range.start.line as usize,
+                                column: loc.range.start.character as usize,
+                            })
+                        })
+                        .collect();
+                    if ref_locations.is_empty() {
+                        events.push(termide_core::PanelEvent::SetStatusMessage {
+                            message: "No references found".to_string(),
+                            is_error: false,
+                        });
+                    } else {
+                        events.push(termide_core::PanelEvent::OpenReferencesPanel {
+                            locations: ref_locations,
+                            symbol_name: None,
+                        });
                     }
+                }
 
-                    // Poll for completion response
-                    editor.poll_completion();
-
-                    // Handle hover request (mouse hover)
-                    if let Some((line, col)) = editor.take_hover_request() {
-                        if let Some(ref lsp_manager) = self.state.lsp_manager {
-                            editor.request_hover(line, col, lsp_manager);
-                        }
-                    }
-
-                    // Poll for hover response
-                    editor.poll_hover();
-
-                    // Handle go-to-definition request (Ctrl+click)
-                    if let Some((line, col)) = editor.take_definition_request() {
-                        if let Some(ref lsp_manager) = self.state.lsp_manager {
-                            editor.request_definition(line, col, lsp_manager);
-                        }
-                    }
-
-                    // Poll for definition response (returns PanelEvent::OpenFileAt)
-                    if let Some(event) = editor.poll_definition() {
-                        events.push(event);
-                    }
-
-                    editor.take_config_update()
-                } else {
-                    None
-                };
-
-                (events, modal_request, config_update)
+                editor.take_config_update()
             } else {
-                (vec![], None, None)
+                None
             };
+
+            (events, modal_request, config_update)
+        } else {
+            (vec![], None, None)
+        };
 
         // Process panel events (new event-based architecture)
         self.process_panel_events(events)?;

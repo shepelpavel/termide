@@ -371,6 +371,7 @@ impl App {
 
         // Now handle completion and hover for the active editor only
         let mut pending_definition_event = None;
+        let mut pending_references_event: Option<Vec<termide_core::ReferenceLocation>> = None;
         if let Some(panel) = self.layout_manager.active_panel_mut() {
             if let Some(editor) = panel.as_editor_mut() {
                 // Check if there's a pending completion response
@@ -415,6 +416,31 @@ impl App {
                     pending_definition_event = Some(event);
                     self.state.needs_redraw = true;
                 }
+
+                // Poll for references response (Shift+F12)
+                if let Some(locations) = editor.poll_references() {
+                    let ref_locations: Vec<termide_core::ReferenceLocation> = locations
+                        .into_iter()
+                        .filter_map(|loc| {
+                            let uri_str = loc.uri.as_str();
+                            if !uri_str.starts_with("file://") {
+                                return None;
+                            }
+                            let path_str = &uri_str[7..];
+                            #[cfg(unix)]
+                            let path = std::path::PathBuf::from(path_str);
+                            #[cfg(windows)]
+                            let path = std::path::PathBuf::from(path_str.trim_start_matches('/'));
+                            Some(termide_core::ReferenceLocation {
+                                path,
+                                line: loc.range.start.line as usize,
+                                column: loc.range.start.character as usize,
+                            })
+                        })
+                        .collect();
+                    pending_references_event = Some(ref_locations);
+                    self.state.needs_redraw = true;
+                }
             }
         }
 
@@ -422,6 +448,24 @@ impl App {
         if let Some(event) = pending_definition_event {
             if let Err(e) = self.process_panel_events(vec![event]) {
                 log::error!("Error processing definition event: {}", e);
+            }
+        }
+
+        // Process pending references event (outside of panel borrow)
+        if let Some(locations) = pending_references_event {
+            let event = if locations.is_empty() {
+                termide_core::PanelEvent::SetStatusMessage {
+                    message: "No references found".to_string(),
+                    is_error: false,
+                }
+            } else {
+                termide_core::PanelEvent::OpenReferencesPanel {
+                    locations,
+                    symbol_name: None,
+                }
+            };
+            if let Err(e) = self.process_panel_events(vec![event]) {
+                log::error!("Error processing references event: {}", e);
             }
         }
     }

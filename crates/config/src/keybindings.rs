@@ -253,6 +253,7 @@ pub struct EditorKeybindings {
     pub trigger_completion: Option<KeyBinding>,
     pub show_hover: Option<KeyBinding>,
     pub goto_definition: Option<KeyBinding>,
+    pub find_references: Option<KeyBinding>,
 }
 
 /// File manager keybindings (file_manager.keybindings section).
