@@ -5,6 +5,20 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.4] - 2026-03-24
+
+### Added
+- **Git Diff**: File filter dropdown — click the `[filter ▼]` widget to show only Added, Modified, or Deleted files
+
+### Fixed
+- **Git**: Subdirectories inside untracked directories now highlighted green (previously only top-level untracked dir was highlighted)
+- **File Manager / Git Status**: Actions on deleted files (move, copy, rename) now ignored to prevent errors
+- **Editor**: All lines shown as Added (green) for untracked files, matching git status behavior
+
+### Performance
+- **Core**: `Panel::prepare_render()` now accepts `Arc<Config>` instead of `&Config`, eliminating per-frame allocations
+- **Editor**: Pre-allocated syntax style vectors in line rendering
+
 ## [0.17.3] - 2026-03-23
 
 ### Added
@@ -24,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Assets**: Theme screenshots refreshed, 15 new theme previews added
 - **Refactor**: Magic submenu index numbers replaced with named constants (`SESSIONS_SUBMENU_SWITCH`, `TOOLS_SUBMENU_GIT_LOG`, etc.) across all menu action handlers
 
+[0.17.4]: https://github.com/termide/termide/releases/tag/0.17.4
 [0.17.3]: https://github.com/termide/termide/releases/tag/0.17.3
 
 ## [0.17.2] - 2026-03-22
