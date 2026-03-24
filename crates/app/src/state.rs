@@ -220,7 +220,7 @@ pub struct AppState {
     /// Current theme
     pub theme: &'static Theme,
     /// Application configuration
-    pub config: Config,
+    pub config: Arc<Config>,
     /// System resource monitor (CPU, RAM)
     pub system_monitor: SystemMonitor,
     /// Last time system resources were updated
@@ -333,7 +333,7 @@ impl AppState {
             skip_refresh_after_upload: false,
             watcher: None,
             theme,
-            config,
+            config: Arc::new(config),
             system_monitor: SystemMonitor::new(),
             last_resource_update: std::time::Instant::now(),
             resource_modal_kind: None,
@@ -384,7 +384,10 @@ impl AppState {
     /// Set new theme and update config
     pub fn set_theme(&mut self, theme_name: &str) {
         self.theme = Theme::get_by_name(theme_name);
-        self.config.general.theme = theme_name.to_string();
+        // Copy-on-write: clone config, modify, replace Arc
+        let mut config = (*self.config).clone();
+        config.general.theme = theme_name.to_string();
+        self.config = Arc::new(config);
     }
 
     /// Request application quit

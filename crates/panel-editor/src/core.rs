@@ -1588,9 +1588,9 @@ impl Panel for Editor {
         )
     }
 
-    fn prepare_render(&mut self, theme: &Theme, config: &Config) {
+    fn prepare_render(&mut self, theme: &Theme, config: Arc<Config>) {
         self.render_cache.theme = *theme;
-        self.render_cache.config = std::sync::Arc::new(config.clone());
+        self.render_cache.config = config.clone();
 
         // Sync EditorConfig with global Config.editor settings
         // This ensures runtime config changes are applied to the editor

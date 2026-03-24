@@ -10,6 +10,7 @@ use ratatui::{
     widgets::{Block, Borders, Widget},
 };
 use std::borrow::Cow;
+use std::sync::Arc;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 /// Braille spinner characters used for loading indicators.
@@ -372,7 +373,7 @@ pub fn render_expanded_panel(
     is_focused: bool,
     panel_index: usize,
     theme: &Theme,
-    config: &Config,
+    config: Arc<Config>,
     params: ExpandedPanelParams,
     _group_size: usize,
 ) {

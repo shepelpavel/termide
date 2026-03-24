@@ -1133,7 +1133,7 @@ impl Panel for FileManager {
         }
     }
 
-    fn prepare_render(&mut self, theme: &termide_theme::Theme, config: &Config) {
+    fn prepare_render(&mut self, theme: &termide_theme::Theme, config: std::sync::Arc<Config>) {
         self.cached_theme = *theme;
         self.cached_config = config.file_manager.clone();
         self.vim_mode = config.general.vim_mode;

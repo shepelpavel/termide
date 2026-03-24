@@ -360,6 +360,9 @@ fn render_line_with_inline_diff<H: LineHighlighter>(
         .map(|c| c.text.as_str())
         .collect();
 
+    // Pre-calculate capacity before potential move (bytes >= graphemes count)
+    let syntax_styles_capacity = current_text.len();
+
     // Get syntax highlighting for the current text
     let no_syntax_seg;
     let syntax_segments = if syntax_highlighting_enabled && highlight_cache.has_syntax() {
@@ -370,7 +373,7 @@ fn render_line_with_inline_diff<H: LineHighlighter>(
     };
 
     // Build a map of buffer position -> syntax style
-    let mut syntax_styles: Vec<(usize, Style)> = Vec::new();
+    let mut syntax_styles: Vec<(usize, Style)> = Vec::with_capacity(syntax_styles_capacity);
     let mut buf_pos = 0;
     for (seg_text, seg_style) in syntax_segments {
         let seg_len = seg_text.graphemes(true).count();

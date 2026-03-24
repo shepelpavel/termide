@@ -1338,7 +1338,7 @@ impl Panel for Terminal {
         format!("{} ({})", self.title_prefix, self.get_foreground_command())
     }
 
-    fn prepare_render(&mut self, theme: &Theme, config: &Config) {
+    fn prepare_render(&mut self, theme: &Theme, config: std::sync::Arc<Config>) {
         // Invalidate cache if theme changed
         if self.cached_theme != *theme {
             self.cached_lines = None;

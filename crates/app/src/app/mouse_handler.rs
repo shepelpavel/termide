@@ -3,6 +3,7 @@
 use anyhow::Result;
 use crossterm::event::{MouseButton, MouseEventKind};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use std::sync::Arc;
 use unicode_width::UnicodeWidthStr;
 
 use super::App;
@@ -1127,7 +1128,12 @@ impl App {
                 if let Some(index) = hit_dropdown_item(x, y, nested_x, nested_y, &shell_items) {
                     if let Some(shell) = self.state.cached_shells.get(index) {
                         let shell_path = shell.path.clone();
-                        self.state.config.terminal.default_shell = Some(shell_path.clone());
+                        // Copy-on-write: clone config, modify, replace Arc
+                        {
+                            let mut config = (*self.state.config).clone();
+                            config.terminal.default_shell = Some(shell_path.clone());
+                            self.state.config = Arc::new(config);
+                        }
                         if let Err(e) = self.save_shell_preference(&shell_path) {
                             log::warn!("Failed to save shell preference: {}", e);
                         }

@@ -94,7 +94,7 @@ impl Panel for HelpPanel {
         termide_i18n::t().panel_help().to_string()
     }
 
-    fn prepare_render(&mut self, theme: &Theme, config: &Config) {
+    fn prepare_render(&mut self, theme: &Theme, config: std::sync::Arc<Config>) {
         if self.cached_theme != *theme {
             self.cached_theme = *theme;
             self.last_width = 0; // Force regeneration

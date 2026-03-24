@@ -8,6 +8,7 @@
 use anyhow::Result;
 use crossterm::event::KeyCode;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use super::App;
 use crate::state::{ActiveModal, PendingAction};
@@ -666,8 +667,12 @@ impl App {
                     .get(self.state.ui.tools_nested.selected)
                 {
                     let shell_path = shell.path.clone();
-                    // Save as default
-                    self.state.config.terminal.default_shell = Some(shell_path.clone());
+                    // Save as default (copy-on-write)
+                    {
+                        let mut config = (*self.state.config).clone();
+                        config.terminal.default_shell = Some(shell_path.clone());
+                        self.state.config = Arc::new(config);
+                    }
                     if let Err(e) = self.save_shell_preference(&shell_path) {
                         log::warn!("Failed to save shell preference: {}", e);
                     }

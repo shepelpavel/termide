@@ -76,25 +76,22 @@ pub enum Button {
     Init,
 }
 
-/// Spinner animation frames
-pub const SPINNER_FRAMES: [char; 6] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴'];
-
 impl Button {
     /// Get the label for this button
     pub fn label(&self, spinner_frame: usize) -> String {
         let t = termide_i18n::t();
+        let spinner = termide_config::constants::SPINNER_FRAMES
+            [spinner_frame % termide_config::constants::SPINNER_FRAMES.len()];
         match self {
             Button::Diff => t.git_action_diff().to_string(),
             Button::Commit => t.git_action_commit().to_string(),
             Button::Pull => t.git_action_pull().to_string(),
             Button::Push => t.git_action_push().to_string(),
             Button::Pushing => {
-                let s = SPINNER_FRAMES[spinner_frame % SPINNER_FRAMES.len()];
-                format!("{} {}", s, t.git_pushing())
+                format!("{} {}", spinner, t.git_pushing())
             }
             Button::Pulling => {
-                let s = SPINNER_FRAMES[spinner_frame % SPINNER_FRAMES.len()];
-                format!("{} {}", s, t.git_pulling())
+                format!("{} {}", spinner, t.git_pulling())
             }
             Button::Init => t.git_action_init().to_string(),
         }

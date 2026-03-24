@@ -7,6 +7,7 @@
 #![allow(deprecated)]
 
 use anyhow::Result;
+use std::sync::Arc;
 
 use super::App;
 use crate::state::{ActiveModal, PendingAction};
@@ -145,7 +146,7 @@ impl App {
 
         // Apply config update if present (legacy, still used by Editor)
         if let Some(new_config) = config_update {
-            self.state.config = new_config.clone();
+            self.state.config = Arc::new(new_config.clone());
             self.state.set_theme(&new_config.general.theme);
             self.hotkey_processor = termide_app_event::DefaultHotkeyProcessor::from_config(
                 &new_config.general.keybindings,

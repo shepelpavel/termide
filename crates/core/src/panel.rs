@@ -5,6 +5,7 @@
 
 use std::any::Any;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crossterm::event::{KeyEvent, MouseEvent};
 use ratatui::{
@@ -179,7 +180,7 @@ pub trait Panel: Any {
     /// Prepare panel for rendering (update cached theme/config).
     ///
     /// Called before render() to sync panel's internal state with current app state.
-    fn prepare_render(&mut self, theme: &Theme, config: &Config) {
+    fn prepare_render(&mut self, theme: &Theme, config: Arc<Config>) {
         let _ = (theme, config);
     }
 

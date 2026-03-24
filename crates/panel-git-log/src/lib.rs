@@ -853,7 +853,7 @@ impl Panel for GitLogPanel {
         t.git_log_title_fmt(&repo_name, branch)
     }
 
-    fn prepare_render(&mut self, theme: &Theme, config: &Config) {
+    fn prepare_render(&mut self, theme: &Theme, config: std::sync::Arc<Config>) {
         self.cached_theme = ThemeColors::from(theme);
         self.vim_mode = config.general.vim_mode;
     }

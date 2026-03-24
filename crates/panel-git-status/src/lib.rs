@@ -866,7 +866,7 @@ impl Panel for GitStatusPanel {
         Line::from(spans)
     }
 
-    fn prepare_render(&mut self, theme: &Theme, config: &Config) {
+    fn prepare_render(&mut self, theme: &Theme, config: std::sync::Arc<Config>) {
         self.cached_theme = ThemeColors::from(theme);
         self.keybindings = config.git_status.keybindings.clone();
         self.vim_mode = config.general.vim_mode;

@@ -354,7 +354,7 @@ impl Panel for DiagnosticsPanel {
         }
     }
 
-    fn prepare_render(&mut self, theme: &Theme, config: &termide_config::Config) {
+    fn prepare_render(&mut self, theme: &Theme, config: std::sync::Arc<termide_config::Config>) {
         self.cached_theme = *theme;
         self.vim_mode = config.general.vim_mode;
         // Ensure caches are populated (for title() which uses &self)
