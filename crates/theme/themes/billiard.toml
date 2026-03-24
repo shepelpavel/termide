@@ -1,0 +1,16 @@
+# Billiard theme for TermIDE
+# Classic billiard table aesthetic: dark baize green surface with bright accents.
+name = "billiard"
+is_light = false
+
+[colors]
+bg          = { rgb = [18, 36, 16] }
+fg          = { rgb = [198, 222, 178] }
+accented_bg = { rgb = [28, 58, 26] }
+accented_fg = { rgb = [130, 185, 95] }
+selected_bg = { rgb = [72, 130, 62] }
+selected_fg = { rgb = [14, 26, 12] }
+disabled    = { rgb = [70, 95, 62] }
+success     = { rgb = [90, 190, 72] }
+warning     = { rgb = [196, 166, 52] }
+error       = { rgb = [188, 54, 50] }

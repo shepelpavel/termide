@@ -1,0 +1,18 @@
+# Green-Backs theme for TermIDE
+# Inspired by old US dollar bills:
+# pale sage parchment paper background, dark grey-green intaglio portrait ink,
+# forest green decorative accents, Treasury gold seal, and red wax stamp.
+name = "green-backs"
+is_light = true
+
+[colors]
+bg          = { rgb = [188, 200, 168] }
+fg          = { rgb = [42, 48, 34] }
+accented_bg = { rgb = [162, 178, 140] }
+accented_fg = { rgb = [25, 68, 22] }
+selected_bg = { rgb = [65, 108, 52] }
+selected_fg = { rgb = [218, 228, 198] }
+disabled    = { rgb = [128, 142, 112] }
+success     = { rgb = [40, 125, 38] }
+warning     = { rgb = [148, 122, 28] }
+error       = { rgb = [162, 42, 40] }

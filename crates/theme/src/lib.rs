@@ -96,6 +96,8 @@ const THEME_KANAGAWA_TOML: &str = include_str!("../themes/kanagawa.toml");
 const THEME_MATERIAL_OCEAN_TOML: &str = include_str!("../themes/material-ocean.toml");
 const THEME_ROSEPINE_TOML: &str = include_str!("../themes/rosepine.toml");
 const THEME_TOKYONIGHT_TOML: &str = include_str!("../themes/tokyonight.toml");
+const THEME_BILLIARD_TOML: &str = include_str!("../themes/billiard.toml");
+const THEME_GREEN_BACKS_TOML: &str = include_str!("../themes/green-backs.toml");
 
 // Static theme instances
 static THEME_ATOM_ONE_LIGHT: OnceLock<Theme> = OnceLock::new();
@@ -132,6 +134,8 @@ static THEME_KANAGAWA: OnceLock<Theme> = OnceLock::new();
 static THEME_MATERIAL_OCEAN: OnceLock<Theme> = OnceLock::new();
 static THEME_ROSEPINE: OnceLock<Theme> = OnceLock::new();
 static THEME_TOKYONIGHT: OnceLock<Theme> = OnceLock::new();
+static THEME_BILLIARD: OnceLock<Theme> = OnceLock::new();
+static THEME_GREEN_BACKS: OnceLock<Theme> = OnceLock::new();
 
 /// Entry in the built-in themes registry.
 /// Single source of truth for all built-in theme configurations.
@@ -159,6 +163,11 @@ static BUILTIN_THEMES: &[BuiltinThemeEntry] = &[
         name: "ayu-light",
         content: THEME_AYU_LIGHT_TOML,
         storage: &THEME_AYU_LIGHT,
+    },
+    BuiltinThemeEntry {
+        name: "billiard",
+        content: THEME_BILLIARD_TOML,
+        storage: &THEME_BILLIARD,
     },
     BuiltinThemeEntry {
         name: "catppuccin-macchiato",
@@ -194,6 +203,11 @@ static BUILTIN_THEMES: &[BuiltinThemeEntry] = &[
         name: "github-light",
         content: THEME_GITHUB_LIGHT_TOML,
         storage: &THEME_GITHUB_LIGHT,
+    },
+    BuiltinThemeEntry {
+        name: "green-backs",
+        content: THEME_GREEN_BACKS_TOML,
+        storage: &THEME_GREEN_BACKS,
     },
     BuiltinThemeEntry {
         name: "gruvbox",
