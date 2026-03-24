@@ -387,6 +387,10 @@ impl GitStatusCache {
             return GitStatus::Ignored;
         }
 
+        if self.is_parent_untracked(&full_path) {
+            return GitStatus::Added;
+        }
+
         if self.has_changes_in_directory(dir_name) {
             return GitStatus::Modified;
         }
