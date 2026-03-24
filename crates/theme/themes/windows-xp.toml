@@ -21,4 +21,4 @@ disabled = { rgb = [128, 158, 182] }
 # Semantic
 success = { rgb = [55, 126, 34] }
 warning = { rgb = [255, 153, 0] }
-error = { rgb = [200, 0, 0] }
+error = { rgb = [200, 60, 60] }

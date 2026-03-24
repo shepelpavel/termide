@@ -137,6 +137,21 @@ impl From<&Theme> for ThemeColors {
     }
 }
 
+impl ThemeColors {
+    /// Determine if this is a light theme based on background luminance.
+    /// Uses ITU-R BT.601 relative luminance formula.
+    pub fn is_light_theme(&self) -> bool {
+        match self.bg {
+            Color::Rgb(r, g, b) => {
+                let luminance = 0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32;
+                luminance > 128.0
+            }
+            Color::White | Color::Gray => true,
+            _ => false,
+        }
+    }
+}
+
 /// Unified search interface for panels that support text search.
 ///
 /// Implemented by Editor (text search) and Terminal (scrollback search).

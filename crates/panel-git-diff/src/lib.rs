@@ -7,7 +7,11 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
-use ratatui::{buffer::Buffer, layout::Rect, style::Style};
+use ratatui::{
+    buffer::Buffer,
+    layout::Rect,
+    style::{Color, Style},
+};
 use unicode_width::UnicodeWidthStr;
 
 use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up, Config};
@@ -15,6 +19,46 @@ use termide_core::{Panel, PanelEvent, RenderContext, SessionPanel, ThemeColors, 
 use termide_git::{self as git};
 use termide_theme::Theme;
 use termide_ui::ScrollBar;
+
+/// Blend two colors together.
+/// `ratio` 0.0 = all color1, 1.0 = all color2
+fn blend_colors(color1: Color, color2: Color, ratio: f32) -> Color {
+    let (r1, g1, b1) = match color1 {
+        Color::Rgb(r, g, b) => (r, g, b),
+        Color::White => (255, 255, 255),
+        Color::Black => (0, 0, 0),
+        Color::Gray => (128, 128, 128),
+        Color::Red => (255, 0, 0),
+        Color::Green => (0, 255, 0),
+        Color::Yellow => (255, 255, 0),
+        Color::Blue => (0, 0, 255),
+        Color::Magenta => (255, 0, 255),
+        Color::Cyan => (0, 255, 255),
+        _ => (128, 128, 128),
+    };
+    let (r2, g2, b2) = match color2 {
+        Color::Rgb(r, g, b) => (r, g, b),
+        Color::White => (255, 255, 255),
+        Color::Black => (0, 0, 0),
+        Color::Gray => (128, 128, 128),
+        Color::Red => (255, 0, 0),
+        Color::Green => (0, 255, 0),
+        Color::Yellow => (255, 255, 0),
+        Color::Blue => (0, 0, 255),
+        Color::Magenta => (255, 0, 255),
+        Color::Cyan => (0, 255, 255),
+        _ => (128, 128, 128),
+    };
+
+    let ratio = ratio.clamp(0.0, 1.0);
+    let inv = 1.0 - ratio;
+
+    Color::Rgb(
+        (r1 as f32 * inv + r2 as f32 * ratio) as u8,
+        (g1 as f32 * inv + g2 as f32 * ratio) as u8,
+        (b1 as f32 * inv + b2 as f32 * ratio) as u8,
+    )
+}
 
 /// Type of diff line
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -492,6 +536,22 @@ impl GitDiffPanel {
         }
     }
 
+    /// Collapse selected file
+    fn collapse_current(&mut self) {
+        if self.selected_file < self.diffs.len() {
+            self.collapsed.insert(self.selected_file);
+            self.calculate_total_lines();
+        }
+    }
+
+    /// Expand selected file
+    fn expand_current(&mut self) {
+        if self.selected_file < self.diffs.len() {
+            self.collapsed.remove(&self.selected_file);
+            self.calculate_total_lines();
+        }
+    }
+
     /// Move selection up
     fn move_up(&mut self) {
         if self.selected_file > 0 {
@@ -599,13 +659,11 @@ impl GitDiffPanel {
 
         self.visible_height = content_area.height as usize;
 
-        // Colors for diff
-        let added_style = Style::default()
-            .fg(theme.success)
-            .bg(ratatui::style::Color::Rgb(0, 40, 0));
-        let removed_style = Style::default()
-            .fg(theme.error)
-            .bg(ratatui::style::Color::Rgb(40, 0, 0));
+        // Colors for diff - blend theme colors with background for adaptive styling
+        let added_bg = blend_colors(theme.success, theme.bg, 0.85);
+        let removed_bg = blend_colors(theme.error, theme.bg, 0.85);
+        let added_style = Style::default().fg(theme.success).bg(added_bg);
+        let removed_style = Style::default().fg(theme.error).bg(removed_bg);
         let context_style = Style::default().fg(theme.fg);
         let hunk_header_style = Style::default().fg(theme.disabled);
         let file_header_style = Style::default().fg(theme.info);
@@ -887,6 +945,8 @@ impl Panel for GitDiffPanel {
 
             // Collapse/expand
             KeyCode::Enter | KeyCode::Char(' ') => self.toggle_collapse(),
+            KeyCode::Left => self.collapse_current(),
+            KeyCode::Right => self.expand_current(),
 
             // Open file
             KeyCode::Char('e') => return self.open_file(),
