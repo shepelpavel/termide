@@ -579,6 +579,11 @@ impl Editor {
             }
         }
 
+        // Start blame loading immediately (blame is enabled by default)
+        if let Some(repo_root) = termide_git::find_repo_root(&path) {
+            git.start_blame(&repo_root, &path);
+        }
+
         // Initialize Vim state if vim mode is enabled
         let vim = if config.vim_mode {
             Some(VimState::new())

@@ -39,7 +39,7 @@ impl GitIntegration {
             update_pending: None,
             diff_receiver: None,
             cached_repo_root: None,
-            blame_enabled: false,
+            blame_enabled: true,
             blame_data: Vec::new(),
             blame_rx: None,
         }
@@ -75,6 +75,14 @@ impl GitIntegration {
             }
         }
         false
+    }
+
+    /// Start async blame load for the given file (called on open when blame is enabled by default).
+    pub fn start_blame(&mut self, repo: &Path, file: &Path) {
+        self.blame_rx = Some(termide_git::get_blame_async(
+            repo.to_path_buf(),
+            file.to_path_buf(),
+        ));
     }
 
     /// Toggle blame on/off.  When enabling, starts an async load for the given file.
