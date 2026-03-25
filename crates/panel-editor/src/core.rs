@@ -1169,8 +1169,9 @@ impl Editor {
         };
 
         let line_number_width = rendering::LINE_NUMBER_WIDTH as u16;
-        let content_x = area.x + 1 + line_number_width; // +1 for border
-        let line_y = area.y + 1 + cursor_screen_row as u16; // +1 for border
+        // area is already the inner rect (borders stripped by the app layer before calling render)
+        let content_x = area.x + line_number_width;
+        let line_y = area.y + cursor_screen_row as u16;
 
         // Compute the visual width of the cursor line's content that is visible
         let line_visual_width: usize = self
@@ -1187,7 +1188,7 @@ impl Editor {
         let ann_x = content_x + visible_code_width as u16;
 
         // Need at least 12 columns for the annotation to be useful
-        let right_edge = area.x + area.width - 1; // -1 for right border
+        let right_edge = area.x + area.width; // area is inner rect, no border to subtract
         let available = right_edge.saturating_sub(ann_x) as usize;
         if available < 12 {
             return;
