@@ -268,6 +268,10 @@ impl App {
             } => {
                 self.handle_open_references_panel(locations, symbol_name)?;
             }
+
+            PanelEvent::OpenDirectorySwitcher => {
+                self.handle_open_directory_switcher()?;
+            }
         }
         Ok(())
     }

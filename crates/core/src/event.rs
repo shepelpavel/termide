@@ -489,6 +489,9 @@ pub enum PanelEvent {
         /// Symbol name for the panel title (e.g. "Config")
         symbol_name: Option<String>,
     },
+
+    /// Open the directory switcher modal (emitted by file manager / terminal panels).
+    OpenDirectorySwitcher,
 }
 
 /// A single file location from LSP find-references.

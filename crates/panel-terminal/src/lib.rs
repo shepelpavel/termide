@@ -1460,6 +1460,11 @@ impl Panel for Terminal {
             }];
         }
 
+        // Directory switcher (Ctrl+/)
+        if key.code == KeyCode::Char('/') && key.modifiers == KeyModifiers::CONTROL {
+            return vec![PanelEvent::OpenDirectorySwitcher];
+        }
+
         // Scroll up (Shift+PageUp)
         if matches_binding_or_default(&kb.scroll_up, &key, KeyCode::PageUp, KeyModifiers::SHIFT) {
             let mut screen = self.write_screen();

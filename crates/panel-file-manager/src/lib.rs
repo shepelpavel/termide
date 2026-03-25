@@ -1973,6 +1973,10 @@ impl FileManager {
                 self.modal_request = Some((action, ActiveModal::Input(Box::new(modal))));
             }
 
+            FmCommand::SwitchDirectory => {
+                return vec![PanelEvent::OpenDirectorySwitcher];
+            }
+
             // Tree expand/collapse
             FmCommand::ExpandDir => {
                 if let Some(te) = self.tree_entry_at(self.selected) {

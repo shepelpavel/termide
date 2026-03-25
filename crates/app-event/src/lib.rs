@@ -407,27 +407,25 @@ impl DefaultHotkeyProcessor {
             HotkeyAction::OpenGitStatus,
         );
 
-        // Directory Switcher (Ctrl+P)
+        // Bookmark Add (Alt+K)
+        bindings.insert(
+            KeyBinding::alt(KeyCode::Char('k')),
+            HotkeyAction::OpenBookmarkAdd,
+        );
+        bindings.insert(
+            KeyBinding::alt(KeyCode::Char('K')),
+            HotkeyAction::OpenBookmarkAdd,
+        );
+
+        // Command Palette (Ctrl+P primary, Ctrl+Shift+P for KKP terminals)
         bindings.insert(
             KeyBinding::new(KeyCode::Char('p'), KeyModifiers::CONTROL),
-            HotkeyAction::OpenDirectorySwitcher,
+            HotkeyAction::OpenCommandPalette,
         );
         bindings.insert(
             KeyBinding::new(KeyCode::Char('P'), KeyModifiers::CONTROL),
-            HotkeyAction::OpenDirectorySwitcher,
+            HotkeyAction::OpenCommandPalette,
         );
-
-        // Bookmark Add (Ctrl+B)
-        bindings.insert(
-            KeyBinding::new(KeyCode::Char('b'), KeyModifiers::CONTROL),
-            HotkeyAction::OpenBookmarkAdd,
-        );
-        bindings.insert(
-            KeyBinding::new(KeyCode::Char('B'), KeyModifiers::CONTROL),
-            HotkeyAction::OpenBookmarkAdd,
-        );
-
-        // Command Palette (Ctrl+Shift+P)
         bindings.insert(
             KeyBinding::new(
                 KeyCode::Char('p'),
@@ -477,6 +475,17 @@ impl DefaultHotkeyProcessor {
         for i in 1..=9u8 {
             bindings.insert(
                 KeyBinding::alt(KeyCode::Char((b'0' + i) as char)),
+                HotkeyAction::GoToPanel(i as usize),
+            );
+        }
+
+        // Ctrl+Alt+1..9 — fallback for gnome-terminal / Windows Terminal (intercept Alt+1..9 for tabs)
+        for i in 1..=9u8 {
+            bindings.insert(
+                KeyBinding::new(
+                    KeyCode::Char((b'0' + i) as char),
+                    KeyModifiers::CONTROL | KeyModifiers::ALT,
+                ),
                 HotkeyAction::GoToPanel(i as usize),
             );
         }
@@ -887,19 +896,19 @@ mod tests {
     }
 
     #[test]
-    fn test_default_processor_ctrl_p_directory_switcher() {
+    fn test_default_processor_ctrl_p_command_palette() {
         let processor = DefaultHotkeyProcessor::new();
 
-        // Ctrl+P should open directory switcher (lowercase)
+        // Ctrl+P should open command palette (lowercase)
         assert_eq!(
             processor.process_hotkey(&ctrl_key('p')),
-            Some(HotkeyAction::OpenDirectorySwitcher)
+            Some(HotkeyAction::OpenCommandPalette)
         );
 
         // Ctrl+P should also work with uppercase
         assert_eq!(
             processor.process_hotkey(&ctrl_key('P')),
-            Some(HotkeyAction::OpenDirectorySwitcher)
+            Some(HotkeyAction::OpenCommandPalette)
         );
     }
 

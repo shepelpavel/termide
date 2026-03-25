@@ -234,12 +234,13 @@ impl EditorCommand {
             return Self::Undo;
         }
         if !read_only
-            && matches_binding_or_default(
+            && (matches_binding_or_default(
                 &keybindings.redo,
                 &key,
                 KeyCode::Char('y'),
                 KeyModifiers::CONTROL,
-            )
+            ) || (key.code == KeyCode::Char('z')
+                && key.modifiers == KeyModifiers::CONTROL | KeyModifiers::SHIFT))
         {
             return Self::Redo;
         }

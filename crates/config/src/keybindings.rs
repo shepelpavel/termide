@@ -348,8 +348,7 @@ impl GlobalKeybindings {
         set_default!(open_preferences, "Alt+P");
         set_default!(open_sessions, "Alt+/");
         set_default!(open_git_status, "Alt+G");
-        set_default!(open_directory_switcher, "Ctrl+P");
-        set_default!(open_bookmark_add, "Ctrl+B");
+        set_default!(open_bookmark_add, "Alt+K");
         set_default!(open_outline, "Alt+O");
         set_default!(open_diagnostics, "Alt+I");
         set_default!(open_git_log, "Alt+C");
@@ -389,7 +388,7 @@ impl GlobalKeybindings {
 
         // Application
         set_default!(quit, "Alt+Q");
-        set_default!(open_command_palette, "Ctrl+Shift+P");
+        set_default!(open_command_palette, "Ctrl+P");
     }
 }
 

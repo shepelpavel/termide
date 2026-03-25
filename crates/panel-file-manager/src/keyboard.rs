@@ -69,6 +69,8 @@ pub enum FmCommand {
     PrevPanel,
     /// Go to path/URL (Ctrl+G) - opens modal to enter path directly
     GoToPath,
+    /// Open directory switcher modal (Ctrl+/)
+    SwitchDirectory,
     /// Cancel pending VFS operation (Escape during connection)
     /// Note: Not yet mapped to any key, reserved for future use
     #[allow(dead_code)]
@@ -188,6 +190,11 @@ impl FmCommand {
         // Go to path (Ctrl+G) - enter path/URL directly
         if key.code == KeyCode::Char('g') && key.modifiers == KeyModifiers::CONTROL {
             return Self::GoToPath;
+        }
+
+        // Switch directory (Ctrl+/) - open directory switcher modal
+        if key.code == KeyCode::Char('/') && key.modifiers == KeyModifiers::CONTROL {
+            return Self::SwitchDirectory;
         }
 
         // New directory (D, F7)
