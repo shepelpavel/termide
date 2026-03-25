@@ -1664,7 +1664,9 @@ impl App {
                 CommandEntry {
                     label: "Switch Directory".into(),
                     category: "Navigation",
-                    keybinding: kb_str(&kb.open_directory_switcher),
+                    keybinding: kb_str(
+                        &self.state.config.file_manager.keybindings.switch_directory,
+                    ),
                 },
             ),
             (

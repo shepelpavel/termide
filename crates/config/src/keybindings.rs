@@ -288,6 +288,9 @@ pub struct FileManagerKeybindings {
     pub toggle_selection: Option<KeyBinding>,
     pub select_all: Option<KeyBinding>,
 
+    // Navigation
+    pub switch_directory: Option<KeyBinding>,
+
     // Other
     pub open_external: Option<KeyBinding>,
     pub toggle_hidden: Option<KeyBinding>,
@@ -480,6 +483,9 @@ impl FileManagerKeybindings {
         // Selection
         set_default_single!(toggle_selection, "Insert");
         set_default_single!(select_all, "Ctrl+A");
+
+        // Navigation
+        set_default_single!(switch_directory, "Ctrl+/");
 
         // Other
         set_default_single!(open_external, "Ctrl+Enter");

@@ -192,8 +192,13 @@ impl FmCommand {
             return Self::GoToPath;
         }
 
-        // Switch directory (Ctrl+/) - open directory switcher modal
-        if key.code == KeyCode::Char('/') && key.modifiers == KeyModifiers::CONTROL {
+        // Switch directory - open directory switcher modal
+        if matches_binding_or_default(
+            &keybindings.switch_directory,
+            &key,
+            KeyCode::Char('/'),
+            KeyModifiers::CONTROL,
+        ) {
             return Self::SwitchDirectory;
         }
 
