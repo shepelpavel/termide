@@ -77,10 +77,9 @@ pub struct GitLogPanel {
 }
 
 impl GitLogPanel {
-    /// Create a new Git Log panel from a list of paths (from panels/session)
-    pub fn new(paths: &[PathBuf]) -> Self {
+    fn create(repo_manager: RepoManager) -> Self {
         let mut panel = Self {
-            repo_manager: RepoManager::new(paths),
+            repo_manager,
             current_section: Section::Commits,
             branch: None,
             branches: Vec::new(),
@@ -101,38 +100,18 @@ impl GitLogPanel {
             vim_mode: false,
             modal_request: None,
         };
-
         panel.refresh();
         panel
     }
 
+    /// Create a new Git Log panel from a list of paths (from panels/session)
+    pub fn new(paths: &[PathBuf]) -> Self {
+        Self::create(RepoManager::new(paths))
+    }
+
     /// Create panel for a specific repository (used for session restore)
     pub fn new_for_repo(repo_path: PathBuf) -> Self {
-        let mut panel = Self {
-            repo_manager: RepoManager::for_repo(repo_path),
-            current_section: Section::Commits,
-            branch: None,
-            branches: Vec::new(),
-            selected_branch: None,
-            repo_dropdown_open: false,
-            branch_dropdown_open: false,
-            dropdown_cursor: 0,
-            dropdown_area: None,
-            repo_selector_area: None,
-            branch_selector_area: None,
-            commits: Vec::new(),
-            selected: 0,
-            scroll: 0,
-            commit_count: 100,
-            cached_theme: ThemeColors::default(),
-            last_area: Rect::default(),
-            status_message: None,
-            vim_mode: false,
-            modal_request: None,
-        };
-
-        panel.refresh();
-        panel
+        Self::create(RepoManager::for_repo(repo_path))
     }
 
     /// Update repository list based on new paths from panels

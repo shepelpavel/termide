@@ -116,6 +116,19 @@ pub enum PanelCommand<'a> {
         /// All current working directory paths from all panels
         paths: Vec<PathBuf>,
     },
+
+    // === Clipboard commands ===
+    /// Paste clipboard contents into the panel (editor/terminal).
+    /// Response: `CommandResult::None`
+    Paste,
+
+    /// Paste text directly into the panel (editor/terminal).
+    /// Used for bracketed paste events.
+    /// Response: `CommandResult::None`
+    PasteText {
+        /// Text to paste
+        text: String,
+    },
 }
 
 /// Result of handling a panel command.

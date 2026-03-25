@@ -66,6 +66,9 @@ impl GitStatusPanel {
                 };
                 let is_selected = entry_idx == self.stash_cursor && is_focused;
 
+                let ref_part = format!(" {}  ", entry.ref_str);
+                let msg_x = area.x + ref_part.width() as u16;
+                let remaining = area.width.saturating_sub(ref_part.width() as u16) as usize;
                 if is_selected {
                     // Fill entire row with selection background
                     for dx in 0..area.width {
@@ -73,19 +76,13 @@ impl GitStatusPanel {
                             .set_symbol(" ")
                             .set_style(selected_style);
                     }
-                    let ref_part = format!(" {}  ", entry.ref_str);
                     buf.set_string(area.x, y, &ref_part, selected_style);
-                    let msg_x = area.x + ref_part.width() as u16;
-                    let remaining = area.width.saturating_sub(ref_part.width() as u16) as usize;
                     if remaining > 0 {
                         let msg = git::truncate_right(&entry.message, remaining);
                         buf.set_string(msg_x, y, &msg, selected_style);
                     }
                 } else {
-                    let ref_part = format!(" {}  ", entry.ref_str);
                     buf.set_string(area.x, y, &ref_part, ref_style);
-                    let msg_x = area.x + ref_part.width() as u16;
-                    let remaining = area.width.saturating_sub(ref_part.width() as u16) as usize;
                     if remaining > 0 {
                         let msg = git::truncate_right(&entry.message, remaining);
                         buf.set_string(msg_x, y, &msg, normal_style);

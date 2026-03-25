@@ -1463,7 +1463,9 @@ impl Panel for FileManager {
             | PanelCommand::Save
             | PanelCommand::CloseWithoutSaving
             | PanelCommand::SetGitOperationInProgress { .. }
-            | PanelCommand::UpdateRepoPaths { .. } => CommandResult::None,
+            | PanelCommand::UpdateRepoPaths { .. }
+            | PanelCommand::Paste
+            | PanelCommand::PasteText { .. } => CommandResult::None,
         }
     }
 

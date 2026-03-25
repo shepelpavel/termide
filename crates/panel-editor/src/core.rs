@@ -1967,6 +1967,18 @@ impl Panel for Editor {
                     CommandResult::None
                 }
             }
+            PanelCommand::Paste => {
+                if let Err(e) = self.paste_from_clipboard() {
+                    log::error!("Editor paste failed: {}", e);
+                }
+                CommandResult::None
+            }
+            PanelCommand::PasteText { text } => {
+                if let Err(e) = self.paste_text(&text) {
+                    log::error!("Editor paste_text failed: {}", e);
+                }
+                CommandResult::None
+            }
             // Commands not applicable to Editor
             PanelCommand::SetFsWatchRoot { .. }
             | PanelCommand::Resize { .. }

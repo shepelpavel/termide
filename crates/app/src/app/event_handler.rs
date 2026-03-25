@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use super::App;
 use crate::state::PendingAction;
 use crate::PanelExt;
-use termide_core::{GitOperationType, PanelEvent};
+use termide_core::{GitOperationType, PanelCommand, PanelEvent};
 use termide_i18n as i18n;
 use termide_panel_editor::Editor;
 
@@ -279,36 +279,15 @@ impl App {
     /// Handle RequestPaste event - paste clipboard to active panel
     fn event_paste_to_active_panel(&mut self) -> Result<()> {
         if let Some(panel) = self.layout_manager.active_panel_mut() {
-            if let Some(editor) = panel.as_editor_mut() {
-                if let Err(e) = editor.paste_from_clipboard() {
-                    log::error!("Paste to editor failed: {}", e);
-                }
-            } else if let Some(terminal) = panel.as_terminal_mut() {
-                if let Err(e) = terminal.paste_from_clipboard() {
-                    log::error!("Paste to terminal failed: {}", e);
-                }
-            }
+            panel.handle_command(PanelCommand::Paste);
         }
         Ok(())
     }
 
     /// Handle bracketed paste event - paste text directly to active panel
     pub fn handle_paste_event(&mut self, text: String) -> Result<()> {
-        self.paste_text_to_active_panel(&text)
-    }
-
-    /// Paste text into the active editor or terminal panel.
-    fn paste_text_to_active_panel(&mut self, text: &str) -> Result<()> {
         if let Some(panel) = self.layout_manager.active_panel_mut() {
-            if let Some(editor) = panel.as_editor_mut() {
-                if let Err(e) = editor.paste_text(text) {
-                    log::error!("Paste to editor failed: {}", e);
-                }
-            } else if let Some(terminal) = panel.as_terminal_mut() {
-                if let Err(e) = terminal.paste_text(text) {
-                    log::error!("Paste to terminal failed: {}", e);
-                }
-            }
+            panel.handle_command(PanelCommand::PasteText { text });
         }
         Ok(())
     }
@@ -1123,8 +1102,6 @@ impl App {
         operation: Option<String>,
         spinner_frame: usize,
     ) {
-        use termide_core::PanelCommand;
-
         for panel in self.layout_manager.iter_all_panels_mut() {
             panel.handle_command(PanelCommand::SetGitOperationInProgress {
                 in_progress,

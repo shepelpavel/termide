@@ -1992,6 +1992,18 @@ impl Panel for Terminal {
             }
             // Terminals always stay active (PTY must be drained), so MarkStale/RefreshIfStale are no-ops
             PanelCommand::MarkStale | PanelCommand::RefreshIfStale => CommandResult::None,
+            PanelCommand::Paste => {
+                if let Err(e) = self.paste_from_clipboard() {
+                    log::error!("Terminal paste failed: {}", e);
+                }
+                CommandResult::None
+            }
+            PanelCommand::PasteText { text } => {
+                if let Err(e) = self.paste_text(&text) {
+                    log::error!("Terminal paste_text failed: {}", e);
+                }
+                CommandResult::None
+            }
             // Commands not applicable to Terminal
             PanelCommand::GetRepoRoot
             | PanelCommand::OnGitUpdate { .. }
