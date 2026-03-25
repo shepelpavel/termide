@@ -43,6 +43,7 @@ mod panel_manager;
 mod panel_operations;
 mod session;
 mod watcher;
+mod workspace_edit;
 
 /// Main application
 pub struct App {

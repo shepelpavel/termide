@@ -139,6 +139,22 @@ impl App {
                     }
                 }
 
+                // Handle rename-symbol request (F2)
+                if let Some((line, col)) = editor.take_rename_request() {
+                    let word = editor.get_word_at_cursor();
+                    if let Some(path) = editor.file_path().map(|p| p.to_path_buf()) {
+                        events.push(termide_core::PanelEvent::ShowInput {
+                            prompt: format!("Rename '{}':", word),
+                            initial_value: word,
+                            on_submit: termide_core::InputAction::RenameSymbol {
+                                file_path: path,
+                                line,
+                                column: col,
+                            },
+                        });
+                    }
+                }
+
                 // Poll for references response
                 if let Some(locations) = editor.poll_references() {
                     let ref_locations: Vec<termide_core::ReferenceLocation> = locations

@@ -129,6 +129,10 @@ pub enum EditorCommand {
     /// Find all references (Shift+F12)
     FindReferences,
 
+    // LSP Rename Symbol
+    /// Rename symbol at cursor (F2)
+    RenameSymbol,
+
     // No operation (for unhandled keys)
     None,
 }
@@ -422,6 +426,16 @@ impl EditorCommand {
             ],
         ) {
             return Self::FindReferences;
+        }
+
+        // LSP Rename Symbol (configurable, default F2)
+        if matches_binding_or_default(
+            &keybindings.rename_symbol,
+            &key,
+            KeyCode::F(2),
+            KeyModifiers::NONE,
+        ) {
+            return Self::RenameSymbol;
         }
 
         // Non-configurable bindings (navigation, basic editing)
@@ -853,6 +867,10 @@ impl EditorCommand {
             }
             Self::FindReferences => {
                 editor.request_references_at_cursor();
+                Ok(())
+            }
+            Self::RenameSymbol => {
+                editor.request_rename_at_cursor();
                 Ok(())
             }
 

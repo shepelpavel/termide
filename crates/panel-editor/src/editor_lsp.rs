@@ -447,6 +447,55 @@ impl Editor {
     }
 
     // =========================================================================
+    // LSP Rename Symbol
+    // =========================================================================
+
+    /// Schedule a rename-symbol request at cursor position (called from handle_key).
+    pub fn request_rename_at_cursor(&mut self) {
+        self.lsp.pending_rename_request = Some((self.cursor.line, self.cursor.column));
+    }
+
+    /// Check if rename was requested and clear the flag.
+    pub fn take_rename_request(&mut self) -> Option<(usize, usize)> {
+        self.lsp.pending_rename_request.take()
+    }
+
+    /// Get the word at cursor position (for rename modal prefill).
+    pub fn get_word_at_cursor(&self) -> String {
+        use crate::selection::select_word;
+        let Some((sel, _)) = select_word(&self.buffer, &self.cursor) else {
+            return String::new();
+        };
+        let line_text = self
+            .buffer
+            .line(self.cursor.line)
+            .map(|cow| cow.to_string())
+            .unwrap_or_default();
+        let start = sel.start().column;
+        let end = sel.end().column;
+        line_text.chars().skip(start).take(end - start).collect()
+    }
+
+    /// Send rename request to LSP at specified position.
+    pub fn request_rename(
+        &mut self,
+        line: usize,
+        column: usize,
+        new_name: String,
+        lsp_manager: &LspManager,
+    ) {
+        if let Some(path) = self.buffer.file_path() {
+            self.lsp
+                .request_rename(path, line, column, new_name, lsp_manager);
+        }
+    }
+
+    /// Poll for rename response (non-blocking).
+    pub fn poll_rename(&mut self) -> Option<lsp_types::WorkspaceEdit> {
+        self.lsp.poll_rename()
+    }
+
+    // =========================================================================
     // LSP Diagnostics
     // =========================================================================
 

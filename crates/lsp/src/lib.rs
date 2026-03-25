@@ -27,7 +27,7 @@ use std::sync::mpsc;
 use anyhow::{Context, Result};
 use lsp_types::{
     CompletionResponse, GotoDefinitionResponse, Hover, Location, Position,
-    PublishDiagnosticsParams, Uri,
+    PublishDiagnosticsParams, Uri, WorkspaceEdit,
 };
 use url::Url;
 
@@ -215,6 +215,19 @@ impl LspManager {
         let server = self.get_server(lang, file_path)?;
         let uri = path_to_uri(file_path)?;
         Some(server.references(uri, position, include_declaration))
+    }
+
+    /// Request rename symbol at position
+    pub fn rename(
+        &self,
+        lang: &str,
+        file_path: &Path,
+        position: Position,
+        new_name: String,
+    ) -> Option<mpsc::Receiver<Option<WorkspaceEdit>>> {
+        let server = self.get_server(lang, file_path)?;
+        let uri = path_to_uri(file_path)?;
+        Some(server.rename(uri, position, new_name))
     }
 
     /// Send didOpen notification

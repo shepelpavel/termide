@@ -120,4 +120,10 @@ pub enum PendingAction {
         /// The operation ID waiting for resolution
         operation_id: termide_file_ops::OperationId,
     },
+    /// LSP rename symbol: applies WorkspaceEdit after user confirms new name
+    LspRenameSymbol {
+        file_path: PathBuf,
+        line: usize,
+        column: usize,
+    },
 }

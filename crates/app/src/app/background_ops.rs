@@ -372,6 +372,7 @@ impl App {
         // Now handle completion and hover for the active editor only
         let mut pending_definition_event = None;
         let mut pending_references_event: Option<Vec<termide_core::ReferenceLocation>> = None;
+        let mut pending_rename_edit: Option<lsp_types::WorkspaceEdit> = None;
         if let Some(panel) = self.layout_manager.active_panel_mut() {
             if let Some(editor) = panel.as_editor_mut() {
                 // Check if there's a pending completion response
@@ -414,6 +415,12 @@ impl App {
                 if let Some(event) = editor.poll_definition() {
                     // Store event to be processed after we release the borrow
                     pending_definition_event = Some(event);
+                    self.state.needs_redraw = true;
+                }
+
+                // Poll for rename response (F2)
+                if let Some(edit) = editor.poll_rename() {
+                    pending_rename_edit = Some(edit);
                     self.state.needs_redraw = true;
                 }
 
@@ -466,6 +473,24 @@ impl App {
             };
             if let Err(e) = self.process_panel_events(vec![event]) {
                 log::error!("Error processing references event: {}", e);
+            }
+        }
+
+        // Apply pending rename WorkspaceEdit (outside of panel borrow)
+        if let Some(edit) = pending_rename_edit {
+            match self.apply_workspace_edit(edit) {
+                Ok(n) => {
+                    let msg = if n == 1 {
+                        "Renamed in 1 file".to_string()
+                    } else {
+                        format!("Renamed in {} files", n)
+                    };
+                    self.state.set_info(msg);
+                }
+                Err(e) => {
+                    log::error!("Rename failed: {}", e);
+                    self.state.set_error(format!("Rename failed: {}", e));
+                }
             }
         }
     }

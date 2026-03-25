@@ -17,7 +17,7 @@ use lsp_types::{
     GotoDefinitionResponse, Hover, InitializeParams, InitializeResult, Location, Position,
     PublishDiagnosticsParams, ServerCapabilities, TextDocumentClientCapabilities,
     TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
-    TextDocumentPositionParams, Uri, VersionedTextDocumentIdentifier,
+    TextDocumentPositionParams, Uri, VersionedTextDocumentIdentifier, WorkspaceEdit,
 };
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -614,6 +614,29 @@ impl LspServer {
         };
 
         self.send_request("textDocument/references", params)
+            .unwrap_or_else(|_| {
+                let (_, rx) = mpsc::channel();
+                rx
+            })
+    }
+
+    /// Request rename symbol at position
+    pub fn rename(
+        &self,
+        uri: Uri,
+        position: Position,
+        new_name: String,
+    ) -> mpsc::Receiver<Option<WorkspaceEdit>> {
+        let params = lsp_types::RenameParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri },
+                position,
+            },
+            new_name,
+            work_done_progress_params: Default::default(),
+        };
+
+        self.send_request("textDocument/rename", params)
             .unwrap_or_else(|_| {
                 let (_, rx) = mpsc::channel();
                 rx

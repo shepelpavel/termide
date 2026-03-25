@@ -563,6 +563,13 @@ pub enum InputAction {
 
     /// Move files to destination
     MoveTo { sources: Vec<PathBuf> },
+
+    /// Rename LSP symbol at position
+    RenameSymbol {
+        file_path: PathBuf,
+        line: usize,
+        column: usize,
+    },
 }
 
 /// Selection dialog actions.

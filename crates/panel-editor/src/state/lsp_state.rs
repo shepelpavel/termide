@@ -12,6 +12,7 @@ use std::sync::mpsc;
 
 use lsp_types::{
     CompletionResponse, Diagnostic, GotoDefinitionResponse, Hover, Location, Position,
+    WorkspaceEdit,
 };
 use ratatui::layout::Rect;
 use termide_lsp::{CompletionTriggerKind, LspManager};
@@ -58,6 +59,12 @@ pub struct LspState {
 
     /// Pending find-references request position - set by F12 handler, consumed by tick
     pub pending_references_request: Option<(usize, usize)>,
+
+    /// Pending rename request receiver
+    pub rename_rx: Option<mpsc::Receiver<Option<WorkspaceEdit>>>,
+
+    /// Pending rename request position - set by F2 handler, consumed by key_handler
+    pub pending_rename_request: Option<(usize, usize)>,
 
     /// Current diagnostics for this file
     pub diagnostics: Vec<Diagnostic>,
@@ -133,6 +140,8 @@ impl LspState {
             definition_rx: None,
             references_rx: None,
             pending_references_request: None,
+            rename_rx: None,
+            pending_rename_request: None,
             diagnostics: Vec::new(),
             enabled: false,
             server_loading: false,
@@ -343,6 +352,34 @@ impl LspState {
     /// Poll for references response (non-blocking).
     pub fn poll_references(&mut self) -> Option<Vec<Location>> {
         let result = poll_receiver(&mut self.references_rx);
+        if result.is_some() {
+            self.server_loading = false;
+        }
+        result
+    }
+
+    /// Request rename symbol at position.
+    pub fn request_rename(
+        &mut self,
+        file_path: &std::path::Path,
+        line: usize,
+        column: usize,
+        new_name: String,
+        lsp_manager: &LspManager,
+    ) {
+        if !self.enabled {
+            return;
+        }
+
+        if let Some(ref lang) = self.language_id {
+            let position = Position::new(line as u32, column as u32);
+            self.rename_rx = lsp_manager.rename(lang, file_path, position, new_name);
+        }
+    }
+
+    /// Poll for rename response (non-blocking).
+    pub fn poll_rename(&mut self) -> Option<WorkspaceEdit> {
+        let result = poll_receiver(&mut self.rename_rx);
         if result.is_some() {
             self.server_loading = false;
         }

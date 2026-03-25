@@ -891,6 +891,15 @@ impl App {
                 sources: sources.clone(),
                 target_directory: None,
             },
+            termide_core::InputAction::RenameSymbol {
+                file_path,
+                line,
+                column,
+            } => PendingAction::LspRenameSymbol {
+                file_path: file_path.clone(),
+                line: *line,
+                column: *column,
+            },
         };
 
         // Create input modal

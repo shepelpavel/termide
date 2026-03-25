@@ -254,6 +254,7 @@ pub struct EditorKeybindings {
     pub show_hover: Option<KeyBinding>,
     pub goto_definition: Option<KeyBinding>,
     pub find_references: Option<KeyBinding>,
+    pub rename_symbol: Option<KeyBinding>,
 }
 
 /// File manager keybindings (file_manager.keybindings section).

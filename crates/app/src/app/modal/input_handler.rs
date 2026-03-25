@@ -172,4 +172,30 @@ impl App {
 
         Ok(())
     }
+
+    /// Handle LSP rename symbol: user confirmed new name, send request to LSP.
+    pub(in crate::app) fn handle_lsp_rename_symbol(
+        &mut self,
+        _file_path: std::path::PathBuf,
+        line: usize,
+        column: usize,
+        value: Box<dyn std::any::Any>,
+    ) -> anyhow::Result<()> {
+        let new_name = match value.downcast_ref::<String>() {
+            Some(s) => s.trim().to_string(),
+            None => return Ok(()),
+        };
+        if new_name.is_empty() {
+            return Ok(());
+        }
+
+        if let Some(panel) = self.layout_manager.active_panel_mut() {
+            if let Some(editor) = panel.as_editor_mut() {
+                if let Some(ref lsp_manager) = self.state.lsp_manager {
+                    editor.request_rename(line, column, new_name, lsp_manager);
+                }
+            }
+        }
+        Ok(())
+    }
 }

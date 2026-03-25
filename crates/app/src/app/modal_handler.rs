@@ -324,6 +324,14 @@ impl App {
                 PendingAction::ResolveOperationConflict { operation_id } => {
                     self.handle_resolve_operation_conflict(operation_id, value)?;
                 }
+                // LSP rename symbol: user confirmed new name in the input modal
+                PendingAction::LspRenameSymbol {
+                    file_path,
+                    line,
+                    column,
+                } => {
+                    self.handle_lsp_rename_symbol(file_path, line, column, value)?;
+                }
             }
         }
         Ok(())
