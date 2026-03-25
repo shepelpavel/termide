@@ -16,9 +16,9 @@ The file manager panel provides an intuitive interface for navigating the file s
 | `→` / `l`       | Expand directory (tree view)                |
 | `←` / `h`       | Collapse directory (tree view)              |
 | `/`              | In-tree incremental search                  |
-| `Ctrl+P`          | Open directory switcher                    |
+| `Ctrl+/`          | Open directory switcher                    |
 | `Ctrl+G`          | Go to path/URL                             |
-| `Ctrl+B`          | Add bookmark                               |
+| `Alt+K`           | Add bookmark                               |
 | `Tab`             | Go to next panel                           |
 | `Shift+Tab`       | Go to previous panel                       |
 

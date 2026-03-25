@@ -141,4 +141,7 @@ The device name is automatically detected from the filesystem:
 | `Alt+Minus (-)`   | Decrease active group width                |
 | `Alt+Backspace`   | Toggle panel stacking (merge/unstack)      |
 | `Alt+/`           | Open sessions menu                         |
+| `Alt+K`           | Add bookmark                               |
+| `Ctrl+P`          | Open command palette                       |
 | `Alt+1-9`         | Jump to panel by number                    |
+| `Ctrl+Alt+1-9`    | Jump to panel by number (fallback for gnome-terminal / Windows Terminal) |

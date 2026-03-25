@@ -259,7 +259,9 @@ For detailed documentation, see:
 - `Alt+Q` - Quit
 - `Alt+←/→` or `Alt+A/D` - Switch panel groups
 - `Alt+↑/↓` or `Alt+W/S` - Navigate panels in group
-- `Alt+1-9` - Jump to panel by number
+- `Alt+1-9` / `Ctrl+Alt+1-9` - Jump to panel by number
+- `Alt+K` - Add bookmark
+- `Ctrl+P` - Command palette
 - `Alt+X` / `Alt+Delete` - Close panel
 - `Alt+Backspace` - Toggle panel stacking
 - `Alt+PgUp/PgDn` - Move panel between groups
@@ -278,8 +280,8 @@ For detailed documentation, see:
 - `Alt+P` - Open config
 
 **File Manager:**
-- `Ctrl+P` - Open directory switcher
-- `Ctrl+B` - Add bookmark
+- `Ctrl+/` - Open directory switcher
+- `Alt+K` - Add bookmark
 - `Enter` - Open file/directory
 - `Backspace` - Parent directory
 - `→` / `l` - Expand directory (tree view)
@@ -303,7 +305,9 @@ For detailed documentation, see:
 **Editor:**
 - `Ctrl+S` - Save
 - `Ctrl+Shift+S` - Save As (with executable checkbox)
-- `Ctrl+Z/Y` - Undo/Redo
+- `Ctrl+Z` - Undo
+- `Ctrl+Y` / `Ctrl+Shift+Z` - Redo
+- `Alt+B` - Toggle git blame
 - `Ctrl+F` - Find
 - `Ctrl+H` - Replace
 - `F3` / `Shift+F3` - Next/previous match

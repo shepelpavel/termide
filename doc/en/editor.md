@@ -41,7 +41,7 @@ The text editor panel provides a functional editor for working with text files w
 | `Ctrl+S`          | Save file                                  |
 | `Ctrl+Shift+S`    | Save As (with executable checkbox)         |
 | `Ctrl+Z`          | Undo last action                           |
-| `Ctrl+Y`          | Redo undone action                         |
+| `Ctrl+Y` / `Ctrl+Shift+Z` | Redo undone action               |
 | `Ctrl+D`          | Duplicate current line or selection        |
 | `Backspace`       | Delete character to the left of cursor     |
 | `Delete`          | Delete character to the right of cursor    |
@@ -253,6 +253,35 @@ show_git_diff = true
 - Only works when editing files within a git repository
 - Requires the file to exist in HEAD (new untracked files show all lines as added)
 - Virtual deletion marker lines are visual-only and don't affect the file content
+
+## Git Blame
+
+When editing files in a git repository, the editor displays an inline blame annotation at the end of the cursor line, showing the author, age, commit hash, and summary of the last change.
+
+### Inline Annotation
+
+The annotation appears at the end of the current line in a dimmed color:
+
+```
+  some_function();                          nvn, 2 weeks ago • abc1234 Fix bug
+```
+
+### Controls
+
+| Shortcut | Action                         |
+|----------|--------------------------------|
+| `Alt+B`  | Toggle blame annotation on/off |
+
+**Note:** Blame is **enabled by default** when opening a file in a git repository. The annotation loads asynchronously in the background and appears once the `git blame` process completes.
+
+### Configuration
+
+```toml
+[editor.keybindings]
+show_blame = "Alt+B"
+```
+
+---
 
 ## LSP (Language Server Protocol)
 

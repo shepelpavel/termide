@@ -141,4 +141,7 @@
 | `Alt+减号 (-)`    | 减小活动组宽度                             |
 | `Alt+Backspace`   | 切换面板堆叠（合并/拆分）                  |
 | `Alt+/`           | 打开会话菜单                               |
+| `Alt+K`           | 添加书签                                   |
+| `Ctrl+P`          | 打开命令面板                               |
 | `Alt+1-9`         | 按编号跳转到面板                           |
+| `Ctrl+Alt+1-9`    | 按编号跳转到面板（gnome-terminal / Windows Terminal 备用方案） |

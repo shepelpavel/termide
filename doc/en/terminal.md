@@ -12,6 +12,7 @@ The terminal panel provides a full-featured terminal emulator with pseudotermina
 
 | Shortcut               | Action                                     |
 |------------------------|--------------------------------------------|
+| `Ctrl+/`               | Open directory switcher                    |
 | `Ctrl+F`               | Open text search in scrollback             |
 | `Ctrl+Shift+C`         | Copy selected text to clipboard            |
 | `Ctrl+Shift+V`         | Paste text from clipboard                  |
