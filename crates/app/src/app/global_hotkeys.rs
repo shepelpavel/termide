@@ -40,7 +40,7 @@ impl App {
     }
 
     /// Execute a hotkey action
-    fn execute_hotkey_action(&mut self, action: HotkeyAction) -> Result<()> {
+    pub(in crate::app) fn execute_hotkey_action(&mut self, action: HotkeyAction) -> Result<()> {
         match action {
             // Menu
             HotkeyAction::ToggleMenu => {
@@ -131,6 +131,9 @@ impl App {
             // Application
             HotkeyAction::RequestQuit => {
                 self.handle_quit_request()?;
+            }
+            HotkeyAction::OpenCommandPalette => {
+                self.handle_open_command_palette()?;
             }
         }
         Ok(())

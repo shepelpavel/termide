@@ -139,6 +139,8 @@ pub enum HotkeyAction {
     OpenDiagnostics,
     /// Open or focus the Git Log panel
     OpenGitLog,
+    /// Open command palette
+    OpenCommandPalette,
 }
 
 impl HotkeyAction {
@@ -197,7 +199,8 @@ impl HotkeyAction {
             | HotkeyAction::SwapPanelRight
             | HotkeyAction::MoveToFirst
             | HotkeyAction::MoveToLast
-            | HotkeyAction::ResizePanel(_) => None,
+            | HotkeyAction::ResizePanel(_)
+            | HotkeyAction::OpenCommandPalette => None,
         }
     }
 }
@@ -422,6 +425,22 @@ impl DefaultHotkeyProcessor {
         bindings.insert(
             KeyBinding::new(KeyCode::Char('B'), KeyModifiers::CONTROL),
             HotkeyAction::OpenBookmarkAdd,
+        );
+
+        // Command Palette (Ctrl+Shift+P)
+        bindings.insert(
+            KeyBinding::new(
+                KeyCode::Char('p'),
+                KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+            ),
+            HotkeyAction::OpenCommandPalette,
+        );
+        bindings.insert(
+            KeyBinding::new(
+                KeyCode::Char('P'),
+                KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+            ),
+            HotkeyAction::OpenCommandPalette,
         );
 
         // Panel management
@@ -688,6 +707,11 @@ impl DefaultHotkeyProcessor {
 
         // Application
         add_binding(&mut processor, &config.quit, HotkeyAction::RequestQuit);
+        add_binding(
+            &mut processor,
+            &config.open_command_palette,
+            HotkeyAction::OpenCommandPalette,
+        );
 
         processor
     }

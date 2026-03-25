@@ -1569,4 +1569,205 @@ impl App {
 
         Ok(())
     }
+
+    /// Open the command palette modal.
+    pub(super) fn handle_open_command_palette(&mut self) -> Result<()> {
+        use termide_app_event::HotkeyAction;
+        use termide_modal::{ActiveModal, CommandEntry, CommandPaletteModal};
+        use termide_state::PendingAction;
+
+        let kb = &self.state.config.general.keybindings;
+
+        let kb_str = |b: &Option<termide_config::KeyBinding>| {
+            b.as_ref()
+                .map(|k| k.display().to_string())
+                .unwrap_or_default()
+        };
+
+        // Build paired lists: actions Vec and display entries Vec.
+        // Order: Panels, Git, Navigation, Panel Management, Application.
+        let commands: Vec<(HotkeyAction, CommandEntry)> = vec![
+            (
+                HotkeyAction::NewEditor,
+                CommandEntry {
+                    label: "New Editor".into(),
+                    category: "Panels",
+                    keybinding: kb_str(&kb.new_editor),
+                },
+            ),
+            (
+                HotkeyAction::NewFileManager,
+                CommandEntry {
+                    label: "New File Manager".into(),
+                    category: "Panels",
+                    keybinding: kb_str(&kb.new_file_manager),
+                },
+            ),
+            (
+                HotkeyAction::NewTerminal,
+                CommandEntry {
+                    label: "New Terminal".into(),
+                    category: "Panels",
+                    keybinding: kb_str(&kb.new_terminal),
+                },
+            ),
+            (
+                HotkeyAction::NewJournal,
+                CommandEntry {
+                    label: "New Journal".into(),
+                    category: "Panels",
+                    keybinding: kb_str(&kb.new_journal),
+                },
+            ),
+            (
+                HotkeyAction::OpenHelp,
+                CommandEntry {
+                    label: "Open Help".into(),
+                    category: "Panels",
+                    keybinding: kb_str(&kb.open_help),
+                },
+            ),
+            (
+                HotkeyAction::OpenPreferences,
+                CommandEntry {
+                    label: "Open Preferences".into(),
+                    category: "Panels",
+                    keybinding: kb_str(&kb.open_preferences),
+                },
+            ),
+            (
+                HotkeyAction::OpenGitStatus,
+                CommandEntry {
+                    label: "Open Git Status".into(),
+                    category: "Git",
+                    keybinding: kb_str(&kb.open_git_status),
+                },
+            ),
+            (
+                HotkeyAction::OpenGitLog,
+                CommandEntry {
+                    label: "Open Git Log".into(),
+                    category: "Git",
+                    keybinding: kb_str(&kb.open_git_log),
+                },
+            ),
+            (
+                HotkeyAction::OpenSessions,
+                CommandEntry {
+                    label: "Open Sessions".into(),
+                    category: "Navigation",
+                    keybinding: kb_str(&kb.open_sessions),
+                },
+            ),
+            (
+                HotkeyAction::OpenDirectorySwitcher,
+                CommandEntry {
+                    label: "Switch Directory".into(),
+                    category: "Navigation",
+                    keybinding: kb_str(&kb.open_directory_switcher),
+                },
+            ),
+            (
+                HotkeyAction::OpenOutline,
+                CommandEntry {
+                    label: "Open Outline".into(),
+                    category: "Navigation",
+                    keybinding: kb_str(&kb.open_outline),
+                },
+            ),
+            (
+                HotkeyAction::OpenDiagnostics,
+                CommandEntry {
+                    label: "Open Diagnostics".into(),
+                    category: "Navigation",
+                    keybinding: kb_str(&kb.open_diagnostics),
+                },
+            ),
+            (
+                HotkeyAction::OpenBookmarkAdd,
+                CommandEntry {
+                    label: "Add Bookmark".into(),
+                    category: "Navigation",
+                    keybinding: kb_str(&kb.open_bookmark_add),
+                },
+            ),
+            (
+                HotkeyAction::ClosePanel,
+                CommandEntry {
+                    label: "Close Panel".into(),
+                    category: "Panel Management",
+                    keybinding: kb_str(&kb.close_panel),
+                },
+            ),
+            (
+                HotkeyAction::ToggleStacking,
+                CommandEntry {
+                    label: "Toggle Stacking".into(),
+                    category: "Panel Management",
+                    keybinding: kb_str(&kb.toggle_stack),
+                },
+            ),
+            (
+                HotkeyAction::SwapPanelLeft,
+                CommandEntry {
+                    label: "Move Panel Left".into(),
+                    category: "Panel Management",
+                    keybinding: kb_str(&kb.swap_left),
+                },
+            ),
+            (
+                HotkeyAction::SwapPanelRight,
+                CommandEntry {
+                    label: "Move Panel Right".into(),
+                    category: "Panel Management",
+                    keybinding: kb_str(&kb.swap_right),
+                },
+            ),
+            (
+                HotkeyAction::MoveToFirst,
+                CommandEntry {
+                    label: "Move to First".into(),
+                    category: "Panel Management",
+                    keybinding: kb_str(&kb.move_first),
+                },
+            ),
+            (
+                HotkeyAction::MoveToLast,
+                CommandEntry {
+                    label: "Move to Last".into(),
+                    category: "Panel Management",
+                    keybinding: kb_str(&kb.move_last),
+                },
+            ),
+            (
+                HotkeyAction::RequestQuit,
+                CommandEntry {
+                    label: "Quit".into(),
+                    category: "Application",
+                    keybinding: kb_str(&kb.quit),
+                },
+            ),
+            (
+                HotkeyAction::ToggleMenu,
+                CommandEntry {
+                    label: "Toggle Menu".into(),
+                    category: "Application",
+                    keybinding: kb_str(&kb.toggle_menu),
+                },
+            ),
+        ];
+
+        let (actions, entries): (Vec<HotkeyAction>, Vec<CommandEntry>) =
+            commands.into_iter().unzip();
+
+        self.command_palette_actions = Some(actions);
+
+        let modal = CommandPaletteModal::new(entries);
+        self.state.set_pending_action(
+            PendingAction::CommandPalette,
+            ActiveModal::CommandPalette(Box::new(modal)),
+        );
+
+        Ok(())
+    }
 }

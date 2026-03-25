@@ -63,6 +63,8 @@ pub struct App {
     outline_last_edit_time: Option<std::time::Instant>,
     /// Click tracker for double-click on panel title (directory picker).
     title_click_tracker: ClickTracker<(u16, u16)>,
+    /// Cached command list for Command Palette (index → HotkeyAction).
+    command_palette_actions: Option<Vec<termide_app_event::HotkeyAction>>,
 }
 
 impl App {
@@ -134,6 +136,7 @@ impl App {
             outline_last_cursor: 0,
             outline_last_edit_time: None,
             title_click_tracker: ClickTracker::new(),
+            command_palette_actions: None,
         }
     }
 
@@ -212,6 +215,7 @@ impl App {
             outline_last_cursor: 0,
             outline_last_edit_time: None,
             title_click_tracker: ClickTracker::new(),
+            command_palette_actions: None,
         }
     }
 

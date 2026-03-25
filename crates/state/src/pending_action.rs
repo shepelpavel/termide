@@ -126,4 +126,6 @@ pub enum PendingAction {
         line: usize,
         column: usize,
     },
+    /// Command palette — user chose a command by index
+    CommandPalette,
 }

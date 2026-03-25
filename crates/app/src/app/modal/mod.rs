@@ -3,6 +3,7 @@
 //! These modules handle the results of modal dialogs.
 
 mod batch_handler;
+mod command_palette_handler;
 mod confirm_handler;
 mod input_handler;
 mod select_handler;

@@ -24,6 +24,7 @@ pub use input_keys::{handle_input_key, InputKeyResult};
 pub mod bookmark_add;
 pub mod calendar;
 pub mod choice;
+pub mod command_palette;
 pub mod commit;
 pub mod confirm;
 pub mod conflict;
@@ -44,6 +45,7 @@ pub mod sessions;
 pub use bookmark_add::{BookmarkAddModal, BookmarkAddResult};
 pub use calendar::CalendarModal;
 pub use choice::ChoiceModal;
+pub use command_palette::{CommandEntry, CommandPaletteModal};
 pub use commit::CommitModal;
 pub use confirm::ConfirmModal;
 pub use conflict::{ConflictModal, ConflictResolution};
@@ -104,6 +106,8 @@ pub enum ActiveModal {
     Calendar(Box<CalendarModal>),
     /// Progress modal for long-running operations
     Progress(Box<ProgressModal>),
+    /// Command palette modal
+    CommandPalette(Box<CommandPaletteModal>),
 }
 
 /// Helper to convert a typed ModalResult into a type-erased ModalResult<Box<dyn Any>>.
@@ -139,6 +143,7 @@ macro_rules! dispatch_modal {
             ActiveModal::BookmarkAdd(m) => m.$method($($arg),*),
             ActiveModal::Calendar(m) => m.$method($($arg),*),
             ActiveModal::Progress(m) => m.$method($($arg),*),
+            ActiveModal::CommandPalette(m) => m.$method($($arg),*),
         }
     };
 }
@@ -166,6 +171,7 @@ macro_rules! dispatch_modal_erased {
             ActiveModal::BookmarkAdd(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::Calendar(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::Progress(m) => m.$method($($arg),*)?.map(erase_modal_result),
+            ActiveModal::CommandPalette(m) => m.$method($($arg),*)?.map(erase_modal_result),
         }
     };
 }

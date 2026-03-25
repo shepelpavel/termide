@@ -332,6 +332,10 @@ impl App {
                 } => {
                     self.handle_lsp_rename_symbol(file_path, line, column, value)?;
                 }
+                // Command palette: user chose a command by index
+                PendingAction::CommandPalette => {
+                    self.handle_command_palette_result(value)?;
+                }
             }
         }
         Ok(())

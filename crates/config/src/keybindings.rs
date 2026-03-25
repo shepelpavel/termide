@@ -215,6 +215,7 @@ pub struct GlobalKeybindings {
 
     // Application
     pub quit: Option<KeyBinding>,
+    pub open_command_palette: Option<KeyBinding>,
 }
 
 /// Editor keybindings (editor.keybindings section).
@@ -384,6 +385,7 @@ impl GlobalKeybindings {
 
         // Application
         set_default!(quit, "Alt+Q");
+        set_default!(open_command_palette, "Ctrl+Shift+P");
     }
 }
 
