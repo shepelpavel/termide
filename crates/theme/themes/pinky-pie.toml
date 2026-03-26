@@ -1,0 +1,15 @@
+# 🦄 Pinky Pie — gentle pink theme inspired by unicorns and rainbows
+name = "pinky-pie"
+is_light = true
+
+[colors]
+bg          = { rgb = [255, 235, 242] }
+fg          = { rgb = [72, 30, 52] }
+accented_bg = { rgb = [245, 210, 225] }
+accented_fg = { rgb = [168, 40, 108] }
+selected_bg = { rgb = [200, 60, 130] }
+selected_fg = { rgb = [255, 240, 245] }
+disabled    = { rgb = [180, 155, 168] }
+success     = { rgb = [58, 148, 68] }
+warning     = { rgb = [188, 136, 22] }
+error       = { rgb = [192, 38, 58] }

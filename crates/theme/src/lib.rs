@@ -98,6 +98,8 @@ const THEME_ROSEPINE_TOML: &str = include_str!("../themes/rosepine.toml");
 const THEME_TOKYONIGHT_TOML: &str = include_str!("../themes/tokyonight.toml");
 const THEME_BILLIARD_TOML: &str = include_str!("../themes/billiard.toml");
 const THEME_GREEN_BACKS_TOML: &str = include_str!("../themes/green-backs.toml");
+const THEME_PINKY_PIE_TOML: &str = include_str!("../themes/pinky-pie.toml");
+const THEME_BLUE_SKY_TOML: &str = include_str!("../themes/blue-sky.toml");
 
 // Static theme instances
 static THEME_ATOM_ONE_LIGHT: OnceLock<Theme> = OnceLock::new();
@@ -136,6 +138,8 @@ static THEME_ROSEPINE: OnceLock<Theme> = OnceLock::new();
 static THEME_TOKYONIGHT: OnceLock<Theme> = OnceLock::new();
 static THEME_BILLIARD: OnceLock<Theme> = OnceLock::new();
 static THEME_GREEN_BACKS: OnceLock<Theme> = OnceLock::new();
+static THEME_PINKY_PIE: OnceLock<Theme> = OnceLock::new();
+static THEME_BLUE_SKY: OnceLock<Theme> = OnceLock::new();
 
 /// Entry in the built-in themes registry.
 /// Single source of truth for all built-in theme configurations.
@@ -168,6 +172,11 @@ static BUILTIN_THEMES: &[BuiltinThemeEntry] = &[
         name: "billiard",
         content: THEME_BILLIARD_TOML,
         storage: &THEME_BILLIARD,
+    },
+    BuiltinThemeEntry {
+        name: "blue-sky",
+        content: THEME_BLUE_SKY_TOML,
+        storage: &THEME_BLUE_SKY,
     },
     BuiltinThemeEntry {
         name: "catppuccin-macchiato",
@@ -283,6 +292,11 @@ static BUILTIN_THEMES: &[BuiltinThemeEntry] = &[
         name: "pip-boy",
         content: THEME_PIP_BOY_TOML,
         storage: &THEME_PIP_BOY,
+    },
+    BuiltinThemeEntry {
+        name: "pinky-pie",
+        content: THEME_PINKY_PIE_TOML,
+        storage: &THEME_PINKY_PIE,
     },
     BuiltinThemeEntry {
         name: "solarized-dark",

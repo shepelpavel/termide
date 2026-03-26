@@ -1,0 +1,15 @@
+# 🏰 Blue Sky — gentle blue theme inspired by cloud castles and open sky
+name = "blue-sky"
+is_light = true
+
+[colors]
+bg          = { rgb = [232, 244, 255] }
+fg          = { rgb = [24, 42, 68] }
+accented_bg = { rgb = [200, 225, 248] }
+accented_fg = { rgb = [32, 92, 168] }
+selected_bg = { rgb = [48, 112, 198] }
+selected_fg = { rgb = [235, 245, 255] }
+disabled    = { rgb = [148, 168, 192] }
+success     = { rgb = [42, 142, 62] }
+warning     = { rgb = [178, 138, 28] }
+error       = { rgb = [188, 42, 48] }
