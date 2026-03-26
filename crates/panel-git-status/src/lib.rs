@@ -10,7 +10,7 @@ pub mod tree;
 mod types;
 
 use types::FileTree;
-pub use types::{Button, Section, Selection, ViewMode};
+pub use types::{Button, Section, Selection};
 
 use std::any::Any;
 use std::collections::HashSet;
@@ -125,14 +125,8 @@ pub struct GitStatusPanel {
     staged: FileTree,
     /// Pending initial fetch to update ahead/behind counts
     pending_init_fetch: bool,
-    /// Current view mode (Status or Stash)
-    pub view_mode: ViewMode,
-    /// Cached stash entries
-    pub stash_entries: Vec<termide_git::StashEntry>,
-    /// Cursor position in stash list
-    pub stash_cursor: usize,
-    /// Scroll offset in stash list
-    pub stash_scroll: usize,
+    /// Cached stash count (for button label)
+    stash_count: usize,
 }
 
 impl GitStatusPanel {
@@ -191,10 +185,7 @@ impl GitStatusPanel {
             unstaged: FileTree::new(),
             staged: FileTree::new(),
             pending_init_fetch: true,
-            view_mode: ViewMode::Status,
-            stash_entries: Vec::new(),
-            stash_cursor: 0,
-            stash_scroll: 0,
+            stash_count: 0,
         };
 
         panel.refresh();
@@ -239,7 +230,7 @@ impl GitStatusPanel {
         self.behind = behind;
         self.unstaged_files = git::get_unstaged_files(&repo);
         self.staged_files = git::get_staged_files(&repo);
-        self.stash_entries = git::stash_list(&repo);
+        self.stash_count = git::stash_list(&repo).len();
 
         // Sort by path
         self.unstaged_files.sort_by(|a, b| a.path.cmp(&b.path));
@@ -785,111 +776,6 @@ impl GitStatusPanel {
             .current()
             .and_then(termide_system_monitor::get_disk_space_info)
     }
-
-    fn handle_stash_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
-        let last = self.stash_entries.len().saturating_sub(1);
-        const MAX_VISIBLE: usize = 15;
-
-        match key.code {
-            KeyCode::Esc | KeyCode::Char('b') | KeyCode::Char('B') => {
-                self.view_mode = ViewMode::Status;
-            }
-            KeyCode::Up | KeyCode::Char('k') => {
-                if self.stash_cursor > 0 {
-                    self.stash_cursor -= 1;
-                    if self.stash_cursor < self.stash_scroll {
-                        self.stash_scroll = self.stash_cursor;
-                    }
-                }
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                if self.stash_cursor < last {
-                    self.stash_cursor += 1;
-                    if self.stash_cursor >= self.stash_scroll + MAX_VISIBLE {
-                        self.stash_scroll = self.stash_cursor - MAX_VISIBLE + 1;
-                    }
-                }
-            }
-            KeyCode::Home | KeyCode::Char('g') => {
-                self.stash_cursor = 0;
-                self.stash_scroll = 0;
-            }
-            KeyCode::End | KeyCode::Char('G') => {
-                self.stash_cursor = last;
-                if self.stash_cursor >= MAX_VISIBLE {
-                    self.stash_scroll = self.stash_cursor - MAX_VISIBLE + 1;
-                }
-            }
-            KeyCode::Enter => {
-                if let Some(entry) = self.stash_entries.get(self.stash_cursor) {
-                    if let Some(repo) = self.repo_manager.current() {
-                        return vec![PanelEvent::OpenGitDiff {
-                            repo_path: repo.to_path_buf(),
-                            commit_hash: Some(entry.ref_str.clone()),
-                            file_path: None,
-                        }];
-                    }
-                }
-            }
-            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Char('i') | KeyCode::Char('I') => {
-                if let Some(repo) = self.repo_manager.current() {
-                    let repo_path = repo.to_path_buf();
-                    let modal = termide_modal::InputModal::new("Stash message", "");
-                    self.modal_request = Some((
-                        termide_state::PendingAction::GitStashPush { repo_path },
-                        termide_modal::ActiveModal::Input(Box::new(modal)),
-                    ));
-                }
-            }
-            KeyCode::Char('p') | KeyCode::Char('P') => {
-                if let Some(entry) = self.stash_entries.get(self.stash_cursor) {
-                    let index = entry.index;
-                    if let Some(repo) = self.repo_manager.current() {
-                        match termide_git::stash_pop(repo, index) {
-                            Ok(()) => {
-                                self.stash_cursor = self.stash_cursor.saturating_sub(1);
-                                self.refresh();
-                            }
-                            Err(e) => {
-                                self.status_message = Some(format!("Stash pop error: {}", e));
-                            }
-                        }
-                    }
-                }
-            }
-            KeyCode::Char('a') | KeyCode::Char('A') => {
-                if let Some(entry) = self.stash_entries.get(self.stash_cursor) {
-                    let index = entry.index;
-                    if let Some(repo) = self.repo_manager.current() {
-                        match termide_git::stash_apply(repo, index) {
-                            Ok(()) => {
-                                self.refresh();
-                            }
-                            Err(e) => {
-                                self.status_message = Some(format!("Stash apply error: {}", e));
-                            }
-                        }
-                    }
-                }
-            }
-            KeyCode::Char('d') | KeyCode::Char('D') => {
-                if let Some(entry) = self.stash_entries.get(self.stash_cursor) {
-                    let index = entry.index;
-                    if let Some(repo) = self.repo_manager.current() {
-                        let repo_path = repo.to_path_buf();
-                        let msg = format!("Drop stash@{{{}}}?\n\n{}", index, entry.message);
-                        let modal = termide_modal::ConfirmModal::new("Drop Stash", &msg);
-                        self.modal_request = Some((
-                            termide_state::PendingAction::GitStashDrop { repo_path, index },
-                            termide_modal::ActiveModal::Confirm(Box::new(modal)),
-                        ));
-                    }
-                }
-            }
-            _ => {}
-        }
-        vec![]
-    }
 }
 
 impl Panel for GitStatusPanel {
@@ -1096,11 +982,6 @@ impl Panel for GitStatusPanel {
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
         // Clear status message on any key
         self.status_message = None;
-
-        // Delegate to stash view handler when in Stash mode
-        if self.view_mode == ViewMode::Stash {
-            return self.handle_stash_key(key);
-        }
 
         let kb = &self.keybindings;
 

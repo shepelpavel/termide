@@ -483,6 +483,9 @@ pub enum PanelEvent {
     /// Open or focus the outline panel
     OpenOutlinePanel,
 
+    /// Open git stash panel for repository
+    OpenGitStash { repo_path: PathBuf },
+
     /// Open (or refresh) the references panel with LSP find-references results
     OpenReferencesPanel {
         locations: Vec<ReferenceLocation>,

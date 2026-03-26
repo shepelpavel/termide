@@ -245,6 +245,10 @@ impl App {
                 self.event_open_git_diff(repo_path, commit_hash, file_path)?;
             }
 
+            PanelEvent::OpenGitStash { repo_path } => {
+                self.event_open_git_stash(repo_path)?;
+            }
+
             // === Operations panel ===
             PanelEvent::ToggleOperationPause(op_id) => {
                 self.event_toggle_operation_pause(op_id);
@@ -1135,6 +1139,19 @@ impl App {
         };
         self.add_panel(Box::new(panel));
         self.auto_save_session();
+
+        Ok(())
+    }
+
+    /// Handle OpenGitStash event - open git stash panel for repository
+    fn event_open_git_stash(&mut self, repo_path: PathBuf) -> Result<()> {
+        use termide_panel_git_stash::GitStashPanel;
+
+        log::debug!("Opening Git Stash panel for {:?}", repo_path);
+        self.close_help_panels();
+
+        let panel = GitStashPanel::new(repo_path);
+        self.add_panel(Box::new(panel));
 
         Ok(())
     }

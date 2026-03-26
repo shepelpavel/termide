@@ -297,6 +297,29 @@ impl App {
         Ok(())
     }
 
+    /// Open Git Stash panel (from menu — finds repo from panel paths)
+    pub(super) fn handle_open_git_stash(&mut self) -> Result<()> {
+        log::debug!("Opening Git Stash panel from menu");
+        self.close_help_panels();
+
+        let paths = self.collect_panel_paths();
+        // Find first git repo from panel paths
+        let repo_path = paths
+            .iter()
+            .find_map(|p| termide_git::find_repo_root(p))
+            .or_else(|| {
+                std::env::current_dir()
+                    .ok()
+                    .and_then(|d| termide_git::find_repo_root(&d))
+            });
+
+        if let Some(repo) = repo_path {
+            let panel = termide_panel_git_stash::GitStashPanel::new(repo);
+            self.add_panel(Box::new(panel));
+        }
+        Ok(())
+    }
+
     /// Open Git Log panel
     pub(super) fn handle_open_git_log(&mut self) -> Result<()> {
         log::debug!("Opening Git Log panel");

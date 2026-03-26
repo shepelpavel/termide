@@ -12,98 +12,10 @@ use termide_git::{self as git, truncate_left};
 use termide_ui::ScrollBar;
 use termide_ui_render::{render_simple_dropdown, InlineSelector};
 
-use crate::types::{Section, ViewMode};
+use crate::types::Section;
 use crate::GitStatusPanel;
 
 impl GitStatusPanel {
-    /// Render the stash list view
-    pub(crate) fn render_stash_view(&mut self, area: Rect, buf: &mut Buffer, is_focused: bool) {
-        if area.height < 3 {
-            return;
-        }
-
-        let theme = self.cached_theme;
-        const MAX_VISIBLE: usize = 15;
-
-        let header_style = Style::default().fg(theme.disabled);
-        let selected_style = Style::default()
-            .fg(theme.bg)
-            .bg(theme.fg)
-            .add_modifier(ratatui::style::Modifier::BOLD);
-        let normal_style = Style::default().fg(theme.fg);
-        let ref_style = Style::default().fg(theme.warning);
-        let dim_style = Style::default()
-            .fg(theme.disabled)
-            .add_modifier(ratatui::style::Modifier::DIM);
-        let hint_style = Style::default().fg(theme.info);
-
-        let mut y = area.y;
-
-        // Header line
-        let header = format!(" Git Stash ({}) ", self.stash_entries.len());
-        buf.set_string(area.x, y, &header, header_style);
-        y += 1;
-
-        // Separator
-        self.render_horizontal_line(area.x, y, area.width, buf, &theme);
-        y += 1;
-
-        // Reserve last 2 rows for hint line + separator
-        let hint_y = area.y + area.height - 1;
-        let sep_y = hint_y - 1;
-        let list_height = (sep_y.saturating_sub(y)) as usize;
-
-        // List area
-        if self.stash_entries.is_empty() {
-            let msg = "  No stashes";
-            buf.set_string(area.x, y, msg, dim_style);
-        } else {
-            let visible = list_height.min(MAX_VISIBLE);
-            for row in 0..visible {
-                let entry_idx = self.stash_scroll + row;
-                let Some(entry) = self.stash_entries.get(entry_idx) else {
-                    break;
-                };
-                let is_selected = entry_idx == self.stash_cursor && is_focused;
-
-                let ref_part = format!(" {}  ", entry.ref_str);
-                let msg_x = area.x + ref_part.width() as u16;
-                let remaining = area.width.saturating_sub(ref_part.width() as u16) as usize;
-                if is_selected {
-                    // Fill entire row with selection background
-                    for dx in 0..area.width {
-                        buf[(area.x + dx, y)]
-                            .set_symbol(" ")
-                            .set_style(selected_style);
-                    }
-                    buf.set_string(area.x, y, &ref_part, selected_style);
-                    if remaining > 0 {
-                        let msg = git::truncate_right(&entry.message, remaining);
-                        buf.set_string(msg_x, y, &msg, selected_style);
-                    }
-                } else {
-                    buf.set_string(area.x, y, &ref_part, ref_style);
-                    if remaining > 0 {
-                        let msg = git::truncate_right(&entry.message, remaining);
-                        buf.set_string(msg_x, y, &msg, normal_style);
-                    }
-                }
-                y += 1;
-            }
-        }
-
-        // Separator above hints
-        self.render_horizontal_line(area.x, sep_y, area.width, buf, &theme);
-
-        // Hints row
-        buf.set_string(
-            area.x,
-            hint_y,
-            " [N]ew [P]op [A]pply [D]rop [Enter]Diff [Esc]Back",
-            hint_style,
-        );
-    }
-
     /// Render the main content area
     pub(crate) fn render_content(
         &mut self,
@@ -113,12 +25,6 @@ impl GitStatusPanel {
         border_right_x: Option<u16>,
     ) {
         if area.height < 5 {
-            return;
-        }
-
-        // Dispatch to stash view when in stash mode
-        if self.view_mode == ViewMode::Stash {
-            self.render_stash_view(area, buf, is_focused);
             return;
         }
 

@@ -3077,6 +3077,7 @@ dependencies = [
  "termide-panel-file-manager",
  "termide-panel-git-diff",
  "termide-panel-git-log",
+ "termide-panel-git-stash",
  "termide-panel-git-status",
  "termide-panel-image",
  "termide-panel-misc",
@@ -3441,6 +3442,23 @@ dependencies = [
  "termide-theme",
  "termide-ui",
  "termide-ui-render",
+ "unicode-width",
+]
+
+[[package]]
+name = "termide-panel-git-stash"
+version = "0.17.4"
+dependencies = [
+ "crossterm 0.28.1",
+ "ratatui",
+ "termide-config",
+ "termide-core",
+ "termide-git",
+ "termide-i18n",
+ "termide-modal",
+ "termide-session",
+ "termide-state",
+ "termide-theme",
  "unicode-width",
 ]
 

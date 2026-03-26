@@ -140,4 +140,13 @@ pub enum PendingAction {
         /// Stash index to drop
         index: usize,
     },
+    /// Git stash action — user chose an action from context menu (Pop/Apply/Drop/Diff)
+    GitStashAction {
+        /// Repository root path
+        repo_path: PathBuf,
+        /// Stash index
+        index: usize,
+        /// Stash ref string (e.g. "stash@{0}") for diff
+        ref_str: String,
+    },
 }

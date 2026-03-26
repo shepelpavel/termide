@@ -835,6 +835,10 @@ impl Translation for RuntimeTranslation {
         self.get_string("tools_git_log")
     }
 
+    fn tools_git_stash(&self) -> &str {
+        self.get_string("tools_git_stash")
+    }
+
     fn tools_journal(&self) -> &str {
         self.get_string("tools_journal")
     }

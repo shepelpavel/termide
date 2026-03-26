@@ -56,6 +56,7 @@ termide-panel-image = { path = "../panel-image" }
 termide-panel-git-status = { path = "../panel-git-status" }
 termide-panel-git-log = { path = "../panel-git-log" }
 termide-panel-git-diff = { path = "../panel-git-diff" }
+termide-panel-git-stash = { path = "../panel-git-stash" }
 termide-panel-diagnostics = { path = "../panel-diagnostics" }
 termide-panel-misc = { path = "../panel-misc" }
 termide-panel-operations = { path = "../panel-operations" }

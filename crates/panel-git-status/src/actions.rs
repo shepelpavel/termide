@@ -307,7 +307,7 @@ impl GitStatusPanel {
         }
 
         // Stash — always visible (shows count)
-        buttons.push(Button::Stash(self.stash_entries.len()));
+        buttons.push(Button::Stash(self.stash_count));
 
         buttons
     }
@@ -375,14 +375,13 @@ impl GitStatusPanel {
                 vec![PanelEvent::CancelGitOperation]
             }
             Button::Stash(_) => {
-                self.view_mode = crate::ViewMode::Stash;
-                self.stash_cursor = 0;
-                self.stash_scroll = 0;
-                vec![]
-            }
-            Button::Back => {
-                self.view_mode = crate::ViewMode::Status;
-                vec![]
+                if let Some(repo) = self.repo_manager.current() {
+                    vec![PanelEvent::OpenGitStash {
+                        repo_path: repo.to_path_buf(),
+                    }]
+                } else {
+                    vec![]
+                }
             }
             Button::Init => {
                 // Initialize a new git repository in the first initial path

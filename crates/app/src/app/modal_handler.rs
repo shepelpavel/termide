@@ -344,6 +344,14 @@ impl App {
                 PendingAction::GitStashDrop { repo_path, index } => {
                     self.handle_git_stash_drop(repo_path, index, value)?;
                 }
+                // Git stash action: user chose from context menu (Pop/Apply/Drop/Diff)
+                PendingAction::GitStashAction {
+                    repo_path,
+                    index,
+                    ref_str,
+                } => {
+                    self.handle_git_stash_action(repo_path, index, ref_str, value)?;
+                }
             }
         }
         Ok(())
@@ -369,6 +377,64 @@ impl App {
                 }
             }
         }
+        Ok(())
+    }
+
+    /// Handle git stash action from SelectModal context menu.
+    /// Options: 0=Pop, 1=Apply, 2=Drop, 3=Diff
+    fn handle_git_stash_action(
+        &mut self,
+        repo_path: std::path::PathBuf,
+        index: usize,
+        ref_str: String,
+        value: Box<dyn std::any::Any>,
+    ) -> Result<()> {
+        let Some(indices) = value.downcast_ref::<Vec<usize>>() else {
+            return Ok(());
+        };
+        let Some(&selected) = indices.first() else {
+            return Ok(());
+        };
+
+        match selected {
+            // Pop
+            0 => match termide_git::stash_pop(&repo_path, index) {
+                Ok(()) => {
+                    self.state.set_info(format!("Popped stash@{{{}}}", index));
+                    self.send_git_update(&repo_path);
+                }
+                Err(e) => {
+                    self.state.set_error(format!("Stash pop error: {}", e));
+                }
+            },
+            // Apply
+            1 => match termide_git::stash_apply(&repo_path, index) {
+                Ok(()) => {
+                    self.state.set_info(format!("Applied stash@{{{}}}", index));
+                    self.send_git_update(&repo_path);
+                }
+                Err(e) => {
+                    self.state.set_error(format!("Stash apply error: {}", e));
+                }
+            },
+            // Drop → chain to ConfirmModal
+            2 => {
+                let msg = format!("Drop stash@{{{}}}?", index);
+                let modal = termide_modal::ConfirmModal::new("Drop Stash", &msg);
+                self.state.set_pending_action(
+                    termide_state::PendingAction::GitStashDrop { repo_path, index },
+                    termide_modal::ActiveModal::Confirm(Box::new(modal)),
+                );
+            }
+            // Diff
+            3 => {
+                use termide_panel_git_diff::GitDiffPanel;
+                let panel = GitDiffPanel::new_for_commit(repo_path, ref_str);
+                self.add_panel(Box::new(panel));
+            }
+            _ => {}
+        }
+
         Ok(())
     }
 

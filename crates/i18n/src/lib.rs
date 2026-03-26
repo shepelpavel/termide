@@ -268,6 +268,7 @@ pub trait Translation: Send + Sync {
     fn tools_editor(&self) -> &str;
     fn tools_git_status(&self) -> &str;
     fn tools_git_log(&self) -> &str;
+    fn tools_git_stash(&self) -> &str;
     fn tools_journal(&self) -> &str;
     fn tools_diagnostics(&self) -> &str;
     fn tools_operations(&self) -> &str;

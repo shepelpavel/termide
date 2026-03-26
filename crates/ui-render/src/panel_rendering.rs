@@ -137,6 +137,7 @@ fn panel_icon(name: &str) -> &'static str {
         "git_status" => "📊",
         "git_log" => "📜",
         "git_diff" => "🔀",
+        "git_stash" => "📦",
         "image" => "🖼️",
         "diagnostics" => "⚠️",
         "outline" => "🗂️",

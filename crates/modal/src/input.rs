@@ -385,34 +385,25 @@ impl Modal for InputModal {
                 }
             }
             FocusArea::Buttons => {
-                // Handle text input keys even when on buttons
-                match handle_input_key(&mut self.input_handler, key) {
-                    InputKeyResult::Handled | InputKeyResult::TextModified => {
-                        // Switch back to input when typing
-                        self.focus = FocusArea::Input;
-                        return Ok(None);
-                    }
-                    InputKeyResult::NotHandled => {}
-                }
-
+                // Handle navigation keys first (before input handler steals Left/Right)
                 match key.code {
                     KeyCode::Left => {
                         // Move to previous button (wrap around)
                         self.selected_button = if self.selected_button == 0 { 1 } else { 0 };
-                        Ok(None)
+                        return Ok(None);
                     }
                     KeyCode::Right => {
                         // Move to next button (wrap around)
                         self.selected_button = if self.selected_button == 1 { 0 } else { 1 };
-                        Ok(None)
+                        return Ok(None);
                     }
                     KeyCode::Up => {
                         self.focus_prev();
-                        Ok(None)
+                        return Ok(None);
                     }
                     KeyCode::Enter => {
                         // Execute selected button action
-                        if self.selected_button == 0 {
+                        return if self.selected_button == 0 {
                             // OK button
                             if self.input_handler.is_empty() {
                                 Ok(Some(ModalResult::Cancelled))
@@ -424,10 +415,21 @@ impl Modal for InputModal {
                         } else {
                             // Cancel button
                             Ok(Some(ModalResult::Cancelled))
-                        }
+                        };
                     }
-                    _ => Ok(None),
+                    _ => {}
                 }
+
+                // Handle text input keys — typing switches back to input
+                match handle_input_key(&mut self.input_handler, key) {
+                    InputKeyResult::Handled | InputKeyResult::TextModified => {
+                        self.focus = FocusArea::Input;
+                        return Ok(None);
+                    }
+                    InputKeyResult::NotHandled => {}
+                }
+
+                Ok(None)
             }
         }
     }
