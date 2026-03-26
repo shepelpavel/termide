@@ -60,8 +60,8 @@ pub fn get_selected_text(screen: &RwLock<TerminalScreen>) -> String {
         let trimmed_len = result[line_start..].trim_end_matches(' ').len();
         result.truncate(line_start + trimmed_len);
 
-        // Add line break between lines (but not at the end)
-        if abs_row < end.0 {
+        // Add line break between lines, but skip for soft-wrapped lines
+        if abs_row < end.0 && !screen.get_wrapped_by_absolute(abs_row) {
             result.push('\n');
         }
     }

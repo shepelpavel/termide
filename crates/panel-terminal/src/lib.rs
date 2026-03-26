@@ -388,6 +388,12 @@ impl Terminal {
                 while screen.lines.len() < new_rows {
                     screen.lines.push_back(vec![empty_cell; new_cols]);
                 }
+                while screen.lines_wrapped.len() > new_rows {
+                    screen.lines_wrapped.pop_back();
+                }
+                while screen.lines_wrapped.len() < new_rows {
+                    screen.lines_wrapped.push_back(false);
+                }
 
                 // Adjust column count for each existing row
                 for row in screen.lines.iter_mut() {
@@ -400,6 +406,12 @@ impl Terminal {
                 }
                 while screen.alt_lines.len() < new_rows {
                     screen.alt_lines.push_back(vec![empty_cell; new_cols]);
+                }
+                while screen.alt_lines_wrapped.len() > new_rows {
+                    screen.alt_lines_wrapped.pop_back();
+                }
+                while screen.alt_lines_wrapped.len() < new_rows {
+                    screen.alt_lines_wrapped.push_back(false);
                 }
 
                 // Adjust column count for each existing row in alternate buffer

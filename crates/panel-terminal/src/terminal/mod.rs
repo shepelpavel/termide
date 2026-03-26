@@ -180,6 +180,12 @@ pub struct TerminalScreen {
     pub selection_end: Option<(usize, usize)>,
     /// History buffer (scrollback) - VecDeque for O(1) push/pop at both ends
     pub scrollback: VecDeque<Vec<Cell>>,
+    /// Soft-wrap flags for main lines (true = line wrapped due to terminal width)
+    pub lines_wrapped: VecDeque<bool>,
+    /// Soft-wrap flags for alternate screen lines
+    pub alt_lines_wrapped: VecDeque<bool>,
+    /// Soft-wrap flags for scrollback lines
+    pub scrollback_wrapped: VecDeque<bool>,
     /// View offset (0 = current screen, >0 = viewing history)
     pub scroll_offset: usize,
     /// Maximum scrollback lines
@@ -227,6 +233,9 @@ impl TerminalScreen {
             selection_start: None,
             selection_end: None,
             scrollback: std::collections::VecDeque::new(),
+            lines_wrapped: std::collections::VecDeque::from(vec![false; rows]),
+            alt_lines_wrapped: std::collections::VecDeque::from(vec![false; rows]),
+            scrollback_wrapped: std::collections::VecDeque::new(),
             scroll_offset: 0,
             max_scrollback: 10000,
             wrap_pending: false,
@@ -257,6 +266,38 @@ impl TerminalScreen {
         }
     }
 
+    /// Get mutable reference to active wrapped-flags buffer
+    pub fn active_wrapped_mut(&mut self) -> &mut std::collections::VecDeque<bool> {
+        if self.use_alt_screen {
+            &mut self.alt_lines_wrapped
+        } else {
+            &mut self.lines_wrapped
+        }
+    }
+
+    /// Check if a line (by absolute row index) was soft-wrapped
+    pub fn get_wrapped_by_absolute(&self, abs_row: usize) -> bool {
+        if self.use_alt_screen {
+            self.alt_lines_wrapped
+                .get(abs_row)
+                .copied()
+                .unwrap_or(false)
+        } else {
+            let scrollback_len = self.scrollback_wrapped.len();
+            if abs_row < scrollback_len {
+                self.scrollback_wrapped
+                    .get(abs_row)
+                    .copied()
+                    .unwrap_or(false)
+            } else {
+                self.lines_wrapped
+                    .get(abs_row - scrollback_len)
+                    .copied()
+                    .unwrap_or(false)
+            }
+        }
+    }
+
     /// Switch to alternate screen
     pub fn switch_to_alt_screen(&mut self) {
         if !self.use_alt_screen {
@@ -270,6 +311,7 @@ impl TerminalScreen {
             };
             self.alt_lines =
                 std::collections::VecDeque::from(vec![vec![empty_cell; self.cols]; self.rows]);
+            self.alt_lines_wrapped = std::collections::VecDeque::from(vec![false; self.rows]);
             self.cursor = (0, 0);
         }
     }
@@ -288,6 +330,11 @@ impl TerminalScreen {
         // If there was a deferred wrap - execute it now
         if self.wrap_pending {
             self.wrap_pending = false;
+            // Mark current line as soft-wrapped (not a real newline)
+            let row = self.cursor.0;
+            if let Some(w) = self.active_wrapped_mut().get_mut(row) {
+                *w = true;
+            }
             self.cursor.1 = 0;
             if self.cursor.0 >= self.scroll_bottom {
                 self.scroll_up();
@@ -318,6 +365,11 @@ impl TerminalScreen {
     /// NOTE: LF does NOT reset column position - only CR does that
     pub fn newline(&mut self) {
         self.wrap_pending = false;
+        // Explicit newline — ensure current line is NOT marked as soft-wrapped
+        let row = self.cursor.0;
+        if let Some(w) = self.active_wrapped_mut().get_mut(row) {
+            *w = false;
+        }
         // Do NOT reset cursor.1 here - LF only moves down, CR resets column
         if self.cursor.0 >= self.scroll_bottom {
             // At or below scroll region bottom - scroll
@@ -350,21 +402,38 @@ impl TerminalScreen {
                 let top_line = self.lines[0].clone();
                 self.scrollback.push_back(top_line);
 
+                // Save wrapped flag to scrollback
+                let top_wrapped = self.lines_wrapped.front().copied().unwrap_or(false);
+                self.scrollback_wrapped.push_back(top_wrapped);
+
                 // Limit scrollback size - O(1) with VecDeque
                 if self.scrollback.len() > self.max_scrollback {
                     self.scrollback.pop_front();
+                }
+                if self.scrollback_wrapped.len() > self.max_scrollback {
+                    self.scrollback_wrapped.pop_front();
                 }
             }
 
             let buffer = self.active_buffer_mut();
             buffer.pop_front(); // O(1) with VecDeque
             buffer.push_back(vec![empty_cell; cols]);
+
+            let wrapped = self.active_wrapped_mut();
+            wrapped.pop_front();
+            wrapped.push_back(false);
         } else {
             // Region scroll - remove line at top of region, insert at bottom
             let buffer = self.active_buffer_mut();
             if top < buffer.len() && bottom < buffer.len() {
                 buffer.remove(top);
                 buffer.insert(bottom, vec![empty_cell; cols]);
+            }
+
+            let wrapped = self.active_wrapped_mut();
+            if top < wrapped.len() && bottom < wrapped.len() {
+                wrapped.remove(top);
+                wrapped.insert(bottom, false);
             }
         }
     }
@@ -401,8 +470,9 @@ impl TerminalScreen {
         };
 
         let buffer = self.active_buffer_mut();
+        let is_full_screen = top == 0 && bottom == buffer.len().saturating_sub(1);
         // Full-screen scroll
-        if top == 0 && bottom == buffer.len().saturating_sub(1) {
+        if is_full_screen {
             buffer.pop_back();
             buffer.push_front(vec![empty_cell; cols]);
         } else {
@@ -411,6 +481,17 @@ impl TerminalScreen {
                 buffer.remove(bottom);
             }
             buffer.insert(top, vec![empty_cell; cols]);
+        }
+
+        let wrapped = self.active_wrapped_mut();
+        if is_full_screen {
+            wrapped.pop_back();
+            wrapped.push_front(false);
+        } else {
+            if bottom < wrapped.len() {
+                wrapped.remove(bottom);
+            }
+            wrapped.insert(top, false);
         }
     }
 
@@ -515,15 +596,19 @@ impl TerminalScreen {
         };
 
         let buffer = self.active_buffer_mut();
-
-        // Add missing rows
         while buffer.len() < rows {
             buffer.push_back(vec![empty_cell; cols]);
         }
-
-        // Remove excess rows
         while buffer.len() > rows {
             buffer.pop_back();
+        }
+
+        let wrapped = self.active_wrapped_mut();
+        while wrapped.len() < rows {
+            wrapped.push_back(false);
+        }
+        while wrapped.len() > rows {
+            wrapped.pop_back();
         }
     }
 }

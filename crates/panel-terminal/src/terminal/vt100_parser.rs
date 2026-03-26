@@ -256,6 +256,7 @@ impl Perform for VtPerformer {
                             // Clear scrollback only for main screen
                             if !is_alt {
                                 screen.scrollback.clear();
+                                screen.scrollback_wrapped.clear();
                             }
                             screen.cursor = (0, 0);
                             // Force cache invalidation to show cleared screen immediately
@@ -419,6 +420,21 @@ impl Perform for VtPerformer {
                                 buffer.insert(row, vec![empty_cell; cols]);
                             }
                         }
+
+                        // Mirror on wrapped flags
+                        let wrapped = screen.active_wrapped_mut();
+                        for _ in 0..effective_n {
+                            if bottom < wrapped.len() {
+                                wrapped.remove(bottom);
+                            }
+                        }
+                        for _ in 0..effective_n {
+                            if row == 0 {
+                                wrapped.push_front(false);
+                            } else {
+                                wrapped.insert(row, false);
+                            }
+                        }
                     }
                     // Ensure buffer size invariant after IL operation
                     screen.ensure_buffer_size();
@@ -461,6 +477,22 @@ impl Perform for VtPerformer {
                             let insert_pos = bottom.min(buffer.len());
                             buffer.insert(insert_pos, vec![empty_cell; cols]);
                         }
+
+                        // Mirror on wrapped flags
+                        let wrapped = screen.active_wrapped_mut();
+                        for _ in 0..effective_n {
+                            if row < wrapped.len() {
+                                if row == 0 {
+                                    wrapped.pop_front();
+                                } else {
+                                    wrapped.remove(row);
+                                }
+                            }
+                        }
+                        for _ in 0..effective_n {
+                            let insert_pos = bottom.min(wrapped.len());
+                            wrapped.insert(insert_pos, false);
+                        }
                     }
                     // Ensure buffer size invariant after DL operation
                     screen.ensure_buffer_size();
@@ -495,6 +527,13 @@ impl Perform for VtPerformer {
                             }
                             buffer.push_back(vec![empty_cell; cols]);
                         }
+                        let wrapped = screen.active_wrapped_mut();
+                        for _ in 0..effective_n {
+                            if !wrapped.is_empty() {
+                                wrapped.pop_front();
+                            }
+                            wrapped.push_back(false);
+                        }
                     } else {
                         // Region scroll
                         let buffer = screen.active_buffer_mut();
@@ -504,6 +543,14 @@ impl Perform for VtPerformer {
                             }
                             let insert_pos = bottom.min(buffer.len());
                             buffer.insert(insert_pos, vec![empty_cell; cols]);
+                        }
+                        let wrapped = screen.active_wrapped_mut();
+                        for _ in 0..effective_n {
+                            if top < wrapped.len() {
+                                wrapped.remove(top);
+                            }
+                            let insert_pos = bottom.min(wrapped.len());
+                            wrapped.insert(insert_pos, false);
                         }
                     }
                     // Ensure buffer size invariant after SU operation
@@ -540,6 +587,13 @@ impl Perform for VtPerformer {
                             }
                             buffer.push_front(vec![empty_cell; cols]);
                         }
+                        let wrapped = screen.active_wrapped_mut();
+                        for _ in 0..effective_n {
+                            if wrapped.len() >= rows {
+                                wrapped.pop_back();
+                            }
+                            wrapped.push_front(false);
+                        }
                     } else {
                         // Region scroll
                         let buffer = screen.active_buffer_mut();
@@ -548,6 +602,13 @@ impl Perform for VtPerformer {
                                 buffer.remove(bottom);
                             }
                             buffer.insert(top, vec![empty_cell; cols]);
+                        }
+                        let wrapped = screen.active_wrapped_mut();
+                        for _ in 0..effective_n {
+                            if bottom < wrapped.len() {
+                                wrapped.remove(bottom);
+                            }
+                            wrapped.insert(top, false);
                         }
                     }
                     // Ensure buffer size invariant after SD operation
