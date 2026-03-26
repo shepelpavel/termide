@@ -105,8 +105,8 @@ impl Modal for SelectModal {
 
                 let style = if idx == self.cursor {
                     Style::default()
-                        .fg(theme.fg)
-                        .bg(theme.accented_fg)
+                        .fg(theme.bg)
+                        .bg(theme.fg)
                         .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(theme.fg)
