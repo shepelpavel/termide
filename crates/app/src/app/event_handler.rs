@@ -1121,7 +1121,8 @@ impl App {
         }
     }
 
-    /// Handle OpenGitDiff event - open git diff panel for repository
+    /// Handle OpenGitDiff event - open git diff panel for repository.
+    /// Reuses existing panel if one with matching arguments is already open.
     fn event_open_git_diff(
         &mut self,
         repo_path: PathBuf,
@@ -1138,6 +1139,23 @@ impl App {
         );
         self.close_help_panels();
 
+        // Check if a matching GitDiffPanel is already open
+        let file_filter_str = file_path.as_ref().map(|p| p.to_string_lossy().to_string());
+        for (group_idx, group) in self.layout_manager.panel_groups.iter_mut().enumerate() {
+            for (panel_idx, panel) in group.panels().iter().enumerate() {
+                if let Some(diff) = panel.as_any().downcast_ref::<GitDiffPanel>() {
+                    if diff.repo_path() == repo_path
+                        && diff.commit_hash() == commit_hash.as_deref()
+                        && diff.file_filter() == file_filter_str.as_deref()
+                    {
+                        self.layout_manager.focus = group_idx;
+                        group.set_expanded(panel_idx);
+                        return Ok(());
+                    }
+                }
+            }
+        }
+
         let panel = match (&commit_hash, &file_path) {
             (_, Some(file)) => GitDiffPanel::new_with_file_filter(repo_path, file.clone()),
             (Some(hash), None) => GitDiffPanel::new_for_commit(repo_path, hash.clone()),
@@ -1149,15 +1167,15 @@ impl App {
         Ok(())
     }
 
-    /// Handle OpenGitStash event - open git stash panel for repository
+    /// Handle OpenGitStash event - open git stash panel for repository (singleton)
     fn event_open_git_stash(&mut self, repo_path: PathBuf) -> Result<()> {
-        use termide_panel_git_stash::GitStashPanel;
-
         log::debug!("Opening Git Stash panel for {:?}", repo_path);
         self.close_help_panels();
 
-        let panel = GitStashPanel::new(repo_path);
-        self.add_panel(Box::new(panel));
+        if !self.find_and_focus_panel_by_name("git_stash") {
+            let panel = termide_panel_git_stash::GitStashPanel::new(repo_path);
+            self.add_panel(Box::new(panel));
+        }
 
         Ok(())
     }

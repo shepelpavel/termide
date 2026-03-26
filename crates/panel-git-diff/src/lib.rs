@@ -154,6 +154,21 @@ pub struct GitDiffPanel {
 }
 
 impl GitDiffPanel {
+    /// Repository path.
+    pub fn repo_path(&self) -> &Path {
+        &self.repo_path
+    }
+
+    /// Commit hash (None = working directory changes).
+    pub fn commit_hash(&self) -> Option<&str> {
+        self.commit_hash.as_deref()
+    }
+
+    /// File path filter (None = all files).
+    pub fn file_filter(&self) -> Option<&str> {
+        self.file_filter.as_deref()
+    }
+
     /// Create a new Git Diff panel for working directory changes
     pub fn new(repo_path: PathBuf) -> Self {
         let branch = git::get_current_branch(&repo_path);
