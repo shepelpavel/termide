@@ -42,6 +42,7 @@
   - Editor — текстовый редактор
   - Git Status — панель статуса git
   - Git Log — история коммитов
+  - Git Stash — панель управления стэшами
   - Journal — журнал приложения
   - Diagnostics — диагностика LSP
   - Operations — фоновые операции

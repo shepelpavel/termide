@@ -28,14 +28,14 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 ## Features
 
 - **Terminal-based IDE** - Syntax highlighting for 21 languages, word navigation (Ctrl+Left/Right), paragraph/symbol navigation (Ctrl+Up/Down), toggle comment (Ctrl+/), auto-indentation, auto-close brackets
-- **LSP Support** - Code completion with rust-analyzer, pylsp, typescript-language-server, and other LSP servers
+- **LSP Support** - Code completion, Find References (Shift+F12), Rename Symbol (F2), Go to Definition (Ctrl+Click), diagnostics
 - **Smart File Manager** - Tree view with expandable directories, nested git status, batch operations, file/content search (glob/regex), in-tree incremental search
 - **Integrated Terminal** - Full PTY support, VT100 escape sequences, mouse tracking
-- **Git Integration** - Status panel, commit log with ASCII graph, staging/unstaging, branch switching
+- **Git Integration** - Status panel, commit log with ASCII graph, staging/unstaging, branch switching, stash management, inline blame (Alt+B)
 - **Multi-panel Layout** - Accordion system with smart auto-stacking; new panels open after the currently active one
 - **Image Viewer** - Native graphics in Kitty, WezTerm, iTerm2, Ghostty, foot terminals
 - **External Apps** - Open files with system default applications (Shift+Enter)
-- **25 Built-in Themes** - Dark, light, retro, and cinematic themes (Dracula, Nord, Monokai, Solarized, Matrix, Pip-Boy, etc.)
+- **38 Built-in Themes** - Dark, light, retro, and cinematic themes (Dracula, Nord, Monokai, Solarized, Matrix, Pip-Boy, Blue Sky, Pinky Pie, etc.)
 - **Custom Themes** - Create your own themes in TOML format
 - **15 UI Languages** - Bengali, Chinese, English, French, German, Hindi, Indonesian, Japanese, Korean, Portuguese, Russian, Spanish, Thai, Turkish, Vietnamese
 - **Session Management** - Auto-save and restore panel layouts
@@ -48,6 +48,7 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 - **Vim Mode** - Optional Vim-style editing with Cyrillic keyboard support
 - **Directory Switcher** - Quick directory switching with Ctrl+P
 - **Bookmarks** - Save and organize frequently used locations
+- **Command Palette** - Quick access to all commands (Ctrl+Shift+P)
 
 ## Installation
 
@@ -64,27 +65,27 @@ Download the latest release for your platform from [GitHub Releases](https://git
 
 ```bash
 # Linux x86_64 (also works in WSL)
-wget https://github.com/termide/termide/releases/latest/download/termide-0.17.4-x86_64-unknown-linux-gnu.tar.gz
-tar xzf termide-0.17.4-x86_64-unknown-linux-gnu.tar.gz
+wget https://github.com/termide/termide/releases/latest/download/termide-0.18.0-x86_64-unknown-linux-gnu.tar.gz
+tar xzf termide-0.18.0-x86_64-unknown-linux-gnu.tar.gz
 ./termide
 
 # macOS Intel (x86_64)
-curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.17.4-x86_64-apple-darwin.tar.gz
-tar xzf termide-0.17.4-x86_64-apple-darwin.tar.gz
+curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.18.0-x86_64-apple-darwin.tar.gz
+tar xzf termide-0.18.0-x86_64-apple-darwin.tar.gz
 ./termide
 
 # macOS Apple Silicon (ARM64)
-curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.17.4-aarch64-apple-darwin.tar.gz
-tar xzf termide-0.17.4-aarch64-apple-darwin.tar.gz
+curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.18.0-aarch64-apple-darwin.tar.gz
+tar xzf termide-0.18.0-aarch64-apple-darwin.tar.gz
 ./termide
 
 # Linux ARM64 (Raspberry Pi, ARM servers)
-wget https://github.com/termide/termide/releases/latest/download/termide-0.17.4-aarch64-unknown-linux-gnu.tar.gz
-tar xzf termide-0.17.4-aarch64-unknown-linux-gnu.tar.gz
+wget https://github.com/termide/termide/releases/latest/download/termide-0.18.0-aarch64-unknown-linux-gnu.tar.gz
+tar xzf termide-0.18.0-aarch64-unknown-linux-gnu.tar.gz
 ./termide
 
 # Windows x86_64 (download .zip from Releases, extract, run in Windows Terminal)
-# https://github.com/termide/termide/releases/latest/download/termide-0.17.4-x86_64-pc-windows-msvc.zip
+# https://github.com/termide/termide/releases/latest/download/termide-0.18.0-x86_64-pc-windows-msvc.zip
 ```
 
 </details>
@@ -96,8 +97,8 @@ Download and install the `.deb` package from [GitHub Releases](https://github.co
 
 ```bash
 # x86_64 only (ARM64 use tar.gz above)
-wget https://github.com/termide/termide/releases/latest/download/termide_0.17.4-1_amd64.deb
-sudo dpkg -i termide_0.17.4-1_amd64.deb
+wget https://github.com/termide/termide/releases/latest/download/termide_0.18.0-1_amd64.deb
+sudo dpkg -i termide_0.18.0-1_amd64.deb
 ```
 
 </details>
@@ -109,8 +110,8 @@ Download and install the `.rpm` package from [GitHub Releases](https://github.co
 
 ```bash
 # x86_64 only (ARM64 use tar.gz above)
-wget https://github.com/termide/termide/releases/latest/download/termide-0.17.4-1.x86_64.rpm
-sudo rpm -i termide-0.17.4-1.x86_64.rpm
+wget https://github.com/termide/termide/releases/latest/download/termide-0.18.0-1.x86_64.rpm
+sudo rpm -i termide-0.18.0-1.x86_64.rpm
 ```
 
 </details>

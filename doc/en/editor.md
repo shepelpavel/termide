@@ -338,6 +338,22 @@ args = ["--stdio"]
 root_markers = ["package.json", "tsconfig.json"]
 ```
 
+### Find References
+
+| Shortcut           | Action                                     |
+|-------------------|--------------------------------------------|
+| `Shift+F12`       | Find all references to symbol under cursor |
+
+Opens a dedicated References panel listing all locations where the symbol is used. Click any reference to navigate to it.
+
+### Rename Symbol
+
+| Shortcut           | Action                                     |
+|-------------------|--------------------------------------------|
+| `F2`              | Rename symbol under cursor                 |
+
+Opens an input dialog to enter the new name. All occurrences across the project are updated via LSP WorkspaceEdit.
+
 ### Server Status Indicator
 
 When opening a file with LSP support, the panel title shows a loading spinner:

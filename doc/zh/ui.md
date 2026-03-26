@@ -42,6 +42,7 @@
   - Editor — 文本编辑器面板
   - Git Status — Git 状态面板
   - Git Log — 提交历史面板
+  - Git Stash — Git 暂存管理面板
   - Journal — 应用日志面板
   - Diagnostics — LSP 诊断面板
   - Operations — 后台操作面板

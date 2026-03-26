@@ -28,14 +28,14 @@
 ## 功能特性
 
 - **基于终端的 IDE** - 支持 21 种语言的语法高亮、单词导航（Ctrl+Left/Right）、段落/符号导航（Ctrl+Up/Down）、自动缩进、自动关闭括号
-- **LSP 支持** - 通过 rust-analyzer、pylsp、typescript-language-server 及其他 LSP 服务器实现代码补全
+- **LSP 支持** - 代码补全、查找引用、重命名符号、跳转到定义，通过 rust-analyzer、pylsp、typescript-language-server 及其他 LSP 服务器实现
 - **智能文件管理器** - 可展开目录的树形视图、嵌套 Git 状态、批量操作、文件/内容搜索（glob/正则表达式）、树内增量搜索
 - **集成终端** - 完整的 PTY 支持、VT100 转义序列、鼠标跟踪
-- **Git 集成** - 状态面板、带 ASCII 图形的提交日志、暂存/取消暂存、分支切换
+- **Git 集成** - 状态面板、带 ASCII 图形的提交日志、暂存/取消暂存、分支切换、暂存管理（stash）、内联 blame 注解
 - **多面板布局** - 手风琴系统，智能自动堆叠
 - **图片查看器** - 在 Kitty、WezTerm、iTerm2、Ghostty、foot 终端中原生渲染图形
 - **外部应用** - 使用系统默认应用程序打开文件（Shift+Enter）
-- **25 款内置主题** - 暗色、亮色、复古和电影主题（Dracula、Nord、Monokai、Solarized、Matrix、Pip-Boy 等）
+- **38 款内置主题** - 暗色、亮色、复古和电影主题（Dracula、Nord、Monokai、Solarized、Matrix、Pip-Boy 等）
 - **自定义主题** - 使用 TOML 格式创建自己的主题
 - **15 种界面语言** - 孟加拉语、中文、英语、法语、德语、印地语、印尼语、日语、韩语、葡萄牙语、俄语、西班牙语、泰语、土耳其语、越南语
 - **会话管理** - 自动保存和恢复面板布局
@@ -64,27 +64,27 @@
 
 ```bash
 # Linux x86_64（也适用于 WSL）
-wget https://github.com/termide/termide/releases/latest/download/termide-0.17.4-x86_64-unknown-linux-gnu.tar.gz
-tar xzf termide-0.17.4-x86_64-unknown-linux-gnu.tar.gz
+wget https://github.com/termide/termide/releases/latest/download/termide-0.18.0-x86_64-unknown-linux-gnu.tar.gz
+tar xzf termide-0.18.0-x86_64-unknown-linux-gnu.tar.gz
 ./termide
 
 # macOS Intel (x86_64)
-curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.17.4-x86_64-apple-darwin.tar.gz
-tar xzf termide-0.17.4-x86_64-apple-darwin.tar.gz
+curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.18.0-x86_64-apple-darwin.tar.gz
+tar xzf termide-0.18.0-x86_64-apple-darwin.tar.gz
 ./termide
 
 # macOS Apple Silicon (ARM64)
-curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.17.4-aarch64-apple-darwin.tar.gz
-tar xzf termide-0.17.4-aarch64-apple-darwin.tar.gz
+curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.18.0-aarch64-apple-darwin.tar.gz
+tar xzf termide-0.18.0-aarch64-apple-darwin.tar.gz
 ./termide
 
 # Linux ARM64（树莓派、ARM 服务器）
-wget https://github.com/termide/termide/releases/latest/download/termide-0.17.4-aarch64-unknown-linux-gnu.tar.gz
-tar xzf termide-0.17.4-aarch64-unknown-linux-gnu.tar.gz
+wget https://github.com/termide/termide/releases/latest/download/termide-0.18.0-aarch64-unknown-linux-gnu.tar.gz
+tar xzf termide-0.18.0-aarch64-unknown-linux-gnu.tar.gz
 ./termide
 
 # Windows x86_64（从 Releases 下载 .zip，解压后在 Windows Terminal 中运行）
-# https://github.com/termide/termide/releases/latest/download/termide-0.17.4-x86_64-pc-windows-msvc.zip
+# https://github.com/termide/termide/releases/latest/download/termide-0.18.0-x86_64-pc-windows-msvc.zip
 ```
 
 </details>
@@ -96,8 +96,8 @@ tar xzf termide-0.17.4-aarch64-unknown-linux-gnu.tar.gz
 
 ```bash
 # 仅限 x86_64（ARM64 请使用上面的 tar.gz）
-wget https://github.com/termide/termide/releases/latest/download/termide_0.17.4-1_amd64.deb
-sudo dpkg -i termide_0.17.4-1_amd64.deb
+wget https://github.com/termide/termide/releases/latest/download/termide_0.18.0-1_amd64.deb
+sudo dpkg -i termide_0.18.0-1_amd64.deb
 ```
 
 </details>
@@ -109,8 +109,8 @@ sudo dpkg -i termide_0.17.4-1_amd64.deb
 
 ```bash
 # 仅限 x86_64（ARM64 请使用上面的 tar.gz）
-wget https://github.com/termide/termide/releases/latest/download/termide-0.17.4-1.x86_64.rpm
-sudo rpm -i termide-0.17.4-1.x86_64.rpm
+wget https://github.com/termide/termide/releases/latest/download/termide-0.18.0-1.x86_64.rpm
+sudo rpm -i termide-0.18.0-1.x86_64.rpm
 ```
 
 </details>

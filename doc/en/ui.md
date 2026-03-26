@@ -42,6 +42,7 @@ Menu activation/deactivation and each item can be accessed by mouse click or [ke
   - Editor — text editor panel
   - Git Status — git status panel
   - Git Log — commit history panel
+  - Git Stash — git stash management panel
   - Journal — application log panel
   - Diagnostics — LSP diagnostics panel
   - Operations — background operations panel
