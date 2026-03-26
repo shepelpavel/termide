@@ -13,6 +13,9 @@ use std::time::{Duration, Instant};
 use ssh2::{OpenFlags, OpenType, Session, Sftp};
 
 use crate::error::{VfsError, VfsResult};
+
+/// Polling interval for pause/cancel flag checks during SFTP operations.
+const PAUSE_POLL_INTERVAL: Duration = Duration::from_millis(100);
 use crate::traits::{DiskSpace, VfsProvider};
 use crate::types::{
     AuthMethod, ConnectOptions, ConnectionState, DownloadProgress, UploadProgress,
@@ -548,7 +551,7 @@ impl SftpProvider {
             if cancel_flag.load(Ordering::Relaxed) {
                 return Err(VfsError::Cancelled);
             }
-            std::thread::sleep(Duration::from_millis(100));
+            std::thread::sleep(PAUSE_POLL_INTERVAL);
         }
 
         // Create local directory
@@ -573,7 +576,7 @@ impl SftpProvider {
                 if cancel_flag.load(Ordering::Relaxed) {
                     return Err(VfsError::Cancelled);
                 }
-                std::thread::sleep(Duration::from_millis(100));
+                std::thread::sleep(PAUSE_POLL_INTERVAL);
             }
 
             if let Some(name) = entry_path.file_name() {
@@ -633,7 +636,7 @@ impl SftpProvider {
                             if cancel_flag.load(Ordering::Relaxed) {
                                 return Err(VfsError::Cancelled);
                             }
-                            std::thread::sleep(Duration::from_millis(100));
+                            std::thread::sleep(PAUSE_POLL_INTERVAL);
                         }
 
                         // Acquire lock, open file, seek to current position
@@ -770,7 +773,7 @@ impl SftpProvider {
             if cancel_flag.load(Ordering::Relaxed) {
                 return Err(VfsError::Cancelled);
             }
-            std::thread::sleep(Duration::from_millis(100));
+            std::thread::sleep(PAUSE_POLL_INTERVAL);
         }
 
         // Create remote directory (brief lock)
@@ -800,7 +803,7 @@ impl SftpProvider {
                 if cancel_flag.load(Ordering::Relaxed) {
                     return Err(VfsError::Cancelled);
                 }
-                std::thread::sleep(Duration::from_millis(100));
+                std::thread::sleep(PAUSE_POLL_INTERVAL);
             }
 
             let entry = entry.map_err(VfsError::Io)?;
@@ -862,7 +865,7 @@ impl SftpProvider {
                         if cancel_flag.load(Ordering::Relaxed) {
                             return Err(VfsError::Cancelled);
                         }
-                        std::thread::sleep(Duration::from_millis(100));
+                        std::thread::sleep(PAUSE_POLL_INTERVAL);
                     }
 
                     // Acquire lock
@@ -1481,7 +1484,7 @@ impl VfsProvider for SftpProvider {
                             if cancel_flag_clone.load(Ordering::Relaxed) {
                                 return Err(VfsError::Cancelled);
                             }
-                            std::thread::sleep(Duration::from_millis(100));
+                            std::thread::sleep(PAUSE_POLL_INTERVAL);
                         }
 
                         // Acquire lock and open/reopen remote file
@@ -1668,7 +1671,7 @@ impl VfsProvider for SftpProvider {
                             if cancel_flag_clone.load(Ordering::Relaxed) {
                                 return Err(VfsError::Cancelled);
                             }
-                            std::thread::sleep(Duration::from_millis(100));
+                            std::thread::sleep(PAUSE_POLL_INTERVAL);
                         }
 
                         // Acquire lock and open/reopen remote file

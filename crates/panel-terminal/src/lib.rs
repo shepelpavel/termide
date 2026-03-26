@@ -1620,45 +1620,23 @@ impl Panel for Terminal {
                 let _ = self.send_input(b"\x1b");
             }
             KeyCode::F(n) => {
-                // F-keys for xterm-256color
-                match n {
-                    1 => {
-                        let _ = self.send_input(b"\x1bOP");
-                    }
-                    2 => {
-                        let _ = self.send_input(b"\x1bOQ");
-                    }
-                    3 => {
-                        let _ = self.send_input(b"\x1bOR");
-                    }
-                    4 => {
-                        let _ = self.send_input(b"\x1bOS");
-                    }
-                    5 => {
-                        let _ = self.send_input(b"\x1b[15~");
-                    }
-                    6 => {
-                        let _ = self.send_input(b"\x1b[17~");
-                    }
-                    7 => {
-                        let _ = self.send_input(b"\x1b[18~");
-                    }
-                    8 => {
-                        let _ = self.send_input(b"\x1b[19~");
-                    }
-                    9 => {
-                        let _ = self.send_input(b"\x1b[20~");
-                    }
-                    10 => {
-                        let _ = self.send_input(b"\x1b[21~");
-                    }
-                    11 => {
-                        let _ = self.send_input(b"\x1b[23~");
-                    }
-                    12 => {
-                        let _ = self.send_input(b"\x1b[24~");
-                    }
-                    _ => {}
+                // F-keys escape sequences for xterm-256color
+                const FKEY_SEQS: &[&[u8]] = &[
+                    b"\x1bOP",   // F1
+                    b"\x1bOQ",   // F2
+                    b"\x1bOR",   // F3
+                    b"\x1bOS",   // F4
+                    b"\x1b[15~", // F5
+                    b"\x1b[17~", // F6
+                    b"\x1b[18~", // F7
+                    b"\x1b[19~", // F8
+                    b"\x1b[20~", // F9
+                    b"\x1b[21~", // F10
+                    b"\x1b[23~", // F11
+                    b"\x1b[24~", // F12
+                ];
+                if let Some(seq) = FKEY_SEQS.get((n as usize).wrapping_sub(1)) {
+                    let _ = self.send_input(seq);
                 }
             }
             _ => {}
