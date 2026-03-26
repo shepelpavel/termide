@@ -296,7 +296,7 @@ impl App {
         Ok(())
     }
 
-    /// Handle OpenFile event - open file in editor
+    /// Handle OpenFile event - open file in editor (reuse existing tab if already open)
     fn event_open_file(&mut self, file_path: PathBuf) -> Result<()> {
         self.close_help_panels();
         log::debug!(
@@ -306,6 +306,12 @@ impl App {
                 .and_then(|n| n.to_str())
                 .unwrap_or("?")
         );
+
+        // Check if the file is already open — focus it instead of creating a duplicate
+        if self.focus_editor_by_path(&file_path) {
+            return Ok(());
+        }
+
         let _ = self.open_editor_for_file(file_path);
         Ok(())
     }

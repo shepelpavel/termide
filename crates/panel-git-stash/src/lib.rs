@@ -243,7 +243,9 @@ impl Panel for GitStashPanel {
     }
 
     fn to_session(&self, _session_dir: &Path) -> Option<SessionPanel> {
-        None // Stash panel is transient — not saved in session
+        Some(SessionPanel::GitStash {
+            repo_path: self.repo_path.clone(),
+        })
     }
 
     fn as_any(&self) -> &dyn Any {

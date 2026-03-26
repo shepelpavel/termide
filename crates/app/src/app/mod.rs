@@ -757,6 +757,24 @@ impl App {
         }
         false
     }
+
+    /// Find an editor with the given file path and focus it. Returns true if found.
+    #[allow(deprecated)]
+    fn focus_editor_by_path(&mut self, path: &std::path::Path) -> bool {
+        use crate::panel_ext::PanelExt;
+        for (group_idx, group) in self.layout_manager.panel_groups.iter_mut().enumerate() {
+            for (panel_idx, panel) in group.panels().iter().enumerate() {
+                if let Some(editor) = panel.as_editor() {
+                    if editor.file_path() == Some(path) {
+                        self.layout_manager.focus = group_idx;
+                        group.set_expanded(panel_idx);
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
 }
 
 impl Default for App {
