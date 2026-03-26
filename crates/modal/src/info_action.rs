@@ -373,8 +373,8 @@ impl Modal for InfoActionModal {
                     .add_modifier(Modifier::BOLD)
             } else if is_selected {
                 Style::default()
-                    .fg(theme.fg)
-                    .bg(theme.accented_fg)
+                    .fg(theme.bg)
+                    .bg(theme.fg)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(theme.fg)

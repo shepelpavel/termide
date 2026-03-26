@@ -1421,13 +1421,8 @@ impl Panel for FileManager {
                         .iter()
                         .any(|p| git_root.starts_with(p) || p.starts_with(git_root));
                     if should_update {
-                        // If at repo root, reload directory to update .git metadata
-                        if self.current_path == *git_root {
-                            let _ = self.reload_directory();
-                            return CommandResult::NeedsRedraw(true);
-                        }
-                        // Otherwise just refresh git status colors
-                        self.refresh_git_status();
+                        // Reload directory to pick up new/deleted files and git status
+                        let _ = self.reload_directory();
                         return CommandResult::NeedsRedraw(true);
                     }
                 }

@@ -424,8 +424,8 @@ impl Modal for InfoModal {
         let close_button = Line::from(vec![Span::styled(
             format!("[ {} ]", t.ui_close()),
             Style::default()
-                .fg(theme.fg)
-                .bg(theme.accented_fg)
+                .fg(theme.bg)
+                .bg(theme.fg)
                 .add_modifier(Modifier::BOLD),
         )]);
 

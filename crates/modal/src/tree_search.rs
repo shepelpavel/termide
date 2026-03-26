@@ -710,8 +710,8 @@ impl TreeSearchModal {
 
                 let style = if is_selected {
                     Style::default()
-                        .fg(theme.fg)
-                        .bg(theme.accented_fg)
+                        .fg(theme.bg)
+                        .bg(theme.fg)
                         .add_modifier(Modifier::BOLD)
                 } else {
                     self.get_git_style(node.git_status, theme)
@@ -783,8 +783,8 @@ impl TreeSearchModal {
                 let prefix = &self.tree_prefixes[idx];
                 let style = if is_selected {
                     Style::default()
-                        .fg(theme.fg)
-                        .bg(theme.accented_fg)
+                        .fg(theme.bg)
+                        .bg(theme.fg)
                         .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(theme.fg)
@@ -826,8 +826,8 @@ impl TreeSearchModal {
                 );
                 let path_style = if is_selected {
                     Style::default()
-                        .fg(theme.fg)
-                        .bg(theme.accented_fg)
+                        .fg(theme.bg)
+                        .bg(theme.fg)
                         .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(theme.fg)
@@ -935,8 +935,8 @@ impl TreeSearchModal {
                 let prefix = &self.tree_prefixes[idx];
                 let style = if is_selected {
                     Style::default()
-                        .fg(theme.fg)
-                        .bg(theme.accented_fg)
+                        .fg(theme.bg)
+                        .bg(theme.fg)
                         .add_modifier(Modifier::BOLD)
                 } else {
                     self.get_git_style(node.git_status, theme)

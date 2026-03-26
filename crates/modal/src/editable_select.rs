@@ -319,8 +319,8 @@ impl Modal for EditableSelectModal {
 
                     let style = if idx == selected_idx {
                         Style::default()
-                            .fg(theme.fg)
-                            .bg(theme.accented_fg)
+                            .fg(theme.bg)
+                            .bg(theme.fg)
                             .add_modifier(Modifier::BOLD)
                     } else {
                         Style::default().fg(theme.fg)
