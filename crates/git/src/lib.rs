@@ -75,7 +75,9 @@ pub fn find_repo_root(path: &Path) -> Option<PathBuf> {
     let mut current = path;
     loop {
         if current.join(".git").exists() {
-            return Some(current.to_path_buf());
+            // Canonicalize to resolve symlinks/bind-mounts so that all
+            // consumers (panels, watcher, diff) use consistent paths.
+            return Some(std::fs::canonicalize(current).unwrap_or_else(|_| current.to_path_buf()));
         }
         current = current.parent()?;
     }

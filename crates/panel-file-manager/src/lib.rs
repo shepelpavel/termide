@@ -199,6 +199,8 @@ impl FileManager {
 
     /// Create a new smart file manager with the specified path
     pub fn new_with_path(current_path: PathBuf) -> Self {
+        // Canonicalize to resolve symlinks — ensures paths match notify events
+        let current_path = std::fs::canonicalize(&current_path).unwrap_or(current_path);
         let vfs = VfsState::with_path(termide_vfs::VfsPath::local(&current_path), None);
         let mut fm = Self {
             current_path,
@@ -398,6 +400,8 @@ impl FileManager {
 
     /// Navigate to a specific directory
     pub fn navigate_to(&mut self, path: PathBuf) -> Result<()> {
+        // Canonicalize to resolve symlinks — ensures paths match notify events
+        let path = std::fs::canonicalize(&path).unwrap_or(path);
         if path.is_dir() {
             self.current_path = path.clone();
             self.vfs.set_path(termide_vfs::VfsPath::local(path));
@@ -505,7 +509,8 @@ impl FileManager {
     /// Navigate to a specific file - opens its parent directory and selects the file
     pub fn navigate_to_file(&mut self, path: &std::path::Path) {
         if let Some(parent) = path.parent() {
-            self.current_path = parent.to_path_buf();
+            self.current_path =
+                std::fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
             let _ = self.load_directory();
 
             // Find and select the file in the list
