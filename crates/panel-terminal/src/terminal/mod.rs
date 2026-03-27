@@ -610,5 +610,20 @@ impl TerminalScreen {
         while wrapped.len() > rows {
             wrapped.pop_back();
         }
+
+        debug_assert_eq!(
+            self.active_buffer().len(),
+            self.active_wrapped().len(),
+            "buffer/wrapped length mismatch after ensure_buffer_size"
+        );
+    }
+
+    /// Get immutable reference to active wrapped-flags buffer
+    fn active_wrapped(&self) -> &std::collections::VecDeque<bool> {
+        if self.use_alt_screen {
+            &self.alt_lines_wrapped
+        } else {
+            &self.lines_wrapped
+        }
     }
 }
