@@ -862,17 +862,11 @@ pub fn get_ahead_behind(repo: &Path) -> (usize, usize) {
                 return (count, 0);
             }
         }
-        // No remote configured at all — all local commits are unpushed
-        let has_remote = git_command_stdout(repo, &["remote"])
-            .map(|s| !s.trim().is_empty())
-            .unwrap_or(false);
-        if !has_remote {
-            let ahead = git_command_stdout(repo, &["rev-list", "--count", "HEAD"])
-                .and_then(|s| s.trim().parse().ok())
-                .unwrap_or(0);
-            return (ahead, 0);
-        }
-        (0, 0)
+        // No upstream tracking and no known remote branch — count all local commits
+        let ahead = git_command_stdout(repo, &["rev-list", "--count", "HEAD"])
+            .and_then(|s| s.trim().parse().ok())
+            .unwrap_or(0);
+        (ahead, 0)
     })
 }
 
