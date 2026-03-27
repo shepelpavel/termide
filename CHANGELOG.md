@@ -5,6 +5,17 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.1] - 2026-03-27
+
+### Fixed
+- **File Manager**: Canonicalize `current_path` at all write points (new, navigate, GoHomeDir) to fix symlink/bind-mount watcher mismatch — root cause of repeated auto-refresh failures
+- **Git**: Skip diff coloring for gitignored files (added `git check-ignore` check)
+- **Git**: Count local commits as ahead when remote refs are missing (empty remote after clone)
+- **Watcher**: Canonicalize repo root from git events; detect MERGE_HEAD, FETCH_HEAD, REBASE_HEAD, CHERRY_PICK_HEAD
+- **Terminal**: Strip spurious newlines from soft-wrapped lines on copy (track per-line `wrapped` flag)
+- **Modal**: Use high-contrast fg/bg inversion for buttons in all remaining modals (info, info_action, editable_select, tree_search)
+- **Terminal**: Add debug_assert for buffer/wrapped-flag length sync
+
 ## [0.18.0] - 2026-03-26
 
 ### Added
