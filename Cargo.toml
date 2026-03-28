@@ -95,6 +95,7 @@ name = "termide"
 license = "MIT"
 summary = "Cross-platform terminal IDE, file manager and virtual terminal"
 assets = [
+    { source = "target/release/termide", dest = "/usr/bin/termide", mode = "755" },
     { source = "README.md", dest = "/usr/share/doc/termide/README.md", mode = "644", doc = true },
     { source = "LICENSE", dest = "/usr/share/doc/termide/LICENSE", mode = "644", doc = true },
 ]
