@@ -210,6 +210,22 @@ impl Modal for CommandPaletteModal {
 
         let mut list_items: Vec<ListItem> = Vec::new();
 
+        // Compute fixed column widths across all filtered entries for right-alignment
+        let max_cat_w = self
+            .filtered_indices
+            .iter()
+            .map(|&i| self.entries[i].category.width())
+            .max()
+            .unwrap_or(0);
+        let max_kb_w = self
+            .filtered_indices
+            .iter()
+            .map(|&i| self.entries[i].keybinding.width())
+            .max()
+            .unwrap_or(0);
+        let right_cols_w = if max_cat_w > 0 { max_cat_w + 2 } else { 0 }
+            + if max_kb_w > 0 { max_kb_w + 2 } else { 0 };
+
         for (pos, &entry_idx) in self
             .filtered_indices
             .iter()
@@ -250,41 +266,26 @@ impl Modal for CommandPaletteModal {
                 Style::default().fg(theme.accented_bg)
             };
 
-            // Build spans: prefix + label + spaces + category + "  " + keybinding (right-aligned)
+            // Build spans with fixed right-aligned columns
             let prefix_w = prefix.width();
             let label_w = entry.label.width();
-            let cat_w = if entry.category.is_empty() {
-                0
-            } else {
-                entry.category.width() + 2 // "  " padding before category
-            };
-            let kb_w = if entry.keybinding.is_empty() {
-                0
-            } else {
-                entry.keybinding.width() + 2 // "  " padding before keybinding
-            };
-
-            let total_fixed = prefix_w + label_w + cat_w + kb_w;
             let total_width = list_area.width as usize;
-            let gap = if total_width > total_fixed {
-                total_width - total_fixed
-            } else {
-                1
-            };
+            let gap = total_width
+                .saturating_sub(prefix_w + label_w + right_cols_w)
+                .max(1);
 
             let mut spans = vec![
                 Span::styled(prefix, label_style),
                 Span::styled(entry.label.clone(), label_style),
                 Span::styled(" ".repeat(gap), label_style),
             ];
-            if !entry.category.is_empty() {
-                spans.push(Span::styled(
-                    format!("  {}", entry.category),
-                    category_style,
-                ));
+            if max_cat_w > 0 {
+                let cat_text = format!("{:>width$}  ", entry.category, width = max_cat_w);
+                spans.push(Span::styled(cat_text, category_style));
             }
-            if !entry.keybinding.is_empty() {
-                spans.push(Span::styled(format!("  {}", entry.keybinding), kb_style));
+            if max_kb_w > 0 {
+                let kb_text = format!("{:>width$}  ", entry.keybinding, width = max_kb_w);
+                spans.push(Span::styled(kb_text, kb_style));
             }
 
             list_items.push(ListItem::new(Line::from(spans)));
