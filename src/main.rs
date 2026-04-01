@@ -67,6 +67,11 @@ fn main() -> Result<()> {
         config.lsp.enabled = false;
     }
 
+    // On Linux VT, use norton-commander theme by default (better for 16-color)
+    if caps.is_linux_console && config.general.theme == "default" {
+        config.general.theme = "norton-commander".to_string();
+    }
+
     // Initialize icon mode based on config + terminal capabilities
     init_icon_mode(config.general.icon_mode);
 
