@@ -1799,13 +1799,20 @@ impl FileManager {
             FmCommand::CopyFiles => {
                 let paths = self.get_selected_paths();
                 if !paths.is_empty() {
-                    let default_dest = format!("{}/", self.current_path.display());
                     let t = termide_i18n::t();
-                    let message = if paths.len() == 1 {
+                    let (message, default_dest) = if paths.len() == 1 {
                         let name = path_utils::get_file_name_str(&paths[0]);
-                        t.fm_copy_prompt(name)
+                        // Single file: show full path with filename (user can rename)
+                        (
+                            t.fm_copy_prompt(name),
+                            format!("{}/{}", self.current_path.display(), name),
+                        )
                     } else {
-                        format!("Copy {} items to:", paths.len())
+                        // Multiple files: directory only (trailing slash)
+                        (
+                            format!("Copy {} items to:", paths.len()),
+                            format!("{}/", self.current_path.display()),
+                        )
                     };
                     let modal = InputModal::with_default("Copy", &message, &default_dest);
                     let action = PendingAction::CopyPath {
