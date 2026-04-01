@@ -279,73 +279,92 @@ impl App {
     }
 
     /// Setup default layout based on terminal width.
-    /// - < 160 chars: 2 groups — [40px: sidebar accordion] + [rest: FileManager]
-    /// - >= 160 chars: 3 groups — [40px: sidebar accordion] + [rest/2: FileManager] + [rest/2: FileManager]
     ///
-    /// Sidebar accordion order (top to bottom): GitStatus (if git repo), FileManager, Operations.
+    /// | Width   | Groups | Layout                                                  |
+    /// |---------|--------|---------------------------------------------------------|
+    /// | 1-99    | 1      | [*: FM]                                                 |
+    /// | 100-139 | 2      | [*: FM] + [40: FM, GitStatus?]                          |
+    /// | 140-199 | 3      | [*: FM] + [40: FM] + [40: GitStatus?, Outline]          |
+    /// | 200+    | 3      | [*: FM] + [*: FM] + [40: GitStatus?, Outline]           |
+    ///
+    /// `*` = remaining space. GitStatus added only if a git repo is detected.
     pub fn setup_default_layout(&mut self) {
         use termide_panel_file_manager::FileManager;
-        use termide_panel_operations::OperationsPanel;
 
         let width = self.state.terminal.width;
         let repo_root = termide_git::find_repo_root(&self.project_root);
 
-        // Build sidebar group: GitStatus?, FileManager, Operations (accordion)
-        let build_sidebar = |fm_in_sidebar: bool| -> PanelGroup {
-            // Accordion order: GitStatus (0?), FileManager (next?), Operations (last)
-            // Default expanded = FileManager
-            if let Some(repo_root) = repo_root.clone() {
-                let mut g = PanelGroup::new(Box::new(
-                    termide_panel_git_status::GitStatusPanel::new_for_repo(repo_root),
-                ));
-                if fm_in_sidebar {
-                    g.add_panel(Box::new(FileManager::new()));
-                }
-                g.add_panel(Box::new(OperationsPanel::new()));
-                // Expand FileManager if present, otherwise GitStatus
-                g.set_expanded(if fm_in_sidebar { 1 } else { 0 });
-                g
-            } else if fm_in_sidebar {
-                let mut g = PanelGroup::new(Box::new(FileManager::new()));
-                g.add_panel(Box::new(OperationsPanel::new()));
-                g.set_expanded(0); // FileManager expanded
-                g
-            } else {
-                PanelGroup::new(Box::new(OperationsPanel::new()))
-            }
-        };
-
-        if width >= 160 {
-            // 3 groups: [40: sidebar] [rest/2: FM] [rest/2: FM]
-            let remaining = width.saturating_sub(40);
-            let half = remaining / 2;
-
-            let mut g1 = build_sidebar(false);
-            g1.width = Some(40);
+        if width < 100 {
+            // 1 group: [*: FM]
+            let g1 = PanelGroup::new(Box::new(FileManager::new()));
+            self.layout_manager.panel_groups.push(g1);
+            self.layout_manager.focus = 0;
+        } else if width < 140 {
+            // 2 groups: [*: FM] + [40: FM, GitStatus?]
+            let g1 = PanelGroup::new(Box::new(FileManager::new()));
 
             let mut g2 = PanelGroup::new(Box::new(FileManager::new()));
-            g2.width = Some(half);
+            if let Some(repo) = repo_root {
+                g2.add_panel(Box::new(
+                    termide_panel_git_status::GitStatusPanel::new_for_repo(repo),
+                ));
+            }
+            g2.width = Some(40);
 
-            let mut g3 = PanelGroup::new(Box::new(FileManager::new()));
-            g3.width = Some(remaining.saturating_sub(half));
+            self.layout_manager.panel_groups.push(g1);
+            self.layout_manager.panel_groups.push(g2);
+            self.layout_manager.focus = 0;
+        } else if width < 200 {
+            // 3 groups: [*: FM] + [40: FM] + [40: GitStatus?, Outline]
+            let g1 = PanelGroup::new(Box::new(FileManager::new()));
+
+            let mut g2 = PanelGroup::new(Box::new(FileManager::new()));
+            g2.width = Some(40);
+
+            let mut g3 = if let Some(repo) = repo_root {
+                let mut g = PanelGroup::new(Box::new(
+                    termide_panel_git_status::GitStatusPanel::new_for_repo(repo),
+                ));
+                g.add_panel(Box::new(termide_panel_outline::OutlinePanel::new(
+                    *self.state.theme,
+                )));
+                g
+            } else {
+                PanelGroup::new(Box::new(termide_panel_outline::OutlinePanel::new(
+                    *self.state.theme,
+                )))
+            };
+            g3.width = Some(40);
 
             self.layout_manager.panel_groups.push(g1);
             self.layout_manager.panel_groups.push(g2);
             self.layout_manager.panel_groups.push(g3);
-            self.layout_manager.focus = 1;
+            self.layout_manager.focus = 0;
         } else {
-            // 2 groups: [40: sidebar with FM] [rest: FM]
-            let remaining = width.saturating_sub(40);
+            // 200+: [*: FM] + [*: FM] + [40: GitStatus?, Outline]
+            let g1 = PanelGroup::new(Box::new(FileManager::new()));
 
-            let mut g1 = build_sidebar(true);
-            g1.width = Some(40);
+            let g2 = PanelGroup::new(Box::new(FileManager::new()));
 
-            let mut g2 = PanelGroup::new(Box::new(FileManager::new()));
-            g2.width = Some(remaining.max(20));
+            let mut g3 = if let Some(repo) = repo_root {
+                let mut g = PanelGroup::new(Box::new(
+                    termide_panel_git_status::GitStatusPanel::new_for_repo(repo),
+                ));
+                g.add_panel(Box::new(termide_panel_outline::OutlinePanel::new(
+                    *self.state.theme,
+                )));
+                g
+            } else {
+                PanelGroup::new(Box::new(termide_panel_outline::OutlinePanel::new(
+                    *self.state.theme,
+                )))
+            };
+            g3.width = Some(40);
 
             self.layout_manager.panel_groups.push(g1);
             self.layout_manager.panel_groups.push(g2);
-            self.layout_manager.focus = 1;
+            self.layout_manager.panel_groups.push(g3);
+            self.layout_manager.focus = 0;
         }
 
         self.state.needs_watcher_registration = true;

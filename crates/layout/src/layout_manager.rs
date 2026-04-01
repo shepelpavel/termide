@@ -551,11 +551,12 @@ impl LayoutManager {
             let fixed_groups: Vec<u16> = self.panel_groups.iter().filter_map(|g| g.width).collect();
 
             if !fixed_groups.is_empty() && auto_count > 0 {
-                let avg_fixed_width: u16 =
-                    fixed_groups.iter().sum::<u16>() / fixed_groups.len() as u16;
+                let fixed_total: u16 = fixed_groups.iter().sum();
+                let remaining = available_width.saturating_sub(fixed_total);
+                let per_auto = (remaining / auto_count as u16).max(20);
                 for group in self.panel_groups.iter_mut() {
                     if group.width.is_none() {
-                        group.width = Some(avg_fixed_width.max(20));
+                        group.width = Some(per_auto);
                     }
                 }
             } else {

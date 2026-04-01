@@ -66,7 +66,7 @@ Menu activation/deactivation and each item can be accessed by mouse click or [ke
 ## Panels Area
 
 The area fills the vertical space between the menu bar and status bar from left to right edge of the window.
-By default, the area shows a two-panel file manager (like Midnight Commander). Other panels (terminal, editor, git) can be opened and will be placed alongside.
+The layout adapts to the terminal width, showing more panel groups on wider screens. Panels (terminal, editor, git) can be opened and will be placed alongside.
 
 **Possible openable panel types:**
 - [file manager](file-manager.md) — `Alt+F`
