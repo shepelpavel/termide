@@ -15,7 +15,7 @@ use ratatui::{
 use std::any::Any;
 
 use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up, Config};
-use termide_core::{Panel, PanelEvent, RenderContext};
+use termide_core::{Panel, PanelEvent, RenderContext, WidthPreference};
 use termide_i18n;
 use termide_theme::Theme;
 use termide_ui::ScrollBar;
@@ -88,6 +88,10 @@ impl HelpPanel {
 impl Panel for HelpPanel {
     fn name(&self) -> &'static str {
         "help"
+    }
+
+    fn width_preference(&self) -> WidthPreference {
+        WidthPreference::PreferWide
     }
 
     fn title(&self) -> String {
