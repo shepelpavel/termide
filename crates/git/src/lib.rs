@@ -384,6 +384,14 @@ impl GitStatusCache {
         };
 
         if let Some(&status) = self.status_map.get(&full_path) {
+            if status == GitStatus::Deleted {
+                // A directory may have replaced the deleted file/symlink —
+                // git reports "D  name" + "?? name/" with trailing slash.
+                let dir_path = PathBuf::from(format!("{}/", full_path.display()));
+                if let Some(&dir_status) = self.status_map.get(&dir_path) {
+                    return dir_status;
+                }
+            }
             if status != GitStatus::Unmodified {
                 return status;
             }
