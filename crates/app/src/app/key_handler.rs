@@ -304,6 +304,21 @@ impl App {
             .or_else(|| source_dir.as_ref().map(|p| format!("{}/", p.display())))
             .unwrap_or_else(|| "/".to_string());
 
+        // For single file: append filename so user can rename while copying/moving
+        let default_dest = if sources.len() == 1 {
+            let file_name = sources[0]
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("");
+            if file_name.is_empty() {
+                default_dest
+            } else {
+                format!("{}/{}", default_dest.trim_end_matches('/'), file_name)
+            }
+        } else {
+            default_dest
+        };
+
         *target_directory = Some(std::path::PathBuf::from(default_dest.trim_end_matches('/')));
 
         // Prepare title and prompt
