@@ -1189,7 +1189,7 @@ impl App {
             let term_height = height.saturating_sub(3);
             let term_width = width.saturating_sub(2);
 
-            let command = script.path.to_string_lossy().into_owned();
+            let command = shell_quote(&script.path);
 
             match Terminal::new_with_cwd(term_height, term_width, Some(cwd)) {
                 Ok(mut terminal) => {
@@ -1776,4 +1776,11 @@ impl App {
 
         Ok(())
     }
+}
+
+/// Shell-quote a path for safe use in terminal commands.
+/// Wraps in single quotes and escapes embedded single quotes.
+fn shell_quote(path: &std::path::Path) -> String {
+    let s = path.to_string_lossy();
+    format!("'{}'", s.replace('\'', "'\\''"))
 }

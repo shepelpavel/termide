@@ -293,31 +293,39 @@ impl App {
         let options = self.find_all_other_panel_paths();
         let unique_paths_count = options.len();
 
+        // For single file: append filename to each option so dropdown shows full paths
+        let options = if sources.len() == 1 {
+            if let Some(file_name) = sources[0].file_name().and_then(|n| n.to_str()) {
+                options
+                    .into_iter()
+                    .map(|mut opt| {
+                        let base = opt.value.trim_end_matches('/');
+                        opt.value = format!("{}/{}", base, file_name);
+                        opt.display = opt.value.clone();
+                        opt
+                    })
+                    .collect()
+            } else {
+                options
+            }
+        } else {
+            options
+        };
+
         // Filter out source directory for default selection
-        // Options already have trailing slash, so use value directly
+        let source_dir_prefix = source_dir_str.as_ref().map(|s| format!("{}/", s));
         let default_dest = options
             .iter()
             .find(|opt| {
-                source_dir_str.as_ref().map(|s| format!("{}/", s)) != Some(opt.value.clone())
+                // Compare directory part of option value against source directory
+                source_dir_prefix
+                    .as_ref()
+                    .map(|prefix| !opt.value.starts_with(prefix.as_str()))
+                    .unwrap_or(true)
             })
             .map(|opt| opt.value.clone())
             .or_else(|| source_dir.as_ref().map(|p| format!("{}/", p.display())))
             .unwrap_or_else(|| "/".to_string());
-
-        // For single file: append filename so user can rename while copying/moving
-        let default_dest = if sources.len() == 1 {
-            let file_name = sources[0]
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
-            if file_name.is_empty() {
-                default_dest
-            } else {
-                format!("{}/{}", default_dest.trim_end_matches('/'), file_name)
-            }
-        } else {
-            default_dest
-        };
 
         *target_directory = Some(std::path::PathBuf::from(default_dest.trim_end_matches('/')));
 
