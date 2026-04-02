@@ -20,6 +20,8 @@ pub struct DropdownItem {
     pub key: String,
     /// Whether this item opens a submenu
     pub has_submenu: bool,
+    /// Whether this item is a separator line (not selectable)
+    pub is_separator: bool,
 }
 
 impl DropdownItem {
@@ -28,6 +30,17 @@ impl DropdownItem {
             label: label.into(),
             key: key.into(),
             has_submenu: false,
+            is_separator: false,
+        }
+    }
+
+    /// Create a separator item (horizontal line, not selectable)
+    pub fn separator() -> Self {
+        Self {
+            label: String::new(),
+            key: String::new(),
+            has_submenu: false,
+            is_separator: true,
         }
     }
 
@@ -152,6 +165,29 @@ impl<'a> Dropdown<'a> {
             let actual_index = self.scroll_offset + i;
             let is_selected = actual_index == self.selected;
 
+            let row_y = inner.y + i as u16;
+            if row_y >= inner.y + inner.height {
+                break;
+            }
+
+            // Separator: draw horizontal line, never highlighted
+            if item.is_separator {
+                let sep_style = Style::default().fg(self.theme.disabled).bg(self.theme.bg);
+                for col in inner.x..inner.x + inner.width {
+                    buf[(col, row_y)].set_style(sep_style);
+                }
+                let line = "─".repeat(inner.width.saturating_sub(2) as usize);
+                render_text_cells(
+                    buf,
+                    inner.x + 1,
+                    row_y,
+                    &line,
+                    inner.width.saturating_sub(2),
+                    sep_style,
+                );
+                continue;
+            }
+
             let base_style = if is_selected {
                 Style::default()
                     .bg(self.theme.selected_bg)
@@ -160,11 +196,6 @@ impl<'a> Dropdown<'a> {
             } else {
                 Style::default().fg(self.theme.fg).bg(self.theme.bg)
             };
-
-            let row_y = inner.y + i as u16;
-            if row_y >= inner.y + inner.height {
-                break;
-            }
 
             // Fill row background
             for col in inner.x..inner.x + inner.width {
@@ -290,8 +321,6 @@ pub fn get_options_items() -> Vec<DropdownItem> {
     vec![
         DropdownItem::new(t.preferences_themes(), "themes").with_submenu(),
         DropdownItem::new(t.preferences_language(), "language").with_submenu(),
-        DropdownItem::new(t.options_manage_scripts(), "manage_scripts"),
-        DropdownItem::new(t.bookmarks_manage(), "manage_bookmarks"),
         DropdownItem::new(t.preferences_edit(), "edit_preferences"),
         DropdownItem::new(t.options_help(), "help"),
         DropdownItem::new(t.menu_quit(), "quit"),
@@ -299,23 +328,29 @@ pub fn get_options_items() -> Vec<DropdownItem> {
 }
 
 /// Number of items in Options submenu
-pub const OPTIONS_SUBMENU_ITEM_COUNT: usize = 7;
+pub const OPTIONS_SUBMENU_ITEM_COUNT: usize = 5;
 
 /// Index of Options submenu items
 pub const OPTIONS_SUBMENU_THEMES: usize = 0;
 pub const OPTIONS_SUBMENU_LANGUAGE: usize = 1;
-pub const OPTIONS_SUBMENU_SCRIPTS: usize = 2;
-pub const OPTIONS_SUBMENU_BOOKMARKS: usize = 3;
-pub const OPTIONS_SUBMENU_PREFERENCES: usize = 4;
-pub const OPTIONS_SUBMENU_HELP: usize = 5;
-pub const OPTIONS_SUBMENU_QUIT: usize = 6;
+pub const OPTIONS_SUBMENU_PREFERENCES: usize = 2;
+pub const OPTIONS_SUBMENU_HELP: usize = 3;
+pub const OPTIONS_SUBMENU_QUIT: usize = 4;
 
 /// Special script ID for "Add script..." menu item
 pub const SCRIPT_ADD_NEW: &str = "__add_script__";
+/// Special ID for "Manage scripts" menu item
+pub const SCRIPT_MANAGE: &str = "__manage_scripts__";
+/// Special ID for "Manage bookmarks" menu item
+pub const BOOKMARK_MANAGE: &str = "__manage_bookmarks__";
 
 /// Get scripts submenu items from ScriptsRegistry
 pub fn get_scripts_items(registry: &termide_config::scripts::ScriptsRegistry) -> Vec<DropdownItem> {
-    let mut items = Vec::new();
+    let t = i18n::t();
+    let mut items = vec![
+        DropdownItem::new(t.options_manage_scripts(), SCRIPT_MANAGE),
+        DropdownItem::separator(),
+    ];
 
     // Add root items (scripts in scripts/ root)
     for script in &registry.root_items {
@@ -328,8 +363,7 @@ pub fn get_scripts_items(registry: &termide_config::scripts::ScriptsRegistry) ->
     }
 
     // If no scripts exist, show "Add script..." item
-    if items.is_empty() {
-        let t = i18n::t();
+    if registry.root_items.is_empty() && registry.groups.is_empty() {
         items.push(DropdownItem::new(t.menu_scripts_add(), SCRIPT_ADD_NEW));
     }
 
@@ -357,15 +391,15 @@ pub fn get_scripts_group_items(
 
 /// Special bookmark action IDs
 pub const BOOKMARK_ADD_CURRENT: &str = "__bookmark_add__";
-pub const BOOKMARK_MANAGE: &str = "__bookmark_manage__";
 
 /// Get bookmarks submenu items from BookmarksConfig
 pub fn get_bookmarks_items(config: &termide_config::BookmarksConfig) -> Vec<DropdownItem> {
     let t = i18n::t();
-    let mut items = vec![DropdownItem::new(
-        t.bookmarks_add_bookmark(),
-        BOOKMARK_ADD_CURRENT,
-    )];
+    let mut items = vec![
+        DropdownItem::new(t.bookmarks_add_bookmark(), BOOKMARK_ADD_CURRENT),
+        DropdownItem::new(t.bookmarks_manage(), BOOKMARK_MANAGE),
+        DropdownItem::separator(),
+    ];
 
     if config.is_empty() {
         items.push(DropdownItem::new(t.bookmarks_no_bookmarks(), ""));
@@ -389,9 +423,9 @@ pub fn get_bookmarks_items(config: &termide_config::BookmarksConfig) -> Vec<Drop
 /// Get bookmarks count for determining submenu item count
 pub fn get_bookmarks_item_count(config: &termide_config::BookmarksConfig) -> usize {
     if config.is_empty() {
-        2 // add_current + no_bookmarks
+        4 // add_current + manage + separator + no_bookmarks
     } else {
-        1 + config.named_groups().len() + config.ungrouped().len()
+        3 + config.named_groups().len() + config.ungrouped().len() // add + manage + sep + items
     }
 }
 

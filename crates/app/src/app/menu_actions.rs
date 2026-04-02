@@ -27,19 +27,29 @@ enum SubmenuNavAction {
 
 /// Handle generic submenu keyboard navigation.
 /// Updates selection on Up/Down and returns the action for Esc/Enter.
+/// `separators` lists indices of separator items that should be skipped.
 fn navigate_submenu(
     key: &crossterm::event::KeyEvent,
     submenu: &mut termide_state::SubmenuState,
     item_count: usize,
+    separators: &[usize],
 ) -> SubmenuNavAction {
     match key.code {
         KeyCode::Esc | KeyCode::Left => SubmenuNavAction::Close,
         KeyCode::Up => {
             submenu.select_prev(item_count);
+            // Skip separators
+            if separators.contains(&submenu.selected) {
+                submenu.select_prev(item_count);
+            }
             SubmenuNavAction::None
         }
         KeyCode::Down => {
             submenu.select_next(item_count);
+            // Skip separators
+            if separators.contains(&submenu.selected) {
+                submenu.select_next(item_count);
+            }
             SubmenuNavAction::None
         }
         KeyCode::Right | KeyCode::Enter => SubmenuNavAction::Execute,
@@ -58,11 +68,10 @@ use termide_ui_render::menu::{
     SESSIONS_MENU_INDEX, WINDOWS_MENU_INDEX,
 };
 use termide_ui_render::{
-    OPTIONS_SUBMENU_BOOKMARKS, OPTIONS_SUBMENU_HELP, OPTIONS_SUBMENU_LANGUAGE,
-    OPTIONS_SUBMENU_PREFERENCES, OPTIONS_SUBMENU_QUIT, OPTIONS_SUBMENU_SCRIPTS,
-    OPTIONS_SUBMENU_THEMES, SESSIONS_SUBMENU_CHANGE_ROOT, SESSIONS_SUBMENU_NEW,
-    SESSIONS_SUBMENU_SWITCH, TOOLS_SUBMENU_DIAGNOSTICS, TOOLS_SUBMENU_EDITOR, TOOLS_SUBMENU_FILES,
-    TOOLS_SUBMENU_GIT_LOG, TOOLS_SUBMENU_GIT_STASH, TOOLS_SUBMENU_GIT_STATUS,
+    OPTIONS_SUBMENU_HELP, OPTIONS_SUBMENU_LANGUAGE, OPTIONS_SUBMENU_PREFERENCES,
+    OPTIONS_SUBMENU_QUIT, OPTIONS_SUBMENU_THEMES, SESSIONS_SUBMENU_CHANGE_ROOT,
+    SESSIONS_SUBMENU_NEW, SESSIONS_SUBMENU_SWITCH, TOOLS_SUBMENU_DIAGNOSTICS, TOOLS_SUBMENU_EDITOR,
+    TOOLS_SUBMENU_FILES, TOOLS_SUBMENU_GIT_LOG, TOOLS_SUBMENU_GIT_STASH, TOOLS_SUBMENU_GIT_STATUS,
     TOOLS_SUBMENU_JOURNAL, TOOLS_SUBMENU_OPERATIONS, TOOLS_SUBMENU_OUTLINE, TOOLS_SUBMENU_TERMINAL,
 };
 
@@ -319,6 +328,7 @@ impl App {
             &key,
             &mut self.state.ui.options_submenu,
             OPTIONS_SUBMENU_ITEM_COUNT,
+            &[],
         ) {
             SubmenuNavAction::Close => self.state.close_submenu(),
             SubmenuNavAction::Execute => self.execute_submenu_action()?,
@@ -344,14 +354,6 @@ impl App {
                 let current_idx = find_current_language_index();
                 self.state.ui.language_preview_original = Some(i18n::current_language());
                 self.state.open_nested_submenu(current_idx);
-            }
-            OPTIONS_SUBMENU_SCRIPTS => {
-                self.state.close_menu();
-                self.handle_manage_scripts()?;
-            }
-            OPTIONS_SUBMENU_BOOKMARKS => {
-                self.state.close_menu();
-                self.handle_manage_bookmarks()?;
             }
             OPTIONS_SUBMENU_PREFERENCES => {
                 self.state.close_menu();
@@ -528,6 +530,7 @@ impl App {
             &key,
             &mut self.state.ui.sessions_submenu,
             SESSIONS_SUBMENU_ITEM_COUNT,
+            &[],
         ) {
             SubmenuNavAction::Close => self.state.close_sessions_submenu(),
             SubmenuNavAction::Execute => self.execute_sessions_submenu_action()?,
@@ -642,6 +645,7 @@ impl App {
             &key,
             &mut self.state.ui.tools_submenu,
             TOOLS_SUBMENU_ITEM_COUNT,
+            &[],
         ) {
             SubmenuNavAction::Close => self.state.close_tools_submenu(),
             SubmenuNavAction::Execute => self.execute_tools_submenu_action()?,
@@ -658,7 +662,7 @@ impl App {
             return Ok(());
         }
 
-        match navigate_submenu(&key, &mut self.state.ui.tools_nested, item_count) {
+        match navigate_submenu(&key, &mut self.state.ui.tools_nested, item_count, &[]) {
             SubmenuNavAction::Close => self.state.close_tools_nested_submenu(),
             SubmenuNavAction::Execute => {
                 if let Some(shell) = self
@@ -1042,20 +1046,21 @@ impl App {
         }
 
         let registry = termide_config::scripts::ScriptsRegistry::load();
-        let item_count = registry
+        // 2 = "Manage scripts" + separator; then scripts or "Add script..."
+        let scripts_count = registry
             .as_ref()
-            .map(|r| r.root_items.len() + r.groups.len())
-            .unwrap_or(0);
+            .map(|r| {
+                let n = r.root_items.len() + r.groups.len();
+                if n == 0 {
+                    1
+                } else {
+                    n
+                } // "Add script..." if empty
+            })
+            .unwrap_or(1);
+        let item_count = 2 + scripts_count;
 
-        if item_count == 0 {
-            // Empty menu - just close on any key
-            if matches!(key.code, KeyCode::Esc | KeyCode::Left) {
-                self.state.close_scripts_submenu();
-            }
-            return Ok(());
-        }
-
-        match navigate_submenu(&key, &mut self.state.ui.scripts_submenu, item_count) {
+        match navigate_submenu(&key, &mut self.state.ui.scripts_submenu, item_count, &[1]) {
             SubmenuNavAction::Close => self.state.close_scripts_submenu(),
             SubmenuNavAction::Execute => self.execute_scripts_submenu_action()?,
             SubmenuNavAction::None => {}
@@ -1065,38 +1070,42 @@ impl App {
 
     /// Execute action for selected Scripts submenu item
     pub(super) fn execute_scripts_submenu_action(&mut self) -> Result<()> {
-        let registry = termide_config::scripts::ScriptsRegistry::load();
+        let selected = self.state.ui.scripts_submenu.selected;
 
-        // Check if registry is empty - then the only item is "Add script..."
-        let is_empty = registry
-            .as_ref()
-            .map(|r| r.root_items.is_empty() && r.groups.is_empty())
-            .unwrap_or(true);
-
-        if is_empty {
-            // "Add script..." selected - open scripts folder
+        // Index 0: "Manage scripts"
+        if selected == 0 {
             self.state.close_menu();
             self.handle_manage_scripts()?;
             return Ok(());
         }
 
-        let registry = match registry {
+        // Index 1: separator (should not be reachable)
+        // Indices 2+: actual scripts
+
+        let registry = match termide_config::scripts::ScriptsRegistry::load() {
             Some(r) => r,
             None => return Ok(()),
         };
 
-        let selected = self.state.ui.scripts_submenu.selected;
+        // Check if "Add script..." is shown (empty registry)
+        if registry.root_items.is_empty() && registry.groups.is_empty() {
+            // Only "Add script..." at index 2
+            self.state.close_menu();
+            self.handle_manage_scripts()?;
+            return Ok(());
+        }
+
+        // Offset by 2 (manage + separator)
+        let adjusted = selected.saturating_sub(2);
         let root_count = registry.root_items.len();
 
-        if selected < root_count {
-            // Root item selected - execute the script
-            if let Some(script) = registry.root_items.get(selected) {
+        if adjusted < root_count {
+            if let Some(script) = registry.root_items.get(adjusted) {
                 self.state.close_menu();
                 self.run_script(script)?;
             }
         } else {
-            // Group selected - open nested submenu
-            let group_idx = selected - root_count;
+            let group_idx = adjusted - root_count;
             if let Some(group) = registry.groups.get(group_idx) {
                 self.state.open_scripts_nested_submenu(group.name.clone());
             }
@@ -1120,7 +1129,7 @@ impl App {
             })
             .unwrap_or(0);
 
-        match navigate_submenu(&key, &mut self.state.ui.scripts_nested, item_count) {
+        match navigate_submenu(&key, &mut self.state.ui.scripts_nested, item_count, &[]) {
             SubmenuNavAction::Close => self.state.close_scripts_nested_submenu(),
             SubmenuNavAction::Execute => self.execute_scripts_nested_action()?,
             SubmenuNavAction::None => {}
@@ -1299,7 +1308,7 @@ impl App {
         use termide_ui_render::get_bookmarks_item_count;
         let item_count = get_bookmarks_item_count(&self.state.bookmarks);
 
-        match navigate_submenu(&key, &mut self.state.ui.bookmarks_submenu, item_count) {
+        match navigate_submenu(&key, &mut self.state.ui.bookmarks_submenu, item_count, &[2]) {
             SubmenuNavAction::Close => self.state.close_bookmarks_submenu(),
             SubmenuNavAction::Execute => self.execute_bookmarks_submenu_action()?,
             SubmenuNavAction::None => {}
@@ -1318,6 +1327,16 @@ impl App {
             return Ok(());
         }
 
+        if selected == 1 {
+            // Manage bookmarks
+            self.state.close_menu();
+            self.handle_manage_bookmarks()?;
+            return Ok(());
+        }
+
+        // Index 2: separator (should not be reachable)
+        // Indices 3+: actual bookmarks
+
         // Get groups and ungrouped counts
         let named_groups: Vec<String> = self
             .state
@@ -1327,7 +1346,7 @@ impl App {
             .cloned()
             .collect();
         let ungrouped = self.state.bookmarks.ungrouped();
-        let groups_start = 1;
+        let groups_start = 3; // after add + manage + separator
         let ungrouped_start = groups_start + named_groups.len();
 
         if selected >= groups_start && selected < ungrouped_start {
@@ -1336,7 +1355,7 @@ impl App {
             if let Some(group_name) = named_groups.get(group_idx) {
                 self.state.open_bookmarks_nested_submenu(group_name.clone());
             }
-        } else {
+        } else if selected >= ungrouped_start {
             // Ungrouped bookmark selected - open directly
             let ungrouped_idx = selected - ungrouped_start;
             if let Some(bookmark) = ungrouped.get(ungrouped_idx) {
@@ -1364,7 +1383,7 @@ impl App {
             .map(|name| get_bookmarks_group_items(&self.state.bookmarks, name).len())
             .unwrap_or(0);
 
-        match navigate_submenu(&key, &mut self.state.ui.bookmarks_nested, item_count) {
+        match navigate_submenu(&key, &mut self.state.ui.bookmarks_nested, item_count, &[]) {
             SubmenuNavAction::Close => self.state.close_bookmarks_nested_submenu(),
             SubmenuNavAction::Execute => self.execute_bookmarks_nested_action()?,
             SubmenuNavAction::None => {}
