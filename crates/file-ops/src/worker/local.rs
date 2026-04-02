@@ -173,6 +173,14 @@ impl LocalCopyWorker {
                     file_bytes_copied
                 ))));
             }
+
+            // Preserve permissions from source
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::{MetadataExt, PermissionsExt};
+                let perms = std::fs::Permissions::from_mode(metadata.mode());
+                let _ = fs::set_permissions(dest, perms);
+            }
         }
 
         Ok(())
@@ -348,6 +356,45 @@ impl OperationWorker for LocalCopyWorker {
             } else {
                 dest.clone()
             };
+
+            // For move: try fs::rename first (atomic, preserves all metadata)
+            // Falls back to copy+delete on cross-device moves (EXDEV)
+            if self.is_move {
+                match fs::rename(source, &final_dest) {
+                    Ok(()) => {
+                        files_copied += 1;
+                        if !metadata.is_symlink() {
+                            bytes_copied += metadata.len();
+                        }
+                        let _ = progress_tx.send(OperationProgress {
+                            phase: OperationPhase::Transferring,
+                            bytes_transferred: bytes_copied,
+                            total_bytes,
+                            files_completed: files_copied,
+                            total_files,
+                            current_item: source
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .map(String::from),
+                            speed_bps: 0.0,
+                            eta_seconds: None,
+                            individual_file_bytes: 0,
+                            individual_file_total: 0,
+                        });
+                        // Already moved — no need to track for delete phase
+                        continue;
+                    }
+                    #[cfg(unix)]
+                    Err(e) if e.raw_os_error() == Some(18 /* EXDEV */) => {
+                        // Cross-device move — fall through to copy+delete
+                    }
+                    #[cfg(not(unix))]
+                    Err(e) if e.kind() == std::io::ErrorKind::Other => {
+                        // Cross-device move on non-Unix — fall through to copy+delete
+                    }
+                    Err(e) => return OperationResult::Failed(e.to_string()),
+                }
+            }
 
             let result = if metadata.is_dir() && !metadata.is_symlink() {
                 self.copy_directory(
