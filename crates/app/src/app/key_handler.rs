@@ -324,7 +324,17 @@ impl App {
                     .unwrap_or(true)
             })
             .map(|opt| opt.value.clone())
-            .or_else(|| source_dir.as_ref().map(|p| format!("{}/", p.display())))
+            .or_else(|| {
+                source_dir.as_ref().map(|p| {
+                    let base = format!("{}/", p.display());
+                    if sources.len() == 1 {
+                        if let Some(name) = sources[0].file_name().and_then(|n| n.to_str()) {
+                            return format!("{}{}", base, name);
+                        }
+                    }
+                    base
+                })
+            })
             .unwrap_or_else(|| "/".to_string());
 
         *target_directory = Some(std::path::PathBuf::from(default_dest.trim_end_matches('/')));
