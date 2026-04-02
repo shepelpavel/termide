@@ -1165,7 +1165,9 @@ impl App {
         } else if script.is_background {
             // Fire-and-forget spawn (no terminal panel)
             log::info!("Running background script '{}' in {:?}", script.name, cwd);
-            match std::process::Command::new(&script.path)
+            match std::process::Command::new("/bin/sh")
+                .arg("-lc")
+                .arg(shell_quote(&script.path))
                 .current_dir(&cwd)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -1221,7 +1223,9 @@ impl App {
 
         log::info!("Running report script '{}' in {:?}", script.name, cwd);
 
-        let child = std::process::Command::new(&script.path)
+        let child = std::process::Command::new("/bin/sh")
+            .arg("-lc")
+            .arg(shell_quote(&script.path))
             .current_dir(cwd)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
