@@ -262,6 +262,7 @@ pub trait Translation: Send + Sync {
     fn bookmarks_add_path(&self) -> &str;
     fn bookmarks_add_description(&self) -> &str;
     fn bookmarks_add_group(&self) -> &str;
+    fn bookmarks_add_project(&self) -> &str;
     // Tools submenu
     fn tools_files(&self) -> &str;
     fn tools_terminal(&self) -> &str;
@@ -524,6 +525,7 @@ pub trait Translation: Send + Sync {
     fn resource_ram_top_title(&self) -> &str;
     fn resource_disk_title(&self) -> &str;
     fn resource_disk_free(&self) -> &str;
+    fn resource_disk_used(&self) -> &str;
     fn resource_disk_total(&self) -> &str;
     fn resource_processes(&self) -> &str;
     fn resource_count(&self) -> &str;

@@ -740,20 +740,20 @@ impl App {
         let t = i18n::t();
         let disks = get_all_disk_space_info();
 
-        // Header row
+        // Header row: free | used | total
         let mut lines: Vec<(String, ModalValue)> = vec![(
             String::new(),
             ModalValue::Segments(vec![
                 StyledSegment {
-                    text: "     ".to_string(),
+                    text: format!("{:>14}", t.resource_disk_free()),
                     style: SegmentStyle::Default,
                 },
                 StyledSegment {
-                    text: format!("  {:>8}", t.resource_disk_free()),
+                    text: format!("{:>14}", t.resource_disk_used()),
                     style: SegmentStyle::Default,
                 },
                 StyledSegment {
-                    text: format!("  {:>8}", t.resource_disk_total()),
+                    text: format!("{:>10}", t.resource_disk_total()),
                     style: SegmentStyle::Default,
                 },
             ]),
@@ -762,21 +762,21 @@ impl App {
         // Data rows
         for d in &disks {
             let name = d.device_name().unwrap_or_else(|| "???".to_string());
-            let avail_pct = 100_u8.saturating_sub(d.usage_percent());
             let usage = d.usage_percent();
-            let color = match resource_color(usage, self.state.theme) {
+            let avail_pct = 100_u8.saturating_sub(usage);
+            let used_color = match resource_color(usage, self.state.theme) {
                 c if c == self.state.theme.error => SegmentStyle::Error,
                 c if c == self.state.theme.warning => SegmentStyle::Warning,
-                _ => SegmentStyle::Success,
+                _ => SegmentStyle::Default,
             };
             let segments = vec![
                 StyledSegment {
-                    text: format!("{:>4}%", avail_pct),
-                    style: color,
+                    text: format!("{:>4}% {:>8}", avail_pct, format_bytes(d.available)),
+                    style: SegmentStyle::Default,
                 },
                 StyledSegment {
-                    text: format!("  {:>8}", format_bytes(d.available)),
-                    style: color,
+                    text: format!("{:>4}% {:>8}", usage, format_bytes(d.used())),
+                    style: used_color,
                 },
                 StyledSegment {
                     text: format!("  {:>8}", format_bytes(d.total)),

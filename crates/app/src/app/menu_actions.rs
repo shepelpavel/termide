@@ -1156,21 +1156,27 @@ impl App {
 
         let registry =
             termide_config::scripts::ScriptsRegistry::load_merged(Some(&self.project_root));
-        // 2 = "Manage scripts" + separator; then scripts or "Add script..."
-        let scripts_count = registry
+        let scripts_items = registry
             .as_ref()
             .map(|r| {
-                let n = r.root_items.len() + r.groups.len();
-                if n == 0 {
-                    1
-                } else {
-                    n
-                } // "Add script..." if empty
+                use termide_ui_render::get_scripts_items;
+                get_scripts_items(r)
             })
-            .unwrap_or(1);
-        let item_count = 2 + scripts_count;
+            .unwrap_or_default();
+        let item_count = scripts_items.len();
+        let separators: Vec<usize> = scripts_items
+            .iter()
+            .enumerate()
+            .filter(|(_, i)| i.is_separator)
+            .map(|(idx, _)| idx)
+            .collect();
 
-        match navigate_submenu(&key, &mut self.state.ui.scripts_submenu, item_count, &[1]) {
+        match navigate_submenu(
+            &key,
+            &mut self.state.ui.scripts_submenu,
+            item_count,
+            &separators,
+        ) {
             SubmenuNavAction::Close => self.state.close_menu(),
             SubmenuNavAction::Execute => self.execute_scripts_submenu_action()?,
             SubmenuNavAction::Right => {

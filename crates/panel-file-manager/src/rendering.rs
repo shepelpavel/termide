@@ -197,7 +197,7 @@ impl FileManager {
                 let padding = &PAD[..padding_len.min(PAD.len())];
 
                 let size_str: std::borrow::Cow<'static, str> = if let Some(size) = entry.size {
-                    format!("{:>10}", utils::format_size(size)).into()
+                    format!("{:>10}", utils::format_size_compact(size)).into()
                 } else {
                     std::borrow::Cow::Borrowed("          ")
                 };

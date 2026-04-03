@@ -27,8 +27,9 @@ pub fn truncate_name(name: &str, max_len: usize) -> String {
     truncate_right(name, max_len)
 }
 
-/// Format file size in human-readable format (rounded to whole units)
-pub fn format_size(bytes: u64) -> String {
+/// Format file size in human-readable format (compact, whole numbers only).
+/// Used in file panel columns where space is limited.
+pub fn format_size_compact(bytes: u64) -> String {
     let t = termide_i18n::t();
     if bytes >= GIGABYTE {
         format!(
@@ -39,6 +40,34 @@ pub fn format_size(bytes: u64) -> String {
     } else if bytes >= MEGABYTE {
         format!(
             "{:.0} {}",
+            bytes as f64 / MEGABYTE as f64,
+            t.size_megabytes()
+        )
+    } else if bytes >= KILOBYTE {
+        format!(
+            "{:.0} {}",
+            bytes as f64 / KILOBYTE as f64,
+            t.size_kilobytes()
+        )
+    } else {
+        format!("{} {}", bytes, t.size_bytes())
+    }
+}
+
+/// Format file size in human-readable format (detailed).
+/// B, KB — whole numbers; MB — one decimal; GB+ — two decimals.
+/// Used in file info modal where precision matters.
+pub fn format_size(bytes: u64) -> String {
+    let t = termide_i18n::t();
+    if bytes >= GIGABYTE {
+        format!(
+            "{:.2} {}",
+            bytes as f64 / GIGABYTE as f64,
+            t.size_gigabytes()
+        )
+    } else if bytes >= MEGABYTE {
+        format!(
+            "{:.1} {}",
             bytes as f64 / MEGABYTE as f64,
             t.size_megabytes()
         )

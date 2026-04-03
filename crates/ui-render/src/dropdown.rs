@@ -365,22 +365,34 @@ pub fn get_scripts_items(registry: &termide_config::scripts::ScriptsRegistry) ->
         DropdownItem::separator(),
     ];
 
-    // Add root items (scripts in scripts/ root)
-    for script in &registry.root_items {
-        let mut item = DropdownItem::new(&script.name, &script.name);
-        if script.is_project {
-            item = item.with_project();
-        }
-        items.push(item);
+    let has_project = registry.root_items.iter().any(|s| s.is_project)
+        || registry.groups.iter().any(|g| g.is_project);
+    let has_global = registry.root_items.iter().any(|s| !s.is_project)
+        || registry.groups.iter().any(|g| !g.is_project);
+
+    // Project scripts first (bold)
+    for script in registry.root_items.iter().filter(|s| s.is_project) {
+        items.push(DropdownItem::new(&script.name, &script.name).with_project());
+    }
+    for group in registry.groups.iter().filter(|g| g.is_project) {
+        items.push(
+            DropdownItem::new(&group.name, &group.name)
+                .with_submenu()
+                .with_project(),
+        );
     }
 
-    // Add groups (subdirectories) with submenu indicator
-    for group in &registry.groups {
-        let mut item = DropdownItem::new(&group.name, &group.name).with_submenu();
-        if group.is_project {
-            item = item.with_project();
-        }
-        items.push(item);
+    // Separator between project and global
+    if has_project && has_global {
+        items.push(DropdownItem::separator());
+    }
+
+    // Global scripts
+    for script in registry.root_items.iter().filter(|s| !s.is_project) {
+        items.push(DropdownItem::new(&script.name, &script.name));
+    }
+    for group in registry.groups.iter().filter(|g| !g.is_project) {
+        items.push(DropdownItem::new(&group.name, &group.name).with_submenu());
     }
 
     // If no scripts exist, show "Add script..." item

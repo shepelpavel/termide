@@ -36,10 +36,10 @@ pub struct MenuRenderParams<'a> {
 pub fn get_menu_items() -> Vec<String> {
     let t = i18n::t();
     vec![
+        t.menu_bookmarks().to_string(),
+        t.menu_scripts().to_string(),
         t.menu_sessions().to_string(),
         t.menu_windows().to_string(),
-        t.menu_scripts().to_string(),
-        t.menu_bookmarks().to_string(),
         t.menu_options().to_string(),
     ]
 }
@@ -64,19 +64,19 @@ pub const INDICATOR_CLOCK_INDEX: usize = MENU_ITEM_COUNT + 3;
 /// Virtual navigation index for the disk indicator (status bar)
 pub const INDICATOR_DISK_INDEX: usize = MENU_ITEM_COUNT + 4;
 
-/// Index of Sessions menu item (no keyboard accelerator highlighting)
-pub const SESSIONS_MENU_INDEX: usize = 0;
+/// Index of Bookmarks menu item
+pub const BOOKMARKS_MENU_INDEX: usize = 0;
 
-/// Index of Windows menu item (for submenu positioning)
-pub const WINDOWS_MENU_INDEX: usize = 1;
+/// Index of Scripts menu item
+pub const SCRIPTS_MENU_INDEX: usize = 1;
 
-/// Index of Scripts menu item (for submenu positioning)
-pub const SCRIPTS_MENU_INDEX: usize = 2;
+/// Index of Sessions menu item
+pub const SESSIONS_MENU_INDEX: usize = 2;
 
-/// Index of Bookmarks menu item (for submenu positioning)
-pub const BOOKMARKS_MENU_INDEX: usize = 3;
+/// Index of Windows menu item
+pub const WINDOWS_MENU_INDEX: usize = 3;
 
-/// Index of Options menu item (for submenu positioning)
+/// Index of Options menu item
 pub const OPTIONS_MENU_INDEX: usize = 4;
 
 /// Pre-computed x positions and widths for all menu items.

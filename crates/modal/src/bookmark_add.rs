@@ -444,7 +444,7 @@ impl Modal for BookmarkAddModal {
             } else {
                 Style::default().fg(theme.fg)
             };
-            let checkbox_text = format!(" [{}] Project bookmark", checkbox_char);
+            let checkbox_text = format!(" [{}] {}", checkbox_char, t.bookmarks_add_project());
             let checkbox = Paragraph::new(checkbox_text).style(checkbox_style);
             checkbox.render(cb_chunks[1], buf);
             self.last_checkbox_area = Some(cb_chunks[1]);

@@ -815,6 +815,10 @@ impl Translation for RuntimeTranslation {
         self.get_string("bookmarks_add_group")
     }
 
+    fn bookmarks_add_project(&self) -> &str {
+        self.get_string("bookmarks_add_project")
+    }
+
     fn tools_files(&self) -> &str {
         self.get_string("tools_files")
     }
@@ -1693,6 +1697,10 @@ impl Translation for RuntimeTranslation {
 
     fn resource_disk_free(&self) -> &str {
         self.get_string("resource_disk_free")
+    }
+
+    fn resource_disk_used(&self) -> &str {
+        self.get_string("resource_disk_used")
     }
 
     fn resource_disk_total(&self) -> &str {
