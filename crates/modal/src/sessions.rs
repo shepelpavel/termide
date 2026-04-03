@@ -18,6 +18,15 @@ use termide_theme::Theme;
 
 use crate::{calculate_modal_width, centered_rect_with_size, Modal, ModalResult, ModalWidthConfig};
 
+/// Action returned by the sessions modal
+#[derive(Debug, Clone)]
+pub enum SessionAction {
+    /// Switch to the selected session
+    Switch(PathBuf),
+    /// Request deletion of the selected session
+    Delete(PathBuf),
+}
+
 /// Item representing a session in the list
 #[derive(Debug, Clone)]
 pub struct SessionItem {
@@ -161,7 +170,7 @@ impl SessionsModal {
 }
 
 impl Modal for SessionsModal {
-    type Result = PathBuf;
+    type Result = SessionAction;
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, theme: &Theme) {
         let modal_width = self.calculate_modal_width(area.width);
@@ -319,7 +328,24 @@ impl Modal for SessionsModal {
                     if item.is_current {
                         Ok(Some(ModalResult::Cancelled))
                     } else {
-                        Ok(Some(ModalResult::Confirmed(item.project_path.clone())))
+                        Ok(Some(ModalResult::Confirmed(SessionAction::Switch(
+                            item.project_path.clone(),
+                        ))))
+                    }
+                } else {
+                    Ok(None)
+                }
+            }
+
+            // Delete session
+            KeyCode::Delete => {
+                if let Some(item) = self.get_selected() {
+                    if !item.is_current {
+                        Ok(Some(ModalResult::Confirmed(SessionAction::Delete(
+                            item.project_path.clone(),
+                        ))))
+                    } else {
+                        Ok(None)
                     }
                 } else {
                     Ok(None)
@@ -373,7 +399,9 @@ impl Modal for SessionsModal {
                     if item.is_current {
                         return Ok(Some(ModalResult::Cancelled));
                     } else {
-                        return Ok(Some(ModalResult::Confirmed(item.project_path.clone())));
+                        return Ok(Some(ModalResult::Confirmed(SessionAction::Switch(
+                            item.project_path.clone(),
+                        ))));
                     }
                 }
                 Ok(None)

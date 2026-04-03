@@ -330,6 +330,11 @@ impl App {
                 PendingAction::NewSession => {
                     self.handle_new_session_result(value)?;
                 }
+                PendingAction::DeleteSession { path } => {
+                    if value.downcast_ref::<bool>().copied().unwrap_or(false) {
+                        self.handle_delete_session(&path)?;
+                    }
+                }
                 PendingAction::ChangeRootPath => {
                     self.handle_change_root_path_result(value)?;
                 }

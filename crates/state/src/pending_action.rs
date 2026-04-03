@@ -65,6 +65,8 @@ pub enum PendingAction {
     SwitchSession,
     /// Create new session in specified directory
     NewSession,
+    /// Delete session (with confirmation)
+    DeleteSession { path: PathBuf },
     /// Change root path of current session
     ChangeRootPath,
     /// Open Git Status panel

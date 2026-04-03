@@ -142,6 +142,16 @@ impl Session {
         Ok(Self::get_session_dir(project_root)?.join("session.toml"))
     }
 
+    /// Delete session directory for a specific project
+    pub fn delete_session(project_root: &Path) -> Result<()> {
+        let session_dir = Self::get_session_dir(project_root)?;
+        if session_dir.exists() {
+            fs::remove_dir_all(&session_dir)
+                .with_context(|| format!("Failed to delete session: {}", session_dir.display()))?;
+        }
+        Ok(())
+    }
+
     /// Load session from file for a specific project
     pub fn load(project_root: &Path) -> Result<Self> {
         let path = Self::get_session_path(project_root)?;

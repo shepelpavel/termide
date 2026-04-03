@@ -334,8 +334,22 @@ impl App {
 
     /// Handle switch session modal result
     pub(super) fn handle_switch_session(&mut self, value: Box<dyn std::any::Any>) -> Result<()> {
-        if let Some(project_path) = value.downcast_ref::<std::path::PathBuf>() {
-            self.switch_to_session(project_path.clone())?;
+        use termide_modal::{ConfirmModal, SessionAction};
+
+        if let Some(action) = value.downcast_ref::<SessionAction>() {
+            match action {
+                SessionAction::Switch(path) => {
+                    self.switch_to_session(path.clone())?;
+                }
+                SessionAction::Delete(path) => {
+                    let display = path.display().to_string();
+                    let modal = ConfirmModal::new("Delete session?", format!("Session: {display}"));
+                    self.state.set_pending_action(
+                        PendingAction::DeleteSession { path: path.clone() },
+                        ActiveModal::Confirm(Box::new(modal)),
+                    );
+                }
+            }
         }
         Ok(())
     }
@@ -358,6 +372,20 @@ impl App {
         // 5. Update terminal title to reflect new project root
         self.update_terminal_title();
 
+        Ok(())
+    }
+
+    /// Handle confirmed session deletion
+    pub(super) fn handle_delete_session(&mut self, path: &std::path::Path) -> Result<()> {
+        if let Err(e) = termide_session::Session::delete_session(path) {
+            log::error!("Failed to delete session for {:?}: {}", path, e);
+            self.state
+                .set_error(format!("Failed to delete session: {e}"));
+        } else {
+            log::info!("Deleted session for {:?}", path);
+        }
+        // Reopen sessions modal with updated list
+        self.handle_open_sessions_modal()?;
         Ok(())
     }
 

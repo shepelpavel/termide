@@ -63,7 +63,7 @@ pub use replace::{ReplaceAction, ReplaceModal, ReplaceModalResult};
 pub use save_as::{SaveAsModal, SaveAsResult};
 pub use search::{SearchAction, SearchModal, SearchModalResult};
 pub use select::SelectModal;
-pub use sessions::{SessionItem, SessionsModal};
+pub use sessions::{SessionAction, SessionItem, SessionsModal};
 
 /// Active modal window enum.
 ///
