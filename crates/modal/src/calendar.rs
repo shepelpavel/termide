@@ -21,8 +21,8 @@ use termide_theme::Theme;
 
 /// Width of the calendar modal (borders + 7 columns × 3 chars + padding).
 const CALENDAR_WIDTH: u16 = 24;
-/// Height: border(1) + weekday header(1) + 6 week rows + border(1) = 10
-const CALENDAR_HEIGHT: u16 = 10;
+/// Height: border(1) + weekday header(1) + 6 week rows + border(1) = 9
+const CALENDAR_HEIGHT: u16 = 9;
 
 /// Calendar modal — shows a monthly calendar grid.
 #[derive(Debug)]
@@ -210,8 +210,13 @@ impl Modal for CalendarModal {
         // Monday = 0 offset
         let start_weekday = first.weekday().num_days_from_monday();
         let total_days = self.days_in_month();
+        let dim_style = Style::default().fg(theme.disabled).bg(theme.bg);
+
+        // Last day of previous month (for filling leading empty cells)
+        let prev_month_last_day = first.pred_opt().map(|d| d.day()).unwrap_or(28);
 
         let mut day = 1u32;
+        let mut next_day = 1u32;
         for week in 0..6u16 {
             let row_y = inner.y + 1 + week;
             if row_y >= inner.y + inner.height {
@@ -223,12 +228,17 @@ impl Modal for CalendarModal {
 
             for weekday in 0..7u32 {
                 let cell_idx = week as u32 * 7 + weekday;
-                if cell_idx < start_weekday || day > total_days {
-                    spans.push(Span::styled("   ", default_style));
+                if cell_idx < start_weekday {
+                    // Previous month days (dimmed)
+                    let prev_day = prev_month_last_day - (start_weekday - cell_idx - 1);
+                    spans.push(Span::styled(format!("{:>2} ", prev_day), dim_style));
+                } else if day > total_days {
+                    // Next month days (dimmed)
+                    spans.push(Span::styled(format!("{:>2} ", next_day), dim_style));
+                    next_day += 1;
                 } else {
                     let text = format!("{:>2} ", day);
                     let style = if day == self.selected_day && self.is_today(day) {
-                        // Both selected and today
                         selected_style.add_modifier(Modifier::BOLD)
                     } else if day == self.selected_day {
                         selected_style

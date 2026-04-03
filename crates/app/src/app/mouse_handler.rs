@@ -71,14 +71,26 @@ impl App {
 
         // Handle modal mouse events first if a modal is open
         if self.state.active_modal.is_some() {
-            let modal_area = Rect {
-                x: 0,
-                y: 0,
-                width: self.state.terminal.width,
-                height: self.state.terminal.height,
-            };
-            self.handle_modal_mouse(mouse, modal_area)?;
-            return Ok(());
+            // Indicator modals (menu-integrated): click anywhere closes and falls through
+            let is_indicator_modal = self.state.ui.menu_open
+                && (self.state.resource_modal_kind.is_some()
+                    || matches!(self.state.active_modal, Some(ActiveModal::Calendar(_))));
+
+            if is_indicator_modal && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
+                self.state.active_modal = None;
+                self.state.resource_modal_kind = None;
+                self.state.last_resource_modal_refresh = None;
+                // Fall through to menu bar / panel click handling below
+            } else {
+                let modal_area = Rect {
+                    x: 0,
+                    y: 0,
+                    width: self.state.terminal.width,
+                    height: self.state.terminal.height,
+                };
+                self.handle_modal_mouse(mouse, modal_area)?;
+                return Ok(());
+            }
         }
 
         // Scroll events should reach panels when no modal is active
