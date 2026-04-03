@@ -28,9 +28,9 @@ pub use language_dropdown::{find_current_language_index, LanguageDropdown};
 pub use menu::{
     get_menu_item_x_position, get_menu_items, get_resource_indicator_ranges, render_menu,
     resource_color, MenuLayout, MenuRenderParams, BOOKMARKS_MENU_INDEX, INDICATOR_CLOCK_INDEX,
-    INDICATOR_CPU_INDEX, INDICATOR_NET_INDEX, INDICATOR_RAM_INDEX, MENU_INDICATOR_COUNT,
-    MENU_ITEM_COUNT, MENU_TOTAL_COUNT, OPTIONS_MENU_INDEX, SCRIPTS_MENU_INDEX, SESSIONS_MENU_INDEX,
-    WINDOWS_MENU_INDEX,
+    INDICATOR_CPU_INDEX, INDICATOR_DISK_INDEX, INDICATOR_NET_INDEX, INDICATOR_RAM_INDEX,
+    MENU_INDICATOR_COUNT, MENU_ITEM_COUNT, MENU_TOTAL_COUNT, OPTIONS_MENU_INDEX,
+    SCRIPTS_MENU_INDEX, SESSIONS_MENU_INDEX, WINDOWS_MENU_INDEX,
 };
 pub use panel_rendering::{
     render_collapsed_panel, render_dividers, render_expanded_panel, ExpandedPanelParams,

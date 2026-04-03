@@ -43,6 +43,8 @@ pub struct StatusBarParams<'a> {
     pub recommended_layout: &'a str,
     /// Background file operations summary (if any)
     pub background_ops: Option<BackgroundOpsSummary>,
+    /// Whether disk indicator is selected via menu navigation
+    pub disk_selected: bool,
 }
 
 /// Calculate width of spans accounting for unicode characters.
@@ -62,6 +64,7 @@ fn append_disk_space(
     disk: &DiskSpaceInfo,
     theme: &Theme,
     total_width: u16,
+    selected: bool,
 ) {
     let disk_text = format!(" {} ", disk.format_space());
     let disk_color = resource_color(disk.usage_percent(), theme);
@@ -73,10 +76,14 @@ fn append_disk_space(
         spans.push(Span::raw(" ".repeat(remaining)));
     }
 
-    spans.push(Span::styled(
-        disk_text,
-        Style::default().fg(disk_color).bg(theme.accented_bg),
-    ));
+    let style = if selected {
+        // Inverted colors when selected via menu navigation
+        Style::default().fg(theme.accented_bg).bg(disk_color)
+    } else {
+        Style::default().fg(disk_color).bg(theme.accented_bg)
+    };
+
+    spans.push(Span::styled(disk_text, style));
 }
 
 /// Append background operations indicator to spans.
@@ -216,7 +223,7 @@ impl StatusBar {
 
             // If there's disk information, add it on the right
             if let Some(disk) = &info.disk_space {
-                append_disk_space(&mut spans, disk, theme, total_width);
+                append_disk_space(&mut spans, disk, theme, total_width, params.disk_selected);
             }
 
             spans
@@ -286,7 +293,7 @@ impl StatusBar {
 
             // If there's disk information, add it on the right
             if let Some(disk) = disk_space {
-                append_disk_space(&mut spans, disk, theme, total_width);
+                append_disk_space(&mut spans, disk, theme, total_width, params.disk_selected);
             }
 
             spans
@@ -350,7 +357,7 @@ impl StatusBar {
 
             // If there's disk information, add it on the right
             if let Some(disk) = disk_space {
-                append_disk_space(&mut spans, disk, theme, total_width);
+                append_disk_space(&mut spans, disk, theme, total_width, params.disk_selected);
             }
 
             spans
@@ -368,7 +375,7 @@ impl StatusBar {
                 if let Some(ref ops) = params.background_ops {
                     append_background_ops(&mut spans, ops, theme);
                 }
-                append_disk_space(&mut spans, disk, theme, total_width);
+                append_disk_space(&mut spans, disk, theme, total_width, params.disk_selected);
                 return spans;
             }
 

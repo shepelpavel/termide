@@ -454,6 +454,8 @@ fn render_status_bar_for_active(
             }
         });
 
+        let disk_selected = state.ui.menu_open
+            && state.ui.selected_menu_item == Some(termide_ui_render::INDICATOR_DISK_INDEX);
         let params = StatusBarParams {
             theme: state.theme,
             status_message: state.ui.status_message.as_ref(),
@@ -461,6 +463,7 @@ fn render_status_bar_for_active(
             terminal_height: state.terminal.height,
             recommended_layout: state.get_recommended_layout(),
             background_ops,
+            disk_selected,
         };
         StatusBar::render(
             frame.buffer_mut(),

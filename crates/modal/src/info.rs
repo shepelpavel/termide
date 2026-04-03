@@ -56,6 +56,7 @@ pub struct InfoModal {
     last_button_area: Option<Rect>,   // For mouse handling
     min_width: Option<u16>,           // Optional minimum width to prevent jitter
     anchor: Option<(u16, u16)>,       // Optional anchor position (x, y) instead of centering
+    anchor_bottom: bool,              // true = anchor specifies bottom edge, not top
     show_button: bool,                // Whether to show the OK button
 }
 
@@ -73,6 +74,7 @@ impl InfoModal {
             last_button_area: None,
             min_width: None,
             anchor: None,
+            anchor_bottom: false,
             show_button: true,
         }
     }
@@ -86,6 +88,7 @@ impl InfoModal {
             last_button_area: None,
             min_width: None,
             anchor: None,
+            anchor_bottom: false,
             show_button: true,
         }
     }
@@ -93,6 +96,13 @@ impl InfoModal {
     /// Position modal at anchor point instead of centering.
     pub fn with_anchor(mut self, x: u16, y: u16) -> Self {
         self.anchor = Some((x, y));
+        self
+    }
+
+    /// Position modal so its bottom edge is at anchor y (grows upward).
+    pub fn with_anchor_bottom(mut self, x: u16, y: u16) -> Self {
+        self.anchor = Some((x, y));
+        self.anchor_bottom = true;
         self
     }
 
@@ -331,7 +341,13 @@ impl Modal for InfoModal {
         // Position: anchored or centered
         let modal_area = if let Some((ax, ay)) = self.anchor {
             let x = ax.min(area.width.saturating_sub(modal_width));
-            let y = ay.min(area.height.saturating_sub(modal_height));
+            let y = if self.anchor_bottom {
+                // Bottom anchor: modal grows upward from ay
+                ay.saturating_sub(modal_height)
+            } else {
+                ay
+            }
+            .min(area.height.saturating_sub(modal_height));
             Rect {
                 x,
                 y,

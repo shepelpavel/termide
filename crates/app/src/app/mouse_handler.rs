@@ -535,7 +535,12 @@ impl App {
                 .width
                 .saturating_sub(disk_text.len() as u16);
             if x >= disk_start {
-                self.open_disk_modal();
+                use termide_ui_render::INDICATOR_DISK_INDEX;
+                // Open as menu-integrated indicator
+                self.state.ui.menu_open = true;
+                self.state.ui.selected_menu_item = Some(INDICATOR_DISK_INDEX);
+                self.state.ui.close_all_submenus();
+                self.open_indicator_as_submenu(INDICATOR_DISK_INDEX);
                 return Ok(());
             }
         }
@@ -589,7 +594,11 @@ impl App {
                 let lines = self.build_network_modal_lines();
                 (title, lines)
             }
-            ResourceModalKind::Disk => return,
+            ResourceModalKind::Disk => {
+                let title = t.resource_disk_title().to_owned();
+                let lines = self.build_disk_modal_lines();
+                (title, lines)
+            }
         };
         let mut modal = modal::InfoModal::new_rich(title, lines).with_min_width(57);
         if let Some((x, y)) = anchor {
@@ -900,19 +909,6 @@ impl App {
         }
 
         lines
-    }
-
-    /// Open disk space modal.
-    fn open_disk_modal(&mut self) {
-        use crate::state::ResourceModalKind;
-
-        let t = i18n::t();
-        let lines = self.build_disk_modal_lines();
-        let modal = modal::InfoModal::new_rich(t.resource_disk_title(), lines);
-        self.state.active_modal = Some(ActiveModal::Info(Box::new(modal)));
-        self.state.resource_modal_kind = Some(ResourceModalKind::Disk);
-        self.state.last_resource_modal_refresh = Some(std::time::Instant::now());
-        self.state.needs_redraw = true;
     }
 
     /// Handle click on Options submenu dropdown

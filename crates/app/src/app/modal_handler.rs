@@ -96,7 +96,26 @@ impl App {
                         self.switch_to_next_menu()?;
                         return Ok(());
                     }
-                    _ => {} // Calendar uses arrows for day navigation — fall through
+                    KeyCode::Left if is_calendar => {
+                        if let Some(ActiveModal::Calendar(cal)) = &self.state.active_modal {
+                            if cal.at_left_edge() {
+                                self.state.close_indicator_modal();
+                                self.switch_to_prev_menu()?;
+                                return Ok(());
+                            }
+                        }
+                        // Not at edge — fall through to calendar's own handler
+                    }
+                    KeyCode::Right if is_calendar => {
+                        if let Some(ActiveModal::Calendar(cal)) = &self.state.active_modal {
+                            if cal.at_right_edge() {
+                                self.state.close_indicator_modal();
+                                self.switch_to_next_menu()?;
+                                return Ok(());
+                            }
+                        }
+                    }
+                    _ => {} // Other keys — fall through to modal handler
                 }
             }
         }

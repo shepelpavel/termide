@@ -72,9 +72,9 @@ use termide_panel_file_manager::FileManager;
 use termide_panel_terminal::Terminal;
 use termide_theme::Theme;
 use termide_ui_render::menu::{
-    BOOKMARKS_MENU_INDEX, INDICATOR_CLOCK_INDEX, INDICATOR_CPU_INDEX, INDICATOR_NET_INDEX,
-    INDICATOR_RAM_INDEX, MENU_TOTAL_COUNT, OPTIONS_MENU_INDEX, SCRIPTS_MENU_INDEX,
-    SESSIONS_MENU_INDEX, WINDOWS_MENU_INDEX,
+    BOOKMARKS_MENU_INDEX, INDICATOR_CLOCK_INDEX, INDICATOR_CPU_INDEX, INDICATOR_DISK_INDEX,
+    INDICATOR_NET_INDEX, INDICATOR_RAM_INDEX, MENU_TOTAL_COUNT, OPTIONS_MENU_INDEX,
+    SCRIPTS_MENU_INDEX, SESSIONS_MENU_INDEX, WINDOWS_MENU_INDEX,
 };
 use termide_ui_render::{
     OPTIONS_SUBMENU_HELP, OPTIONS_SUBMENU_LANGUAGE, OPTIONS_SUBMENU_PREFERENCES,
@@ -143,7 +143,8 @@ impl App {
                 INDICATOR_NET_INDEX
                 | INDICATOR_CPU_INDEX
                 | INDICATOR_RAM_INDEX
-                | INDICATOR_CLOCK_INDEX => {
+                | INDICATOR_CLOCK_INDEX
+                | INDICATOR_DISK_INDEX => {
                     self.open_indicator_as_submenu(menu_index);
                 }
                 _ => {}
@@ -153,7 +154,27 @@ impl App {
     }
 
     /// Open an indicator modal positioned as a dropdown under the indicator.
-    fn open_indicator_as_submenu(&mut self, menu_index: usize) {
+    pub(super) fn open_indicator_as_submenu(&mut self, menu_index: usize) {
+        self.state.close_indicator_modal();
+
+        if menu_index == INDICATOR_DISK_INDEX {
+            use crate::state::ResourceModalKind;
+            let t = termide_i18n::t();
+            let lines = self.build_disk_modal_lines();
+            // Use terminal width as anchor — clamping in render will right-align the modal
+            let anchor_x = self.state.terminal.width;
+            // Bottom edge = status bar row (last row)
+            let anchor_y = self.state.terminal.height.saturating_sub(1);
+            let modal = termide_modal::InfoModal::new_rich(t.resource_disk_title(), lines)
+                .without_button()
+                .with_anchor_bottom(anchor_x, anchor_y);
+            self.state.active_modal = Some(termide_modal::ActiveModal::Info(Box::new(modal)));
+            self.state.resource_modal_kind = Some(ResourceModalKind::Disk);
+            self.state.last_resource_modal_refresh = Some(std::time::Instant::now());
+            self.state.needs_redraw = true;
+            return;
+        }
+
         let (net_range, cpu_range, ram_range, clock_range) = self.get_indicator_ranges();
         let anchor_x = match menu_index {
             INDICATOR_NET_INDEX => net_range.start,
@@ -162,8 +183,6 @@ impl App {
             INDICATOR_CLOCK_INDEX => clock_range.start,
             _ => 0,
         };
-
-        self.state.active_modal = None;
 
         if menu_index == INDICATOR_CLOCK_INDEX {
             let modal = termide_modal::CalendarModal::new().with_anchor(anchor_x, 1);

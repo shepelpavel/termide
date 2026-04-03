@@ -47,8 +47,8 @@ pub fn get_menu_items() -> Vec<String> {
 /// Number of menu items
 pub const MENU_ITEM_COUNT: usize = 5;
 
-/// Number of right-side indicators (net, cpu, ram, clock)
-pub const MENU_INDICATOR_COUNT: usize = 4;
+/// Number of indicators (net, cpu, ram, clock + disk in status bar)
+pub const MENU_INDICATOR_COUNT: usize = 5;
 
 /// Total navigation positions: menu items + indicators
 pub const MENU_TOTAL_COUNT: usize = MENU_ITEM_COUNT + MENU_INDICATOR_COUNT;
@@ -61,6 +61,8 @@ pub const INDICATOR_CPU_INDEX: usize = MENU_ITEM_COUNT + 1;
 pub const INDICATOR_RAM_INDEX: usize = MENU_ITEM_COUNT + 2;
 /// Virtual navigation index for the clock indicator
 pub const INDICATOR_CLOCK_INDEX: usize = MENU_ITEM_COUNT + 3;
+/// Virtual navigation index for the disk indicator (status bar)
+pub const INDICATOR_DISK_INDEX: usize = MENU_ITEM_COUNT + 4;
 
 /// Index of Sessions menu item (no keyboard accelerator highlighting)
 pub const SESSIONS_MENU_INDEX: usize = 0;
