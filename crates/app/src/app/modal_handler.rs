@@ -82,23 +82,17 @@ impl App {
             if is_resource || is_calendar {
                 match key.code {
                     KeyCode::Esc => {
+                        self.state.close_indicator_modal();
                         self.state.close_menu();
-                        self.state.active_modal = None;
-                        self.state.resource_modal_kind = None;
-                        self.state.last_resource_modal_refresh = None;
                         return Ok(());
                     }
                     KeyCode::Left if is_resource => {
-                        self.state.active_modal = None;
-                        self.state.resource_modal_kind = None;
-                        self.state.last_resource_modal_refresh = None;
+                        self.state.close_indicator_modal();
                         self.switch_to_prev_menu()?;
                         return Ok(());
                     }
                     KeyCode::Right if is_resource => {
-                        self.state.active_modal = None;
-                        self.state.resource_modal_kind = None;
-                        self.state.last_resource_modal_refresh = None;
+                        self.state.close_indicator_modal();
                         self.switch_to_next_menu()?;
                         return Ok(());
                     }
@@ -377,10 +371,8 @@ impl App {
                         value,
                     )?;
                 }
-                // Change file permissions
-                PendingAction::ChangePermissions { file_path } => {
-                    self.handle_change_permissions(value, &file_path)?;
-                }
+                // Change file permissions (applied live via try_apply_permissions_live)
+                PendingAction::ChangePermissions { .. } => {}
                 // Follow symlink — navigate to target
                 PendingAction::FollowSymlink { target_path } => {
                     self.handle_follow_symlink(value, &target_path)?;
@@ -557,16 +549,6 @@ impl App {
                 }
             }
         }
-        Ok(())
-    }
-
-    /// Handle change permissions result (close action only, live apply handled separately)
-    fn handle_change_permissions(
-        &mut self,
-        _value: Box<dyn std::any::Any>,
-        _file_path: &std::path::Path,
-    ) -> Result<()> {
-        // Permissions are applied live via try_apply_permissions_live()
         Ok(())
     }
 

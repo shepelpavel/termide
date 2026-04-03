@@ -77,9 +77,7 @@ impl App {
                     || matches!(self.state.active_modal, Some(ActiveModal::Calendar(_))));
 
             if is_indicator_modal && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
-                self.state.active_modal = None;
-                self.state.resource_modal_kind = None;
-                self.state.last_resource_modal_refresh = None;
+                self.state.close_indicator_modal();
                 // Fall through to menu bar / panel click handling below
             } else {
                 let modal_area = Rect {

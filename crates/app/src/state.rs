@@ -411,6 +411,13 @@ impl AppState {
         self.cached_shells.clear();
     }
 
+    /// Close resource indicator modal (CPU/RAM/Net/Calendar) and clear refresh state.
+    pub fn close_indicator_modal(&mut self) {
+        self.active_modal = None;
+        self.resource_modal_kind = None;
+        self.last_resource_modal_refresh = None;
+    }
+
     /// Open submenu (e.g., Preferences dropdown)
     pub fn open_submenu(&mut self) {
         self.ui.close_all_submenus();
