@@ -69,7 +69,7 @@ impl BookmarkType {
             BookmarkType::TextFile => "📄",
             BookmarkType::ViewerFile => "🖼",
             BookmarkType::HttpLink => "🌐",
-            BookmarkType::SshConnection => "🔑",
+            BookmarkType::SshConnection => "💻",
             BookmarkType::SftpPath | BookmarkType::FtpPath => "📡",
             BookmarkType::SmbPath | BookmarkType::NfsPath => "🖧",
             BookmarkType::Unknown => "📌",
