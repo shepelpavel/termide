@@ -7,8 +7,13 @@
 
 use anyhow::Result;
 use crossterm::event::KeyCode;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+#[cfg(unix)]
+use std::sync::Mutex;
+#[cfg(unix)]
+use std::time::{Duration, Instant};
 
 use super::App;
 use crate::state::{ActiveModal, PendingAction};
@@ -1345,7 +1350,7 @@ impl App {
         } else if script.is_background {
             // Fire-and-forget spawn (no terminal panel)
             log::info!("Running background script '{}' in {:?}", script.name, cwd);
-            match shell_command(&script.path)
+            match shell_command(&script.path, &cwd)
                 .current_dir(&cwd)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -1401,7 +1406,7 @@ impl App {
 
         log::info!("Running report script '{}' in {:?}", script.name, cwd);
 
-        let child = shell_command(&script.path)
+        let child = shell_command(&script.path, cwd)
             .current_dir(cwd)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -1997,20 +2002,108 @@ fn shell_quote(path: &std::path::Path) -> String {
     format!("\"{}\"", s.replace('"', "\\\""))
 }
 
+/// Cached environment variables with timestamp for TTL expiry.
+#[cfg(unix)]
+type EnvCache = HashMap<PathBuf, (HashMap<String, String>, Instant)>;
+
+/// Cache for project environment variables, keyed by directory path.
+#[cfg(unix)]
+static DIR_ENV_CACHE: Mutex<Option<EnvCache>> = Mutex::new(None);
+
+#[cfg(unix)]
+const ENV_CACHE_TTL: Duration = Duration::from_secs(300);
+
+/// Check if direnv is available in PATH (cached after first call).
+#[cfg(unix)]
+fn has_direnv() -> bool {
+    use std::sync::OnceLock;
+    static AVAILABLE: OnceLock<bool> = OnceLock::new();
+    *AVAILABLE.get_or_init(|| {
+        std::process::Command::new("direnv")
+            .arg("version")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success())
+    })
+}
+
+/// Get project environment for a given directory (with caching).
+/// Uses `direnv exec <cwd> env` when direnv is available,
+/// otherwise `$SHELL -lc env` for login shell environment.
+#[cfg(unix)]
+fn get_project_env(cwd: &std::path::Path) -> Option<HashMap<String, String>> {
+    // Check cache
+    if let Ok(guard) = DIR_ENV_CACHE.lock() {
+        if let Some(cache) = guard.as_ref() {
+            if let Some((env, ts)) = cache.get(cwd) {
+                if ts.elapsed() < ENV_CACHE_TTL {
+                    return Some(env.clone());
+                }
+            }
+        }
+    }
+
+    // Capture environment from the project directory
+    let output = if has_direnv() {
+        std::process::Command::new("direnv")
+            .arg("exec")
+            .arg(cwd)
+            .arg("env")
+            .current_dir(cwd)
+            .stderr(std::process::Stdio::null())
+            .output()
+    } else {
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+        std::process::Command::new(shell)
+            .arg("-lc")
+            .arg("env")
+            .current_dir(cwd)
+            .stderr(std::process::Stdio::null())
+            .output()
+    };
+
+    let env_map: HashMap<String, String> = match output {
+        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .filter_map(|line| {
+                let (key, value) = line.split_once('=')?;
+                Some((key.to_string(), value.to_string()))
+            })
+            .collect(),
+        _ => return None,
+    };
+
+    // Update cache
+    if let Ok(mut guard) = DIR_ENV_CACHE.lock() {
+        let cache = guard.get_or_insert_with(HashMap::new);
+        cache.insert(cwd.to_path_buf(), (env_map.clone(), Instant::now()));
+    }
+
+    Some(env_map)
+}
+
 /// Create a Command that runs a script through the user's shell.
-/// Inherits the current process environment (important for nix develop, direnv, etc.).
-/// On Unix: $SHELL -c 'script_path'
+/// On Unix: loads project environment (via direnv or login shell) and
+/// runs the script with cached env vars. No direnv noise in stdout/stderr.
 /// On Windows: cmd.exe /C "script_path"
-fn shell_command(script_path: &std::path::Path) -> std::process::Command {
+fn shell_command(script_path: &std::path::Path, cwd: &std::path::Path) -> std::process::Command {
     #[cfg(unix)]
     {
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
-        let mut cmd = std::process::Command::new(shell);
+        let mut cmd = std::process::Command::new(&shell);
         cmd.arg("-c").arg(shell_quote(script_path));
+
+        if let Some(env) = get_project_env(cwd) {
+            cmd.env_clear();
+            cmd.envs(env);
+        }
+
         cmd
     }
     #[cfg(not(unix))]
     {
+        let _ = cwd;
         let mut cmd = std::process::Command::new("cmd.exe");
         cmd.arg("/C").arg(shell_quote(script_path));
         cmd
