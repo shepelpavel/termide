@@ -767,7 +767,7 @@ impl App {
             let used_color = match resource_color(usage, self.state.theme) {
                 c if c == self.state.theme.error => SegmentStyle::Error,
                 c if c == self.state.theme.warning => SegmentStyle::Warning,
-                _ => SegmentStyle::Default,
+                _ => SegmentStyle::Success,
             };
             let segments = vec![
                 StyledSegment {
