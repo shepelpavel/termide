@@ -1361,7 +1361,7 @@ impl App {
             // Run in background with output capture, show result in modal
             self.run_report_script(script, &cwd)?;
         } else if script.is_background {
-            // Fire-and-forget spawn (no terminal panel)
+            // Background spawn — tracked in Operations panel
             log::info!("Running background script '{}' in {:?}", script.name, cwd);
             match shell_command(&script.path, &cwd)
                 .current_dir(&cwd)
@@ -1370,7 +1370,26 @@ impl App {
                 .stdin(std::process::Stdio::null())
                 .spawn()
             {
-                Ok(_) => {}
+                Ok(mut child) => {
+                    let op_id = self.state.next_synthetic_operation_id();
+                    self.state.track_operation(
+                        op_id,
+                        termide_state::OperationType::Script,
+                        script.name.clone(),
+                        String::new(),
+                        0,
+                        0,
+                    );
+                    let state_op_id = op_id;
+                    // Track completion in background thread
+                    let (tx, rx) = std::sync::mpsc::channel::<()>();
+                    std::thread::spawn(move || {
+                        let _ = child.wait();
+                        let _ = tx.send(());
+                    });
+                    // Store handle to poll for completion
+                    self.state.bg_script_handles.push((state_op_id, rx));
+                }
                 Err(e) => {
                     log::error!("Failed to run background script '{}': {}", script.name, e);
                     self.state.set_error(format!("Failed to run script: {}", e));
@@ -1449,9 +1468,21 @@ impl App {
                     let _ = tx.send(result);
                 });
 
+                // Track in Operations panel
+                let op_id = self.state.next_synthetic_operation_id();
+                self.state.track_operation(
+                    op_id,
+                    termide_state::OperationType::Script,
+                    script.name.clone(),
+                    String::new(),
+                    0,
+                    0,
+                );
+
                 self.state.script_operation_handle = Some(ScriptOperationHandle {
                     receiver: rx,
                     script_name: script.name.clone(),
+                    operation_id: Some(op_id),
                 });
             }
             Err(e) => {

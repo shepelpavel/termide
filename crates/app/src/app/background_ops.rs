@@ -248,6 +248,10 @@ impl App {
 
         match handle.receiver.try_recv() {
             Ok(result) => {
+                // Remove from Operations panel
+                if let Some(op_id) = handle.operation_id {
+                    self.state.untrack_operation(op_id);
+                }
                 // Show result modal
                 let title = if result.success {
                     format!("{} ✓", result.script_name)
@@ -289,9 +293,25 @@ impl App {
             }
             Err(TryRecvError::Disconnected) => {
                 // Thread finished without sending (shouldn't happen)
-                // Just ignore
+                if let Some(op_id) = handle.operation_id {
+                    self.state.untrack_operation(op_id);
+                }
             }
         }
+    }
+
+    /// Check for completed background scripts (.bg.) and remove from Operations panel.
+    pub(super) fn check_bg_script_completion(&mut self) {
+        self.state.bg_script_handles.retain(|(op_id, rx)| {
+            match rx.try_recv() {
+                Ok(()) | Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.state.active_operations.remove(op_id);
+                    self.state.needs_redraw = true;
+                    false // remove from list
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => true, // keep polling
+            }
+        });
     }
 
     /// Poll LSP status for expanded editors and completion for active editor

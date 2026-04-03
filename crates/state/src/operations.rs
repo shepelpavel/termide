@@ -23,12 +23,14 @@ pub enum OperationType {
     MoveDownload,
     /// Delete file(s)
     Delete,
+    /// Script execution (report script)
+    Script,
 }
 
 impl OperationType {
-    /// Returns true if this operation involves data transfer (not delete/rename)
+    /// Returns true if this operation involves data transfer (not delete/rename/script)
     pub fn has_data_progress(&self) -> bool {
-        !matches!(self, Self::Delete | Self::Rename)
+        !matches!(self, Self::Delete | Self::Rename | Self::Script)
     }
 }
 

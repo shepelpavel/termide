@@ -449,6 +449,7 @@ pub trait Translation: Send + Sync {
     fn op_type_move_upload(&self) -> &str;
     fn op_type_move_download(&self) -> &str;
     fn op_type_rename(&self) -> &str;
+    fn op_type_script(&self) -> &str;
     fn op_type_scanning(&self) -> &str;
     fn op_found_count(&self, count: usize) -> String;
     fn op_files_progress(&self, current: usize, total: usize) -> String;

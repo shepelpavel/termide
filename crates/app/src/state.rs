@@ -96,6 +96,8 @@ pub struct ScriptOperationHandle {
     pub receiver: mpsc::Receiver<ScriptOperationResult>,
     /// Script display name
     pub script_name: String,
+    /// Operation ID for tracking in Operations panel
+    pub operation_id: Option<termide_file_ops::OperationId>,
 }
 
 impl std::fmt::Debug for ScriptOperationHandle {
@@ -204,6 +206,8 @@ pub struct AppState {
     pub git_operation_handle: Option<GitOperationHandle>,
     /// Handle for background script operation (.report. scripts)
     pub script_operation_handle: Option<ScriptOperationHandle>,
+    /// Handles for background scripts (.bg.) tracked in Operations panel
+    pub bg_script_handles: Vec<(termide_file_ops::OperationId, mpsc::Receiver<()>)>,
     /// Pending editor download via OperationManager (replaces download_operation for editor opens)
     pub pending_editor_download: Option<PendingEditorDownload>,
     /// Pending batch upload state (for OperationManager-based uploads)
@@ -330,6 +334,7 @@ impl AppState {
             dir_size_receiver: None,
             git_operation_handle: None,
             script_operation_handle: None,
+            bg_script_handles: Vec::new(),
             pending_editor_download: None,
             pending_batch_upload: None,
             pending_remote_delete: None,
@@ -838,6 +843,12 @@ impl AppState {
         self.batch_tracking_id = Some(batch_id);
 
         batch_id
+    }
+
+    /// Generate a synthetic OperationId for non-OperationManager use (scripts, etc.).
+    pub fn next_synthetic_operation_id(&mut self) -> termide_file_ops::OperationId {
+        self.batch_id_counter = self.batch_id_counter.wrapping_add(1);
+        termide_file_ops::OperationId::new(self.batch_id_counter)
     }
 
     /// Finish batch tracking - remove the batch operation from active_operations.

@@ -58,11 +58,20 @@ impl OperationSnapshot {
 
     /// Card height for this operation based on its type and state.
     pub fn card_height(&self) -> u16 {
+        let is_script = self.op_type == termide_state::OperationType::Script;
         let has_dest = !self.dest.is_empty();
         let has_data = !self.is_scanning && self.op_type.has_data_progress();
-        // Content lines: header + bar + source = 3 (always)
-        //   + dest (if present) + files (always) + data + speed (if has_data)
-        let content_lines: u16 = 3 + has_dest as u16 + 1 + if has_data { 2 } else { 0 };
+        let has_bar = !is_script;
+        let has_files = !is_script;
+        // Content lines: header + source = 2 (always)
+        //   + bar (if not script) + dest (if present) + files (if not script)
+        //   + data + speed (if has_data) + elapsed (always)
+        let content_lines: u16 = 2
+            + has_bar as u16
+            + has_dest as u16
+            + has_files as u16
+            + if has_data { 2 } else { 0 }
+            + 1;
         content_lines + 2 // + top/bottom border
     }
 }

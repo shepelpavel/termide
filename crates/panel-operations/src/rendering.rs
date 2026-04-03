@@ -42,6 +42,7 @@ fn op_type_label(op_type: &termide_state::OperationType) -> &str {
         termide_state::OperationType::MoveUpload => t.op_type_move_upload(),
         termide_state::OperationType::MoveDownload => t.op_type_move_download(),
         termide_state::OperationType::Delete => t.progress_delete_title(),
+        termide_state::OperationType::Script => t.op_type_script(),
     }
 }
 
@@ -73,6 +74,7 @@ fn render_snapshot_card(
     }
 
     let content_width = inner.width as usize;
+    let is_script = op.op_type == termide_state::OperationType::Script;
     let is_scanning = op.is_scanning;
     let has_data = !is_scanning && op.op_type.has_data_progress();
     let t = termide_i18n::t();
@@ -104,23 +106,25 @@ fn render_snapshot_card(
     buf.set_line(inner.x, y, &header_line, inner.width);
     y += 1;
 
-    // Line 2: Progress bar
-    let bar_width = content_width;
-    let percent_val = op.progress.percent() as usize;
-    let filled = (bar_width * percent_val) / 100;
-    let empty = bar_width.saturating_sub(filled);
-    let filled_part = &FILLED[..filled.min(FILLED.len() / 3) * 3]; // █ is 3 bytes
-    let empty_part = &EMPTY[..empty.min(EMPTY.len() / 3) * 3]; // ░ is 3 bytes
-    let bar_color = if op.is_paused {
-        accent_color
-    } else {
-        Color::Green
-    };
-    let bar_line = Line::from(vec![
-        Span::styled(filled_part, Style::default().fg(bar_color)),
-        Span::styled(empty_part, Style::default().fg(bar_color)),
-    ]);
-    buf.set_line(inner.x, y, &bar_line, inner.width);
+    // Line 2: Progress bar (skip for scripts — no progress data)
+    if !is_script {
+        let bar_width = content_width;
+        let percent_val = op.progress.percent() as usize;
+        let filled = (bar_width * percent_val) / 100;
+        let empty = bar_width.saturating_sub(filled);
+        let filled_part = &FILLED[..filled.min(FILLED.len() / 3) * 3]; // █ is 3 bytes
+        let empty_part = &EMPTY[..empty.min(EMPTY.len() / 3) * 3]; // ░ is 3 bytes
+        let bar_color = if op.is_paused {
+            accent_color
+        } else {
+            Color::Green
+        };
+        let bar_line = Line::from(vec![
+            Span::styled(filled_part, Style::default().fg(bar_color)),
+            Span::styled(empty_part, Style::default().fg(bar_color)),
+        ]);
+        buf.set_line(inner.x, y, &bar_line, inner.width);
+    }
     y += 1;
 
     // Line 3: Source path (truncate left)
@@ -145,19 +149,21 @@ fn render_snapshot_card(
         y += 1;
     }
 
-    // Line 5: Files count (during scanning show "Found: N")
-    let files = if is_scanning {
-        t.op_found_count(op.progress.total_files)
-    } else {
-        t.op_files_progress(op.progress.files_completed, op.progress.total_files)
-    };
-    buf.set_line(
-        inner.x,
-        y,
-        &Line::from(Span::styled(files, Style::default().fg(fg_color))),
-        inner.width,
-    );
-    y += 1;
+    // Line 5: Files count (skip for scripts, during scanning show "Found: N")
+    if !is_script {
+        let files = if is_scanning {
+            t.op_found_count(op.progress.total_files)
+        } else {
+            t.op_files_progress(op.progress.files_completed, op.progress.total_files)
+        };
+        buf.set_line(
+            inner.x,
+            y,
+            &Line::from(Span::styled(files, Style::default().fg(fg_color))),
+            inner.width,
+        );
+        y += 1;
+    }
 
     // Line 6: Data (only for transfer operations, not during scanning)
     if has_data {
@@ -181,6 +187,30 @@ fn render_snapshot_card(
             inner.x,
             y,
             &Line::from(Span::styled(speed, Style::default().fg(fg_color))),
+            inner.width,
+        );
+        y += 1;
+    }
+
+    // Elapsed time (for all operations)
+    {
+        let elapsed = op.started_at.elapsed().as_secs();
+        let elapsed_str = if elapsed >= 3600 {
+            format!(
+                "{}h {}m {}s",
+                elapsed / 3600,
+                (elapsed % 3600) / 60,
+                elapsed % 60
+            )
+        } else if elapsed >= 60 {
+            format!("{}m {}s", elapsed / 60, elapsed % 60)
+        } else {
+            format!("{}s", elapsed)
+        };
+        buf.set_line(
+            inner.x,
+            y,
+            &Line::from(Span::styled(elapsed_str, Style::default().fg(fg_color))),
             inner.width,
         );
     }

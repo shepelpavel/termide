@@ -598,6 +598,7 @@ impl App {
 
                         // Check background script operation result (.report. scripts)
                         self.check_script_operation_result();
+                        self.check_bg_script_completion();
 
                         // Poll unified operation manager for events (new system)
                         self.poll_operation_manager();

@@ -1437,6 +1437,10 @@ impl Translation for RuntimeTranslation {
         self.get_string("op_type_rename")
     }
 
+    fn op_type_script(&self) -> &str {
+        self.get_string("op_type_script")
+    }
+
     fn op_type_scanning(&self) -> &str {
         self.get_string("op_type_scanning")
     }
