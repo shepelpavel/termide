@@ -1482,12 +1482,14 @@ impl App {
                     0,
                 );
 
-                self.state.script_operation_handle = Some(ScriptOperationHandle {
-                    receiver: rx,
-                    script_name: script.name.clone(),
-                    operation_id: Some(op_id),
-                    pid: Some(pid),
-                });
+                self.state
+                    .script_operation_handles
+                    .push(ScriptOperationHandle {
+                        receiver: rx,
+                        script_name: script.name.clone(),
+                        operation_id: Some(op_id),
+                        pid: Some(pid),
+                    });
 
                 // Open operations panel to show progress
                 self.open_operations_panel()?;
@@ -2343,6 +2345,8 @@ fn get_project_env(cwd: &std::path::Path) -> Option<HashMap<String, String>> {
 fn shell_command(script_path: &std::path::Path, cwd: &std::path::Path) -> std::process::Command {
     #[cfg(unix)]
     {
+        use std::os::unix::process::CommandExt;
+
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
         let mut cmd = std::process::Command::new(&shell);
         cmd.arg("-c").arg(shell_quote(script_path));
@@ -2350,6 +2354,14 @@ fn shell_command(script_path: &std::path::Path, cwd: &std::path::Path) -> std::p
         if let Some(env) = get_project_env(cwd) {
             cmd.env_clear();
             cmd.envs(env);
+        }
+
+        // Create a new session so kill(-pid) only affects the script tree
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::setsid();
+                Ok(())
+            });
         }
 
         cmd

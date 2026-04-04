@@ -3049,6 +3049,7 @@ dependencies = [
  "chrono",
  "crossterm 0.28.1",
  "dirs",
+ "libc",
  "log",
  "lsp-types",
  "open",

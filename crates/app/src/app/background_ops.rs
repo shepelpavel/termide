@@ -239,64 +239,64 @@ impl App {
         }
     }
 
-    /// Check for background script operation result (.report. scripts)
+    /// Check for background script operation results (.report. scripts)
     pub(super) fn check_script_operation_result(&mut self) {
-        let handle = match self.state.script_operation_handle.take() {
-            Some(h) => h,
-            None => return,
-        };
+        if self.state.script_operation_handles.is_empty() {
+            return;
+        }
 
-        match handle.receiver.try_recv() {
-            Ok(result) => {
-                // Remove from Operations panel
-                if let Some(op_id) = handle.operation_id {
-                    self.state.untrack_operation(op_id);
-                }
-                // Show result modal
-                let title = if result.success {
-                    format!("{} ✓", result.script_name)
-                } else {
-                    format!("{} ✗", result.script_name)
-                };
+        let mut last_result_modal = None;
 
-                // Collect output lines (no labels, just plain text)
-                let mut lines = vec![];
-
-                // Add stdout lines
-                for line in result.stdout.lines() {
-                    let trimmed = line.trim();
-                    if !trimmed.is_empty() {
-                        lines.push((String::new(), trimmed.to_string()));
+        self.state.script_operation_handles.retain(|handle| {
+            match handle.receiver.try_recv() {
+                Ok(result) => {
+                    // Remove from Operations panel
+                    if let Some(op_id) = handle.operation_id {
+                        self.state.active_operations.remove(&op_id);
                     }
-                }
 
-                // Add stderr lines
-                for line in result.stderr.lines() {
-                    let trimmed = line.trim();
-                    if !trimmed.is_empty() {
-                        lines.push((String::new(), trimmed.to_string()));
+                    // Build modal (last completed script wins if multiple finish same tick)
+                    let title = if result.success {
+                        format!("{} \u{2713}", result.script_name)
+                    } else {
+                        format!("{} \u{2717}", result.script_name)
+                    };
+
+                    let mut lines = vec![];
+                    for line in result.stdout.lines() {
+                        let trimmed = line.trim();
+                        if !trimmed.is_empty() {
+                            lines.push((String::new(), trimmed.to_string()));
+                        }
                     }
-                }
+                    for line in result.stderr.lines() {
+                        let trimmed = line.trim();
+                        if !trimmed.is_empty() {
+                            lines.push((String::new(), trimmed.to_string()));
+                        }
+                    }
+                    if lines.is_empty() {
+                        lines.push((String::new(), "(no output)".to_string()));
+                    }
 
-                // Fallback if no output
-                if lines.is_empty() {
-                    lines.push((String::new(), "(no output)".to_string()));
+                    last_result_modal = Some((title, lines));
+                    false // remove from list
                 }
+                Err(TryRecvError::Empty) => true, // keep polling
+                Err(TryRecvError::Disconnected) => {
+                    if let Some(op_id) = handle.operation_id {
+                        self.state.active_operations.remove(&op_id);
+                    }
+                    false // remove
+                }
+            }
+        });
 
-                let modal = InfoModal::new(&title, lines);
-                self.state.active_modal = Some(ActiveModal::Info(Box::new(modal)));
-                self.state.needs_redraw = true;
-            }
-            Err(TryRecvError::Empty) => {
-                // Operation still in progress - put handle back
-                self.state.script_operation_handle = Some(handle);
-            }
-            Err(TryRecvError::Disconnected) => {
-                // Thread finished without sending (shouldn't happen)
-                if let Some(op_id) = handle.operation_id {
-                    self.state.untrack_operation(op_id);
-                }
-            }
+        // Show modal for the last completed script
+        if let Some((title, lines)) = last_result_modal {
+            let modal = InfoModal::new(&title, lines);
+            self.state.active_modal = Some(ActiveModal::Info(Box::new(modal)));
+            self.state.needs_redraw = true;
         }
     }
 

@@ -1327,12 +1327,15 @@ impl App {
                 }
 
                 // Kill report script process if it matches
-                if let Some(ref handle) = self.state.script_operation_handle {
-                    if handle.operation_id == Some(op_id) {
-                        if let Some(pid) = handle.pid {
-                            kill_process_tree(pid);
-                        }
-                        self.state.script_operation_handle = None;
+                if let Some(pos) = self
+                    .state
+                    .script_operation_handles
+                    .iter()
+                    .position(|h| h.operation_id == Some(op_id))
+                {
+                    let handle = self.state.script_operation_handles.remove(pos);
+                    if let Some(pid) = handle.pid {
+                        kill_process_tree(pid);
                     }
                 }
 

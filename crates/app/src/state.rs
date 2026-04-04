@@ -102,23 +102,24 @@ pub struct ScriptOperationHandle {
     pub pid: Option<u32>,
 }
 
-/// Kill a process by PID (cross-platform).
+/// Kill a process and all its children by PID (cross-platform).
+/// On Unix, the script must have been started with `setsid()` so that
+/// `-pid` targets only the script's session, not the parent (termide).
 pub fn kill_process_tree(pid: u32) {
     #[cfg(unix)]
     {
-        use std::process::Command;
-        // Kill the entire process group to also kill child processes.
-        // setsid is not used, so we kill the process and its children via pkill -P.
-        let _ = Command::new("kill").arg(pid.to_string()).spawn();
-        // Also kill children
-        let _ = Command::new("pkill").args(["-P", &pid.to_string()]).spawn();
+        // Kill the entire session (negative PID) with SIGKILL.
+        // Safe because shell_command() calls setsid() before exec.
+        unsafe {
+            libc::kill(-(pid as i32), libc::SIGKILL);
+        }
     }
     #[cfg(not(unix))]
     {
         use std::process::Command;
         let _ = Command::new("taskkill")
             .args(["/F", "/T", "/PID", &pid.to_string()])
-            .spawn();
+            .status();
     }
 }
 
@@ -226,8 +227,8 @@ pub struct AppState {
     pub dir_size_receiver: Option<mpsc::Receiver<DirSizeResult>>,
     /// Handle for background git operation (allows cancellation)
     pub git_operation_handle: Option<GitOperationHandle>,
-    /// Handle for background script operation (.report. scripts)
-    pub script_operation_handle: Option<ScriptOperationHandle>,
+    /// Handles for background script operations (.report. scripts)
+    pub script_operation_handles: Vec<ScriptOperationHandle>,
     /// Handles for background scripts (.bg.) tracked in Operations panel
     /// Handles for background scripts (.bg.) tracked in Operations panel: (op_id, receiver, pid)
     pub bg_script_handles: Vec<(termide_file_ops::OperationId, mpsc::Receiver<()>, u32)>,
@@ -358,7 +359,7 @@ impl AppState {
             pending_action: None,
             dir_size_receiver: None,
             git_operation_handle: None,
-            script_operation_handle: None,
+            script_operation_handles: Vec::new(),
             bg_script_handles: Vec::new(),
             pending_editor_download: None,
             pending_batch_upload: None,
