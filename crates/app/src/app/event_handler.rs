@@ -1227,10 +1227,20 @@ impl App {
         if !has_ops {
             // All operations finished — close the panel entirely
             self.state.operations_panel_dirty = false;
+            self.state.last_operations_elapsed_redraw = None;
             self.close_operations_panel();
             return;
         }
         self.state.operations_panel_dirty = true;
+        // Force redraw every 1s to update elapsed time display in operation cards
+        let should_redraw = self
+            .state
+            .last_operations_elapsed_redraw
+            .is_none_or(|t| t.elapsed() >= std::time::Duration::from_secs(1));
+        if should_redraw {
+            self.state.last_operations_elapsed_redraw = Some(std::time::Instant::now());
+            self.state.needs_redraw = true;
+        }
         // Find operations panel and update its data
         for group in &mut self.layout_manager.panel_groups {
             for panel in group.panels_mut() {
@@ -1299,6 +1309,39 @@ impl App {
 
     /// Handle CancelOperation event - cancel an operation
     fn event_cancel_operation(&mut self, op_id: termide_file_ops::OperationId) {
+        // Check if this is a script operation (not managed by OperationManager)
+        if let Some(op) = self.state.active_operations.get(&op_id) {
+            if op.op_type == termide_state::OperationType::Script {
+                // Kill the process and remove from tracking
+                use crate::state::kill_process_tree;
+
+                // Kill bg_script process if present
+                if let Some(pos) = self
+                    .state
+                    .bg_script_handles
+                    .iter()
+                    .position(|(id, _, _)| *id == op_id)
+                {
+                    let (_, _, pid) = self.state.bg_script_handles.remove(pos);
+                    kill_process_tree(pid);
+                }
+
+                // Kill report script process if it matches
+                if let Some(ref handle) = self.state.script_operation_handle {
+                    if handle.operation_id == Some(op_id) {
+                        if let Some(pid) = handle.pid {
+                            kill_process_tree(pid);
+                        }
+                        self.state.script_operation_handle = None;
+                    }
+                }
+
+                self.state.untrack_operation(op_id);
+                self.state.needs_redraw = true;
+                return;
+            }
+        }
+
         // Resolve batch tracking ID to actual OperationManager sub-operation ID
         let real_id = if self.state.batch_tracking_id == Some(op_id) {
             self.state.batch_sub_operation_id.unwrap_or(op_id)
@@ -1331,22 +1374,9 @@ impl App {
             }
         }
 
-        // Find the sidebar group (group 0) where operations panel should go
-        // Insert right after the currently expanded panel so it shows when operations close
-        let insert_position = if let Some(group) = self.layout_manager.panel_groups.first() {
-            group.expanded_index() + 1
-        } else {
-            0
-        };
-
-        // Create and insert operations panel at the calculated position
+        // Uses WidthPreference::PreferNarrow from OperationsPanel
         let panel = Box::new(OperationsPanel::new());
-        if let Some(group) = self.layout_manager.panel_groups.first_mut() {
-            group.insert_panel(insert_position, panel);
-            group.set_expanded(insert_position);
-        }
-
-        self.state.needs_watcher_registration = true;
+        self.add_panel_without_focus(panel);
         self.auto_save_session();
         Ok(())
     }

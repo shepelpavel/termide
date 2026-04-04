@@ -455,6 +455,7 @@ pub trait Translation: Send + Sync {
     fn op_files_progress(&self, current: usize, total: usize) -> String;
     fn op_data_progress(&self, current: &str, total: &str) -> String;
     fn op_speed_rate(&self, speed: &str) -> String;
+    fn op_elapsed(&self, time: &str) -> String;
 
     // Modal titles
     fn modal_confirm_title(&self) -> &str;

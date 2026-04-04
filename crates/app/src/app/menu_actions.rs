@@ -1371,6 +1371,7 @@ impl App {
                 .spawn()
             {
                 Ok(mut child) => {
+                    let pid = child.id();
                     let op_id = self.state.next_synthetic_operation_id();
                     self.state.track_operation(
                         op_id,
@@ -1380,7 +1381,6 @@ impl App {
                         0,
                         0,
                     );
-                    let state_op_id = op_id;
                     // Track completion in background thread
                     let (tx, rx) = std::sync::mpsc::channel::<()>();
                     std::thread::spawn(move || {
@@ -1388,7 +1388,9 @@ impl App {
                         let _ = tx.send(());
                     });
                     // Store handle to poll for completion
-                    self.state.bg_script_handles.push((state_op_id, rx));
+                    self.state.bg_script_handles.push((op_id, rx, pid));
+                    // Open operations panel to show progress
+                    let _ = self.open_operations_panel();
                 }
                 Err(e) => {
                     log::error!("Failed to run background script '{}': {}", script.name, e);
@@ -1446,6 +1448,7 @@ impl App {
 
         match child {
             Ok(child) => {
+                let pid = child.id();
                 let script_name = script.name.clone();
                 let (tx, rx) = std::sync::mpsc::channel();
 
@@ -1483,7 +1486,11 @@ impl App {
                     receiver: rx,
                     script_name: script.name.clone(),
                     operation_id: Some(op_id),
+                    pid: Some(pid),
                 });
+
+                // Open operations panel to show progress
+                self.open_operations_panel()?;
             }
             Err(e) => {
                 log::error!("Failed to run report script '{}': {}", script.name, e);

@@ -302,7 +302,7 @@ impl App {
 
     /// Check for completed background scripts (.bg.) and remove from Operations panel.
     pub(super) fn check_bg_script_completion(&mut self) {
-        self.state.bg_script_handles.retain(|(op_id, rx)| {
+        self.state.bg_script_handles.retain(|(op_id, rx, _pid)| {
             match rx.try_recv() {
                 Ok(()) | Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                     self.state.active_operations.remove(op_id);

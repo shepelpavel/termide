@@ -98,6 +98,28 @@ pub struct ScriptOperationHandle {
     pub script_name: String,
     /// Operation ID for tracking in Operations panel
     pub operation_id: Option<termide_file_ops::OperationId>,
+    /// Process ID for killing the script on cancel
+    pub pid: Option<u32>,
+}
+
+/// Kill a process by PID (cross-platform).
+pub fn kill_process_tree(pid: u32) {
+    #[cfg(unix)]
+    {
+        use std::process::Command;
+        // Kill the entire process group to also kill child processes.
+        // setsid is not used, so we kill the process and its children via pkill -P.
+        let _ = Command::new("kill").arg(pid.to_string()).spawn();
+        // Also kill children
+        let _ = Command::new("pkill").args(["-P", &pid.to_string()]).spawn();
+    }
+    #[cfg(not(unix))]
+    {
+        use std::process::Command;
+        let _ = Command::new("taskkill")
+            .args(["/F", "/T", "/PID", &pid.to_string()])
+            .spawn();
+    }
 }
 
 impl std::fmt::Debug for ScriptOperationHandle {
@@ -207,7 +229,8 @@ pub struct AppState {
     /// Handle for background script operation (.report. scripts)
     pub script_operation_handle: Option<ScriptOperationHandle>,
     /// Handles for background scripts (.bg.) tracked in Operations panel
-    pub bg_script_handles: Vec<(termide_file_ops::OperationId, mpsc::Receiver<()>)>,
+    /// Handles for background scripts (.bg.) tracked in Operations panel: (op_id, receiver, pid)
+    pub bg_script_handles: Vec<(termide_file_ops::OperationId, mpsc::Receiver<()>, u32)>,
     /// Pending editor download via OperationManager (replaces download_operation for editor opens)
     pub pending_editor_download: Option<PendingEditorDownload>,
     /// Pending batch upload state (for OperationManager-based uploads)
@@ -271,6 +294,8 @@ pub struct AppState {
     pub last_activity: std::time::Instant,
     /// Whether the operations panel has stale data that needs a final empty sync
     pub operations_panel_dirty: bool,
+    /// Last time operations panel was redrawn for elapsed time update (throttled to 1s)
+    pub last_operations_elapsed_redraw: Option<std::time::Instant>,
     /// Active file operations tracked in Operations panel (keyed by OperationId).
     /// This provides UI state for displaying operation progress in the Operations panel.
     pub active_operations: HashMap<termide_file_ops::OperationId, ActiveOperation>,
@@ -365,6 +390,7 @@ impl AppState {
             needs_watcher_registration: true, // Register watchers on first tick
             last_activity: std::time::Instant::now(),
             operations_panel_dirty: false,
+            last_operations_elapsed_redraw: None,
             active_operations: HashMap::new(),
             batch_tracking_id: None,
             batch_sub_operation_id: None,

@@ -3,7 +3,7 @@
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Widget},
 };
@@ -27,6 +27,21 @@ pub fn format_bytes(bytes: u64) -> String {
         format!("{:.1}{}", bytes as f64 / 1024.0, t.size_kilobytes())
     } else {
         format!("{}{}", bytes, t.size_bytes())
+    }
+}
+
+/// Get icon for operation type
+fn op_type_icon(op_type: &termide_state::OperationType) -> &'static str {
+    match op_type {
+        termide_state::OperationType::Copy => "\u{29C9}", // ⧉
+        termide_state::OperationType::Move => "\u{279C}", // ➜
+        termide_state::OperationType::Rename => "\u{270E}", // ✎
+        termide_state::OperationType::CopyUpload => "\u{2191}", // ↑
+        termide_state::OperationType::CopyDownload => "\u{2193}", // ↓
+        termide_state::OperationType::MoveUpload => "\u{2191}", // ↑
+        termide_state::OperationType::MoveDownload => "\u{2193}", // ↓
+        termide_state::OperationType::Delete => "\u{2715}", // ✕
+        termide_state::OperationType::Script => "\u{2699}", // ⚙
     }
 }
 
@@ -62,51 +77,71 @@ fn render_snapshot_card(
         disabled_color
     };
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(border_color));
-
-    let inner = block.inner(area);
-    block.render(area, buf);
-
-    if inner.height < 4 || inner.width < 10 {
-        return; // Not enough space to render
-    }
-
-    let content_width = inner.width as usize;
+    let t = termide_i18n::t();
     let is_script = op.op_type == termide_state::OperationType::Script;
     let is_scanning = op.is_scanning;
     let has_data = !is_scanning && op.op_type.has_data_progress();
-    let t = termide_i18n::t();
 
-    // Running y offset for compact layout
-    let mut y = inner.y;
-
-    // Line 1: [⏸] Type                    45%
-    let pause_icon = if op.is_paused { "\u{23F8} " } else { "" }; // ⏸
+    // Build border title: " icon Label " or " icon Label ── 45% "
+    let icon = if is_scanning {
+        "\u{25CE}" // ◎
+    } else {
+        op_type_icon(&op.op_type)
+    };
     let type_label = if is_scanning {
         t.op_type_scanning()
     } else {
         op_type_label(&op.op_type)
     };
-    let percent = format!("{}%", op.progress.percent());
-    let header_left = format!("{}{}", pause_icon, type_label);
-    let padding = content_width.saturating_sub(header_left.chars().count() + percent.len());
 
-    // Static buffers for padding and progress bar (avoids per-frame allocation)
-    const SPACES: &str = "                                                                                                                                                                                                        ";
+    let title_style = Style::default()
+        .fg(if is_selected { accent_color } else { fg_color })
+        .add_modifier(Modifier::BOLD);
+
+    let pause_icon = if op.is_paused { " \u{23F8}" } else { "" }; // ⏸
+
+    let title = if is_script {
+        Line::from(Span::styled(
+            format!(" {} {}{} ", icon, type_label, pause_icon),
+            title_style,
+        ))
+    } else {
+        let percent = format!("{}%", op.progress.percent());
+        Line::from(vec![
+            Span::styled(
+                format!(" {} {}{} ", icon, type_label, pause_icon),
+                title_style,
+            ),
+            Span::styled(
+                format!("{} ", percent),
+                Style::default()
+                    .fg(accent_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ])
+    };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(border_color))
+        .title(title);
+
+    let inner = block.inner(area);
+    block.render(area, buf);
+
+    if inner.height < 1 || inner.width < 10 {
+        return;
+    }
+
+    let content_width = inner.width as usize;
+
+    // Static buffers for progress bar (avoids per-frame allocation)
     const FILLED: &str = "████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████";
     const EMPTY: &str = "░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░";
 
-    let header_line = Line::from(vec![
-        Span::styled(&header_left, Style::default().fg(fg_color)),
-        Span::raw(&SPACES[..padding.min(SPACES.len())]),
-        Span::styled(&percent, Style::default().fg(accent_color)),
-    ]);
-    buf.set_line(inner.x, y, &header_line, inner.width);
-    y += 1;
+    let mut y = inner.y;
 
-    // Line 2: Progress bar (skip for scripts — no progress data)
+    // Line 1: Progress bar (file operations only)
     if !is_script {
         let bar_width = content_width;
         let percent_val = op.progress.percent() as usize;
@@ -124,20 +159,31 @@ fn render_snapshot_card(
             Span::styled(empty_part, Style::default().fg(bar_color)),
         ]);
         buf.set_line(inner.x, y, &bar_line, inner.width);
+        y += 1;
     }
-    y += 1;
 
-    // Line 3: Source path (truncate left)
-    let source = truncate_left(&op.source, content_width);
-    buf.set_line(
-        inner.x,
-        y,
-        &Line::from(Span::styled(source, Style::default().fg(disabled_color))),
-        inner.width,
-    );
-    y += 1;
+    // Source path (file ops) or script name (scripts)
+    if is_script {
+        let name = truncate_left(&op.source, content_width);
+        buf.set_line(
+            inner.x,
+            y,
+            &Line::from(Span::styled(name, Style::default().fg(fg_color))),
+            inner.width,
+        );
+        y += 1;
+    } else {
+        let source = truncate_left(&op.source, content_width);
+        buf.set_line(
+            inner.x,
+            y,
+            &Line::from(Span::styled(source, Style::default().fg(disabled_color))),
+            inner.width,
+        );
+        y += 1;
+    }
 
-    // Line 4: Destination path (truncate left) — only if present
+    // Destination path (truncate left) — only if present
     if !op.dest.is_empty() {
         let dest = truncate_left(&op.dest, content_width);
         buf.set_line(
@@ -149,7 +195,7 @@ fn render_snapshot_card(
         y += 1;
     }
 
-    // Line 5: Files count (skip for scripts, during scanning show "Found: N")
+    // Files count (skip for scripts, during scanning show "Found: N")
     if !is_script {
         let files = if is_scanning {
             t.op_found_count(op.progress.total_files)
@@ -165,7 +211,7 @@ fn render_snapshot_card(
         y += 1;
     }
 
-    // Line 6: Data (only for transfer operations, not during scanning)
+    // Data (only for transfer operations, not during scanning)
     if has_data {
         let data = t.op_data_progress(
             &format_bytes(op.progress.bytes_transferred),
@@ -180,7 +226,7 @@ fn render_snapshot_card(
         y += 1;
     }
 
-    // Line 7: Speed (only for transfer operations, not during scanning)
+    // Speed (only for transfer operations, not during scanning)
     if has_data {
         let speed = t.op_speed_rate(&format_bytes(op.speed as u64));
         buf.set_line(
@@ -207,10 +253,11 @@ fn render_snapshot_card(
         } else {
             format!("{}s", elapsed)
         };
+        let elapsed_display = t.op_elapsed(&elapsed_str);
         buf.set_line(
             inner.x,
             y,
-            &Line::from(Span::styled(elapsed_str, Style::default().fg(fg_color))),
+            &Line::from(Span::styled(elapsed_display, Style::default().fg(fg_color))),
             inner.width,
         );
     }

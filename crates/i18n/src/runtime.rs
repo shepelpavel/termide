@@ -1470,6 +1470,10 @@ impl Translation for RuntimeTranslation {
         self.format("op_speed_rate", &[("speed", speed)])
     }
 
+    fn op_elapsed(&self, time: &str) -> String {
+        self.format("op_elapsed", &[("time", time)])
+    }
+
     fn modal_confirm_title(&self) -> &str {
         self.get_string("modal_confirm_title")
     }
