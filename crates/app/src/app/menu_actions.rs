@@ -1206,44 +1206,38 @@ impl App {
     pub(super) fn execute_scripts_submenu_action(&mut self) -> Result<()> {
         let selected = self.state.ui.scripts_submenu.selected;
 
-        // Index 0: "Manage scripts"
-        if selected == 0 {
-            self.state.close_menu();
-            self.handle_manage_scripts()?;
-            return Ok(());
-        }
-
-        // Index 1: separator (should not be reachable)
-        // Indices 2+: actual scripts
-
         let registry =
             match termide_config::scripts::ScriptsRegistry::load_merged(Some(&self.project_root)) {
                 Some(r) => r,
                 None => return Ok(()),
             };
 
-        // Check if "Add script..." is shown (empty registry)
-        if registry.root_items.is_empty() && registry.groups.is_empty() {
-            // Only "Add script..." at index 2
+        // Look up the selected item by index in the rendered menu items
+        let items = termide_ui_render::get_scripts_items(&registry);
+        let item = match items.get(selected) {
+            Some(i) if !i.is_separator => i,
+            _ => return Ok(()),
+        };
+
+        let key = &item.key;
+
+        // Special keys: "Manage scripts" or "Add script..."
+        if key == termide_ui_render::SCRIPT_MANAGE || key == termide_ui_render::SCRIPT_ADD_NEW {
             self.state.close_menu();
             self.handle_manage_scripts()?;
             return Ok(());
         }
 
-        // Offset by 2 (manage + separator)
-        let adjusted = selected.saturating_sub(2);
-        let root_count = registry.root_items.len();
+        // Match by name — root scripts
+        if let Some(script) = registry.root_items.iter().find(|s| s.name == *key) {
+            self.state.close_menu();
+            self.run_script(script)?;
+            return Ok(());
+        }
 
-        if adjusted < root_count {
-            if let Some(script) = registry.root_items.get(adjusted) {
-                self.state.close_menu();
-                self.run_script(script)?;
-            }
-        } else {
-            let group_idx = adjusted - root_count;
-            if let Some(group) = registry.groups.get(group_idx) {
-                self.state.open_scripts_nested_submenu(group.name.clone());
-            }
+        // Match by name — groups (open nested submenu)
+        if registry.groups.iter().any(|g| g.name == *key) {
+            self.state.open_scripts_nested_submenu(key.clone());
         }
 
         Ok(())
