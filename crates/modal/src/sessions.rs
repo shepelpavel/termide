@@ -1,7 +1,7 @@
 //! Sessions selection modal dialog.
 
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -50,7 +50,6 @@ pub struct SessionsModal {
     last_list_area: Option<Rect>,
     filter: String,
     filtered_indices: Vec<usize>,
-    delete_binding: Option<termide_config::KeyBinding>,
 }
 
 /// Maximum number of items visible at once (each item takes 2 lines)
@@ -71,14 +70,7 @@ impl SessionsModal {
             last_list_area: None,
             filter: String::new(),
             filtered_indices,
-            delete_binding: None,
         }
-    }
-
-    /// Set the delete keybinding from global config
-    pub fn with_delete_binding(mut self, binding: Option<termide_config::KeyBinding>) -> Self {
-        self.delete_binding = binding;
-        self
     }
 
     /// Set initial cursor position (for selecting current session)
@@ -345,16 +337,8 @@ impl Modal for SessionsModal {
                 }
             }
 
-            // Delete session (global delete_item: Delete, F8)
-            _ if termide_config::matches_binding_or_defaults(
-                &self.delete_binding,
-                &key,
-                &[
-                    (KeyCode::Delete, KeyModifiers::NONE),
-                    (KeyCode::F(8), KeyModifiers::NONE),
-                ],
-            ) =>
-            {
+            // Delete session (Delete or F8)
+            KeyCode::Delete | KeyCode::F(8) => {
                 if let Some(item) = self.get_selected() {
                     if !item.is_current {
                         Ok(Some(ModalResult::Confirmed(SessionAction::Delete(

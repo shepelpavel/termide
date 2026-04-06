@@ -31,40 +31,48 @@ impl App {
             self.state.clear_status();
         }
 
+        // Convert Action back to KeyEvent for modal/menu dispatch.
+        // Modals and menus still use raw KeyEvent — we reconstruct it from Action.
+        let key_for_ui = action
+            .to_default_key()
+            .unwrap_or(crossterm::event::KeyEvent::new(
+                crossterm::event::KeyCode::Null,
+                crossterm::event::KeyModifiers::NONE,
+            ));
+
         // If modal window is open, handle it
-        // Modals receive raw KeyEvent for now (via action); will migrate later
         if self.state.has_modal() {
-            return self.handle_modal_key(key);
+            return self.handle_modal_key(key_for_ui);
         }
 
         // If Sessions submenu is open, handle its navigation
         if self.state.ui.sessions_submenu.open {
-            return self.handle_sessions_submenu_key(key);
+            return self.handle_sessions_submenu_key(key_for_ui);
         }
 
         // If Tools submenu is open, handle its navigation
         if self.state.ui.tools_submenu.open {
-            return self.handle_tools_submenu_key(key);
+            return self.handle_tools_submenu_key(key_for_ui);
         }
 
         // If Scripts submenu is open, handle its navigation
         if self.state.ui.scripts_submenu.open {
-            return self.handle_scripts_submenu_key(key);
+            return self.handle_scripts_submenu_key(key_for_ui);
         }
 
         // If Bookmarks submenu is open, handle its navigation
         if self.state.ui.bookmarks_submenu.open {
-            return self.handle_bookmarks_submenu_key(key);
+            return self.handle_bookmarks_submenu_key(key_for_ui);
         }
 
         // If Options submenu is open, handle submenu navigation
         if self.state.ui.options_submenu.open {
-            return self.handle_submenu_key(key);
+            return self.handle_submenu_key(key_for_ui);
         }
 
         // If menu is open, handle menu navigation
         if self.state.ui.menu_open {
-            return self.handle_menu_key(key);
+            return self.handle_menu_key(key_for_ui);
         }
 
         // Handle app-level actions (Quit, NewTerminal, PrevGroup, etc.)
