@@ -17,7 +17,7 @@ use ratatui::{
 use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up};
 use unicode_width::UnicodeWidthStr;
 
-use termide_core::{Action, Panel, PanelEvent, RenderContext, ThemeColors, WidthPreference};
+use termide_core::{HotkeyKind, Panel, PanelEvent, RenderContext, ThemeColors, WidthPreference};
 use termide_theme::Theme;
 use termide_ui::path_utils::truncate_right;
 use termide_ui::ScrollBar;
@@ -519,36 +519,36 @@ impl Panel for DiagnosticsPanel {
         }
     }
 
-    fn handle_action(&mut self, action: Action) -> Vec<PanelEvent> {
-        match action {
-            Action::Up => {
+    fn handle_action(&mut self, hotkey: termide_core::Hotkey) -> Vec<PanelEvent> {
+        match hotkey.kind {
+            HotkeyKind::Up => {
                 self.select_prev();
             }
-            Action::Down => {
+            HotkeyKind::Down => {
                 self.select_next();
             }
-            Action::Home => {
+            HotkeyKind::Home => {
                 self.selected_index = 0;
                 self.scroll_offset = 0;
             }
-            Action::End => {
+            HotkeyKind::End => {
                 let count = self.filtered_count();
                 self.selected_index = count.saturating_sub(1);
                 self.ensure_visible();
             }
-            Action::PageUp => {
+            HotkeyKind::PageUp => {
                 let page_size = self.last_height.saturating_sub(3);
                 for _ in 0..page_size {
                     self.select_prev();
                 }
             }
-            Action::PageDown => {
+            HotkeyKind::PageDown => {
                 let page_size = self.last_height.saturating_sub(3);
                 for _ in 0..page_size {
                     self.select_next();
                 }
             }
-            Action::Enter => {
+            HotkeyKind::Enter => {
                 if let Some(entry) = self.selected_entry() {
                     return vec![PanelEvent::OpenFileAt {
                         path: entry.file_path.clone(),
@@ -557,14 +557,14 @@ impl Panel for DiagnosticsPanel {
                     }];
                 }
             }
-            Action::Search => {
+            HotkeyKind::Search => {
                 // Toggle filter (was Ctrl+F)
                 self.filter = self.filter.next();
                 self.selected_index = 0;
                 self.scroll_offset = 0;
                 self.filter_cache_valid = false;
             }
-            Action::Other(key) => return self.handle_key(key),
+            HotkeyKind::Other => return self.handle_key(hotkey.raw),
             _ => {}
         }
         vec![]

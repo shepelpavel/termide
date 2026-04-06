@@ -856,24 +856,24 @@ impl Panel for GitLogPanel {
         }
     }
 
-    fn handle_action(&mut self, action: termide_core::Action) -> Vec<PanelEvent> {
-        use termide_core::Action;
+    fn handle_action(&mut self, hotkey: termide_core::Hotkey) -> Vec<PanelEvent> {
+        use termide_core::HotkeyKind;
         self.status_message = None;
         let page_size = self.last_area.height.saturating_sub(4) as usize;
 
-        match action {
-            Action::ContextMenu => {
+        match hotkey.kind {
+            HotkeyKind::ContextMenu => {
                 // Show commit info (same as Space)
                 self.show_commit_info();
                 vec![]
             }
-            Action::Refresh => {
+            HotkeyKind::Refresh => {
                 self.refresh();
                 let t = termide_i18n::t();
                 self.status_message = Some(t.git_refreshed().to_string());
                 vec![]
             }
-            Action::Cancel => {
+            HotkeyKind::Cancel => {
                 if self.repo_dropdown_open || self.branch_dropdown_open {
                     self.repo_dropdown_open = false;
                     self.branch_dropdown_open = false;
@@ -881,7 +881,7 @@ impl Panel for GitLogPanel {
                 }
                 vec![]
             }
-            Action::Up => {
+            HotkeyKind::Up => {
                 if self.repo_dropdown_open || self.branch_dropdown_open {
                     self.dropdown_cursor = self.dropdown_cursor.saturating_sub(1);
                 } else {
@@ -899,7 +899,7 @@ impl Panel for GitLogPanel {
                 }
                 vec![]
             }
-            Action::Down => {
+            HotkeyKind::Down => {
                 if self.repo_dropdown_open {
                     let max = self.repo_manager.len().saturating_sub(1);
                     if self.dropdown_cursor < max {
@@ -925,39 +925,39 @@ impl Panel for GitLogPanel {
                 }
                 vec![]
             }
-            Action::Home => {
+            HotkeyKind::Home => {
                 if !self.repo_dropdown_open && !self.branch_dropdown_open {
                     self.go_to_start();
                 }
                 vec![]
             }
-            Action::End => {
+            HotkeyKind::End => {
                 if !self.repo_dropdown_open && !self.branch_dropdown_open {
                     self.go_to_end();
                 }
                 vec![]
             }
-            Action::PageUp => {
+            HotkeyKind::PageUp => {
                 self.page_up(page_size);
                 vec![]
             }
-            Action::PageDown => {
+            HotkeyKind::PageDown => {
                 self.page_down(page_size);
                 vec![]
             }
-            Action::Tab => {
+            HotkeyKind::Tab => {
                 self.repo_dropdown_open = false;
                 self.branch_dropdown_open = false;
                 self.next_section();
                 vec![]
             }
-            Action::BackTab => {
+            HotkeyKind::BackTab => {
                 self.repo_dropdown_open = false;
                 self.branch_dropdown_open = false;
                 self.prev_section();
                 vec![]
             }
-            Action::Enter => {
+            HotkeyKind::Enter => {
                 match self.current_section {
                     Section::RepoSelector => {
                         if self.repo_dropdown_open {
@@ -993,7 +993,7 @@ impl Panel for GitLogPanel {
                 }
                 vec![]
             }
-            Action::Space => {
+            HotkeyKind::Space => {
                 // Space — context-dependent (same as Enter for dropdowns, commit info for commits)
                 match self.current_section {
                     Section::RepoSelector => {
@@ -1030,7 +1030,7 @@ impl Panel for GitLogPanel {
                 }
                 vec![]
             }
-            Action::Other(key) => self.handle_key(key),
+            HotkeyKind::Other => self.handle_key(hotkey.raw),
             _ => vec![],
         }
     }

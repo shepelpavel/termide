@@ -17,7 +17,7 @@ use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up};
 use unicode_width::UnicodeWidthStr;
 
 use termide_core::{
-    Action, CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, ThemeColors,
+    CommandResult, HotkeyKind, Panel, PanelCommand, PanelEvent, RenderContext, ThemeColors,
     WidthPreference,
 };
 use termide_theme::Theme;
@@ -476,44 +476,44 @@ impl Panel for OutlinePanel {
         }
     }
 
-    fn handle_action(&mut self, action: Action) -> Vec<PanelEvent> {
-        match action {
-            Action::Up => {
+    fn handle_action(&mut self, hotkey: termide_core::Hotkey) -> Vec<PanelEvent> {
+        match hotkey.kind {
+            HotkeyKind::Up => {
                 self.select_prev();
                 self.navigate_to_selected();
             }
-            Action::Down => {
+            HotkeyKind::Down => {
                 self.select_next();
                 self.navigate_to_selected();
             }
-            Action::Home => {
+            HotkeyKind::Home => {
                 self.selected_index = 0;
                 self.scroll_offset = 0;
                 self.navigate_to_selected();
             }
-            Action::End => {
+            HotkeyKind::End => {
                 self.selected_index = self.symbols.len().saturating_sub(1);
                 self.ensure_visible();
                 self.navigate_to_selected();
             }
-            Action::PageUp => {
+            HotkeyKind::PageUp => {
                 let page_size = self.last_height;
                 for _ in 0..page_size {
                     self.select_prev();
                 }
                 self.navigate_to_selected();
             }
-            Action::PageDown => {
+            HotkeyKind::PageDown => {
                 let page_size = self.last_height;
                 for _ in 0..page_size {
                     self.select_next();
                 }
                 self.navigate_to_selected();
             }
-            Action::Enter => {
+            HotkeyKind::Enter => {
                 self.navigate_to_selected();
             }
-            Action::Other(key) => return self.handle_key(key),
+            HotkeyKind::Other => return self.handle_key(hotkey.raw),
             _ => {}
         }
         vec![]

@@ -160,26 +160,26 @@ impl Panel for GitStashPanel {
         self.render_content(area, buf, ctx.is_focused);
     }
 
-    fn handle_action(&mut self, action: termide_core::Action) -> Vec<PanelEvent> {
-        use termide_core::Action;
-        match action {
-            Action::Cancel => {
+    fn handle_action(&mut self, hotkey: termide_core::Hotkey) -> Vec<PanelEvent> {
+        use termide_core::HotkeyKind;
+        match hotkey.kind {
+            HotkeyKind::Cancel => {
                 self.status_message = None;
                 vec![PanelEvent::ClosePanel]
             }
-            Action::Refresh => {
+            HotkeyKind::Refresh => {
                 self.status_message = None;
                 self.refresh();
                 vec![]
             }
-            Action::Enter | Action::Space => {
+            HotkeyKind::Enter | HotkeyKind::Space => {
                 self.status_message = None;
                 match self.current_section {
                     Section::NewButton => self.action_new(),
                     Section::List => self.action_show_context_menu(),
                 }
             }
-            Action::Down => {
+            HotkeyKind::Down => {
                 self.status_message = None;
                 match self.current_section {
                     Section::NewButton => {
@@ -197,7 +197,7 @@ impl Panel for GitStashPanel {
                 }
                 vec![]
             }
-            Action::Up => {
+            HotkeyKind::Up => {
                 self.status_message = None;
                 if let Section::List = self.current_section {
                     if self.cursor > 0 {
@@ -209,7 +209,7 @@ impl Panel for GitStashPanel {
                 }
                 vec![]
             }
-            Action::Home => {
+            HotkeyKind::Home => {
                 self.status_message = None;
                 if let Section::List = self.current_section {
                     self.cursor = 0;
@@ -217,7 +217,7 @@ impl Panel for GitStashPanel {
                 }
                 vec![]
             }
-            Action::End => {
+            HotkeyKind::End => {
                 self.status_message = None;
                 if let Section::List = self.current_section {
                     self.cursor = self.stash_entries.len().saturating_sub(1);
@@ -225,7 +225,7 @@ impl Panel for GitStashPanel {
                 }
                 vec![]
             }
-            Action::Other(key) => self.handle_key_event(key),
+            HotkeyKind::Other => self.handle_key_event(hotkey.raw),
             _ => vec![],
         }
     }

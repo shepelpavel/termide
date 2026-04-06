@@ -1711,50 +1711,44 @@ impl Panel for Editor {
         );
     }
 
-    fn handle_action(&mut self, action: termide_core::Action) -> Vec<PanelEvent> {
-        use termide_core::Action;
-        match action {
-            Action::Save => {
+    fn handle_action(&mut self, hotkey: termide_core::Hotkey) -> Vec<PanelEvent> {
+        use termide_core::HotkeyKind;
+        match hotkey.kind {
+            HotkeyKind::Save => {
                 // F2 = save file in editor (forward as Ctrl+S)
                 self.handle_key(crossterm::event::KeyEvent::new(
                     crossterm::event::KeyCode::Char('s'),
                     crossterm::event::KeyModifiers::CONTROL,
                 ))
             }
-            Action::View => {
+            HotkeyKind::View => {
                 // F3 = search next in editor
                 self.handle_key(crossterm::event::KeyEvent::new(
                     crossterm::event::KeyCode::F(3),
                     crossterm::event::KeyModifiers::NONE,
                 ))
             }
-            // Navigation and other actions — forward as default key events
+            // Navigation and other actions — forward raw key events
             // The editor's EditorCommand::from_key_event handles all key routing
-            Action::Undo
-            | Action::Redo
-            | Action::Cancel
-            | Action::Search
-            | Action::Refresh
-            | Action::GoBack
-            | Action::Up
-            | Action::Down
-            | Action::Left
-            | Action::Right
-            | Action::PageUp
-            | Action::PageDown
-            | Action::Home
-            | Action::End
-            | Action::Enter
-            | Action::Tab
-            | Action::BackTab
-            | Action::DeleteItem => {
-                if let Some(key) = action.to_default_key() {
-                    self.handle_key(key)
-                } else {
-                    vec![]
-                }
-            }
-            Action::Other(key) => self.handle_key(key),
+            HotkeyKind::Undo
+            | HotkeyKind::Redo
+            | HotkeyKind::Cancel
+            | HotkeyKind::Search
+            | HotkeyKind::Refresh
+            | HotkeyKind::GoBack
+            | HotkeyKind::Up
+            | HotkeyKind::Down
+            | HotkeyKind::Left
+            | HotkeyKind::Right
+            | HotkeyKind::PageUp
+            | HotkeyKind::PageDown
+            | HotkeyKind::Home
+            | HotkeyKind::End
+            | HotkeyKind::Enter
+            | HotkeyKind::Tab
+            | HotkeyKind::BackTab
+            | HotkeyKind::DeleteItem => self.handle_key(hotkey.raw),
+            HotkeyKind::Other => self.handle_key(hotkey.raw),
             _ => vec![],
         }
     }

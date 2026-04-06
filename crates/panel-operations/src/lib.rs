@@ -280,39 +280,40 @@ impl Panel for OperationsPanel {
         self.card_areas = card_areas;
     }
 
-    fn handle_action(&mut self, action: termide_core::Action) -> Vec<PanelEvent> {
+    fn handle_action(&mut self, hotkey: termide_core::Hotkey) -> Vec<PanelEvent> {
+        use termide_core::HotkeyKind;
         let total = self.operations.len();
-        match action {
-            termide_core::Action::DeleteItem => {
+        match hotkey.kind {
+            HotkeyKind::DeleteItem => {
                 if let Some(op_id) = self.selected_operation_id() {
                     return vec![PanelEvent::CancelOperation(op_id)];
                 }
                 vec![]
             }
-            termide_core::Action::Up => {
+            HotkeyKind::Up => {
                 self.select_prev();
                 vec![PanelEvent::NeedsRedraw]
             }
-            termide_core::Action::Down => {
+            HotkeyKind::Down => {
                 self.select_next(total);
                 vec![PanelEvent::NeedsRedraw]
             }
-            termide_core::Action::Home => {
+            HotkeyKind::Home => {
                 self.select_first();
                 vec![PanelEvent::NeedsRedraw]
             }
-            termide_core::Action::End => {
+            HotkeyKind::End => {
                 self.select_last(total);
                 vec![PanelEvent::NeedsRedraw]
             }
-            termide_core::Action::Space => {
+            HotkeyKind::Space => {
                 if let Some(op_id) = self.selected_operation_id() {
                     vec![PanelEvent::ToggleOperationPause(op_id)]
                 } else {
                     vec![]
                 }
             }
-            termide_core::Action::Other(key) => self.handle_key(key),
+            HotkeyKind::Other => self.handle_key(hotkey.raw),
             _ => vec![],
         }
     }
@@ -344,7 +345,7 @@ impl Panel for OperationsPanel {
             }
         }
 
-        // Space is handled as Action::Space in handle_action
+        // Space is handled as HotkeyKind::Space in handle_action
 
         events
     }

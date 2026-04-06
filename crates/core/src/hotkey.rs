@@ -1,21 +1,30 @@
-//! Semantic action system for termide.
+//! Semantic hotkey system for termide.
 //!
-//! The normalizer converts raw `KeyEvent`s into semantic `Action` variants.
+//! The normalizer converts raw `KeyEvent`s into semantic `Hotkey` values.
 //! Panels, modals, and menus react to intentions, not keycodes.
-//! Unrecognized keys are wrapped in `Action::Other(KeyEvent)`.
+//! Unrecognized keys get `HotkeyKind::Other` with the raw event preserved.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use termide_config::{matches_binding_or_default, matches_binding_or_defaults, GlobalKeybindings};
 
-/// Semantic action recognized from a KeyEvent.
+/// Normalized hotkey with semantic kind and original key event.
+#[derive(Debug, Clone)]
+pub struct Hotkey {
+    /// Semantic meaning of the hotkey
+    pub kind: HotkeyKind,
+    /// Original raw key event (preserved for fallback)
+    pub raw: KeyEvent,
+}
+
+/// Semantic hotkey kind recognized from a KeyEvent.
 ///
 /// Panels interpret these contextually:
 /// - `Save` → FM: rename, Editor: save file, Git Status: commit
 /// - `View` → FM: view file, Editor: search next, Git Status: view file
-/// - `Other(key)` → panel-specific parsing (navigation, text input, etc.)
+/// - `Other` → panel-specific parsing (navigation, text input, etc.)
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Action {
+pub enum HotkeyKind {
     // === F-key universal actions (context-dependent per panel) ===
     /// F1 — Help / about
     Help,
@@ -128,68 +137,32 @@ pub enum Action {
     /// Alt+= — Resize panel larger
     ResizeLarger,
 
-    // === Unrecognized key — passed through to panel's handle_key ===
-    Other(KeyEvent),
+    // === Unrecognized key — raw event is in Hotkey.raw ===
+    Other,
 }
 
-impl Action {
-    /// Get the default key event for this action.
-    /// Used by panels like Terminal that need to forward F-key actions to the shell.
-    pub fn to_default_key(&self) -> Option<KeyEvent> {
-        let key = |code: KeyCode| KeyEvent::new(code, KeyModifiers::NONE);
-        match self {
-            Action::Help => Some(key(KeyCode::F(1))),
-            Action::Save => Some(key(KeyCode::F(2))),
-            Action::View => Some(key(KeyCode::F(3))),
-            Action::EditItem => Some(key(KeyCode::F(4))),
-            Action::CopyItem => Some(key(KeyCode::F(5))),
-            Action::MoveItem => Some(key(KeyCode::F(6))),
-            Action::CreateItem => Some(key(KeyCode::F(7))),
-            Action::DeleteItem => Some(key(KeyCode::F(8))),
-            Action::Menu => Some(key(KeyCode::F(9))),
-            Action::ClosePanel => Some(key(KeyCode::F(10))),
-            Action::ToggleStack => Some(key(KeyCode::F(11))),
-            Action::ContextMenu => Some(key(KeyCode::F(12))),
-            // Non-F-key universal
-            Action::Cancel => Some(key(KeyCode::Esc)),
-            Action::Search => Some(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL)),
-            Action::Refresh => Some(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL)),
-            Action::GoBack => Some(key(KeyCode::Backspace)),
-            Action::Space => Some(key(KeyCode::Char(' '))),
-            Action::Insert => Some(key(KeyCode::Insert)),
-            Action::Undo => Some(KeyEvent::new(KeyCode::Char('z'), KeyModifiers::CONTROL)),
-            Action::Redo => Some(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::CONTROL)),
-            // Navigation
-            Action::Up => Some(key(KeyCode::Up)),
-            Action::Down => Some(key(KeyCode::Down)),
-            Action::Left => Some(key(KeyCode::Left)),
-            Action::Right => Some(key(KeyCode::Right)),
-            Action::PageUp => Some(key(KeyCode::PageUp)),
-            Action::PageDown => Some(key(KeyCode::PageDown)),
-            Action::Home => Some(key(KeyCode::Home)),
-            Action::End => Some(key(KeyCode::End)),
-            Action::Enter => Some(key(KeyCode::Enter)),
-            Action::Tab => Some(key(KeyCode::Tab)),
-            Action::BackTab => Some(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT)),
-            Action::Other(k) => Some(*k),
-            _ => None, // App-level actions don't have a default key
-        }
-    }
-}
-
-/// Normalize a raw KeyEvent into a semantic Action using global keybindings.
+/// Normalize a raw KeyEvent into a semantic Hotkey using global keybindings.
 ///
 /// The key should already be translated (Cyrillic → Latin) before calling this.
 /// Order: app-level actions first (most specific), then universal F-key actions,
 /// then non-F-key actions, then Other.
-pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
+pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Hotkey {
+    macro_rules! hotkey {
+        ($kind:expr) => {
+            return Hotkey {
+                kind: $kind,
+                raw: key,
+            }
+        };
+    }
+
     // =========================================================================
     // App-level actions (Alt+key combinations, Ctrl+P)
     // These are checked first because Alt+M should be Menu, not a char input.
     // =========================================================================
 
     if matches_binding_or_defaults(&kb.quit, &key, &[(KeyCode::Char('q'), KeyModifiers::ALT)]) {
-        return Action::Quit;
+        hotkey!(HotkeyKind::Quit);
     }
 
     if matches_binding_or_defaults(
@@ -197,7 +170,7 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
         &key,
         &[(KeyCode::Char('f'), KeyModifiers::ALT)],
     ) {
-        return Action::NewFileManager;
+        hotkey!(HotkeyKind::NewFileManager);
     }
 
     if matches_binding_or_defaults(
@@ -205,7 +178,7 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
         &key,
         &[(KeyCode::Char('t'), KeyModifiers::ALT)],
     ) {
-        return Action::NewTerminal;
+        hotkey!(HotkeyKind::NewTerminal);
     }
 
     if matches_binding_or_defaults(
@@ -213,7 +186,7 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
         &key,
         &[(KeyCode::Char('e'), KeyModifiers::ALT)],
     ) {
-        return Action::NewEditor;
+        hotkey!(HotkeyKind::NewEditor);
     }
 
     if matches_binding_or_defaults(
@@ -221,7 +194,7 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
         &key,
         &[(KeyCode::Char('l'), KeyModifiers::ALT)],
     ) {
-        return Action::NewJournal;
+        hotkey!(HotkeyKind::NewJournal);
     }
 
     if matches_binding_or_defaults(
@@ -232,7 +205,7 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
             (KeyCode::F(1), KeyModifiers::NONE),
         ],
     ) {
-        return Action::OpenHelp;
+        hotkey!(HotkeyKind::OpenHelp);
     }
 
     if matches_binding_or_defaults(
@@ -240,7 +213,7 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
         &key,
         &[(KeyCode::Char('p'), KeyModifiers::ALT)],
     ) {
-        return Action::OpenPreferences;
+        hotkey!(HotkeyKind::OpenPreferences);
     }
 
     if matches_binding_or_defaults(
@@ -248,7 +221,7 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
         &key,
         &[(KeyCode::Char('/'), KeyModifiers::ALT)],
     ) {
-        return Action::OpenSessions;
+        hotkey!(HotkeyKind::OpenSessions);
     }
 
     if matches_binding_or_defaults(
@@ -256,7 +229,7 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
         &key,
         &[(KeyCode::Char('n'), KeyModifiers::ALT)],
     ) {
-        return Action::NewSession;
+        hotkey!(HotkeyKind::NewSession);
     }
 
     if matches_binding_or_defaults(
@@ -264,7 +237,7 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
         &key,
         &[(KeyCode::Char('g'), KeyModifiers::ALT)],
     ) {
-        return Action::OpenGitStatus;
+        hotkey!(HotkeyKind::OpenGitStatus);
     }
 
     if matches_binding_or_defaults(
@@ -272,7 +245,7 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
         &key,
         &[(KeyCode::Char('c'), KeyModifiers::ALT)],
     ) {
-        return Action::OpenGitLog;
+        hotkey!(HotkeyKind::OpenGitLog);
     }
 
     if matches_binding_or_defaults(
@@ -280,7 +253,7 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
         &key,
         &[(KeyCode::Char('o'), KeyModifiers::ALT)],
     ) {
-        return Action::OpenOutline;
+        hotkey!(HotkeyKind::OpenOutline);
     }
 
     if matches_binding_or_defaults(
@@ -288,7 +261,7 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
         &key,
         &[(KeyCode::Char('i'), KeyModifiers::ALT)],
     ) {
-        return Action::OpenDiagnostics;
+        hotkey!(HotkeyKind::OpenDiagnostics);
     }
 
     if matches_binding_or_default(
@@ -297,7 +270,7 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
         KeyCode::Char('b'),
         KeyModifiers::ALT,
     ) {
-        return Action::OpenBookmarkAdd;
+        hotkey!(HotkeyKind::OpenBookmarkAdd);
     }
 
     if matches_binding_or_defaults(
@@ -311,7 +284,7 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
             ),
         ],
     ) {
-        return Action::OpenCommandPalette;
+        hotkey!(HotkeyKind::OpenCommandPalette);
     }
 
     // Navigation
@@ -323,7 +296,7 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
             (KeyCode::Char('a'), KeyModifiers::ALT),
         ],
     ) {
-        return Action::PrevGroup;
+        hotkey!(HotkeyKind::PrevGroup);
     }
 
     if matches_binding_or_defaults(
@@ -334,7 +307,7 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
             (KeyCode::Char('d'), KeyModifiers::ALT),
         ],
     ) {
-        return Action::NextGroup;
+        hotkey!(HotkeyKind::NextGroup);
     }
 
     if matches_binding_or_defaults(
@@ -345,7 +318,7 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
             (KeyCode::Char('w'), KeyModifiers::ALT),
         ],
     ) {
-        return Action::PrevPanel;
+        hotkey!(HotkeyKind::PrevPanel);
     }
 
     if matches_binding_or_defaults(
@@ -356,7 +329,7 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
             (KeyCode::Char('s'), KeyModifiers::ALT),
         ],
     ) {
-        return Action::NextPanel;
+        hotkey!(HotkeyKind::NextPanel);
     }
 
     // GoToPanel 1-9
@@ -375,13 +348,13 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
         };
         let digit = char::from(b'0' + n);
         if matches_binding_or_default(field, &key, KeyCode::Char(digit), KeyModifiers::ALT) {
-            return Action::GoToPanel(n as usize);
+            hotkey!(HotkeyKind::GoToPanel(n as usize));
         }
     }
 
     // Panel management
     if matches_binding_or_defaults(&kb.swap_left, &key, &[(KeyCode::PageUp, KeyModifiers::ALT)]) {
-        return Action::SwapLeft;
+        hotkey!(HotkeyKind::SwapLeft);
     }
 
     if matches_binding_or_defaults(
@@ -389,15 +362,15 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
         &key,
         &[(KeyCode::PageDown, KeyModifiers::ALT)],
     ) {
-        return Action::SwapRight;
+        hotkey!(HotkeyKind::SwapRight);
     }
 
     if matches_binding_or_default(&kb.move_first, &key, KeyCode::Home, KeyModifiers::ALT) {
-        return Action::MoveFirst;
+        hotkey!(HotkeyKind::MoveFirst);
     }
 
     if matches_binding_or_default(&kb.move_last, &key, KeyCode::End, KeyModifiers::ALT) {
-        return Action::MoveLast;
+        hotkey!(HotkeyKind::MoveLast);
     }
 
     if matches_binding_or_default(
@@ -406,7 +379,7 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
         KeyCode::Char('-'),
         KeyModifiers::ALT,
     ) {
-        return Action::ResizeSmaller;
+        hotkey!(HotkeyKind::ResizeSmaller);
     }
 
     if matches_binding_or_defaults(
@@ -417,7 +390,7 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
             (KeyCode::Char('+'), KeyModifiers::ALT),
         ],
     ) {
-        return Action::ResizeLarger;
+        hotkey!(HotkeyKind::ResizeLarger);
     }
 
     // =========================================================================
@@ -425,7 +398,7 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
     // =========================================================================
 
     if matches_binding_or_default(&kb.help, &key, KeyCode::F(1), KeyModifiers::NONE) {
-        return Action::Help;
+        hotkey!(HotkeyKind::Help);
     }
 
     if matches_binding_or_defaults(
@@ -436,34 +409,34 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
             (KeyCode::Char('s'), KeyModifiers::CONTROL),
         ],
     ) {
-        return Action::Save;
+        hotkey!(HotkeyKind::Save);
     }
 
     if matches_binding_or_default(&kb.view, &key, KeyCode::F(3), KeyModifiers::NONE) {
-        return Action::View;
+        hotkey!(HotkeyKind::View);
     }
 
     if matches_binding_or_default(&kb.edit_item, &key, KeyCode::F(4), KeyModifiers::NONE) {
-        return Action::EditItem;
+        hotkey!(HotkeyKind::EditItem);
     }
 
     if matches_binding_or_default(&kb.copy_item, &key, KeyCode::F(5), KeyModifiers::NONE) {
-        return Action::CopyItem;
+        hotkey!(HotkeyKind::CopyItem);
     }
 
     if matches_binding_or_default(&kb.move_item, &key, KeyCode::F(6), KeyModifiers::NONE) {
-        return Action::MoveItem;
+        hotkey!(HotkeyKind::MoveItem);
     }
 
     if matches_binding_or_default(&kb.create_item, &key, KeyCode::F(7), KeyModifiers::NONE) {
-        return Action::CreateItem;
+        hotkey!(HotkeyKind::CreateItem);
     }
 
     // DeleteItem: only F8 by default.
     // Delete key stays as Other so editor/terminal can use it for char deletion.
     // Panels that want Delete=DeleteItem handle it in their own handle_key.
     if matches_binding_or_default(&kb.delete_item, &key, KeyCode::F(8), KeyModifiers::NONE) {
-        return Action::DeleteItem;
+        hotkey!(HotkeyKind::DeleteItem);
     }
 
     if matches_binding_or_defaults(
@@ -474,7 +447,7 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
             (KeyCode::F(9), KeyModifiers::NONE),
         ],
     ) {
-        return Action::Menu;
+        hotkey!(HotkeyKind::Menu);
     }
 
     if matches_binding_or_defaults(
@@ -485,7 +458,7 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
             (KeyCode::F(10), KeyModifiers::NONE),
         ],
     ) {
-        return Action::ClosePanel;
+        hotkey!(HotkeyKind::ClosePanel);
     }
 
     if matches_binding_or_defaults(
@@ -496,11 +469,11 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
             (KeyCode::F(11), KeyModifiers::NONE),
         ],
     ) {
-        return Action::ToggleStack;
+        hotkey!(HotkeyKind::ToggleStack);
     }
 
     if matches_binding_or_default(&kb.context_menu, &key, KeyCode::F(12), KeyModifiers::NONE) {
-        return Action::ContextMenu;
+        hotkey!(HotkeyKind::ContextMenu);
     }
 
     // =========================================================================
@@ -508,36 +481,36 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
     // =========================================================================
 
     if matches_binding_or_default(&kb.cancel, &key, KeyCode::Esc, KeyModifiers::NONE) {
-        return Action::Cancel;
+        hotkey!(HotkeyKind::Cancel);
     }
 
     if matches_binding_or_default(&kb.search, &key, KeyCode::Char('f'), KeyModifiers::CONTROL) {
-        return Action::Search;
+        hotkey!(HotkeyKind::Search);
     }
 
     if matches_binding_or_default(&kb.refresh, &key, KeyCode::Char('r'), KeyModifiers::CONTROL) {
-        return Action::Refresh;
+        hotkey!(HotkeyKind::Refresh);
     }
 
     if matches_binding_or_default(&kb.go_back, &key, KeyCode::Backspace, KeyModifiers::NONE) {
-        return Action::GoBack;
+        hotkey!(HotkeyKind::GoBack);
     }
 
     // DeleteItem also matches bare Delete key (in addition to F8 above)
     if key.code == KeyCode::Delete && key.modifiers.is_empty() {
-        return Action::DeleteItem;
+        hotkey!(HotkeyKind::DeleteItem);
     }
 
     if matches_binding_or_default(&kb.space, &key, KeyCode::Char(' '), KeyModifiers::NONE) {
-        return Action::Space;
+        hotkey!(HotkeyKind::Space);
     }
 
     if matches_binding_or_default(&kb.insert, &key, KeyCode::Insert, KeyModifiers::NONE) {
-        return Action::Insert;
+        hotkey!(HotkeyKind::Insert);
     }
 
     if matches_binding_or_default(&kb.undo, &key, KeyCode::Char('z'), KeyModifiers::CONTROL) {
-        return Action::Undo;
+        hotkey!(HotkeyKind::Undo);
     }
 
     if matches_binding_or_defaults(
@@ -551,7 +524,7 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
             ),
         ],
     ) {
-        return Action::Redo;
+        hotkey!(HotkeyKind::Redo);
     }
 
     // =========================================================================
@@ -560,26 +533,29 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
 
     if key.modifiers.is_empty() {
         match key.code {
-            KeyCode::Up => return Action::Up,
-            KeyCode::Down => return Action::Down,
-            KeyCode::Left => return Action::Left,
-            KeyCode::Right => return Action::Right,
-            KeyCode::PageUp => return Action::PageUp,
-            KeyCode::PageDown => return Action::PageDown,
-            KeyCode::Home => return Action::Home,
-            KeyCode::End => return Action::End,
-            KeyCode::Enter => return Action::Enter,
-            KeyCode::Tab => return Action::Tab,
+            KeyCode::Up => hotkey!(HotkeyKind::Up),
+            KeyCode::Down => hotkey!(HotkeyKind::Down),
+            KeyCode::Left => hotkey!(HotkeyKind::Left),
+            KeyCode::Right => hotkey!(HotkeyKind::Right),
+            KeyCode::PageUp => hotkey!(HotkeyKind::PageUp),
+            KeyCode::PageDown => hotkey!(HotkeyKind::PageDown),
+            KeyCode::Home => hotkey!(HotkeyKind::Home),
+            KeyCode::End => hotkey!(HotkeyKind::End),
+            KeyCode::Enter => hotkey!(HotkeyKind::Enter),
+            KeyCode::Tab => hotkey!(HotkeyKind::Tab),
             _ => {}
         }
     }
 
     if key.code == KeyCode::BackTab {
-        return Action::BackTab;
+        hotkey!(HotkeyKind::BackTab);
     }
 
     // =========================================================================
     // Unrecognized — pass through (chars, modifiers+nav, etc.)
     // =========================================================================
-    Action::Other(key)
+    Hotkey {
+        kind: HotkeyKind::Other,
+        raw: key,
+    }
 }

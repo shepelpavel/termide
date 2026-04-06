@@ -1193,43 +1193,43 @@ impl Panel for FileManager {
         }
     }
 
-    fn handle_action(&mut self, action: termide_core::Action) -> Vec<PanelEvent> {
+    fn handle_action(&mut self, hotkey: termide_core::Hotkey) -> Vec<PanelEvent> {
         use keyboard::FmCommand;
-        use termide_core::Action;
+        use termide_core::HotkeyKind;
 
         // Map universal actions to FM commands
-        let command = match action {
+        let command = match hotkey.kind {
             // F-key actions
-            Action::Save => FmCommand::RenameFile,
-            Action::View => FmCommand::ViewFile,
-            Action::EditItem => FmCommand::EditFile,
-            Action::CopyItem => FmCommand::CopyFiles,
-            Action::MoveItem => FmCommand::MoveFiles,
-            Action::CreateItem => FmCommand::NewDirectory,
-            Action::DeleteItem => FmCommand::DeleteFiles,
-            Action::ContextMenu => FmCommand::ShowFileInfo,
+            HotkeyKind::Save => FmCommand::RenameFile,
+            HotkeyKind::View => FmCommand::ViewFile,
+            HotkeyKind::EditItem => FmCommand::EditFile,
+            HotkeyKind::CopyItem => FmCommand::CopyFiles,
+            HotkeyKind::MoveItem => FmCommand::MoveFiles,
+            HotkeyKind::CreateItem => FmCommand::NewDirectory,
+            HotkeyKind::DeleteItem => FmCommand::DeleteFiles,
+            HotkeyKind::ContextMenu => FmCommand::ShowFileInfo,
             // Non-F-key actions
-            Action::Cancel => FmCommand::ClearSelection,
-            Action::Search => FmCommand::Search,
-            Action::Refresh => FmCommand::Refresh,
-            Action::GoBack => FmCommand::GoParent,
-            Action::Space => FmCommand::ShowFileInfo,
-            Action::Insert => FmCommand::ToggleSelection,
+            HotkeyKind::Cancel => FmCommand::ClearSelection,
+            HotkeyKind::Search => FmCommand::Search,
+            HotkeyKind::Refresh => FmCommand::Refresh,
+            HotkeyKind::GoBack => FmCommand::GoParent,
+            HotkeyKind::Space => FmCommand::ShowFileInfo,
+            HotkeyKind::Insert => FmCommand::ToggleSelection,
             // Navigation
-            Action::Up => FmCommand::MoveUp,
-            Action::Down => FmCommand::MoveDown,
-            Action::PageUp => FmCommand::PageUp,
-            Action::PageDown => FmCommand::PageDown,
-            Action::Home => FmCommand::GoHome,
-            Action::End => FmCommand::GoEnd,
-            Action::Enter => FmCommand::Enter,
-            Action::Left => FmCommand::CollapseDir,
-            Action::Right => FmCommand::ExpandDir,
-            Action::Tab => FmCommand::NextPanel,
-            Action::BackTab => FmCommand::PrevPanel,
+            HotkeyKind::Up => FmCommand::MoveUp,
+            HotkeyKind::Down => FmCommand::MoveDown,
+            HotkeyKind::PageUp => FmCommand::PageUp,
+            HotkeyKind::PageDown => FmCommand::PageDown,
+            HotkeyKind::Home => FmCommand::GoHome,
+            HotkeyKind::End => FmCommand::GoEnd,
+            HotkeyKind::Enter => FmCommand::Enter,
+            HotkeyKind::Left => FmCommand::CollapseDir,
+            HotkeyKind::Right => FmCommand::ExpandDir,
+            HotkeyKind::Tab => FmCommand::NextPanel,
+            HotkeyKind::BackTab => FmCommand::PrevPanel,
             // FM-specific keys (E, V, C, M, R, D, vim, etc.)
-            Action::Other(key) => {
-                let key = termide_keyboard::translate_hotkey(key);
+            HotkeyKind::Other => {
+                let key = termide_keyboard::translate_hotkey(hotkey.raw);
                 let key = termide_keyboard::translate_all_chars(key);
                 FmCommand::from_key_event(key, &self.cached_config.keybindings, self.vim_mode)
             }

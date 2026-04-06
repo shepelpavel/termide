@@ -979,13 +979,13 @@ impl Panel for GitStatusPanel {
         }
     }
 
-    fn handle_action(&mut self, action: termide_core::Action) -> Vec<PanelEvent> {
-        use termide_core::Action;
+    fn handle_action(&mut self, hotkey: termide_core::Hotkey) -> Vec<PanelEvent> {
+        use termide_core::HotkeyKind;
         self.status_message = None;
 
-        match action {
+        match hotkey.kind {
             // F-key actions
-            Action::View => {
+            HotkeyKind::View => {
                 if self.current_section == Section::Files
                     && matches!(
                         self.get_selection(),
@@ -996,7 +996,7 @@ impl Panel for GitStatusPanel {
                 }
                 vec![]
             }
-            Action::EditItem => {
+            HotkeyKind::EditItem => {
                 if self.current_section == Section::Files
                     && matches!(
                         self.get_selection(),
@@ -1007,8 +1007,8 @@ impl Panel for GitStatusPanel {
                 }
                 vec![]
             }
-            Action::ContextMenu => self.show_file_properties(),
-            Action::DeleteItem => {
+            HotkeyKind::ContextMenu => self.show_file_properties(),
+            HotkeyKind::DeleteItem => {
                 // Delete key: unstage if staged, revert if unstaged
                 if self.current_section == Section::Files {
                     if matches!(
@@ -1026,7 +1026,7 @@ impl Panel for GitStatusPanel {
                 vec![]
             }
             // Non-F-key actions
-            Action::Cancel => {
+            HotkeyKind::Cancel => {
                 if self.branch_dropdown_open {
                     self.branch_dropdown_open = false;
                 } else if self.repo_dropdown_open {
@@ -1034,7 +1034,7 @@ impl Panel for GitStatusPanel {
                 }
                 vec![]
             }
-            Action::Refresh => {
+            HotkeyKind::Refresh => {
                 self.refresh();
                 self.status_message = Some(termide_i18n::t().git_refreshed().to_string());
                 if let Some(repo) = self.repo_manager.current() {
@@ -1046,7 +1046,7 @@ impl Panel for GitStatusPanel {
                 }
                 vec![]
             }
-            Action::GoBack => {
+            HotkeyKind::GoBack => {
                 // Backspace: revert file
                 if self.current_section == Section::Files
                     && matches!(
@@ -1059,15 +1059,15 @@ impl Panel for GitStatusPanel {
                 vec![]
             }
             // Navigation
-            Action::Up => {
+            HotkeyKind::Up => {
                 self.handle_up_key();
                 vec![]
             }
-            Action::Down => {
+            HotkeyKind::Down => {
                 self.handle_down_key();
                 vec![]
             }
-            Action::Home => {
+            HotkeyKind::Home => {
                 if self.current_section == Section::Files {
                     let unstaged_end = 1 + self.unstaged_files.len();
                     let staged_header = unstaged_end;
@@ -1087,7 +1087,7 @@ impl Panel for GitStatusPanel {
                 }
                 vec![]
             }
-            Action::End => {
+            HotkeyKind::End => {
                 if self.current_section == Section::Files {
                     let unstaged_end = 1 + self.unstaged_files.len();
                     let staged_header = unstaged_end;
@@ -1108,7 +1108,7 @@ impl Panel for GitStatusPanel {
                 }
                 vec![]
             }
-            Action::PageUp => {
+            HotkeyKind::PageUp => {
                 if self.current_section == Section::Files {
                     let page_size = self.viewport_height.max(1);
                     let mut new_cursor = self.cursor.saturating_sub(page_size);
@@ -1122,7 +1122,7 @@ impl Panel for GitStatusPanel {
                 }
                 vec![]
             }
-            Action::PageDown => {
+            HotkeyKind::PageDown => {
                 if self.current_section == Section::Files {
                     let max = self.total_virtual_lines();
                     let page_size = self.viewport_height.max(1);
@@ -1141,7 +1141,7 @@ impl Panel for GitStatusPanel {
                 }
                 vec![]
             }
-            Action::Left => {
+            HotkeyKind::Left => {
                 match self.current_section {
                     Section::BranchSelector => {
                         self.current_section = Section::RepoSelector;
@@ -1174,7 +1174,7 @@ impl Panel for GitStatusPanel {
                 }
                 vec![]
             }
-            Action::Right => {
+            HotkeyKind::Right => {
                 match self.current_section {
                     Section::RepoSelector => {
                         self.current_section = Section::BranchSelector;
@@ -1208,16 +1208,16 @@ impl Panel for GitStatusPanel {
                 }
                 vec![]
             }
-            Action::Tab => {
+            HotkeyKind::Tab => {
                 self.next_section();
                 vec![]
             }
-            Action::BackTab => {
+            HotkeyKind::BackTab => {
                 self.prev_section();
                 vec![]
             }
-            Action::Enter => self.handle_enter_key(),
-            Action::Space => {
+            HotkeyKind::Enter => self.handle_enter_key(),
+            HotkeyKind::Space => {
                 // Space — show file properties
                 if self.current_section == Section::Files
                     && matches!(
@@ -1229,7 +1229,7 @@ impl Panel for GitStatusPanel {
                 }
                 vec![]
             }
-            Action::Insert => {
+            HotkeyKind::Insert => {
                 // Insert — stage file
                 if self.current_section == Section::Files
                     && matches!(
@@ -1241,7 +1241,7 @@ impl Panel for GitStatusPanel {
                 }
                 vec![]
             }
-            Action::Other(key) => self.handle_key(key),
+            HotkeyKind::Other => self.handle_key(hotkey.raw),
             _ => vec![],
         }
     }

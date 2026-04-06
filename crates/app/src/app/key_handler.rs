@@ -20,25 +20,19 @@ impl App {
         // Translate Cyrillic to Latin for hotkeys
         let key = termide_keyboard::translate_hotkey(key);
 
-        // Normalize KeyEvent → semantic Action
-        let action = termide_core::normalize(key, &self.state.config.general.keybindings);
+        // Normalize KeyEvent → semantic Hotkey
+        let hotkey = termide_core::normalize(key, &self.state.config.general.keybindings);
 
-        // Log action for debugging
-        log::trace!("Key {:?} → {:?}", key.code, action);
+        // Log hotkey for debugging
+        log::trace!("Key {:?} → {:?}", key.code, hotkey.kind);
 
         // Clear status message on any key press
         if self.state.ui.status_message.is_some() {
             self.state.clear_status();
         }
 
-        // Convert Action back to KeyEvent for modal/menu dispatch.
-        // Modals and menus still use raw KeyEvent — we reconstruct it from Action.
-        let key_for_ui = action
-            .to_default_key()
-            .unwrap_or(crossterm::event::KeyEvent::new(
-                crossterm::event::KeyCode::Null,
-                crossterm::event::KeyModifiers::NONE,
-            ));
+        // Modals and menus use the raw key event from the hotkey
+        let key_for_ui = hotkey.raw;
 
         // If modal window is open, handle it
         if self.state.has_modal() {
@@ -76,16 +70,16 @@ impl App {
         }
 
         // Handle app-level actions (Quit, NewTerminal, PrevGroup, etc.)
-        if self.handle_app_action(&action)? {
+        if self.handle_app_action(&hotkey.kind)? {
             return Ok(());
         }
 
-        // Pass action to active panel
+        // Pass hotkey to active panel
         let (events, modal_request, config_update) = if let Some(panel) =
             self.layout_manager.active_panel_mut()
         {
-            // handle_action dispatches to handle_key for Other(key)
-            let mut events = panel.handle_action(action);
+            // handle_action dispatches to handle_key for Other
+            let mut events = panel.handle_action(hotkey);
 
             // Legacy methods still in use
             let modal_request = panel.take_modal_request();

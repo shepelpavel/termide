@@ -924,27 +924,27 @@ impl Panel for GitDiffPanel {
         self.render_content(area, buf, ctx.is_focused, ctx.border_right_x);
     }
 
-    fn handle_action(&mut self, action: termide_core::Action) -> Vec<PanelEvent> {
-        use termide_core::Action;
+    fn handle_action(&mut self, hotkey: termide_core::Hotkey) -> Vec<PanelEvent> {
+        use termide_core::HotkeyKind;
         self.status_message = None;
-        match action {
-            Action::EditItem => return self.open_file(),
-            Action::Refresh => {
+        match hotkey.kind {
+            HotkeyKind::EditItem => return self.open_file(),
+            HotkeyKind::Refresh => {
                 self.refresh();
                 let t = termide_i18n::t();
                 self.status_message = Some(t.git_refreshed().to_string());
             }
-            Action::Up => self.move_up(),
-            Action::Down => self.move_down(),
-            Action::Home => self.go_to_start(),
-            Action::End => self.go_to_end(),
-            Action::PageUp => self.page_up(),
-            Action::PageDown => self.page_down(),
-            Action::Enter => self.toggle_collapse(),
-            Action::Space => self.toggle_collapse(),
-            Action::Left => self.collapse_current(),
-            Action::Right => self.expand_current(),
-            Action::Other(key) => return self.handle_key(key),
+            HotkeyKind::Up => self.move_up(),
+            HotkeyKind::Down => self.move_down(),
+            HotkeyKind::Home => self.go_to_start(),
+            HotkeyKind::End => self.go_to_end(),
+            HotkeyKind::PageUp => self.page_up(),
+            HotkeyKind::PageDown => self.page_down(),
+            HotkeyKind::Enter => self.toggle_collapse(),
+            HotkeyKind::Space => self.toggle_collapse(),
+            HotkeyKind::Left => self.collapse_current(),
+            HotkeyKind::Right => self.expand_current(),
+            HotkeyKind::Other => return self.handle_key(hotkey.raw),
             _ => {}
         }
         vec![]
@@ -980,7 +980,7 @@ impl Panel for GitDiffPanel {
                 self.scroll_down(self.visible_height / 2);
             }
 
-            // Space is handled as Action::Space in handle_action
+            // Space is handled as HotkeyKind::Space in handle_action
 
             // Open file
             KeyCode::Char('e') => return self.open_file(),
