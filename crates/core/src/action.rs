@@ -42,16 +42,6 @@ pub enum Action {
     /// F12 — Context menu / properties
     ContextMenu,
 
-    // === Non-F-key universal actions ===
-    /// Esc — Close lightweight UI (modal, menu, popup, dropdown)
-    Close,
-    /// Ctrl+F — Search
-    Search,
-    /// Ctrl+R — Refresh
-    Refresh,
-    /// Backspace — Go back (FM: parent dir, Editor: nav back)
-    GoBack,
-
     // === App-level actions (handled before reaching panels) ===
     /// Alt+Q — Quit application
     Quit,
@@ -115,7 +105,6 @@ impl Action {
     /// Used by panels like Terminal that need to forward F-key actions to the shell.
     pub fn to_default_key(&self) -> Option<KeyEvent> {
         let key = |code: KeyCode| KeyEvent::new(code, KeyModifiers::NONE);
-        let ctrl = |c: char| KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL);
         match self {
             Action::Help => Some(key(KeyCode::F(1))),
             Action::Save => Some(key(KeyCode::F(2))),
@@ -129,10 +118,6 @@ impl Action {
             Action::ClosePanel => Some(key(KeyCode::F(10))),
             Action::ToggleStack => Some(key(KeyCode::F(11))),
             Action::ContextMenu => Some(key(KeyCode::F(12))),
-            Action::Close => Some(key(KeyCode::Esc)),
-            Action::Search => Some(ctrl('f')),
-            Action::Refresh => Some(ctrl('r')),
-            Action::GoBack => Some(key(KeyCode::Backspace)),
             Action::Other(k) => Some(*k),
             _ => None, // App-level actions don't have a default key
         }
@@ -461,19 +446,9 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
     }
 
     // =========================================================================
-    // Non-F-key universal actions (Esc, Ctrl+F, Ctrl+R, Backspace)
-    // =========================================================================
-    // NOT normalized here — these keys have panel-specific meanings:
-    //   Backspace = delete char (editor), go parent (FM), send to shell (terminal)
-    //   Esc = close popup (editor), send escape (terminal), clear selection (FM)
-    //   Ctrl+R = replace (editor), refresh (FM/git)
-    //   Ctrl+F = search (editor), file search (FM)
-    // Panels handle them directly in handle_action/handle_key.
-    // The Action::Close/Search/Refresh/GoBack variants exist for panels
-    // to use internally, but the normalizer doesn't produce them by default.
-
-    // =========================================================================
     // Unrecognized — pass through
+    // Non-F-key actions (Esc, Ctrl+F, Ctrl+R, Backspace) are NOT normalized
+    // because they have panel-specific meanings. Panels handle them in handle_key.
     // =========================================================================
     Action::Other(key)
 }

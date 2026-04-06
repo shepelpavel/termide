@@ -858,10 +858,6 @@ impl Panel for GitLogPanel {
 
     fn handle_action(&mut self, action: termide_core::Action) -> Vec<PanelEvent> {
         match action {
-            termide_core::Action::Refresh => {
-                self.refresh();
-                vec![PanelEvent::NeedsRedraw]
-            }
             termide_core::Action::ContextMenu => {
                 // Show commit info (same as Space)
                 self.handle_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))

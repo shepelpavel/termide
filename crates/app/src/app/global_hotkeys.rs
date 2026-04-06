@@ -4,9 +4,8 @@
 //! for navigation, panel management, and quick actions.
 
 use anyhow::Result;
-use crossterm::event::KeyEvent;
 
-use termide_app_event::{HotkeyAction, HotkeyProcessor};
+use termide_app_event::HotkeyAction;
 
 use super::App;
 use crate::state::{ActiveModal, PendingAction};
@@ -73,18 +72,7 @@ impl App {
         Ok(true)
     }
 
-    // Keep legacy method for now (used by command palette)
-    /// Handle global hotkeys (Alt+key combinations) — legacy path
-    #[allow(dead_code)]
-    pub(super) fn handle_global_hotkeys(&mut self, key: KeyEvent) -> Result<Option<()>> {
-        if let Some(action) = self.hotkey_processor.process_hotkey(&key) {
-            self.execute_hotkey_action(action)?;
-            return Ok(Some(()));
-        }
-        Ok(None)
-    }
-
-    /// Execute a hotkey action — legacy path for command palette
+    /// Execute a hotkey action — legacy adapter for command palette
     pub(in crate::app) fn execute_hotkey_action(&mut self, action: HotkeyAction) -> Result<()> {
         // Convert legacy HotkeyAction to new Action and dispatch
         let new_action = match action {

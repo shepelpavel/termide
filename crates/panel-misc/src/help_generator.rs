@@ -42,11 +42,7 @@ impl HelpGenerator {
             Self::generate_global_section(&config.general.keybindings, t),
             Self::generate_panel_section(&config.general.keybindings, t),
             Self::generate_navigation_section(t),
-            Self::generate_file_manager_section(
-                &config.file_manager.keybindings,
-                &config.general.keybindings,
-                t,
-            ),
+            Self::generate_file_manager_section(&config.file_manager.keybindings, t),
             Self::generate_editor_section(&config.editor.keybindings, t),
             Self::generate_git_status_section(&config.git_status.keybindings, t),
             Self::generate_git_diff_section(t),
@@ -200,7 +196,6 @@ impl HelpGenerator {
     /// Generate file manager keybindings section.
     fn generate_file_manager_section(
         kb: &FileManagerKeybindings,
-        global_kb: &termide_config::GlobalKeybindings,
         t: &dyn termide_i18n::Translation,
     ) -> HelpSection {
         let entries = vec![
@@ -213,7 +208,7 @@ impl HelpGenerator {
                 description: t.help_desc_move().to_string(),
             },
             HelpEntry {
-                keys: Self::format_keys(&global_kb.delete_item),
+                keys: "Delete / F8".to_string(),
                 description: t.help_desc_delete().to_string(),
             },
             HelpEntry {
@@ -225,7 +220,7 @@ impl HelpGenerator {
                 description: t.help_desc_view_file().to_string(),
             },
             HelpEntry {
-                keys: Self::format_keys(&global_kb.edit_item),
+                keys: "E / F4".to_string(),
                 description: t.help_desc_edit_file().to_string(),
             },
             HelpEntry {

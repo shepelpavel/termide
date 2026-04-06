@@ -11,7 +11,7 @@ use std::any::Any;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::{buffer::Buffer, layout::Rect};
 
 use termide_config::Config;
@@ -162,13 +162,6 @@ impl Panel for GitStashPanel {
 
     fn handle_action(&mut self, action: termide_core::Action) -> Vec<PanelEvent> {
         match action {
-            termide_core::Action::Refresh => {
-                self.refresh();
-                vec![PanelEvent::NeedsRedraw]
-            }
-            termide_core::Action::Close => {
-                self.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
-            }
             termide_core::Action::Other(key) => self.handle_key_event(key),
             _ => vec![],
         }

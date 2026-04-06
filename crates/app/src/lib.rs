@@ -250,16 +250,6 @@ impl LoopState {
 // Hotkey Integration
 // ============================================================================
 
-/// Process hotkey and convert to command.
-pub fn process_hotkey(
-    processor: &impl HotkeyProcessor,
-    key: &crossterm::event::KeyEvent,
-) -> Option<AppCommand> {
-    processor
-        .process_hotkey(key)
-        .and_then(|action| action.to_command())
-}
-
 /// Check if key event is a global hotkey.
 pub fn is_global_hotkey(
     processor: &impl HotkeyProcessor,
@@ -359,27 +349,6 @@ mod tests {
 
         let tick = AppEvent::Tick;
         assert!(matches!(tick, AppEvent::Tick));
-    }
-
-    #[test]
-    fn test_process_hotkey() {
-        let processor = DefaultHotkeyProcessor::new();
-
-        // Alt+Q should produce Quit command
-        let key = crossterm::event::KeyEvent::new(
-            crossterm::event::KeyCode::Char('q'),
-            crossterm::event::KeyModifiers::ALT,
-        );
-        let cmd = process_hotkey(&processor, &key);
-        assert!(matches!(cmd, Some(AppCommand::Quit)));
-
-        // Regular key should not produce command
-        let key = crossterm::event::KeyEvent::new(
-            crossterm::event::KeyCode::Char('a'),
-            crossterm::event::KeyModifiers::NONE,
-        );
-        let cmd = process_hotkey(&processor, &key);
-        assert!(cmd.is_none());
     }
 
     #[test]

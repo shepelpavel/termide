@@ -19,7 +19,6 @@ use std::collections::HashMap;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use termide_app_core::{AppCommand, Direction, PanelType};
 use termide_config::{latin_to_cyrillic, GlobalKeybindings, KeyBinding as ConfigKeyBinding};
 
 // ============================================================================
@@ -145,68 +144,8 @@ pub enum HotkeyAction {
     NewSession,
 }
 
-impl HotkeyAction {
-    /// Convert action to AppCommand.
-    ///
-    /// Some actions require additional context and return None,
-    /// indicating they need special handling by the orchestrator.
-    pub fn to_command(&self) -> Option<AppCommand> {
-        match self {
-            // Navigation commands
-            HotkeyAction::PrevGroup => Some(AppCommand::Navigate {
-                direction: Direction::Prev,
-            }),
-            HotkeyAction::NextGroup => Some(AppCommand::Navigate {
-                direction: Direction::Next,
-            }),
-            HotkeyAction::GoToPanel(n) => Some(AppCommand::Navigate {
-                direction: Direction::Index(*n - 1),
-            }),
-
-            // Panel creation
-            HotkeyAction::NewFileManager => Some(AppCommand::CreatePanel {
-                panel_type: PanelType::FileManager { working_dir: None },
-            }),
-            HotkeyAction::NewTerminal => Some(AppCommand::CreatePanel {
-                panel_type: PanelType::Terminal { cwd: None },
-            }),
-            HotkeyAction::NewEditor => Some(AppCommand::CreatePanel {
-                panel_type: PanelType::Editor { file_path: None },
-            }),
-            HotkeyAction::NewJournal => Some(AppCommand::CreatePanel {
-                panel_type: PanelType::Journal,
-            }),
-            HotkeyAction::OpenHelp => Some(AppCommand::CreatePanel {
-                panel_type: PanelType::Help,
-            }),
-
-            // Panel management
-            HotkeyAction::ClosePanel => Some(AppCommand::ClosePanel),
-            HotkeyAction::RequestQuit => Some(AppCommand::Quit),
-
-            // Actions that need special handling (return None)
-            HotkeyAction::ToggleMenu
-            | HotkeyAction::OpenPreferences
-            | HotkeyAction::OpenSessions
-            | HotkeyAction::OpenGitStatus
-            | HotkeyAction::OpenOutline
-            | HotkeyAction::OpenDiagnostics
-            | HotkeyAction::OpenGitLog
-            | HotkeyAction::OpenDirectorySwitcher
-            | HotkeyAction::OpenBookmarkAdd
-            | HotkeyAction::PrevInGroup
-            | HotkeyAction::NextInGroup
-            | HotkeyAction::ToggleStacking
-            | HotkeyAction::SwapPanelLeft
-            | HotkeyAction::SwapPanelRight
-            | HotkeyAction::MoveToFirst
-            | HotkeyAction::MoveToLast
-            | HotkeyAction::ResizePanel(_)
-            | HotkeyAction::OpenCommandPalette
-            | HotkeyAction::NewSession => None,
-        }
-    }
-}
+// Note: HotkeyAction::to_command() removed — the new Action system
+// handles command dispatch directly in handle_app_action().
 
 // ============================================================================
 // Hotkey Processor Trait
@@ -222,14 +161,6 @@ pub trait HotkeyProcessor {
     /// Returns the action if the key matches a hotkey binding,
     /// or None if it should be passed to the active panel.
     fn process_hotkey(&self, key: &KeyEvent) -> Option<HotkeyAction>;
-
-    /// Check if Escape should close the panel.
-    ///
-    /// Returns true if Escape is not captured by the active panel
-    /// and should trigger panel close.
-    fn should_escape_close(&self, key: &KeyEvent, panel_captures_escape: bool) -> bool {
-        key.code == KeyCode::Esc && key.modifiers.is_empty() && !panel_captures_escape
-    }
 }
 
 // ============================================================================
@@ -934,64 +865,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_hotkey_action_to_command() {
-        // Navigation
-        assert!(matches!(
-            HotkeyAction::PrevGroup.to_command(),
-            Some(AppCommand::Navigate {
-                direction: Direction::Prev
-            })
-        ));
-        assert!(matches!(
-            HotkeyAction::NextGroup.to_command(),
-            Some(AppCommand::Navigate {
-                direction: Direction::Next
-            })
-        ));
-
-        // Panel creation
-        assert!(matches!(
-            HotkeyAction::NewFileManager.to_command(),
-            Some(AppCommand::CreatePanel {
-                panel_type: PanelType::FileManager { .. }
-            })
-        ));
-        assert!(matches!(
-            HotkeyAction::NewTerminal.to_command(),
-            Some(AppCommand::CreatePanel {
-                panel_type: PanelType::Terminal { .. }
-            })
-        ));
-
-        // Close/Quit
-        assert!(matches!(
-            HotkeyAction::ClosePanel.to_command(),
-            Some(AppCommand::ClosePanel)
-        ));
-        assert!(matches!(
-            HotkeyAction::RequestQuit.to_command(),
-            Some(AppCommand::Quit)
-        ));
-
-        // Actions that need special handling
-        assert!(HotkeyAction::ToggleMenu.to_command().is_none());
-        assert!(HotkeyAction::OpenPreferences.to_command().is_none());
-    }
-
-    #[test]
-    fn test_escape_close() {
-        let processor = DefaultHotkeyProcessor::new();
-
-        // Escape without modifiers, panel doesn't capture
-        assert!(processor.should_escape_close(&key_event(KeyCode::Esc, KeyModifiers::NONE), false));
-
-        // Escape with modifiers - don't close
-        assert!(!processor.should_escape_close(&key_event(KeyCode::Esc, KeyModifiers::ALT), false));
-
-        // Panel captures escape - don't close
-        assert!(!processor.should_escape_close(&key_event(KeyCode::Esc, KeyModifiers::NONE), true));
-    }
+    // Tests for to_command() and should_escape_close() removed —
+    // these are now handled by the Action normalizer in core.
 
     #[test]
     fn test_custom_binding() {

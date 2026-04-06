@@ -926,10 +926,6 @@ impl Panel for GitDiffPanel {
 
     fn handle_action(&mut self, action: termide_core::Action) -> Vec<PanelEvent> {
         match action {
-            termide_core::Action::Refresh => {
-                self.refresh();
-                vec![PanelEvent::NeedsRedraw]
-            }
             termide_core::Action::EditItem => {
                 // Open file for editing (same as 'e' key)
                 self.handle_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE))

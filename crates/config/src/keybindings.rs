@@ -228,10 +228,6 @@ pub struct GlobalKeybindings {
     pub create_item: Option<KeyBinding>,
     pub delete_item: Option<KeyBinding>,
     pub context_menu: Option<KeyBinding>,
-    pub close: Option<KeyBinding>,
-    pub search: Option<KeyBinding>,
-    pub refresh: Option<KeyBinding>,
-    pub go_back: Option<KeyBinding>,
 }
 
 /// Editor keybindings (editor.keybindings section).
@@ -418,12 +414,6 @@ impl GlobalKeybindings {
         set_default!(create_item, "F7");
         set_default_multiple!(delete_item, "Delete", "F8");
         set_default!(context_menu, "F12");
-
-        // Common item actions (non-F-key universal)
-        set_default!(close, "Esc");
-        set_default!(search, "Ctrl+F");
-        set_default!(refresh, "Ctrl+R");
-        set_default!(go_back, "Backspace");
     }
 }
 

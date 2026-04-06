@@ -102,8 +102,6 @@ pub struct FileManager {
     cached_theme: Theme,
     /// Cached config for rendering
     cached_config: FileManagerSettings,
-    /// Cached global keybindings (edit_item, delete_item)
-    cached_global_kb: termide_config::GlobalKeybindings,
     /// Cached vim_mode setting for keyboard handling
     vim_mode: bool,
     /// Cached VFS connection timeout in seconds
@@ -223,7 +221,6 @@ impl FileManager {
             git_root: None,
             cached_theme: Theme::default(),
             cached_config: FileManagerSettings::default(),
-            cached_global_kb: termide_config::GlobalKeybindings::default(),
             vim_mode: false,
             cached_vfs_timeout_secs: 60, // Default, will be updated from config
             vfs,
@@ -262,7 +259,6 @@ impl FileManager {
             git_root: None,
             cached_theme: Theme::default(),
             cached_config: FileManagerSettings::default(),
-            cached_global_kb: termide_config::GlobalKeybindings::default(),
             vim_mode: false,
             cached_vfs_timeout_secs: 60,
             vfs,
@@ -1145,7 +1141,6 @@ impl Panel for FileManager {
     fn prepare_render(&mut self, theme: &termide_theme::Theme, config: std::sync::Arc<Config>) {
         self.cached_theme = *theme;
         self.cached_config = config.file_manager.clone();
-        self.cached_global_kb = config.general.keybindings.clone();
         self.vim_mode = config.general.vim_mode;
         self.cached_vfs_timeout_secs = config.vfs.connection_timeout_secs;
     }
@@ -1218,12 +1213,7 @@ impl Panel for FileManager {
                 // Translate Cyrillic for FM-specific keys (E, V, C, M, R, D, vim, etc.)
                 let key = termide_keyboard::translate_hotkey(key);
                 let key = termide_keyboard::translate_all_chars(key);
-                FmCommand::from_key_event(
-                    key,
-                    &self.cached_config.keybindings,
-                    &self.cached_global_kb,
-                    self.vim_mode,
-                )
+                FmCommand::from_key_event(key, &self.cached_config.keybindings, self.vim_mode)
             }
             _ => return vec![], // app-level actions handled upstream
         };
@@ -1237,12 +1227,8 @@ impl Panel for FileManager {
         // Legacy path: translate and parse FM-specific keys
         let key = termide_keyboard::translate_hotkey(key);
         let key = termide_keyboard::translate_all_chars(key);
-        let command = FmCommand::from_key_event(
-            key,
-            &self.cached_config.keybindings,
-            &self.cached_global_kb,
-            self.vim_mode,
-        );
+        let command =
+            FmCommand::from_key_event(key, &self.cached_config.keybindings, self.vim_mode);
         self.execute_command(command)
     }
 
