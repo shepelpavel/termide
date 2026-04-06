@@ -26,8 +26,6 @@ pub struct Hotkey {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HotkeyKind {
     // === F-key universal actions (context-dependent per panel) ===
-    /// F1 — Help / about
-    Help,
     /// F2, Ctrl+S — Save (FM: rename, Editor: save, Git: commit)
     Save,
     /// F3 — View / search next
@@ -397,9 +395,7 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Hotkey {
     // F-key universal actions
     // =========================================================================
 
-    if matches_binding_or_default(&kb.help, &key, KeyCode::F(1), KeyModifiers::NONE) {
-        hotkey!(HotkeyKind::Help);
-    }
+    // F1 is handled by open_help above (defaults: "Alt+H", "F1")
 
     if matches_binding_or_defaults(
         &kb.save,
@@ -432,10 +428,14 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Hotkey {
         hotkey!(HotkeyKind::CreateItem);
     }
 
-    // DeleteItem: only F8 by default.
-    // Delete key stays as Other so editor/terminal can use it for char deletion.
-    // Panels that want Delete=DeleteItem handle it in their own handle_key.
-    if matches_binding_or_default(&kb.delete_item, &key, KeyCode::F(8), KeyModifiers::NONE) {
+    if matches_binding_or_defaults(
+        &kb.delete_item,
+        &key,
+        &[
+            (KeyCode::Delete, KeyModifiers::NONE),
+            (KeyCode::F(8), KeyModifiers::NONE),
+        ],
+    ) {
         hotkey!(HotkeyKind::DeleteItem);
     }
 
@@ -496,10 +496,7 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Hotkey {
         hotkey!(HotkeyKind::GoBack);
     }
 
-    // DeleteItem also matches bare Delete key (in addition to F8 above)
-    if key.code == KeyCode::Delete && key.modifiers.is_empty() {
-        hotkey!(HotkeyKind::DeleteItem);
-    }
+    // Note: Delete key is handled by kb.delete_item config above (defaults: "Delete", "F8").
 
     if matches_binding_or_default(&kb.space, &key, KeyCode::Char(' '), KeyModifiers::NONE) {
         hotkey!(HotkeyKind::Space);

@@ -219,7 +219,6 @@ pub struct GlobalKeybindings {
     pub open_command_palette: Option<KeyBinding>,
 
     // Common item actions (used across panels, menus, modals)
-    pub help: Option<KeyBinding>,
     pub save: Option<KeyBinding>,
     pub view: Option<KeyBinding>,
     pub edit_item: Option<KeyBinding>,
@@ -413,7 +412,6 @@ impl GlobalKeybindings {
         set_default!(open_command_palette, "Ctrl+P");
 
         // Common item actions (F-key universal)
-        set_default!(help, "F1");
         set_default_multiple!(save, "F2", "Ctrl+S");
         set_default!(view, "F3");
         set_default!(edit_item, "F4");
