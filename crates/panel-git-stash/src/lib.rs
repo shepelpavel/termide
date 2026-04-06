@@ -163,7 +163,7 @@ impl Panel for GitStashPanel {
     fn handle_action(&mut self, hotkey: termide_core::Hotkey) -> Vec<PanelEvent> {
         use termide_core::HotkeyKind;
         match hotkey.kind {
-            HotkeyKind::Cancel => {
+            HotkeyKind::Escape => {
                 self.status_message = None;
                 vec![PanelEvent::ClosePanel]
             }

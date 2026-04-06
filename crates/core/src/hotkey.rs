@@ -49,19 +49,16 @@ pub enum HotkeyKind {
     /// F12 — Context menu / properties
     ContextMenu,
 
-    // === Non-F-key universal actions ===
-    /// Esc — Cancel / close current context (popup, modal, selection)
-    Cancel,
+    // === Non-F-key semantic actions ===
     /// Ctrl+F — Search
     Search,
     /// Ctrl+R — Refresh
     Refresh,
-    /// Backspace — Go back (FM: parent dir, Editor: delete prev char via fallback)
-    GoBack,
 
-    /// Space — context-dependent (FM: file info, Ops: pause, Git: properties)
+    // === Key-named variants (no unified semantics, panels interpret freely) ===
+    Escape,
+    Backspace,
     Space,
-    /// Insert — context-dependent (FM: toggle selection, Git Status: stage)
     Insert,
     /// Ctrl+Z — Undo
     Undo,
@@ -495,10 +492,7 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Hotkey {
     // Non-F-key universal actions
     // =========================================================================
 
-    if matches_binding_or_default(&kb.cancel, &key, KeyCode::Esc, KeyModifiers::NONE) {
-        hotkey!(HotkeyKind::Cancel);
-    }
-
+    // Semantic actions with configurable bindings
     if matches_binding_or_default(&kb.search, &key, KeyCode::Char('f'), KeyModifiers::CONTROL) {
         hotkey!(HotkeyKind::Search);
     }
@@ -507,17 +501,17 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Hotkey {
         hotkey!(HotkeyKind::Refresh);
     }
 
-    if matches_binding_or_default(&kb.go_back, &key, KeyCode::Backspace, KeyModifiers::NONE) {
-        hotkey!(HotkeyKind::GoBack);
+    // Key-named variants (no config, direct key match)
+    if key.code == KeyCode::Esc && key.modifiers.is_empty() {
+        hotkey!(HotkeyKind::Escape);
     }
-
-    // Note: Delete key is handled by kb.delete_item config above (defaults: "Delete", "F8").
-
-    if matches_binding_or_default(&kb.space, &key, KeyCode::Char(' '), KeyModifiers::NONE) {
+    if key.code == KeyCode::Backspace && key.modifiers.is_empty() {
+        hotkey!(HotkeyKind::Backspace);
+    }
+    if key.code == KeyCode::Char(' ') && key.modifiers.is_empty() {
         hotkey!(HotkeyKind::Space);
     }
-
-    if matches_binding_or_default(&kb.insert, &key, KeyCode::Insert, KeyModifiers::NONE) {
+    if key.code == KeyCode::Insert && key.modifiers.is_empty() {
         hotkey!(HotkeyKind::Insert);
     }
 

@@ -873,7 +873,7 @@ impl Panel for GitLogPanel {
                 self.status_message = Some(t.git_refreshed().to_string());
                 vec![]
             }
-            HotkeyKind::Cancel => {
+            HotkeyKind::Escape => {
                 if self.repo_dropdown_open || self.branch_dropdown_open {
                     self.repo_dropdown_open = false;
                     self.branch_dropdown_open = false;

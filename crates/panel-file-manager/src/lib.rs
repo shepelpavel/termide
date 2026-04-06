@@ -1209,10 +1209,10 @@ impl Panel for FileManager {
             HotkeyKind::DeleteItem => FmCommand::DeleteFiles,
             HotkeyKind::ContextMenu => FmCommand::ShowFileInfo,
             // Non-F-key actions
-            HotkeyKind::Cancel => FmCommand::ClearSelection,
+            HotkeyKind::Escape => FmCommand::ClearSelection,
             HotkeyKind::Search => FmCommand::Search,
             HotkeyKind::Refresh => FmCommand::Refresh,
-            HotkeyKind::GoBack => FmCommand::GoParent,
+            HotkeyKind::Backspace => FmCommand::GoParent,
             HotkeyKind::Space => FmCommand::ShowFileInfo,
             HotkeyKind::Insert => FmCommand::ToggleSelection,
             HotkeyKind::SelectAll => FmCommand::SelectAll,

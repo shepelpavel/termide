@@ -146,7 +146,7 @@ impl Panel for ImagePanel {
 
     fn handle_action(&mut self, hotkey: termide_core::Hotkey) -> Vec<PanelEvent> {
         match hotkey.kind {
-            HotkeyKind::Cancel => vec![PanelEvent::ClosePanel],
+            HotkeyKind::Escape => vec![PanelEvent::ClosePanel],
             HotkeyKind::Other => self.handle_key(hotkey.raw),
             _ => vec![],
         }

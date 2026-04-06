@@ -1750,10 +1750,10 @@ impl Panel for Editor {
             | HotkeyKind::Paste
             | HotkeyKind::Undo
             | HotkeyKind::Redo
-            | HotkeyKind::Cancel
+            | HotkeyKind::Escape
             | HotkeyKind::Search
             | HotkeyKind::Refresh
-            | HotkeyKind::GoBack
+            | HotkeyKind::Backspace
             | HotkeyKind::Up
             | HotkeyKind::Down
             | HotkeyKind::Left

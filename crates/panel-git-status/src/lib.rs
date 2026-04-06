@@ -1019,7 +1019,7 @@ impl Panel for GitStatusPanel {
                 vec![]
             }
             // Non-F-key actions
-            HotkeyKind::Cancel => {
+            HotkeyKind::Escape => {
                 if self.branch_dropdown_open {
                     self.branch_dropdown_open = false;
                 } else if self.repo_dropdown_open {
@@ -1039,7 +1039,7 @@ impl Panel for GitStatusPanel {
                 }
                 vec![]
             }
-            HotkeyKind::GoBack => {
+            HotkeyKind::Backspace => {
                 // Backspace: revert file
                 if self.current_section == Section::Files
                     && matches!(
