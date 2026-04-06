@@ -400,11 +400,12 @@ impl EditorCommand {
             return Self::FindReferences;
         }
 
-        // LSP Rename Symbol (configurable, default F2)
+        // LSP Rename Symbol (configurable, default F4)
+        // F4 = EditItem globally, but Editor intercepts it for rename_symbol
         if matches_binding_or_default(
             &keybindings.rename_symbol,
             &key,
-            KeyCode::F(2),
+            KeyCode::F(4),
             KeyModifiers::NONE,
         ) {
             return Self::RenameSymbol;

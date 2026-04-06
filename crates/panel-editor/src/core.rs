@@ -1728,6 +1728,20 @@ impl Panel for Editor {
                     crossterm::event::KeyModifiers::NONE,
                 ))
             }
+            HotkeyKind::EditItem => {
+                // F4 = rename symbol in editor (LSP rename)
+                self.handle_key(crossterm::event::KeyEvent::new(
+                    crossterm::event::KeyCode::F(4),
+                    crossterm::event::KeyModifiers::NONE,
+                ))
+            }
+            HotkeyKind::ContextMenu => {
+                // F12 = goto definition in editor (LSP)
+                self.handle_key(crossterm::event::KeyEvent::new(
+                    crossterm::event::KeyCode::F(12),
+                    crossterm::event::KeyModifiers::NONE,
+                ))
+            }
             // Navigation and other actions — forward raw key events
             // The editor's EditorCommand::from_key_event handles all key routing
             HotkeyKind::SelectAll
