@@ -13,7 +13,6 @@ use std::time::Duration;
 
 use crossterm::event::MouseEventKind;
 use termide_app_core::{LayoutController, PanelProvider};
-use termide_app_event::DefaultHotkeyProcessor;
 use termide_core::event::{Event, EventHandler};
 use termide_layout::{LayoutManager, PanelGroup};
 
@@ -52,9 +51,6 @@ pub struct App {
     event_handler: EventHandler,
     /// Project root directory (used for per-project session storage)
     project_root: std::path::PathBuf,
-    /// Global hotkey processor
-    hotkey_processor: DefaultHotkeyProcessor,
-
     /// Last seen editor edit_version (for debounced outline sync).
     outline_last_version: u64,
     /// Last seen editor cursor line (for outline cursor sync).
@@ -63,8 +59,8 @@ pub struct App {
     outline_last_edit_time: Option<std::time::Instant>,
     /// Click tracker for double-click on panel title (directory picker).
     title_click_tracker: ClickTracker<(u16, u16)>,
-    /// Cached command list for Command Palette (index → HotkeyAction).
-    command_palette_actions: Option<Vec<termide_app_event::HotkeyAction>>,
+    /// Cached command list for Command Palette (index → HotkeyKind).
+    command_palette_actions: Option<Vec<termide_core::HotkeyKind>>,
 }
 
 impl App {
@@ -124,10 +120,6 @@ impl App {
             log::warn!("Failed to cleanup old sessions: {}", e);
         }
 
-        // Create hotkey processor from config before moving state
-        let hotkey_processor =
-            DefaultHotkeyProcessor::from_config(&state.config.general.keybindings);
-
         Self {
             state,
             layout_manager: LayoutManager::new(),
@@ -135,7 +127,6 @@ impl App {
                 termide_config::constants::EVENT_HANDLER_INTERVAL_MS,
             )),
             project_root,
-            hotkey_processor,
             outline_last_version: 0,
             outline_last_cursor: 0,
             outline_last_edit_time: None,
@@ -204,9 +195,6 @@ impl App {
             log::warn!("Failed to cleanup old sessions: {}", e);
         }
 
-        let hotkey_processor =
-            DefaultHotkeyProcessor::from_config(&state.config.general.keybindings);
-
         Self {
             state,
             layout_manager: LayoutManager::new(),
@@ -214,7 +202,6 @@ impl App {
                 termide_config::constants::EVENT_HANDLER_INTERVAL_MS,
             )),
             project_root,
-            hotkey_processor,
             outline_last_version: 0,
             outline_last_cursor: 0,
             outline_last_edit_time: None,

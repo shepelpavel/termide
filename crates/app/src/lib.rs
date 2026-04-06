@@ -55,7 +55,6 @@ pub use termide_app_core::{
     AppCommand, Direction, LayoutController, Message, ModalManager, PanelProvider, PanelType,
     StateManager,
 };
-pub use termide_app_event::{DefaultHotkeyProcessor, HotkeyAction, HotkeyProcessor};
 pub use termide_app_modal::{BatchOperationProcessor, BatchOperationState, ConflictResult};
 pub use termide_app_panel::{CloseDecision, ConfirmationType, PanelLifecycle};
 pub use termide_app_session::{AutoSaveConfig, SessionManager, SessionState};
@@ -247,18 +246,6 @@ impl LoopState {
 }
 
 // ============================================================================
-// Hotkey Integration
-// ============================================================================
-
-/// Check if key event is a global hotkey.
-pub fn is_global_hotkey(
-    processor: &impl HotkeyProcessor,
-    key: &crossterm::event::KeyEvent,
-) -> bool {
-    processor.process_hotkey(key).is_some()
-}
-
-// ============================================================================
 // Tests
 // ============================================================================
 
@@ -349,24 +336,5 @@ mod tests {
 
         let tick = AppEvent::Tick;
         assert!(matches!(tick, AppEvent::Tick));
-    }
-
-    #[test]
-    fn test_is_global_hotkey() {
-        let processor = DefaultHotkeyProcessor::new();
-
-        // Alt+M is a hotkey
-        let key = crossterm::event::KeyEvent::new(
-            crossterm::event::KeyCode::Char('m'),
-            crossterm::event::KeyModifiers::ALT,
-        );
-        assert!(is_global_hotkey(&processor, &key));
-
-        // Regular 'm' is not
-        let key = crossterm::event::KeyEvent::new(
-            crossterm::event::KeyCode::Char('m'),
-            crossterm::event::KeyModifiers::NONE,
-        );
-        assert!(!is_global_hotkey(&processor, &key));
     }
 }

@@ -1,11 +1,9 @@
 //! Global hotkey handling for the application.
 //!
-//! Uses the HotkeyProcessor trait to handle Alt+key combinations
+//! Uses the Hotkey/HotkeyKind normalizer to handle Alt+key combinations
 //! for navigation, panel management, and quick actions.
 
 use anyhow::Result;
-
-use termide_app_event::HotkeyAction;
 
 use super::App;
 use crate::state::{ActiveModal, PendingAction};
@@ -70,50 +68,6 @@ impl App {
             _ => return Ok(false),
         }
         Ok(true)
-    }
-
-    /// Execute a hotkey action — legacy adapter for command palette
-    pub(in crate::app) fn execute_hotkey_action(&mut self, action: HotkeyAction) -> Result<()> {
-        // Convert legacy HotkeyAction to new HotkeyKind and dispatch
-        let new_kind = match action {
-            HotkeyAction::ToggleMenu => termide_core::HotkeyKind::Menu,
-            HotkeyAction::NewFileManager => termide_core::HotkeyKind::NewFileManager,
-            HotkeyAction::NewTerminal => termide_core::HotkeyKind::NewTerminal,
-            HotkeyAction::NewEditor => termide_core::HotkeyKind::NewEditor,
-            HotkeyAction::NewJournal => termide_core::HotkeyKind::NewJournal,
-            HotkeyAction::OpenHelp => termide_core::HotkeyKind::OpenHelp,
-            HotkeyAction::OpenPreferences => termide_core::HotkeyKind::OpenPreferences,
-            HotkeyAction::OpenSessions => termide_core::HotkeyKind::OpenSessions,
-            HotkeyAction::NewSession => termide_core::HotkeyKind::NewSession,
-            HotkeyAction::OpenGitStatus => termide_core::HotkeyKind::OpenGitStatus,
-            HotkeyAction::OpenOutline => termide_core::HotkeyKind::OpenOutline,
-            HotkeyAction::OpenDiagnostics => termide_core::HotkeyKind::OpenDiagnostics,
-            HotkeyAction::OpenGitLog => termide_core::HotkeyKind::OpenGitLog,
-            HotkeyAction::OpenDirectorySwitcher => termide_core::HotkeyKind::OpenSessions,
-            HotkeyAction::OpenBookmarkAdd => termide_core::HotkeyKind::OpenBookmarkAdd,
-            HotkeyAction::OpenCommandPalette => termide_core::HotkeyKind::OpenCommandPalette,
-            HotkeyAction::PrevGroup => termide_core::HotkeyKind::PrevGroup,
-            HotkeyAction::NextGroup => termide_core::HotkeyKind::NextGroup,
-            HotkeyAction::PrevInGroup => termide_core::HotkeyKind::PrevPanel,
-            HotkeyAction::NextInGroup => termide_core::HotkeyKind::NextPanel,
-            HotkeyAction::GoToPanel(n) => termide_core::HotkeyKind::GoToPanel(n),
-            HotkeyAction::ClosePanel => termide_core::HotkeyKind::ClosePanel,
-            HotkeyAction::ToggleStacking => termide_core::HotkeyKind::ToggleStack,
-            HotkeyAction::SwapPanelLeft => termide_core::HotkeyKind::SwapLeft,
-            HotkeyAction::SwapPanelRight => termide_core::HotkeyKind::SwapRight,
-            HotkeyAction::MoveToFirst => termide_core::HotkeyKind::MoveFirst,
-            HotkeyAction::MoveToLast => termide_core::HotkeyKind::MoveLast,
-            HotkeyAction::ResizePanel(d) => {
-                if d > 0 {
-                    termide_core::HotkeyKind::ResizeLarger
-                } else {
-                    termide_core::HotkeyKind::ResizeSmaller
-                }
-            }
-            HotkeyAction::RequestQuit => termide_core::HotkeyKind::Quit,
-        };
-        self.handle_app_action(&new_kind)?;
-        Ok(())
     }
 
     /// Handle quit request with confirmation if needed

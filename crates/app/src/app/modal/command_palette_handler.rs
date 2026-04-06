@@ -18,8 +18,8 @@ impl App {
         };
 
         if let Some(actions) = self.command_palette_actions.take() {
-            if let Some(action) = actions.into_iter().nth(index) {
-                self.execute_hotkey_action(action)?;
+            if let Some(kind) = actions.into_iter().nth(index) {
+                self.handle_app_action(&kind)?;
             }
         }
 

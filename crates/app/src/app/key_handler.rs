@@ -207,9 +207,6 @@ impl App {
         if let Some(new_config) = config_update {
             self.state.config = Arc::new(new_config.clone());
             self.state.set_theme(&new_config.general.theme);
-            self.hotkey_processor = termide_app_event::DefaultHotkeyProcessor::from_config(
-                &new_config.general.keybindings,
-            );
             self.state
                 .set_info(termide_i18n::t().status_config_saved().to_string());
         }

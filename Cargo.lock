@@ -3109,12 +3109,6 @@ dependencies = [
 [[package]]
 name = "termide-app-event"
 version = "0.18.2"
-dependencies = [
- "anyhow",
- "crossterm 0.28.1",
- "termide-app-core",
- "termide-config",
-]
 
 [[package]]
 name = "termide-app-modal"
