@@ -11,13 +11,14 @@ mod treesitter;
 use std::any::Any;
 use std::path::PathBuf;
 
-use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::{buffer::Buffer, layout::Rect, style::Style};
 use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up};
 use unicode_width::UnicodeWidthStr;
 
 use termide_core::{
-    CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, ThemeColors, WidthPreference,
+    Action, CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, ThemeColors,
+    WidthPreference,
 };
 use termide_theme::Theme;
 use termide_ui::ScrollBar;
@@ -475,7 +476,51 @@ impl Panel for OutlinePanel {
         }
     }
 
+    fn handle_action(&mut self, action: Action) -> Vec<PanelEvent> {
+        match action {
+            Action::Up => {
+                self.select_prev();
+                self.navigate_to_selected();
+            }
+            Action::Down => {
+                self.select_next();
+                self.navigate_to_selected();
+            }
+            Action::Home => {
+                self.selected_index = 0;
+                self.scroll_offset = 0;
+                self.navigate_to_selected();
+            }
+            Action::End => {
+                self.selected_index = self.symbols.len().saturating_sub(1);
+                self.ensure_visible();
+                self.navigate_to_selected();
+            }
+            Action::PageUp => {
+                let page_size = self.last_height;
+                for _ in 0..page_size {
+                    self.select_prev();
+                }
+                self.navigate_to_selected();
+            }
+            Action::PageDown => {
+                let page_size = self.last_height;
+                for _ in 0..page_size {
+                    self.select_next();
+                }
+                self.navigate_to_selected();
+            }
+            Action::Enter => {
+                self.navigate_to_selected();
+            }
+            Action::Other(key) => return self.handle_key(key),
+            _ => {}
+        }
+        vec![]
+    }
+
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
+        // Vim-mode navigation (j/k/g/G)
         if is_move_up(&key, self.vim_mode) {
             self.select_prev();
             self.navigate_to_selected();
@@ -497,27 +542,6 @@ impl Panel for OutlinePanel {
             self.ensure_visible();
             self.navigate_to_selected();
             return vec![];
-        }
-
-        match key.code {
-            KeyCode::PageUp => {
-                let page_size = self.last_height;
-                for _ in 0..page_size {
-                    self.select_prev();
-                }
-                self.navigate_to_selected();
-            }
-            KeyCode::PageDown => {
-                let page_size = self.last_height;
-                for _ in 0..page_size {
-                    self.select_next();
-                }
-                self.navigate_to_selected();
-            }
-            KeyCode::Enter => {
-                self.navigate_to_selected();
-            }
-            _ => {}
         }
         vec![]
     }

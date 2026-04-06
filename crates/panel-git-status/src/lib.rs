@@ -26,8 +26,8 @@ use ratatui::{
 use unicode_width::UnicodeWidthStr;
 
 use termide_config::{
-    is_go_end, is_go_home, is_move_down, is_move_up, matches_binding_or_default,
-    matches_binding_or_defaults, Config, GitStatusKeybindings,
+    is_go_end, is_go_home, is_move_down, is_move_up, matches_binding_or_defaults, Config,
+    GitStatusKeybindings,
 };
 use termide_core::{
     CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel, ThemeColors,
@@ -980,19 +980,244 @@ impl Panel for GitStatusPanel {
     }
 
     fn handle_action(&mut self, action: termide_core::Action) -> Vec<PanelEvent> {
+        use termide_core::Action;
+        self.status_message = None;
+
         match action {
-            termide_core::Action::Other(key) => self.handle_key(key),
-            // For now, convert recognized actions back to key events for git status
-            // TODO: migrate git status to handle semantic actions directly
-            termide_core::Action::EditItem => {
-                self.handle_key(KeyEvent::new(KeyCode::F(4), KeyModifiers::NONE))
+            // F-key actions
+            Action::View => {
+                if self.current_section == Section::Files
+                    && matches!(
+                        self.get_selection(),
+                        Some(Selection::UnstagedFile(_)) | Some(Selection::StagedFile(_))
+                    )
+                {
+                    return self.open_file(false);
+                }
+                vec![]
             }
-            termide_core::Action::View => {
-                self.handle_key(KeyEvent::new(KeyCode::F(3), KeyModifiers::NONE))
+            Action::EditItem => {
+                if self.current_section == Section::Files
+                    && matches!(
+                        self.get_selection(),
+                        Some(Selection::UnstagedFile(_)) | Some(Selection::StagedFile(_))
+                    )
+                {
+                    return self.open_file(true);
+                }
+                vec![]
             }
-            termide_core::Action::ContextMenu => {
-                self.handle_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
+            Action::ContextMenu => self.show_file_properties(),
+            Action::DeleteItem => {
+                // Delete key: unstage if staged, revert if unstaged
+                if self.current_section == Section::Files {
+                    if matches!(
+                        self.get_selection(),
+                        Some(Selection::StagedFile(_)) | Some(Selection::StagedDir(_))
+                    ) {
+                        self.do_unstage();
+                    } else if matches!(
+                        self.get_selection(),
+                        Some(Selection::UnstagedFile(_)) | Some(Selection::StagedFile(_))
+                    ) {
+                        return self.initiate_revert();
+                    }
+                }
+                vec![]
             }
+            // Non-F-key actions
+            Action::Cancel => {
+                if self.branch_dropdown_open {
+                    self.branch_dropdown_open = false;
+                } else if self.repo_dropdown_open {
+                    self.repo_dropdown_open = false;
+                }
+                vec![]
+            }
+            Action::Refresh => {
+                self.refresh();
+                self.status_message = Some(termide_i18n::t().git_refreshed().to_string());
+                if let Some(repo) = self.repo_manager.current() {
+                    use termide_core::event::{GitOperationType, PanelEvent};
+                    return vec![PanelEvent::GitOperation {
+                        operation: GitOperationType::Fetch,
+                        repo_path: repo.to_path_buf(),
+                    }];
+                }
+                vec![]
+            }
+            Action::GoBack => {
+                // Backspace: revert file
+                if self.current_section == Section::Files
+                    && matches!(
+                        self.get_selection(),
+                        Some(Selection::UnstagedFile(_)) | Some(Selection::StagedFile(_))
+                    )
+                {
+                    return self.initiate_revert();
+                }
+                vec![]
+            }
+            // Navigation
+            Action::Up => {
+                self.handle_up_key();
+                vec![]
+            }
+            Action::Down => {
+                self.handle_down_key();
+                vec![]
+            }
+            Action::Home => {
+                if self.current_section == Section::Files {
+                    let unstaged_end = 1 + self.unstaged_files.len();
+                    let staged_header = unstaged_end;
+
+                    if self.cursor < staged_header {
+                        if !self.unstaged_files.is_empty() {
+                            self.cursor = 1;
+                        } else {
+                            self.cursor = 0;
+                        }
+                    } else if !self.staged_files.is_empty() {
+                        self.cursor = staged_header + 1;
+                    } else {
+                        self.cursor = staged_header;
+                    }
+                    self.ensure_cursor_visible();
+                }
+                vec![]
+            }
+            Action::End => {
+                if self.current_section == Section::Files {
+                    let unstaged_end = 1 + self.unstaged_files.len();
+                    let staged_header = unstaged_end;
+                    let staged_end = staged_header + 1 + self.staged_files.len();
+
+                    if self.cursor < staged_header {
+                        if !self.unstaged_files.is_empty() {
+                            self.cursor = unstaged_end - 1;
+                        } else {
+                            self.cursor = 0;
+                        }
+                    } else if !self.staged_files.is_empty() {
+                        self.cursor = staged_end - 1;
+                    } else {
+                        self.cursor = staged_header;
+                    }
+                    self.ensure_cursor_visible();
+                }
+                vec![]
+            }
+            Action::PageUp => {
+                if self.current_section == Section::Files {
+                    let page_size = self.viewport_height.max(1);
+                    let mut new_cursor = self.cursor.saturating_sub(page_size);
+                    while new_cursor > 0 && !self.is_selectable_line(new_cursor) {
+                        new_cursor -= 1;
+                    }
+                    if self.is_selectable_line(new_cursor) {
+                        self.cursor = new_cursor;
+                    }
+                    self.ensure_cursor_visible();
+                }
+                vec![]
+            }
+            Action::PageDown => {
+                if self.current_section == Section::Files {
+                    let max = self.total_virtual_lines();
+                    let page_size = self.viewport_height.max(1);
+                    let target = (self.cursor + page_size).min(max.saturating_sub(1));
+                    let mut new_cursor = target;
+                    while new_cursor > self.cursor && !self.is_selectable_line(new_cursor) {
+                        new_cursor -= 1;
+                    }
+                    if new_cursor > self.cursor && self.is_selectable_line(new_cursor) {
+                        self.cursor = new_cursor;
+                    }
+                    self.ensure_cursor_visible();
+                    if self.cursor == self.last_selectable_line() && max > self.viewport_height {
+                        self.scroll_offset = max.saturating_sub(self.viewport_height);
+                    }
+                }
+                vec![]
+            }
+            Action::Left => {
+                match self.current_section {
+                    Section::BranchSelector => {
+                        self.current_section = Section::RepoSelector;
+                    }
+                    Section::Buttons => {
+                        if self.selected_button > 0 {
+                            self.selected_button -= 1;
+                        }
+                    }
+                    Section::Files => match self.get_selection() {
+                        Some(Selection::UnstagedDir(idx)) => {
+                            if matches!(
+                                self.unstaged.tree[idx].kind,
+                                tree::TreeNodeKind::Directory { expanded: true }
+                            ) {
+                                self.toggle_dir_expand(true, idx);
+                            }
+                        }
+                        Some(Selection::StagedDir(idx)) => {
+                            if matches!(
+                                self.staged.tree[idx].kind,
+                                tree::TreeNodeKind::Directory { expanded: true }
+                            ) {
+                                self.toggle_dir_expand(false, idx);
+                            }
+                        }
+                        _ => {}
+                    },
+                    _ => {}
+                }
+                vec![]
+            }
+            Action::Right => {
+                match self.current_section {
+                    Section::RepoSelector => {
+                        self.current_section = Section::BranchSelector;
+                    }
+                    Section::Files => match self.get_selection() {
+                        Some(Selection::UnstagedDir(idx)) => {
+                            if matches!(
+                                self.unstaged.tree[idx].kind,
+                                tree::TreeNodeKind::Directory { expanded: false }
+                            ) {
+                                self.toggle_dir_expand(true, idx);
+                            }
+                        }
+                        Some(Selection::StagedDir(idx)) => {
+                            if matches!(
+                                self.staged.tree[idx].kind,
+                                tree::TreeNodeKind::Directory { expanded: false }
+                            ) {
+                                self.toggle_dir_expand(false, idx);
+                            }
+                        }
+                        _ => {}
+                    },
+                    Section::Buttons => {
+                        let max = self.get_visible_buttons().len().saturating_sub(1);
+                        if self.selected_button < max {
+                            self.selected_button += 1;
+                        }
+                    }
+                    _ => {}
+                }
+                vec![]
+            }
+            Action::Tab => {
+                self.next_section();
+                vec![]
+            }
+            Action::BackTab => {
+                self.prev_section();
+                vec![]
+            }
+            Action::Enter => self.handle_enter_key(),
+            Action::Other(key) => self.handle_key(key),
             _ => vec![],
         }
     }
@@ -1025,14 +1250,11 @@ impl Panel for GitStatusPanel {
             return vec![];
         }
 
-        // Unstage file (Delete, Ctrl+U)
+        // Unstage file (Ctrl+U) — Delete is handled as Action::DeleteItem
         if matches_binding_or_defaults(
             &kb.unstage_file,
             &key,
-            &[
-                (KeyCode::Delete, KeyModifiers::NONE),
-                (KeyCode::Char('u'), KeyModifiers::CONTROL),
-            ],
+            &[(KeyCode::Char('u'), KeyModifiers::CONTROL)],
         ) {
             if self.current_section == Section::Files
                 && matches!(
@@ -1045,83 +1267,6 @@ impl Panel for GitStatusPanel {
             return vec![];
         }
 
-        // Refresh (Ctrl+R)
-        if matches_binding_or_default(&kb.refresh, &key, KeyCode::Char('r'), KeyModifiers::CONTROL)
-        {
-            self.refresh();
-            self.status_message = Some(termide_i18n::t().git_refreshed().to_string());
-            if let Some(repo) = self.repo_manager.current() {
-                use termide_core::event::{GitOperationType, PanelEvent};
-                return vec![PanelEvent::GitOperation {
-                    operation: GitOperationType::Fetch,
-                    repo_path: repo.to_path_buf(),
-                }];
-            }
-            return vec![];
-        }
-
-        // Next section (Tab)
-        if matches_binding_or_default(&kb.next_section, &key, KeyCode::Tab, KeyModifiers::NONE) {
-            self.next_section();
-            return vec![];
-        }
-
-        // Prev section (Shift+Tab/BackTab)
-        if matches_binding_or_default(&kb.prev_section, &key, KeyCode::BackTab, KeyModifiers::NONE)
-        {
-            self.prev_section();
-            return vec![];
-        }
-
-        // Revert file (Backspace/Delete) - only for files, not headers/directories
-        if matches_binding_or_defaults(
-            &kb.revert_file,
-            &key,
-            &[
-                (KeyCode::Backspace, KeyModifiers::NONE),
-                (KeyCode::Delete, KeyModifiers::NONE),
-            ],
-        ) {
-            if self.current_section == Section::Files
-                && matches!(
-                    self.get_selection(),
-                    Some(Selection::UnstagedFile(_)) | Some(Selection::StagedFile(_))
-                )
-            {
-                return self.initiate_revert();
-            }
-            return vec![];
-        }
-
-        // View file (F3) - only for files, not headers/directories
-        if matches_binding_or_defaults(&kb.view_file, &key, &[(KeyCode::F(3), KeyModifiers::NONE)])
-        {
-            if self.current_section == Section::Files
-                && matches!(
-                    self.get_selection(),
-                    Some(Selection::UnstagedFile(_)) | Some(Selection::StagedFile(_))
-                )
-            {
-                return self.open_file(false);
-            }
-            return vec![];
-        }
-
-        // Edit file (F4) - only for files, not headers/directories
-        if key.code == KeyCode::F(4) {
-            if self.current_section == Section::Files
-                && matches!(
-                    self.get_selection(),
-                    Some(Selection::UnstagedFile(_)) | Some(Selection::StagedFile(_))
-                )
-            {
-                return self.open_file(true);
-            }
-            return vec![];
-        }
-
-        // Non-configurable bindings (navigation)
-
         // Vim-aware navigation (j/k/g/G when vim_mode is enabled)
         if is_move_up(&key, self.vim_mode) {
             self.handle_up_key();
@@ -1132,202 +1277,25 @@ impl Panel for GitStatusPanel {
             return vec![];
         }
         if is_go_home(&key, self.vim_mode) && self.current_section == Section::Files {
-            // Go to first selectable line
             self.cursor = self.first_selectable_line();
             self.ensure_cursor_visible();
             return vec![];
         }
         if is_go_end(&key, self.vim_mode) && self.current_section == Section::Files {
-            // Go to last selectable line
             self.cursor = self.last_selectable_line();
             self.ensure_cursor_visible();
             return vec![];
         }
 
-        match key.code {
-            KeyCode::Tab => {
-                if key.modifiers.contains(KeyModifiers::SHIFT) {
-                    self.prev_section();
-                } else {
-                    self.next_section();
-                }
-            }
-            KeyCode::BackTab => {
-                self.prev_section();
-            }
-            KeyCode::PageUp => {
-                if self.current_section == Section::Files {
-                    let page_size = self.viewport_height.max(1);
-                    let mut new_cursor = self.cursor.saturating_sub(page_size);
-                    // Find nearest selectable line
-                    while new_cursor > 0 && !self.is_selectable_line(new_cursor) {
-                        new_cursor -= 1;
-                    }
-                    if self.is_selectable_line(new_cursor) {
-                        self.cursor = new_cursor;
-                    }
-                    self.ensure_cursor_visible();
-                }
-            }
-            KeyCode::PageDown => {
-                if self.current_section == Section::Files {
-                    let max = self.total_virtual_lines();
-                    let page_size = self.viewport_height.max(1);
-                    let target = (self.cursor + page_size).min(max.saturating_sub(1));
-                    // Find nearest selectable line, searching backward from target
-                    let mut new_cursor = target;
-                    while new_cursor > self.cursor && !self.is_selectable_line(new_cursor) {
-                        new_cursor -= 1;
-                    }
-                    if new_cursor > self.cursor && self.is_selectable_line(new_cursor) {
-                        self.cursor = new_cursor;
-                    }
-                    self.ensure_cursor_visible();
-                    // If cursor is at last selectable line, scroll to show all content
-                    if self.cursor == self.last_selectable_line() && max > self.viewport_height {
-                        self.scroll_offset = max.saturating_sub(self.viewport_height);
-                    }
-                }
-            }
-            KeyCode::Home => {
-                if self.current_section == Section::Files {
-                    // Go to first item in current section (unstaged or staged)
-                    let unstaged_end = 1 + self.unstaged_files.len();
-                    let staged_header = unstaged_end;
-
-                    if self.cursor < staged_header {
-                        // In unstaged section - go to first unstaged file or header
-                        if !self.unstaged_files.is_empty() {
-                            self.cursor = 1; // First unstaged file
-                        } else {
-                            self.cursor = 0; // Unstaged header
-                        }
-                    } else {
-                        // In staged section - go to first staged file or header
-                        if !self.staged_files.is_empty() {
-                            self.cursor = staged_header + 1; // First staged file
-                        } else {
-                            self.cursor = staged_header; // Staged header
-                        }
-                    }
-                    self.ensure_cursor_visible();
-                }
-            }
-            KeyCode::End => {
-                if self.current_section == Section::Files {
-                    // Go to last item in current section (unstaged or staged)
-                    let unstaged_end = 1 + self.unstaged_files.len();
-                    let staged_header = unstaged_end;
-                    let staged_end = staged_header + 1 + self.staged_files.len();
-
-                    if self.cursor < staged_header {
-                        // In unstaged section - go to last unstaged file or header
-                        if !self.unstaged_files.is_empty() {
-                            self.cursor = unstaged_end - 1; // Last unstaged file
-                        } else {
-                            self.cursor = 0; // Unstaged header
-                        }
-                    } else {
-                        // In staged section - go to last staged file or header
-                        if !self.staged_files.is_empty() {
-                            self.cursor = staged_end - 1; // Last staged file
-                        } else {
-                            self.cursor = staged_header; // Staged header
-                        }
-                    }
-                    self.ensure_cursor_visible();
-                }
-            }
-            KeyCode::Left => match self.current_section {
-                Section::BranchSelector => {
-                    self.current_section = Section::RepoSelector;
-                }
-                Section::Buttons => {
-                    if self.selected_button > 0 {
-                        self.selected_button -= 1;
-                    }
-                }
-                Section::Files => {
-                    // Collapse expanded directory
-                    match self.get_selection() {
-                        Some(Selection::UnstagedDir(idx)) => {
-                            if matches!(
-                                self.unstaged.tree[idx].kind,
-                                tree::TreeNodeKind::Directory { expanded: true }
-                            ) {
-                                self.toggle_dir_expand(true, idx);
-                            }
-                        }
-                        Some(Selection::StagedDir(idx)) => {
-                            if matches!(
-                                self.staged.tree[idx].kind,
-                                tree::TreeNodeKind::Directory { expanded: true }
-                            ) {
-                                self.toggle_dir_expand(false, idx);
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                _ => {}
-            },
-            KeyCode::Right => match self.current_section {
-                Section::RepoSelector => {
-                    self.current_section = Section::BranchSelector;
-                }
-                Section::Files => {
-                    // Expand collapsed directory
-                    match self.get_selection() {
-                        Some(Selection::UnstagedDir(idx)) => {
-                            if matches!(
-                                self.unstaged.tree[idx].kind,
-                                tree::TreeNodeKind::Directory { expanded: false }
-                            ) {
-                                self.toggle_dir_expand(true, idx);
-                            }
-                        }
-                        Some(Selection::StagedDir(idx)) => {
-                            if matches!(
-                                self.staged.tree[idx].kind,
-                                tree::TreeNodeKind::Directory { expanded: false }
-                            ) {
-                                self.toggle_dir_expand(false, idx);
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                Section::Buttons => {
-                    let max = self.get_visible_buttons().len().saturating_sub(1);
-                    if self.selected_button < max {
-                        self.selected_button += 1;
-                    }
-                }
-                _ => {}
-            },
-            // Space - open file properties modal (only for files, not headers)
-            KeyCode::Char(' ') => {
-                if self.current_section == Section::Files
-                    && matches!(
-                        self.get_selection(),
-                        Some(Selection::UnstagedFile(_)) | Some(Selection::StagedFile(_))
-                    )
-                {
-                    return self.show_file_properties();
-                }
-            }
-            KeyCode::Enter => {
-                return self.handle_enter_key();
-            }
-            KeyCode::Esc => {
-                // Close any open dropdown
-                if self.branch_dropdown_open {
-                    self.branch_dropdown_open = false;
-                } else if self.repo_dropdown_open {
-                    self.repo_dropdown_open = false;
-                }
-            }
-            _ => {}
+        // Space - open file properties modal (only for files, not headers)
+        if key.code == KeyCode::Char(' ')
+            && self.current_section == Section::Files
+            && matches!(
+                self.get_selection(),
+                Some(Selection::UnstagedFile(_)) | Some(Selection::StagedFile(_))
+            )
+        {
+            return self.show_file_properties();
         }
 
         vec![]

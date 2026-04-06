@@ -1712,22 +1712,47 @@ impl Panel for Editor {
     }
 
     fn handle_action(&mut self, action: termide_core::Action) -> Vec<PanelEvent> {
+        use termide_core::Action;
         match action {
-            termide_core::Action::Save => {
-                // F2 = save file in editor
+            Action::Save => {
+                // F2 = save file in editor (forward as Ctrl+S)
                 self.handle_key(crossterm::event::KeyEvent::new(
                     crossterm::event::KeyCode::Char('s'),
                     crossterm::event::KeyModifiers::CONTROL,
                 ))
             }
-            termide_core::Action::View => {
+            Action::View => {
                 // F3 = search next in editor
                 self.handle_key(crossterm::event::KeyEvent::new(
                     crossterm::event::KeyCode::F(3),
                     crossterm::event::KeyModifiers::NONE,
                 ))
             }
-            termide_core::Action::Other(key) => self.handle_key(key),
+            // Navigation and other actions — forward as default key events
+            // The editor's EditorCommand::from_key_event handles all key routing
+            Action::Cancel
+            | Action::Search
+            | Action::Refresh
+            | Action::GoBack
+            | Action::Up
+            | Action::Down
+            | Action::Left
+            | Action::Right
+            | Action::PageUp
+            | Action::PageDown
+            | Action::Home
+            | Action::End
+            | Action::Enter
+            | Action::Tab
+            | Action::BackTab
+            | Action::DeleteItem => {
+                if let Some(key) = action.to_default_key() {
+                    self.handle_key(key)
+                } else {
+                    vec![]
+                }
+            }
+            Action::Other(key) => self.handle_key(key),
             _ => vec![],
         }
     }

@@ -161,8 +161,71 @@ impl Panel for GitStashPanel {
     }
 
     fn handle_action(&mut self, action: termide_core::Action) -> Vec<PanelEvent> {
+        use termide_core::Action;
         match action {
-            termide_core::Action::Other(key) => self.handle_key_event(key),
+            Action::Cancel => {
+                self.status_message = None;
+                vec![PanelEvent::ClosePanel]
+            }
+            Action::Refresh => {
+                self.status_message = None;
+                self.refresh();
+                vec![]
+            }
+            Action::Enter => {
+                self.status_message = None;
+                match self.current_section {
+                    Section::NewButton => self.action_new(),
+                    Section::List => self.action_show_context_menu(),
+                }
+            }
+            Action::Down => {
+                self.status_message = None;
+                match self.current_section {
+                    Section::NewButton => {
+                        if !self.stash_entries.is_empty() {
+                            self.current_section = Section::List;
+                        }
+                    }
+                    Section::List => {
+                        let last = self.stash_entries.len().saturating_sub(1);
+                        if self.cursor < last {
+                            self.cursor += 1;
+                            self.ensure_cursor_visible();
+                        }
+                    }
+                }
+                vec![]
+            }
+            Action::Up => {
+                self.status_message = None;
+                if let Section::List = self.current_section {
+                    if self.cursor > 0 {
+                        self.cursor -= 1;
+                        self.ensure_cursor_visible();
+                    } else {
+                        self.current_section = Section::NewButton;
+                    }
+                }
+                vec![]
+            }
+            Action::Home => {
+                self.status_message = None;
+                if let Section::List = self.current_section {
+                    self.cursor = 0;
+                    self.scroll = 0;
+                }
+                vec![]
+            }
+            Action::End => {
+                self.status_message = None;
+                if let Section::List = self.current_section {
+                    self.cursor = self.stash_entries.len().saturating_sub(1);
+                    self.ensure_cursor_visible();
+                }
+                vec![]
+            }
+            Action::Other(key) => self.handle_key_event(key),
             _ => vec![],
         }
     }

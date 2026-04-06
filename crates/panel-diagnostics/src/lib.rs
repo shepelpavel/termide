@@ -7,7 +7,7 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use lsp_types::{Diagnostic, DiagnosticSeverity};
 use ratatui::{
     buffer::Buffer,
@@ -17,7 +17,7 @@ use ratatui::{
 use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up};
 use unicode_width::UnicodeWidthStr;
 
-use termide_core::{Panel, PanelEvent, RenderContext, ThemeColors, WidthPreference};
+use termide_core::{Action, Panel, PanelEvent, RenderContext, ThemeColors, WidthPreference};
 use termide_theme::Theme;
 use termide_ui::path_utils::truncate_right;
 use termide_ui::ScrollBar;
@@ -519,6 +519,57 @@ impl Panel for DiagnosticsPanel {
         }
     }
 
+    fn handle_action(&mut self, action: Action) -> Vec<PanelEvent> {
+        match action {
+            Action::Up => {
+                self.select_prev();
+            }
+            Action::Down => {
+                self.select_next();
+            }
+            Action::Home => {
+                self.selected_index = 0;
+                self.scroll_offset = 0;
+            }
+            Action::End => {
+                let count = self.filtered_count();
+                self.selected_index = count.saturating_sub(1);
+                self.ensure_visible();
+            }
+            Action::PageUp => {
+                let page_size = self.last_height.saturating_sub(3);
+                for _ in 0..page_size {
+                    self.select_prev();
+                }
+            }
+            Action::PageDown => {
+                let page_size = self.last_height.saturating_sub(3);
+                for _ in 0..page_size {
+                    self.select_next();
+                }
+            }
+            Action::Enter => {
+                if let Some(entry) = self.selected_entry() {
+                    return vec![PanelEvent::OpenFileAt {
+                        path: entry.file_path.clone(),
+                        line: entry.line as usize,
+                        column: entry.column as usize,
+                    }];
+                }
+            }
+            Action::Search => {
+                // Toggle filter (was Ctrl+F)
+                self.filter = self.filter.next();
+                self.selected_index = 0;
+                self.scroll_offset = 0;
+                self.filter_cache_valid = false;
+            }
+            Action::Other(key) => return self.handle_key(key),
+            _ => {}
+        }
+        vec![]
+    }
+
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
         // Vim-aware navigation (j/k/g/G when vim_mode is enabled)
         if is_move_up(&key, self.vim_mode) {
@@ -539,39 +590,6 @@ impl Panel for DiagnosticsPanel {
             self.selected_index = count.saturating_sub(1);
             self.ensure_visible();
             return vec![];
-        }
-
-        match key.code {
-            KeyCode::PageUp => {
-                let page_size = self.last_height.saturating_sub(3);
-                for _ in 0..page_size {
-                    self.select_prev();
-                }
-            }
-            KeyCode::PageDown => {
-                let page_size = self.last_height.saturating_sub(3);
-                for _ in 0..page_size {
-                    self.select_next();
-                }
-            }
-            KeyCode::Enter => {
-                if let Some(entry) = self.selected_entry() {
-                    return vec![PanelEvent::OpenFileAt {
-                        path: entry.file_path.clone(),
-                        line: entry.line as usize,
-                        column: entry.column as usize,
-                    }];
-                }
-            }
-            KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                // Toggle filter
-                self.filter = self.filter.next();
-                self.selected_index = 0;
-                self.scroll_offset = 0;
-                // Invalidate filter cache since filter changed
-                self.filter_cache_valid = false;
-            }
-            _ => {}
         }
         vec![]
     }

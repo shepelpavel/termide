@@ -925,14 +925,28 @@ impl Panel for GitDiffPanel {
     }
 
     fn handle_action(&mut self, action: termide_core::Action) -> Vec<PanelEvent> {
+        use termide_core::Action;
+        self.status_message = None;
         match action {
-            termide_core::Action::EditItem => {
-                // Open file for editing (same as 'e' key)
-                self.handle_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE))
+            Action::EditItem => return self.open_file(),
+            Action::Refresh => {
+                self.refresh();
+                let t = termide_i18n::t();
+                self.status_message = Some(t.git_refreshed().to_string());
             }
-            termide_core::Action::Other(key) => self.handle_key(key),
-            _ => vec![],
+            Action::Up => self.move_up(),
+            Action::Down => self.move_down(),
+            Action::Home => self.go_to_start(),
+            Action::End => self.go_to_end(),
+            Action::PageUp => self.page_up(),
+            Action::PageDown => self.page_down(),
+            Action::Enter => self.toggle_collapse(),
+            Action::Left => self.collapse_current(),
+            Action::Right => self.expand_current(),
+            Action::Other(key) => return self.handle_key(key),
+            _ => {}
         }
+        vec![]
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
@@ -957,10 +971,6 @@ impl Panel for GitDiffPanel {
         }
 
         match key.code {
-            // Navigation
-            KeyCode::PageUp => self.page_up(),
-            KeyCode::PageDown => self.page_down(),
-
             // Scroll without changing selection
             KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.scroll_up(self.visible_height / 2);
@@ -969,20 +979,11 @@ impl Panel for GitDiffPanel {
                 self.scroll_down(self.visible_height / 2);
             }
 
-            // Collapse/expand
-            KeyCode::Enter | KeyCode::Char(' ') => self.toggle_collapse(),
-            KeyCode::Left => self.collapse_current(),
-            KeyCode::Right => self.expand_current(),
+            // Collapse/expand (Space)
+            KeyCode::Char(' ') => self.toggle_collapse(),
 
             // Open file
             KeyCode::Char('e') => return self.open_file(),
-
-            // Refresh
-            KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.refresh();
-                let t = termide_i18n::t();
-                self.status_message = Some(t.git_refreshed().to_string());
-            }
 
             _ => {}
         }
