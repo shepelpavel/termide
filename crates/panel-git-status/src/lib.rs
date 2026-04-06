@@ -983,6 +983,30 @@ impl Panel for GitStatusPanel {
         }
     }
 
+    fn handle_action(&mut self, action: termide_core::Action) -> Vec<PanelEvent> {
+        match action {
+            termide_core::Action::Other(key) => self.handle_key(key),
+            // For now, convert recognized actions back to key events for git status
+            // TODO: migrate git status to handle semantic actions directly
+            termide_core::Action::EditItem => {
+                self.handle_key(KeyEvent::new(KeyCode::F(4), KeyModifiers::NONE))
+            }
+            termide_core::Action::View => {
+                self.handle_key(KeyEvent::new(KeyCode::F(3), KeyModifiers::NONE))
+            }
+            termide_core::Action::Refresh => {
+                self.handle_key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL))
+            }
+            termide_core::Action::ContextMenu => {
+                self.handle_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
+            }
+            termide_core::Action::Close => {
+                self.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+            }
+            _ => vec![],
+        }
+    }
+
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
         // Clear status message on any key
         self.status_message = None;

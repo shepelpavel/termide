@@ -1198,23 +1198,53 @@ impl Panel for FileManager {
         }
     }
 
+    fn handle_action(&mut self, action: termide_core::Action) -> Vec<PanelEvent> {
+        use keyboard::FmCommand;
+        use termide_core::Action;
+
+        // Map universal actions to FM commands
+        let command = match action {
+            Action::Save => FmCommand::RenameFile,
+            Action::View => FmCommand::ViewFile,
+            Action::EditItem => FmCommand::EditFile,
+            Action::CopyItem => FmCommand::CopyFiles,
+            Action::MoveItem => FmCommand::MoveFiles,
+            Action::CreateItem => FmCommand::NewDirectory,
+            Action::DeleteItem => FmCommand::DeleteFiles,
+            Action::Search => FmCommand::Search,
+            Action::Refresh => FmCommand::Refresh,
+            Action::GoBack => FmCommand::GoParent,
+            Action::ContextMenu => FmCommand::ShowFileInfo,
+            Action::Close => FmCommand::ClearSelection,
+            Action::Other(key) => {
+                // Translate Cyrillic for FM-specific keys (E, V, C, M, R, D, vim, etc.)
+                let key = termide_keyboard::translate_hotkey(key);
+                let key = termide_keyboard::translate_all_chars(key);
+                FmCommand::from_key_event(
+                    key,
+                    &self.cached_config.keybindings,
+                    &self.cached_global_kb,
+                    self.vim_mode,
+                )
+            }
+            _ => return vec![], // app-level actions handled upstream
+        };
+
+        self.execute_command(command)
+    }
+
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
         use keyboard::FmCommand;
 
-        // Translate Cyrillic to Latin for hotkeys (Ctrl/Alt+key and special normalization)
+        // Legacy path: translate and parse FM-specific keys
         let key = termide_keyboard::translate_hotkey(key);
-        // Also translate bare Cyrillic characters (panel has no text input at this level)
         let key = termide_keyboard::translate_all_chars(key);
-
-        // Parse key event to command
         let command = FmCommand::from_key_event(
             key,
             &self.cached_config.keybindings,
             &self.cached_global_kb,
             self.vim_mode,
         );
-
-        // Execute command
         self.execute_command(command)
     }
 
