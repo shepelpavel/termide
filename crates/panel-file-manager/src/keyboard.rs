@@ -124,7 +124,7 @@ impl FmCommand {
             return Self::Refresh;
         }
 
-        // Toggle selection — Insert is handled as Action::Toggle in handle_action.
+        // Toggle selection — Insert is handled as Action::Insert in handle_action.
         // Only check user-configured override here (non-Insert bindings).
         if matches_binding_or_default(
             &keybindings.toggle_selection,
@@ -312,7 +312,7 @@ impl FmCommand {
         }
 
         match (key.code, key.modifiers) {
-            // Space is handled as Action::Select in handle_action
+            // Space is handled as Action::Space in handle_action
 
             // Selection with Shift
             (KeyCode::Down, KeyModifiers::SHIFT) => Self::MoveDownWithSelection,

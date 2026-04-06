@@ -1217,7 +1217,7 @@ impl Panel for GitStatusPanel {
                 vec![]
             }
             Action::Enter => self.handle_enter_key(),
-            Action::Select => {
+            Action::Space => {
                 // Space — show file properties
                 if self.current_section == Section::Files
                     && matches!(
@@ -1229,7 +1229,7 @@ impl Panel for GitStatusPanel {
                 }
                 vec![]
             }
-            Action::Toggle => {
+            Action::Insert => {
                 // Insert — stage file
                 if self.current_section == Section::Files
                     && matches!(
@@ -1254,7 +1254,7 @@ impl Panel for GitStatusPanel {
 
         // Configurable keybindings (checked first)
 
-        // Stage file (Ctrl+S — Insert is handled as Action::Toggle in handle_action)
+        // Stage file (Ctrl+S — Insert is handled as Action::Insert in handle_action)
         if matches_binding_or_defaults(
             &kb.stage_file,
             &key,
@@ -1311,7 +1311,7 @@ impl Panel for GitStatusPanel {
             return vec![];
         }
 
-        // Space is handled as Action::Select in handle_action
+        // Space is handled as Action::Space in handle_action
 
         vec![]
     }

@@ -305,7 +305,7 @@ impl Panel for OperationsPanel {
                 self.select_last(total);
                 vec![PanelEvent::NeedsRedraw]
             }
-            termide_core::Action::Select => {
+            termide_core::Action::Space => {
                 if let Some(op_id) = self.selected_operation_id() {
                     vec![PanelEvent::ToggleOperationPause(op_id)]
                 } else {
@@ -344,7 +344,7 @@ impl Panel for OperationsPanel {
             }
         }
 
-        // Space is handled as Action::Select in handle_action
+        // Space is handled as Action::Space in handle_action
 
         events
     }

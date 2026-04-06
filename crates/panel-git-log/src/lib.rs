@@ -993,7 +993,7 @@ impl Panel for GitLogPanel {
                 }
                 vec![]
             }
-            Action::Select => {
+            Action::Space => {
                 // Space — context-dependent (same as Enter for dropdowns, commit info for commits)
                 match self.current_section {
                     Section::RepoSelector => {
@@ -1103,7 +1103,7 @@ impl Panel for GitLogPanel {
             KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
                 return self.open_commit_external();
             }
-            // Space is handled as Action::Select in handle_action
+            // Space is handled as Action::Space in handle_action
             KeyCode::Char('d') => {
                 return self.view_diff();
             }

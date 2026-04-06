@@ -941,7 +941,7 @@ impl Panel for GitDiffPanel {
             Action::PageUp => self.page_up(),
             Action::PageDown => self.page_down(),
             Action::Enter => self.toggle_collapse(),
-            Action::Select => self.toggle_collapse(),
+            Action::Space => self.toggle_collapse(),
             Action::Left => self.collapse_current(),
             Action::Right => self.expand_current(),
             Action::Other(key) => return self.handle_key(key),
@@ -980,7 +980,7 @@ impl Panel for GitDiffPanel {
                 self.scroll_down(self.visible_height / 2);
             }
 
-            // Space is handled as Action::Select in handle_action
+            // Space is handled as Action::Space in handle_action
 
             // Open file
             KeyCode::Char('e') => return self.open_file(),

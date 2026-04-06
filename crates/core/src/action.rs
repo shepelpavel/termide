@@ -52,10 +52,10 @@ pub enum Action {
     /// Backspace — Go back (FM: parent dir, Editor: delete prev char via fallback)
     GoBack,
 
-    /// Space — Select / toggle / info (FM: file info, Ops: pause, Git: properties)
-    Select,
-    /// Insert — Toggle (FM: toggle selection, Git Status: stage)
-    Toggle,
+    /// Space — context-dependent (FM: file info, Ops: pause, Git: properties)
+    Space,
+    /// Insert — context-dependent (FM: toggle selection, Git Status: stage)
+    Insert,
     /// Ctrl+Z — Undo
     Undo,
     /// Ctrl+Y / Ctrl+Shift+Z — Redo
@@ -155,8 +155,8 @@ impl Action {
             Action::Search => Some(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL)),
             Action::Refresh => Some(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL)),
             Action::GoBack => Some(key(KeyCode::Backspace)),
-            Action::Select => Some(key(KeyCode::Char(' '))),
-            Action::Toggle => Some(key(KeyCode::Insert)),
+            Action::Space => Some(key(KeyCode::Char(' '))),
+            Action::Insert => Some(key(KeyCode::Insert)),
             Action::Undo => Some(KeyEvent::new(KeyCode::Char('z'), KeyModifiers::CONTROL)),
             Action::Redo => Some(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::CONTROL)),
             // Navigation
@@ -528,12 +528,12 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
         return Action::DeleteItem;
     }
 
-    if matches_binding_or_default(&kb.select, &key, KeyCode::Char(' '), KeyModifiers::NONE) {
-        return Action::Select;
+    if matches_binding_or_default(&kb.space, &key, KeyCode::Char(' '), KeyModifiers::NONE) {
+        return Action::Space;
     }
 
-    if matches_binding_or_default(&kb.toggle, &key, KeyCode::Insert, KeyModifiers::NONE) {
-        return Action::Toggle;
+    if matches_binding_or_default(&kb.insert, &key, KeyCode::Insert, KeyModifiers::NONE) {
+        return Action::Insert;
     }
 
     if matches_binding_or_default(&kb.undo, &key, KeyCode::Char('z'), KeyModifiers::CONTROL) {

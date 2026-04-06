@@ -172,7 +172,7 @@ impl Panel for GitStashPanel {
                 self.refresh();
                 vec![]
             }
-            Action::Enter | Action::Select => {
+            Action::Enter | Action::Space => {
                 self.status_message = None;
                 match self.current_section {
                     Section::NewButton => self.action_new(),

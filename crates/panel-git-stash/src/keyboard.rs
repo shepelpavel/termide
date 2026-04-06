@@ -29,7 +29,7 @@ impl GitStashPanel {
         }
 
         match key.code {
-            // Space is handled as Action::Select in handle_action
+            // Space is handled as Action::Space in handle_action
             KeyCode::Enter => {
                 return self.action_new();
             }
@@ -78,7 +78,7 @@ impl GitStashPanel {
         }
 
         match key.code {
-            // Space is handled as Action::Select in handle_action
+            // Space is handled as Action::Space in handle_action
             KeyCode::Enter => {
                 return self.action_show_context_menu();
             }
