@@ -1430,6 +1430,21 @@ impl Panel for Terminal {
         }
     }
 
+    fn handle_action(&mut self, action: termide_core::Action) -> Vec<PanelEvent> {
+        // Terminal sends everything to the shell — convert Action back to key
+        match action {
+            termide_core::Action::Other(key) => self.handle_key(key),
+            other => {
+                // F-key actions: send the F-key to the shell process
+                if let Some(key) = other.to_default_key() {
+                    self.handle_key(key)
+                } else {
+                    vec![]
+                }
+            }
+        }
+    }
+
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
         // If process exited, don't handle input
         if !self.is_alive() {

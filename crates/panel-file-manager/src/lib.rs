@@ -1202,20 +1202,18 @@ impl Panel for FileManager {
         use keyboard::FmCommand;
         use termide_core::Action;
 
-        // Map universal actions to FM commands
+        // Map F-key universal actions to FM commands.
+        // Non-F-key actions (Esc, Ctrl+F, Ctrl+R, Backspace) arrive as Other
+        // and are handled by from_key_event below.
         let command = match action {
-            Action::Save => FmCommand::RenameFile,
-            Action::View => FmCommand::ViewFile,
-            Action::EditItem => FmCommand::EditFile,
-            Action::CopyItem => FmCommand::CopyFiles,
-            Action::MoveItem => FmCommand::MoveFiles,
-            Action::CreateItem => FmCommand::NewDirectory,
-            Action::DeleteItem => FmCommand::DeleteFiles,
-            Action::Search => FmCommand::Search,
-            Action::Refresh => FmCommand::Refresh,
-            Action::GoBack => FmCommand::GoParent,
-            Action::ContextMenu => FmCommand::ShowFileInfo,
-            Action::Close => FmCommand::ClearSelection,
+            Action::Save => FmCommand::RenameFile,          // F2
+            Action::View => FmCommand::ViewFile,            // F3
+            Action::EditItem => FmCommand::EditFile,        // F4
+            Action::CopyItem => FmCommand::CopyFiles,       // F5
+            Action::MoveItem => FmCommand::MoveFiles,       // F6
+            Action::CreateItem => FmCommand::NewDirectory,  // F7
+            Action::DeleteItem => FmCommand::DeleteFiles,   // F8
+            Action::ContextMenu => FmCommand::ShowFileInfo, // F12
             Action::Other(key) => {
                 // Translate Cyrillic for FM-specific keys (E, V, C, M, R, D, vim, etc.)
                 let key = termide_keyboard::translate_hotkey(key);

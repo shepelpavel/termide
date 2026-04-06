@@ -110,6 +110,35 @@ pub enum Action {
     Other(KeyEvent),
 }
 
+impl Action {
+    /// Get the default key event for this action.
+    /// Used by panels like Terminal that need to forward F-key actions to the shell.
+    pub fn to_default_key(&self) -> Option<KeyEvent> {
+        let key = |code: KeyCode| KeyEvent::new(code, KeyModifiers::NONE);
+        let ctrl = |c: char| KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL);
+        match self {
+            Action::Help => Some(key(KeyCode::F(1))),
+            Action::Save => Some(key(KeyCode::F(2))),
+            Action::View => Some(key(KeyCode::F(3))),
+            Action::EditItem => Some(key(KeyCode::F(4))),
+            Action::CopyItem => Some(key(KeyCode::F(5))),
+            Action::MoveItem => Some(key(KeyCode::F(6))),
+            Action::CreateItem => Some(key(KeyCode::F(7))),
+            Action::DeleteItem => Some(key(KeyCode::F(8))),
+            Action::Menu => Some(key(KeyCode::F(9))),
+            Action::ClosePanel => Some(key(KeyCode::F(10))),
+            Action::ToggleStack => Some(key(KeyCode::F(11))),
+            Action::ContextMenu => Some(key(KeyCode::F(12))),
+            Action::Close => Some(key(KeyCode::Esc)),
+            Action::Search => Some(ctrl('f')),
+            Action::Refresh => Some(ctrl('r')),
+            Action::GoBack => Some(key(KeyCode::Backspace)),
+            Action::Other(k) => Some(*k),
+            _ => None, // App-level actions don't have a default key
+        }
+    }
+}
+
 /// Normalize a raw KeyEvent into a semantic Action using global keybindings.
 ///
 /// The key should already be translated (Cyrillic → Latin) before calling this.
@@ -361,14 +390,9 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
         return Action::Help;
     }
 
-    if matches_binding_or_defaults(
-        &kb.save,
-        &key,
-        &[
-            (KeyCode::F(2), KeyModifiers::NONE),
-            (KeyCode::Char('s'), KeyModifiers::CONTROL),
-        ],
-    ) {
+    // Save: only F2 by default.
+    // Ctrl+S stays as Other so editor/terminal can use it for panel-specific save.
+    if matches_binding_or_default(&kb.save, &key, KeyCode::F(2), KeyModifiers::NONE) {
         return Action::Save;
     }
 
@@ -392,14 +416,10 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
         return Action::CreateItem;
     }
 
-    if matches_binding_or_defaults(
-        &kb.delete_item,
-        &key,
-        &[
-            (KeyCode::Delete, KeyModifiers::NONE),
-            (KeyCode::F(8), KeyModifiers::NONE),
-        ],
-    ) {
+    // DeleteItem: only F8 by default.
+    // Delete key stays as Other so editor/terminal can use it for char deletion.
+    // Panels that want Delete=DeleteItem handle it in their own handle_key.
+    if matches_binding_or_default(&kb.delete_item, &key, KeyCode::F(8), KeyModifiers::NONE) {
         return Action::DeleteItem;
     }
 
@@ -441,24 +461,16 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Action {
     }
 
     // =========================================================================
-    // Non-F-key universal actions
+    // Non-F-key universal actions (Esc, Ctrl+F, Ctrl+R, Backspace)
     // =========================================================================
-
-    if matches_binding_or_default(&kb.close, &key, KeyCode::Esc, KeyModifiers::NONE) {
-        return Action::Close;
-    }
-
-    if matches_binding_or_default(&kb.search, &key, KeyCode::Char('f'), KeyModifiers::CONTROL) {
-        return Action::Search;
-    }
-
-    if matches_binding_or_default(&kb.refresh, &key, KeyCode::Char('r'), KeyModifiers::CONTROL) {
-        return Action::Refresh;
-    }
-
-    if matches_binding_or_default(&kb.go_back, &key, KeyCode::Backspace, KeyModifiers::NONE) {
-        return Action::GoBack;
-    }
+    // NOT normalized here — these keys have panel-specific meanings:
+    //   Backspace = delete char (editor), go parent (FM), send to shell (terminal)
+    //   Esc = close popup (editor), send escape (terminal), clear selection (FM)
+    //   Ctrl+R = replace (editor), refresh (FM/git)
+    //   Ctrl+F = search (editor), file search (FM)
+    // Panels handle them directly in handle_action/handle_key.
+    // The Action::Close/Search/Refresh/GoBack variants exist for panels
+    // to use internally, but the normalizer doesn't produce them by default.
 
     // =========================================================================
     // Unrecognized — pass through

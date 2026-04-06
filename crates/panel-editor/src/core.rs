@@ -1711,6 +1711,27 @@ impl Panel for Editor {
         );
     }
 
+    fn handle_action(&mut self, action: termide_core::Action) -> Vec<PanelEvent> {
+        match action {
+            termide_core::Action::Save => {
+                // F2 = save file in editor
+                self.handle_key(crossterm::event::KeyEvent::new(
+                    crossterm::event::KeyCode::Char('s'),
+                    crossterm::event::KeyModifiers::CONTROL,
+                ))
+            }
+            termide_core::Action::View => {
+                // F3 = search next in editor
+                self.handle_key(crossterm::event::KeyEvent::new(
+                    crossterm::event::KeyCode::F(3),
+                    crossterm::event::KeyModifiers::NONE,
+                ))
+            }
+            termide_core::Action::Other(key) => self.handle_key(key),
+            _ => vec![],
+        }
+    }
+
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
         // Any keyboard input should make viewport follow cursor again
         self.scroll_follows_cursor = true;
