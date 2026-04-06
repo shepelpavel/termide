@@ -207,7 +207,18 @@ pub trait Panel: Any {
     /// * `ctx` - Render context with theme and focus info
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext);
 
-    /// Handle keyboard input.
+    /// Handle semantic action from the normalizer.
+    ///
+    /// Override this to handle universal actions (Save, View, EditItem, etc.).
+    /// Unrecognized keys arrive as `Action::Other(key)` and fall through to `handle_key`.
+    fn handle_action(&mut self, action: crate::Action) -> Vec<PanelEvent> {
+        match action {
+            crate::Action::Other(key) => self.handle_key(key),
+            _ => vec![],
+        }
+    }
+
+    /// Handle raw keyboard input (for panel-specific keys not covered by Action).
     ///
     /// Returns a list of events to be processed by the application.
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent>;

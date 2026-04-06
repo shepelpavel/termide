@@ -217,6 +217,21 @@ pub struct GlobalKeybindings {
     // Application
     pub quit: Option<KeyBinding>,
     pub open_command_palette: Option<KeyBinding>,
+
+    // Common item actions (used across panels, menus, modals)
+    pub help: Option<KeyBinding>,
+    pub save: Option<KeyBinding>,
+    pub view: Option<KeyBinding>,
+    pub edit_item: Option<KeyBinding>,
+    pub copy_item: Option<KeyBinding>,
+    pub move_item: Option<KeyBinding>,
+    pub create_item: Option<KeyBinding>,
+    pub delete_item: Option<KeyBinding>,
+    pub context_menu: Option<KeyBinding>,
+    pub close: Option<KeyBinding>,
+    pub search: Option<KeyBinding>,
+    pub refresh: Option<KeyBinding>,
+    pub go_back: Option<KeyBinding>,
 }
 
 /// Editor keybindings (editor.keybindings section).
@@ -269,10 +284,8 @@ pub struct FileManagerKeybindings {
     // File operations
     pub copy_files: Option<KeyBinding>,
     pub move_files: Option<KeyBinding>,
-    pub delete_files: Option<KeyBinding>,
     pub rename_file: Option<KeyBinding>,
     pub view_file: Option<KeyBinding>,
-    pub edit_file: Option<KeyBinding>,
     pub new_file: Option<KeyBinding>,
     pub new_directory: Option<KeyBinding>,
 
@@ -309,8 +322,6 @@ pub struct GitStatusKeybindings {
     pub revert_file: Option<KeyBinding>,
     /// Open file for viewing (read-only)
     pub view_file: Option<KeyBinding>,
-    /// Open file for editing
-    pub edit_file: Option<KeyBinding>,
 }
 
 /// Terminal panel keybindings (terminal.keybindings section).
@@ -340,15 +351,14 @@ impl GlobalKeybindings {
             };
         }
 
-        // Menu & UI
-        set_default!(toggle_menu, "Alt+M");
+        // Menu & UI (toggle_menu uses set_default_multiple, defined below)
 
         // Panel creation
         set_default!(new_file_manager, "Alt+F");
         set_default!(new_terminal, "Alt+T");
         set_default!(new_editor, "Alt+E");
         set_default!(new_journal, "Alt+L");
-        set_default!(open_help, "Alt+H");
+        // open_help gets F1 alternative below (needs set_default_multiple)
         set_default!(open_preferences, "Alt+P");
         set_default!(open_sessions, "Alt+/");
         set_default!(new_session, "Alt+N");
@@ -358,9 +368,7 @@ impl GlobalKeybindings {
         set_default!(open_diagnostics, "Alt+I");
         set_default!(open_git_log, "Alt+C");
 
-        // Panel management
-        set_default!(close_panel, "Alt+X");
-        set_default!(toggle_stack, "Alt+Backspace");
+        // Panel management (close_panel and toggle_stack get F-key alternatives below)
         set_default!(swap_left, "Alt+PageUp");
         set_default!(swap_right, "Alt+PageDown");
         set_default!(move_first, "Alt+Home");
@@ -376,6 +384,11 @@ impl GlobalKeybindings {
                 }
             };
         }
+
+        set_default_multiple!(toggle_menu, "Alt+M", "F9");
+        set_default_multiple!(open_help, "Alt+H", "F1");
+        set_default_multiple!(close_panel, "Alt+X", "F10");
+        set_default_multiple!(toggle_stack, "Alt+Backspace", "F11");
 
         set_default_multiple!(prev_group, "Alt+Left", "Alt+A");
         set_default_multiple!(next_group, "Alt+Right", "Alt+D");
@@ -394,6 +407,23 @@ impl GlobalKeybindings {
         // Application
         set_default!(quit, "Alt+Q");
         set_default!(open_command_palette, "Ctrl+P");
+
+        // Common item actions (F-key universal)
+        set_default!(help, "F1");
+        set_default_multiple!(save, "F2", "Ctrl+S");
+        set_default!(view, "F3");
+        set_default!(edit_item, "F4");
+        set_default!(copy_item, "F5");
+        set_default!(move_item, "F6");
+        set_default!(create_item, "F7");
+        set_default_multiple!(delete_item, "Delete", "F8");
+        set_default!(context_menu, "F12");
+
+        // Common item actions (non-F-key universal)
+        set_default!(close, "Esc");
+        set_default!(search, "Ctrl+F");
+        set_default!(refresh, "Ctrl+R");
+        set_default!(go_back, "Backspace");
     }
 }
 
@@ -466,10 +496,8 @@ impl FileManagerKeybindings {
         // File operations (multiple bindings)
         set_default_multiple!(copy_files, "C", "F5");
         set_default_multiple!(move_files, "M", "F6");
-        set_default_multiple!(delete_files, "Delete", "F8");
         set_default_multiple!(rename_file, "R", "F2");
         set_default_multiple!(view_file, "V", "F3");
-        set_default_multiple!(edit_file, "E", "F4");
         set_default_multiple!(new_file, "F", "Ctrl+N");
         set_default_multiple!(new_directory, "D", "F7");
 
@@ -521,7 +549,6 @@ impl GitStatusKeybindings {
         set_default_single!(prev_section, "Shift+Tab");
         set_default_multiple!(revert_file, "Backspace", "Delete");
         set_default_single!(view_file, "F3");
-        set_default_single!(edit_file, "F4");
     }
 }
 

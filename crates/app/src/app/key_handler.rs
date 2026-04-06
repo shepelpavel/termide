@@ -20,12 +20,11 @@ impl App {
         // Translate Cyrillic to Latin for hotkeys
         let key = termide_keyboard::translate_hotkey(key);
 
-        // Log key event for debugging
-        log::trace!(
-            "Key event: code={:?}, modifiers={:?}",
-            key.code,
-            key.modifiers
-        );
+        // Normalize KeyEvent → semantic Action
+        let action = termide_core::normalize(key, &self.state.config.general.keybindings);
+
+        // Log action for debugging
+        log::trace!("Key {:?} → {:?}", key.code, action);
 
         // Clear status message on any key press
         if self.state.ui.status_message.is_some() {
@@ -33,6 +32,7 @@ impl App {
         }
 
         // If modal window is open, handle it
+        // Modals receive raw KeyEvent for now (via action); will migrate later
         if self.state.has_modal() {
             return self.handle_modal_key(key);
         }
@@ -67,18 +67,17 @@ impl App {
             return self.handle_menu_key(key);
         }
 
-        // Handle global hotkeys
-        #[allow(clippy::redundant_pattern_matching)]
-        if let Some(_) = self.handle_global_hotkeys(key)? {
+        // Handle app-level actions (Quit, NewTerminal, PrevGroup, etc.)
+        if self.handle_app_action(&action)? {
             return Ok(());
         }
 
-        // Pass event to active panel and collect results
+        // Pass action to active panel
         let (events, modal_request, config_update) = if let Some(panel) =
             self.layout_manager.active_panel_mut()
         {
-            // handle_key returns Vec<PanelEvent>
-            let mut events = panel.handle_key(key);
+            // handle_action dispatches to handle_key for Other(key)
+            let mut events = panel.handle_action(action);
 
             // Legacy methods still in use
             let modal_request = panel.take_modal_request();

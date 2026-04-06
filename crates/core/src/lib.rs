@@ -3,12 +3,14 @@
 //! This crate provides the foundational abstractions for building panels
 //! in termide without coupling them to the application state.
 
+pub mod action;
 pub mod command;
 pub mod event;
 pub mod panel;
 pub mod terminal_caps;
 pub mod util;
 
+pub use action::{normalize, Action};
 pub use command::{CommandResult, PanelCommand};
 pub use event::{
     ConfirmAction, ConflictResolution, Event, EventHandler, GitOperationType, InputAction,

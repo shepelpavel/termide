@@ -14,36 +14,15 @@ use crate::PanelExt;
 use termide_i18n as i18n;
 
 impl App {
-    /// Handle global hotkeys (Alt+key combinations)
+    /// Handle app-level actions from the normalizer.
     ///
-    /// Returns `Some(())` if the hotkey was handled, `None` to pass to panel.
-    pub(super) fn handle_global_hotkeys(&mut self, key: KeyEvent) -> Result<Option<()>> {
-        // Check if this is a global hotkey
-        if let Some(action) = self.hotkey_processor.process_hotkey(&key) {
-            self.execute_hotkey_action(action)?;
-            return Ok(Some(()));
-        }
+    /// Returns `true` if the action was handled, `false` to pass to panel.
+    pub(super) fn handle_app_action(&mut self, action: &termide_core::Action) -> Result<bool> {
+        use termide_core::Action;
 
-        // Escape - close panel (without modifiers)
-        let captures = self
-            .layout_manager
-            .active_panel_mut()
-            .map(|p| p.captures_escape())
-            .unwrap_or(false);
-
-        if self.hotkey_processor.should_escape_close(&key, captures) {
-            self.handle_close_panel_request()?;
-            return Ok(Some(()));
-        }
-
-        Ok(None) // Not handled, pass to panel
-    }
-
-    /// Execute a hotkey action
-    pub(in crate::app) fn execute_hotkey_action(&mut self, action: HotkeyAction) -> Result<()> {
         match action {
             // Menu
-            HotkeyAction::ToggleMenu => {
+            Action::Menu => {
                 if self.state.ui.menu_open {
                     self.state.close_menu();
                 } else {
@@ -53,97 +32,99 @@ impl App {
             }
 
             // Panel creation
-            HotkeyAction::NewFileManager => {
-                self.handle_new_file_manager()?;
-            }
-            HotkeyAction::NewTerminal => {
-                self.handle_new_terminal()?;
-            }
-            HotkeyAction::NewEditor => {
-                self.handle_new_editor()?;
-            }
-            HotkeyAction::NewJournal => {
-                self.handle_new_journal()?;
-            }
-            HotkeyAction::OpenHelp => {
-                self.handle_new_help()?;
-            }
-            HotkeyAction::OpenPreferences => {
-                self.open_config_in_editor()?;
-            }
-            HotkeyAction::OpenSessions => {
-                self.handle_open_sessions_modal()?;
-            }
-            HotkeyAction::NewSession => {
-                self.handle_new_session()?;
-            }
-            HotkeyAction::OpenGitStatus => {
-                self.handle_open_git_status()?;
-            }
-            HotkeyAction::OpenOutline => {
-                self.handle_open_outline()?;
-            }
-            HotkeyAction::OpenDiagnostics => {
-                self.handle_open_diagnostics()?;
-            }
-            HotkeyAction::OpenGitLog => {
-                self.handle_open_git_log()?;
-            }
-            HotkeyAction::OpenDirectorySwitcher => {
-                self.handle_open_directory_switcher()?;
-            }
-            HotkeyAction::OpenBookmarkAdd => {
-                self.handle_add_bookmark()?;
-            }
+            Action::NewFileManager => self.handle_new_file_manager()?,
+            Action::NewTerminal => self.handle_new_terminal()?,
+            Action::NewEditor => self.handle_new_editor()?,
+            Action::NewJournal => self.handle_new_journal()?,
+            Action::OpenHelp => self.handle_new_help()?,
+            Action::OpenPreferences => self.open_config_in_editor()?,
+            Action::OpenSessions => self.handle_open_sessions_modal()?,
+            Action::NewSession => self.handle_new_session()?,
+            Action::OpenGitStatus => self.handle_open_git_status()?,
+            Action::OpenOutline => self.handle_open_outline()?,
+            Action::OpenDiagnostics => self.handle_open_diagnostics()?,
+            Action::OpenGitLog => self.handle_open_git_log()?,
+            Action::OpenBookmarkAdd => self.handle_add_bookmark()?,
+            Action::OpenCommandPalette => self.handle_open_command_palette()?,
 
             // Navigation
-            HotkeyAction::PrevGroup => {
-                self.navigate_to_prev_group();
-            }
-            HotkeyAction::NextGroup => {
-                self.navigate_to_next_group();
-            }
-            HotkeyAction::PrevInGroup => {
-                self.navigate_to_prev_panel_in_group();
-            }
-            HotkeyAction::NextInGroup => {
-                self.navigate_to_next_panel_in_group();
-            }
-            HotkeyAction::GoToPanel(panel_num) => {
-                self.navigate_to_group(panel_num);
-            }
+            Action::PrevGroup => self.navigate_to_prev_group(),
+            Action::NextGroup => self.navigate_to_next_group(),
+            Action::PrevPanel => self.navigate_to_prev_panel_in_group(),
+            Action::NextPanel => self.navigate_to_next_panel_in_group(),
+            Action::GoToPanel(n) => self.navigate_to_group(*n),
 
             // Panel management
-            HotkeyAction::ClosePanel => {
-                self.handle_close_panel_request()?;
-            }
-            HotkeyAction::ToggleStacking => {
-                self.toggle_panel_stacking();
-            }
-            HotkeyAction::SwapPanelLeft => {
-                self.handle_swap_panel_left()?;
-            }
-            HotkeyAction::SwapPanelRight => {
-                self.handle_swap_panel_right()?;
-            }
-            HotkeyAction::MoveToFirst => {
-                self.move_panel_to_first();
-            }
-            HotkeyAction::MoveToLast => {
-                self.move_panel_to_last();
-            }
-            HotkeyAction::ResizePanel(delta) => {
-                self.handle_resize_panel(delta)?;
-            }
+            Action::ClosePanel => self.handle_close_panel_request()?,
+            Action::ToggleStack => self.toggle_panel_stacking(),
+            Action::SwapLeft => self.handle_swap_panel_left()?,
+            Action::SwapRight => self.handle_swap_panel_right()?,
+            Action::MoveFirst => self.move_panel_to_first(),
+            Action::MoveLast => self.move_panel_to_last(),
+            Action::ResizeSmaller => self.handle_resize_panel(-1)?,
+            Action::ResizeLarger => self.handle_resize_panel(1)?,
 
             // Application
-            HotkeyAction::RequestQuit => {
-                self.handle_quit_request()?;
-            }
-            HotkeyAction::OpenCommandPalette => {
-                self.handle_open_command_palette()?;
-            }
+            Action::Quit => self.handle_quit_request()?,
+
+            // Not an app-level action
+            _ => return Ok(false),
         }
+        Ok(true)
+    }
+
+    // Keep legacy method for now (used by command palette)
+    /// Handle global hotkeys (Alt+key combinations) — legacy path
+    #[allow(dead_code)]
+    pub(super) fn handle_global_hotkeys(&mut self, key: KeyEvent) -> Result<Option<()>> {
+        if let Some(action) = self.hotkey_processor.process_hotkey(&key) {
+            self.execute_hotkey_action(action)?;
+            return Ok(Some(()));
+        }
+        Ok(None)
+    }
+
+    /// Execute a hotkey action — legacy path for command palette
+    pub(in crate::app) fn execute_hotkey_action(&mut self, action: HotkeyAction) -> Result<()> {
+        // Convert legacy HotkeyAction to new Action and dispatch
+        let new_action = match action {
+            HotkeyAction::ToggleMenu => termide_core::Action::Menu,
+            HotkeyAction::NewFileManager => termide_core::Action::NewFileManager,
+            HotkeyAction::NewTerminal => termide_core::Action::NewTerminal,
+            HotkeyAction::NewEditor => termide_core::Action::NewEditor,
+            HotkeyAction::NewJournal => termide_core::Action::NewJournal,
+            HotkeyAction::OpenHelp => termide_core::Action::OpenHelp,
+            HotkeyAction::OpenPreferences => termide_core::Action::OpenPreferences,
+            HotkeyAction::OpenSessions => termide_core::Action::OpenSessions,
+            HotkeyAction::NewSession => termide_core::Action::NewSession,
+            HotkeyAction::OpenGitStatus => termide_core::Action::OpenGitStatus,
+            HotkeyAction::OpenOutline => termide_core::Action::OpenOutline,
+            HotkeyAction::OpenDiagnostics => termide_core::Action::OpenDiagnostics,
+            HotkeyAction::OpenGitLog => termide_core::Action::OpenGitLog,
+            HotkeyAction::OpenDirectorySwitcher => termide_core::Action::OpenSessions,
+            HotkeyAction::OpenBookmarkAdd => termide_core::Action::OpenBookmarkAdd,
+            HotkeyAction::OpenCommandPalette => termide_core::Action::OpenCommandPalette,
+            HotkeyAction::PrevGroup => termide_core::Action::PrevGroup,
+            HotkeyAction::NextGroup => termide_core::Action::NextGroup,
+            HotkeyAction::PrevInGroup => termide_core::Action::PrevPanel,
+            HotkeyAction::NextInGroup => termide_core::Action::NextPanel,
+            HotkeyAction::GoToPanel(n) => termide_core::Action::GoToPanel(n),
+            HotkeyAction::ClosePanel => termide_core::Action::ClosePanel,
+            HotkeyAction::ToggleStacking => termide_core::Action::ToggleStack,
+            HotkeyAction::SwapPanelLeft => termide_core::Action::SwapLeft,
+            HotkeyAction::SwapPanelRight => termide_core::Action::SwapRight,
+            HotkeyAction::MoveToFirst => termide_core::Action::MoveFirst,
+            HotkeyAction::MoveToLast => termide_core::Action::MoveLast,
+            HotkeyAction::ResizePanel(d) => {
+                if d > 0 {
+                    termide_core::Action::ResizeLarger
+                } else {
+                    termide_core::Action::ResizeSmaller
+                }
+            }
+            HotkeyAction::RequestQuit => termide_core::Action::Quit,
+        };
+        self.handle_app_action(&new_action)?;
         Ok(())
     }
 

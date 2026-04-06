@@ -6,7 +6,7 @@
 #![allow(deprecated)]
 
 use anyhow::Result;
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyModifiers};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -46,7 +46,10 @@ fn navigate_submenu(
     submenu: &mut termide_state::SubmenuState,
     item_count: usize,
     separators: &[usize],
+    kb: &termide_config::GlobalKeybindings,
 ) -> SubmenuNavAction {
+    use termide_config::matches_binding_or_defaults;
+
     match key.code {
         KeyCode::Esc => SubmenuNavAction::Close,
         KeyCode::Left => SubmenuNavAction::Left,
@@ -71,8 +74,25 @@ fn navigate_submenu(
         }
         KeyCode::Enter => SubmenuNavAction::Execute,
         KeyCode::Right => SubmenuNavAction::Right,
-        KeyCode::F(4) => SubmenuNavAction::Edit,
-        KeyCode::Delete => SubmenuNavAction::Delete,
+        _ if matches_binding_or_defaults(
+            &kb.edit_item,
+            key,
+            &[(KeyCode::F(4), KeyModifiers::NONE)],
+        ) =>
+        {
+            SubmenuNavAction::Edit
+        }
+        _ if matches_binding_or_defaults(
+            &kb.delete_item,
+            key,
+            &[
+                (KeyCode::Delete, KeyModifiers::NONE),
+                (KeyCode::F(8), KeyModifiers::NONE),
+            ],
+        ) =>
+        {
+            SubmenuNavAction::Delete
+        }
         _ => SubmenuNavAction::None,
     }
 }
@@ -245,7 +265,9 @@ impl App {
         if items.iter().any(|item| !item.is_current) {
             // Find index of current session to position cursor there
             let current_idx = items.iter().position(|item| item.is_current).unwrap_or(0);
-            let modal = SessionsModal::new(t.sessions_title(), items).with_cursor(current_idx);
+            let modal = SessionsModal::new(t.sessions_title(), items)
+                .with_cursor(current_idx)
+                .with_delete_binding(self.state.config.general.keybindings.delete_item.clone());
             self.state.set_pending_action(
                 PendingAction::SwitchSession,
                 ActiveModal::Sessions(Box::new(modal)),
@@ -402,6 +424,7 @@ impl App {
             &mut self.state.ui.options_submenu,
             OPTIONS_SUBMENU_ITEM_COUNT,
             &[],
+            &self.state.config.general.keybindings,
         ) {
             SubmenuNavAction::Close => self.state.close_menu(),
             SubmenuNavAction::Execute => self.execute_submenu_action()?,
@@ -627,6 +650,7 @@ impl App {
             &mut self.state.ui.sessions_submenu,
             SESSIONS_SUBMENU_ITEM_COUNT,
             &[],
+            &self.state.config.general.keybindings,
         ) {
             SubmenuNavAction::Close => self.state.close_menu(),
             SubmenuNavAction::Execute => self.execute_sessions_submenu_action()?,
@@ -744,6 +768,7 @@ impl App {
             &mut self.state.ui.tools_submenu,
             TOOLS_SUBMENU_ITEM_COUNT,
             &[],
+            &self.state.config.general.keybindings,
         ) {
             SubmenuNavAction::Close => self.state.close_menu(),
             SubmenuNavAction::Execute => self.execute_tools_submenu_action()?,
@@ -769,7 +794,13 @@ impl App {
             return Ok(());
         }
 
-        match navigate_submenu(&key, &mut self.state.ui.tools_nested, item_count, &[]) {
+        match navigate_submenu(
+            &key,
+            &mut self.state.ui.tools_nested,
+            item_count,
+            &[],
+            &self.state.config.general.keybindings,
+        ) {
             SubmenuNavAction::Close => self.state.close_tools_nested_submenu(),
             SubmenuNavAction::Execute => {
                 if let Some(shell) = self
@@ -1176,6 +1207,7 @@ impl App {
             &mut self.state.ui.scripts_submenu,
             item_count,
             &separators,
+            &self.state.config.general.keybindings,
         ) {
             SubmenuNavAction::Close => self.state.close_menu(),
             SubmenuNavAction::Execute => self.execute_scripts_submenu_action()?,
@@ -1259,7 +1291,13 @@ impl App {
             })
             .unwrap_or(0);
 
-        match navigate_submenu(&key, &mut self.state.ui.scripts_nested, item_count, &[]) {
+        match navigate_submenu(
+            &key,
+            &mut self.state.ui.scripts_nested,
+            item_count,
+            &[],
+            &self.state.config.general.keybindings,
+        ) {
             SubmenuNavAction::Close | SubmenuNavAction::Left => {
                 self.state.close_scripts_nested_submenu();
             }
@@ -1540,6 +1578,7 @@ impl App {
             &mut self.state.ui.bookmarks_submenu,
             item_count,
             &separators,
+            &self.state.config.general.keybindings,
         ) {
             SubmenuNavAction::Close => self.state.close_menu(),
             SubmenuNavAction::Execute => self.execute_bookmarks_submenu_action()?,
@@ -1629,7 +1668,13 @@ impl App {
             })
             .unwrap_or(0);
 
-        match navigate_submenu(&key, &mut self.state.ui.bookmarks_nested, item_count, &[]) {
+        match navigate_submenu(
+            &key,
+            &mut self.state.ui.bookmarks_nested,
+            item_count,
+            &[],
+            &self.state.config.general.keybindings,
+        ) {
             SubmenuNavAction::Close | SubmenuNavAction::Left => {
                 self.state.close_bookmarks_nested_submenu();
             }

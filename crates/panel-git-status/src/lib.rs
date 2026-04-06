@@ -68,6 +68,8 @@ pub struct GitStatusPanel {
     cached_theme: ThemeColors,
     /// Cached keybindings for keyboard handling
     keybindings: GitStatusKeybindings,
+    /// Cached global keybindings (edit_item)
+    global_kb: termide_config::GlobalKeybindings,
     /// Last render area (for mouse handling)
     last_area: Rect,
     /// Status message
@@ -157,6 +159,7 @@ impl GitStatusPanel {
             viewport_height: 0,
             cached_theme: ThemeColors::default(),
             keybindings: GitStatusKeybindings::default(),
+            global_kb: termide_config::GlobalKeybindings::default(),
             last_area: Rect::default(),
             status_message: None,
             repo_dropdown_open: false,
@@ -873,6 +876,7 @@ impl Panel for GitStatusPanel {
     fn prepare_render(&mut self, theme: &Theme, config: std::sync::Arc<Config>) {
         self.cached_theme = ThemeColors::from(theme);
         self.keybindings = config.git_status.keybindings.clone();
+        self.global_kb = config.general.keybindings.clone();
         self.vim_mode = config.general.vim_mode;
     }
 
@@ -1090,8 +1094,11 @@ impl Panel for GitStatusPanel {
         }
 
         // Edit file (F4) - only for files, not headers/directories
-        if matches_binding_or_defaults(&kb.edit_file, &key, &[(KeyCode::F(4), KeyModifiers::NONE)])
-        {
+        if matches_binding_or_defaults(
+            &self.global_kb.edit_item,
+            &key,
+            &[(KeyCode::F(4), KeyModifiers::NONE)],
+        ) {
             if self.current_section == Section::Files
                 && matches!(
                     self.get_selection(),

@@ -11,7 +11,7 @@ use std::any::Any;
 use std::path::Path;
 use std::time::Instant;
 
-use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::{buffer::Buffer, layout::Rect, widgets::Widget};
 
 use termide_config::Config;
@@ -89,6 +89,8 @@ pub struct OperationsPanel {
     cached_theme: ThemeColors,
     /// Cached vim_mode setting
     vim_mode: bool,
+    /// Cached global delete keybinding
+    delete_binding: Option<termide_config::KeyBinding>,
     /// Last rendered area (for mouse handling)
     last_area: Rect,
     /// Card areas for mouse click detection (operation_index, area)
@@ -105,6 +107,7 @@ impl OperationsPanel {
             scroll_offset: 0,
             cached_theme: ThemeColors::default(),
             vim_mode: false,
+            delete_binding: None,
             last_area: Rect::default(),
             card_areas: Vec::new(),
             operations: Vec::new(),
@@ -254,6 +257,7 @@ impl Panel for OperationsPanel {
     fn prepare_render(&mut self, theme: &Theme, config: std::sync::Arc<Config>) {
         self.cached_theme = ThemeColors::from(theme);
         self.vim_mode = config.general.vim_mode;
+        self.delete_binding = config.general.keybindings.delete_item.clone();
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
@@ -310,8 +314,16 @@ impl Panel for OperationsPanel {
                 }
             }
 
-            // Cancel operation (Delete/Backspace)
-            KeyCode::Delete | KeyCode::Backspace => {
+            // Cancel operation (global delete_item: Delete, F8)
+            _ if termide_config::matches_binding_or_defaults(
+                &self.delete_binding,
+                &key,
+                &[
+                    (KeyCode::Delete, KeyModifiers::NONE),
+                    (KeyCode::F(8), KeyModifiers::NONE),
+                ],
+            ) =>
+            {
                 if let Some(op_id) = self.selected_operation_id() {
                     events.push(PanelEvent::CancelOperation(op_id));
                 }
