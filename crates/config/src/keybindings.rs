@@ -235,34 +235,28 @@ pub struct GlobalKeybindings {
     pub insert: Option<KeyBinding>,
     pub undo: Option<KeyBinding>,
     pub redo: Option<KeyBinding>,
+    pub select_all: Option<KeyBinding>,
+    pub cut: Option<KeyBinding>,
+    pub copy: Option<KeyBinding>,
+    pub paste: Option<KeyBinding>,
 }
 
 /// Editor keybindings (editor.keybindings section).
+///
+/// Fields that duplicate global keybindings (save, undo, redo, search,
+/// copy, cut, paste, select_all) have been removed — they are now handled
+/// by the global normalizer and forwarded via handle_action.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EditorKeybindings {
     // File operations
-    pub save: Option<KeyBinding>,
     pub save_as: Option<KeyBinding>,
     pub reload: Option<KeyBinding>,
-
-    // Undo/Redo
-    pub undo: Option<KeyBinding>,
-    pub redo: Option<KeyBinding>,
-
-    // Clipboard
-    pub copy: Option<KeyBinding>,
-    pub cut: Option<KeyBinding>,
-    pub paste: Option<KeyBinding>,
-
-    // Selection
-    pub select_all: Option<KeyBinding>,
 
     // Editing
     pub duplicate_line: Option<KeyBinding>,
     pub toggle_comment: Option<KeyBinding>,
 
     // Search & Replace
-    pub search: Option<KeyBinding>,
     pub search_next: Option<KeyBinding>,
     pub search_prev: Option<KeyBinding>,
     pub replace: Option<KeyBinding>,
@@ -282,30 +276,17 @@ pub struct EditorKeybindings {
 }
 
 /// File manager keybindings (file_manager.keybindings section).
+///
+/// Most FM keybindings are now handled globally (F-keys, Ctrl+F, Ctrl+R, etc.)
+/// or as hardcoded letter shortcuts (C/M/R/V/E/D/F). Only panel-specific
+/// configurable bindings remain here.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct FileManagerKeybindings {
-    // File operations
-    pub copy_files: Option<KeyBinding>,
-    pub move_files: Option<KeyBinding>,
-    pub rename_file: Option<KeyBinding>,
-    pub view_file: Option<KeyBinding>,
-    pub new_file: Option<KeyBinding>,
-    pub new_directory: Option<KeyBinding>,
-
     // Search
-    pub search: Option<KeyBinding>,
     pub search_content: Option<KeyBinding>,
 
     // Navigation
     pub go_home: Option<KeyBinding>,
-    pub go_parent: Option<KeyBinding>,
-    pub refresh: Option<KeyBinding>,
-
-    // Selection
-    pub toggle_selection: Option<KeyBinding>,
-    pub select_all: Option<KeyBinding>,
-
-    // Navigation
     pub switch_directory: Option<KeyBinding>,
 
     // Other
@@ -314,18 +295,13 @@ pub struct FileManagerKeybindings {
 }
 
 /// Git status panel keybindings (git_status.keybindings section).
+///
+/// All git status keybindings are now handled globally (F-keys, Tab, Backspace, etc.)
+/// or as hardcoded letter shortcuts (S/U). This struct is kept empty for config
+/// compatibility — old configs with git_status.keybindings fields will still load
+/// thanks to `#[serde(default)]`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct GitStatusKeybindings {
-    pub stage_file: Option<KeyBinding>,
-    pub unstage_file: Option<KeyBinding>,
-    pub refresh: Option<KeyBinding>,
-    pub next_section: Option<KeyBinding>,
-    pub prev_section: Option<KeyBinding>,
-    /// Revert file (show confirmation)
-    pub revert_file: Option<KeyBinding>,
-    /// Open file for viewing (read-only)
-    pub view_file: Option<KeyBinding>,
-}
+pub struct GitStatusKeybindings {}
 
 /// Terminal panel keybindings (terminal.keybindings section).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -417,7 +393,7 @@ impl GlobalKeybindings {
         set_default!(edit_item, "F4");
         set_default!(copy_item, "F5");
         set_default!(move_item, "F6");
-        set_default!(create_item, "F7");
+        set_default_multiple!(create_item, "F7", "Ctrl+N");
         set_default_multiple!(delete_item, "Delete", "F8");
         set_default!(context_menu, "F12");
         set_default!(cancel, "Esc");
@@ -428,6 +404,10 @@ impl GlobalKeybindings {
         set_default!(insert, "Insert");
         set_default!(undo, "Ctrl+Z");
         set_default_multiple!(redo, "Ctrl+Y", "Ctrl+Shift+Z");
+        set_default!(select_all, "Ctrl+A");
+        set_default!(cut, "Ctrl+X");
+        set_default!(copy, "Ctrl+C");
+        set_default!(paste, "Ctrl+V");
     }
 }
 
@@ -443,28 +423,14 @@ impl EditorKeybindings {
         }
 
         // File operations
-        set_default!(save, "Ctrl+S");
         set_default!(save_as, "Ctrl+Shift+S");
         set_default!(reload, "Ctrl+Shift+R");
-
-        // Undo/Redo
-        set_default!(undo, "Ctrl+Z");
-        set_default!(redo, "Ctrl+Y");
-
-        // Clipboard
-        set_default!(copy, "Ctrl+C");
-        set_default!(cut, "Ctrl+X");
-        set_default!(paste, "Ctrl+V");
-
-        // Selection
-        set_default!(select_all, "Ctrl+A");
 
         // Editing
         set_default!(duplicate_line, "Ctrl+D");
         set_default!(toggle_comment, "Ctrl+/");
 
         // Search & Replace
-        set_default!(search, "Ctrl+F");
         set_default!(search_next, "F3");
         set_default!(search_prev, "Shift+F3");
         set_default!(replace, "Ctrl+H");
@@ -489,36 +455,11 @@ impl FileManagerKeybindings {
             };
         }
 
-        macro_rules! set_default_multiple {
-            ($field:ident, $($default:expr),+) => {
-                if self.$field.is_none() {
-                    self.$field = Some(KeyBinding::Multiple(vec![$($default.into()),+]));
-                }
-            };
-        }
-
-        // File operations (multiple bindings)
-        set_default_multiple!(copy_files, "C", "F5");
-        set_default_multiple!(move_files, "M", "F6");
-        set_default_multiple!(rename_file, "R", "F2");
-        set_default_multiple!(view_file, "V", "F3");
-        set_default_multiple!(new_file, "F", "Ctrl+N");
-        set_default_multiple!(new_directory, "D", "F7");
-
         // Search
-        set_default_single!(search, "Ctrl+F");
         set_default_single!(search_content, "Ctrl+Shift+F");
 
         // Navigation
         set_default_single!(go_home, "~");
-        set_default_single!(go_parent, "Backspace");
-        set_default_single!(refresh, "Ctrl+R");
-
-        // Selection
-        set_default_single!(toggle_selection, "Insert");
-        set_default_single!(select_all, "Ctrl+A");
-
-        // Navigation
         set_default_single!(switch_directory, "Ctrl+/");
 
         // Other
@@ -528,32 +469,8 @@ impl FileManagerKeybindings {
 }
 
 impl GitStatusKeybindings {
-    /// Fill None values with default keybindings
-    pub fn with_defaults(&mut self) {
-        macro_rules! set_default_multiple {
-            ($field:ident, $($default:expr),+) => {
-                if self.$field.is_none() {
-                    self.$field = Some(KeyBinding::Multiple(vec![$($default.into()),+]));
-                }
-            };
-        }
-
-        macro_rules! set_default_single {
-            ($field:ident, $default:expr) => {
-                if self.$field.is_none() {
-                    self.$field = Some(KeyBinding::Single($default.into()));
-                }
-            };
-        }
-
-        set_default_multiple!(stage_file, "Insert", "Ctrl+S");
-        set_default_multiple!(unstage_file, "Delete", "Ctrl+U");
-        set_default_single!(refresh, "Ctrl+R");
-        set_default_single!(next_section, "Tab");
-        set_default_single!(prev_section, "Shift+Tab");
-        set_default_multiple!(revert_file, "Backspace", "Delete");
-        set_default_single!(view_file, "F3");
-    }
+    /// Fill None values with default keybindings (no-op, all fields removed)
+    pub fn with_defaults(&mut self) {}
 }
 
 impl TerminalKeybindings {

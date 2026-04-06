@@ -1215,6 +1215,10 @@ impl Panel for FileManager {
             HotkeyKind::GoBack => FmCommand::GoParent,
             HotkeyKind::Space => FmCommand::ShowFileInfo,
             HotkeyKind::Insert => FmCommand::ToggleSelection,
+            HotkeyKind::SelectAll => FmCommand::SelectAll,
+            HotkeyKind::Cut => FmCommand::ClipboardCut,
+            HotkeyKind::Copy => FmCommand::ClipboardCopy,
+            HotkeyKind::Paste => FmCommand::ClipboardPaste,
             // Navigation
             HotkeyKind::Up => FmCommand::MoveUp,
             HotkeyKind::Down => FmCommand::MoveDown,

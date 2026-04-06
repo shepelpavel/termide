@@ -67,6 +67,14 @@ pub enum HotkeyKind {
     Undo,
     /// Ctrl+Y / Ctrl+Shift+Z — Redo
     Redo,
+    /// Ctrl+A — Select all
+    SelectAll,
+    /// Ctrl+X — Cut (clipboard)
+    Cut,
+    /// Ctrl+C — Copy (clipboard)
+    Copy,
+    /// Ctrl+V — Paste (clipboard)
+    Paste,
 
     // === Navigation ===
     Up,
@@ -424,7 +432,14 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Hotkey {
         hotkey!(HotkeyKind::MoveItem);
     }
 
-    if matches_binding_or_default(&kb.create_item, &key, KeyCode::F(7), KeyModifiers::NONE) {
+    if matches_binding_or_defaults(
+        &kb.create_item,
+        &key,
+        &[
+            (KeyCode::F(7), KeyModifiers::NONE),
+            (KeyCode::Char('n'), KeyModifiers::CONTROL),
+        ],
+    ) {
         hotkey!(HotkeyKind::CreateItem);
     }
 
@@ -522,6 +537,27 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Hotkey {
         ],
     ) {
         hotkey!(HotkeyKind::Redo);
+    }
+
+    if matches_binding_or_default(
+        &kb.select_all,
+        &key,
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL,
+    ) {
+        hotkey!(HotkeyKind::SelectAll);
+    }
+
+    if matches_binding_or_default(&kb.cut, &key, KeyCode::Char('x'), KeyModifiers::CONTROL) {
+        hotkey!(HotkeyKind::Cut);
+    }
+
+    if matches_binding_or_default(&kb.copy, &key, KeyCode::Char('c'), KeyModifiers::CONTROL) {
+        hotkey!(HotkeyKind::Copy);
+    }
+
+    if matches_binding_or_default(&kb.paste, &key, KeyCode::Char('v'), KeyModifiers::CONTROL) {
+        hotkey!(HotkeyKind::Paste);
     }
 
     // =========================================================================

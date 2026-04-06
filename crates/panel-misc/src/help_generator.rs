@@ -8,8 +8,8 @@ use ratatui::{
     text::{Line, Span},
 };
 use termide_config::{
-    Config, EditorKeybindings, FileManagerKeybindings, GitStatusKeybindings, GlobalKeybindings,
-    KeyBinding, TerminalKeybindings,
+    Config, EditorKeybindings, FileManagerKeybindings, GlobalKeybindings, KeyBinding,
+    TerminalKeybindings,
 };
 use termide_i18n;
 use termide_theme::Theme;
@@ -44,7 +44,7 @@ impl HelpGenerator {
             Self::generate_navigation_section(t),
             Self::generate_file_manager_section(&config.file_manager.keybindings, t),
             Self::generate_editor_section(&config.editor.keybindings, t),
-            Self::generate_git_status_section(&config.git_status.keybindings, t),
+            Self::generate_git_status_section(t),
             Self::generate_git_diff_section(t),
             Self::generate_git_log_section(t),
             Self::generate_terminal_section(&config.terminal.keybindings, t),
@@ -200,11 +200,11 @@ impl HelpGenerator {
     ) -> HelpSection {
         let entries = vec![
             HelpEntry {
-                keys: Self::format_keys(&kb.copy_files),
+                keys: "C / F5".to_string(),
                 description: t.help_desc_copy().to_string(),
             },
             HelpEntry {
-                keys: Self::format_keys(&kb.move_files),
+                keys: "M / F6".to_string(),
                 description: t.help_desc_move().to_string(),
             },
             HelpEntry {
@@ -212,11 +212,11 @@ impl HelpGenerator {
                 description: t.help_desc_delete().to_string(),
             },
             HelpEntry {
-                keys: Self::format_keys(&kb.rename_file),
+                keys: "R / F2".to_string(),
                 description: t.help_desc_rename().to_string(),
             },
             HelpEntry {
-                keys: Self::format_keys(&kb.view_file),
+                keys: "V / F3".to_string(),
                 description: t.help_desc_view_file().to_string(),
             },
             HelpEntry {
@@ -224,15 +224,15 @@ impl HelpGenerator {
                 description: t.help_desc_edit_file().to_string(),
             },
             HelpEntry {
-                keys: Self::format_keys(&kb.new_file),
+                keys: "F / Ctrl+N".to_string(),
                 description: t.help_desc_create_file().to_string(),
             },
             HelpEntry {
-                keys: Self::format_keys(&kb.new_directory),
+                keys: "D / F7".to_string(),
                 description: t.help_desc_create_dir().to_string(),
             },
             HelpEntry {
-                keys: Self::format_keys(&kb.search),
+                keys: "Ctrl+F".to_string(),
                 description: t.help_desc_search().to_string(),
             },
             HelpEntry {
@@ -244,11 +244,11 @@ impl HelpGenerator {
                 description: t.help_desc_go_home().to_string(),
             },
             HelpEntry {
-                keys: Self::format_keys(&kb.go_parent),
+                keys: "Backspace".to_string(),
                 description: t.help_desc_parent_dir().to_string(),
             },
             HelpEntry {
-                keys: Self::format_keys(&kb.refresh),
+                keys: "Ctrl+R".to_string(),
                 description: t.help_desc_refresh().to_string(),
             },
             HelpEntry {
@@ -256,11 +256,11 @@ impl HelpGenerator {
                 description: t.help_desc_toggle_hidden().to_string(),
             },
             HelpEntry {
-                keys: Self::format_keys(&kb.toggle_selection),
+                keys: "Insert".to_string(),
                 description: t.help_desc_select().to_string(),
             },
             HelpEntry {
-                keys: Self::format_keys(&kb.select_all),
+                keys: "Ctrl+A".to_string(),
                 description: t.help_desc_select_all().to_string(),
             },
             HelpEntry {
@@ -282,7 +282,7 @@ impl HelpGenerator {
     ) -> HelpSection {
         let entries = vec![
             HelpEntry {
-                keys: Self::format_keys(&kb.save),
+                keys: "F2 / Ctrl+S".to_string(),
                 description: t.help_desc_save().to_string(),
             },
             HelpEntry {
@@ -294,27 +294,27 @@ impl HelpGenerator {
                 description: t.help_desc_reload().to_string(),
             },
             HelpEntry {
-                keys: Self::format_keys(&kb.undo),
+                keys: "Ctrl+Z".to_string(),
                 description: t.help_desc_undo().to_string(),
             },
             HelpEntry {
-                keys: Self::format_keys(&kb.redo),
+                keys: "Ctrl+Y".to_string(),
                 description: t.help_desc_redo().to_string(),
             },
             HelpEntry {
-                keys: Self::format_keys(&kb.copy),
+                keys: "Ctrl+C".to_string(),
                 description: t.help_desc_copy_system().to_string(),
             },
             HelpEntry {
-                keys: Self::format_keys(&kb.cut),
+                keys: "Ctrl+X".to_string(),
                 description: t.help_desc_cut_system().to_string(),
             },
             HelpEntry {
-                keys: Self::format_keys(&kb.paste),
+                keys: "Ctrl+V".to_string(),
                 description: t.help_desc_paste_system().to_string(),
             },
             HelpEntry {
-                keys: Self::format_keys(&kb.select_all),
+                keys: "Ctrl+A".to_string(),
                 description: t.help_desc_select_all().to_string(),
             },
             HelpEntry {
@@ -326,7 +326,7 @@ impl HelpGenerator {
                 description: t.help_desc_toggle_comment().to_string(),
             },
             HelpEntry {
-                keys: Self::format_keys(&kb.search),
+                keys: "Ctrl+F".to_string(),
                 description: t.help_desc_search().to_string(),
             },
             HelpEntry {
@@ -392,29 +392,26 @@ impl HelpGenerator {
     }
 
     /// Generate git status keybindings section.
-    fn generate_git_status_section(
-        kb: &GitStatusKeybindings,
-        t: &dyn termide_i18n::Translation,
-    ) -> HelpSection {
+    fn generate_git_status_section(t: &dyn termide_i18n::Translation) -> HelpSection {
         let entries = vec![
             HelpEntry {
-                keys: Self::format_keys(&kb.stage_file),
+                keys: "S / Insert".to_string(),
                 description: t.help_desc_stage_file().to_string(),
             },
             HelpEntry {
-                keys: Self::format_keys(&kb.unstage_file),
+                keys: "U / Delete".to_string(),
                 description: t.help_desc_unstage_file().to_string(),
             },
             HelpEntry {
-                keys: Self::format_keys(&kb.refresh),
+                keys: "Ctrl+R".to_string(),
                 description: t.help_desc_refresh().to_string(),
             },
             HelpEntry {
-                keys: Self::format_keys(&kb.next_section),
+                keys: "Tab".to_string(),
                 description: t.help_desc_next_section().to_string(),
             },
             HelpEntry {
-                keys: Self::format_keys(&kb.prev_section),
+                keys: "Shift+Tab".to_string(),
                 description: t.help_desc_prev_section().to_string(),
             },
         ];

@@ -87,13 +87,14 @@ pub enum FmCommand {
 impl FmCommand {
     /// Parse a KeyEvent into an FmCommand.
     ///
-    /// This function encapsulates all keyboard shortcuts and their modifiers,
-    /// making it easy to see all bindings in one place and test them independently.
+    /// This function handles FM-specific keys that are NOT covered by the global
+    /// hotkey normalizer. Global actions (F-keys, Ctrl+F, Ctrl+R, Ctrl+A, Ctrl+C/X/V,
+    /// Insert, Backspace, etc.) arrive via handle_action and are mapped there.
     ///
     /// # Arguments
     ///
     /// * `key` - The key event to parse (should already be translated via translate_hotkey)
-    /// * `keybindings` - Configurable keybindings from config
+    /// * `keybindings` - Configurable keybindings from config (only panel-specific ones remain)
     /// * `vim_mode` - Whether vim mode is enabled (adds j/k/g/G navigation)
     pub fn from_key_event(
         key: KeyEvent,
@@ -101,41 +102,10 @@ impl FmCommand {
         vim_mode: bool,
     ) -> Self {
         // =================================================================
-        // Configurable keybindings (checked first)
+        // Configurable panel-specific keybindings
         // =================================================================
 
-        // Select all
-        if matches_binding_or_default(
-            &keybindings.select_all,
-            &key,
-            KeyCode::Char('a'),
-            KeyModifiers::CONTROL,
-        ) {
-            return Self::SelectAll;
-        }
-
-        // Refresh
-        if matches_binding_or_default(
-            &keybindings.refresh,
-            &key,
-            KeyCode::Char('r'),
-            KeyModifiers::CONTROL,
-        ) {
-            return Self::Refresh;
-        }
-
-        // Toggle selection — Insert is handled as Action::Insert in handle_action.
-        // Only check user-configured override here (non-Insert bindings).
-        if matches_binding_or_default(
-            &keybindings.toggle_selection,
-            &key,
-            KeyCode::Insert,
-            KeyModifiers::NONE,
-        ) {
-            return Self::ToggleSelection;
-        }
-
-        // Go to home directory
+        // Go to home directory (~)
         if matches_binding_or_default(
             &keybindings.go_home,
             &key,
@@ -145,40 +115,7 @@ impl FmCommand {
             return Self::GoHomeDir;
         }
 
-        // Go to parent directory
-        if matches_binding_or_default(
-            &keybindings.go_parent,
-            &key,
-            KeyCode::Backspace,
-            KeyModifiers::NONE,
-        ) {
-            return Self::GoParent;
-        }
-
-        // New file (F, Ctrl+N)
-        if matches_binding_or_defaults(
-            &keybindings.new_file,
-            &key,
-            &[
-                (KeyCode::Char('f'), KeyModifiers::NONE),
-                (KeyCode::Char('F'), KeyModifiers::NONE),
-                (KeyCode::Char('n'), KeyModifiers::CONTROL),
-            ],
-        ) {
-            return Self::NewFile;
-        }
-
-        // File search (Ctrl+F)
-        if matches_binding_or_default(
-            &keybindings.search,
-            &key,
-            KeyCode::Char('f'),
-            KeyModifiers::CONTROL,
-        ) {
-            return Self::Search;
-        }
-
-        // Content search
+        // Content search (Ctrl+Shift+F)
         if matches_binding_or_default(
             &keybindings.search_content,
             &key,
@@ -193,7 +130,7 @@ impl FmCommand {
             return Self::GoToPath;
         }
 
-        // Switch directory - open directory switcher modal
+        // Switch directory - open directory switcher modal (Ctrl+/)
         if matches_binding_or_default(
             &keybindings.switch_directory,
             &key,
@@ -203,98 +140,55 @@ impl FmCommand {
             return Self::SwitchDirectory;
         }
 
-        // New directory (D, F7)
-        if matches_binding_or_defaults(
-            &keybindings.new_directory,
-            &key,
-            &[
-                (KeyCode::Char('d'), KeyModifiers::NONE),
-                (KeyCode::Char('D'), KeyModifiers::NONE),
-                (KeyCode::F(7), KeyModifiers::NONE),
-            ],
-        ) {
-            return Self::NewDirectory;
+        // =================================================================
+        // Hardcoded letter shortcuts (FM-specific, no config needed)
+        // =================================================================
+
+        // These are simple letter keys that only make sense in the file manager.
+        // F-key equivalents (F2-F8) are handled by handle_action via the normalizer.
+        if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT {
+            match key.code {
+                // File operations
+                KeyCode::Char('c') | KeyCode::Char('C') => return Self::CopyFiles,
+                KeyCode::Char('m') | KeyCode::Char('M') => return Self::MoveFiles,
+                KeyCode::Char('v') | KeyCode::Char('V') => return Self::ViewFile,
+                KeyCode::Char('e') | KeyCode::Char('E') => return Self::EditFile,
+                KeyCode::Char('r') | KeyCode::Char('R') => return Self::RenameFile,
+                KeyCode::Char('d') | KeyCode::Char('D') => return Self::NewDirectory,
+                KeyCode::Char('f') | KeyCode::Char('F') => return Self::NewFile,
+                // Toggle hidden files (.)
+                KeyCode::Char('.') => {
+                    if matches_binding_or_default(
+                        &keybindings.toggle_hidden,
+                        &key,
+                        KeyCode::Char('.'),
+                        KeyModifiers::NONE,
+                    ) {
+                        return Self::ToggleHidden;
+                    }
+                }
+                // Open external (o/O) — Ctrl+Enter also handled via config
+                KeyCode::Char('o') | KeyCode::Char('O') => return Self::OpenExternal,
+                _ => {}
+            }
         }
 
-        // Delete files (Delete key — F8 handled by handle_action)
-        if matches!(key.code, KeyCode::Delete) {
-            return Self::DeleteFiles;
-        }
-
-        // Rename file (R/r — F2 handled by handle_action as Save→RenameFile)
-        if matches!(key.code, KeyCode::Char('r') | KeyCode::Char('R')) {
-            return Self::RenameFile;
-        }
-
-        // Edit file (E/e — F4 handled by handle_action)
-        if matches!(key.code, KeyCode::Char('e') | KeyCode::Char('E')) {
-            return Self::EditFile;
-        }
-
-        // View file (V, F3)
-        if matches_binding_or_defaults(
-            &keybindings.view_file,
-            &key,
-            &[
-                (KeyCode::Char('v'), KeyModifiers::NONE),
-                (KeyCode::Char('V'), KeyModifiers::NONE),
-                (KeyCode::F(3), KeyModifiers::NONE),
-            ],
-        ) {
-            return Self::ViewFile;
-        }
-
-        // Open external (o, Ctrl+Enter)
+        // Open external via Ctrl+Enter (configurable)
         if matches_binding_or_defaults(
             &keybindings.open_external,
             &key,
-            &[
-                (KeyCode::Char('o'), KeyModifiers::NONE),
-                (KeyCode::Char('O'), KeyModifiers::NONE),
-                (KeyCode::Enter, KeyModifiers::CONTROL),
-            ],
+            &[(KeyCode::Enter, KeyModifiers::CONTROL)],
         ) {
             return Self::OpenExternal;
         }
 
-        // Copy files (C, F5)
-        if matches_binding_or_defaults(
-            &keybindings.copy_files,
-            &key,
-            &[
-                (KeyCode::Char('c'), KeyModifiers::NONE),
-                (KeyCode::Char('C'), KeyModifiers::NONE),
-                (KeyCode::F(5), KeyModifiers::NONE),
-            ],
-        ) {
-            return Self::CopyFiles;
-        }
-
-        // Move files (M, F6)
-        if matches_binding_or_defaults(
-            &keybindings.move_files,
-            &key,
-            &[
-                (KeyCode::Char('m'), KeyModifiers::NONE),
-                (KeyCode::Char('M'), KeyModifiers::NONE),
-                (KeyCode::F(6), KeyModifiers::NONE),
-            ],
-        ) {
-            return Self::MoveFiles;
-        }
-
-        // Toggle hidden files
-        if matches_binding_or_default(
-            &keybindings.toggle_hidden,
-            &key,
-            KeyCode::Char('.'),
-            KeyModifiers::NONE,
-        ) {
-            return Self::ToggleHidden;
+        // Delete files (Delete key — F8 handled by handle_action)
+        if matches!(key.code, KeyCode::Delete) && key.modifiers.is_empty() {
+            return Self::DeleteFiles;
         }
 
         // =================================================================
-        // Non-configurable bindings (navigation, clipboard, basic keys)
+        // Non-configurable bindings (navigation, basic keys)
         // =================================================================
 
         // Vim-aware navigation (j/k/g/G when vim_mode is enabled)
@@ -312,8 +206,6 @@ impl FmCommand {
         }
 
         match (key.code, key.modifiers) {
-            // Space is handled as Action::Space in handle_action
-
             // Selection with Shift
             (KeyCode::Down, KeyModifiers::SHIFT) => Self::MoveDownWithSelection,
             (KeyCode::Up, KeyModifiers::SHIFT) => Self::MoveUpWithSelection,
@@ -342,11 +234,6 @@ impl FmCommand {
 
             // Backspace with any modifiers (go to parent)
             (KeyCode::Backspace, mods) if mods != KeyModifiers::NONE => Self::GoParent,
-
-            // Clipboard
-            (KeyCode::Char('c'), KeyModifiers::CONTROL) => Self::ClipboardCopy,
-            (KeyCode::Char('x'), KeyModifiers::CONTROL) => Self::ClipboardCut,
-            (KeyCode::Char('v'), KeyModifiers::CONTROL) => Self::ClipboardPaste,
 
             // Panel navigation
             (KeyCode::Tab, KeyModifiers::NONE) => Self::NextPanel,
@@ -479,24 +366,6 @@ mod tests {
     }
 
     #[test]
-    fn test_clipboard_keys() {
-        let kb = default_keybindings();
-
-        assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Char('c'), KeyModifiers::CONTROL), &kb, false),
-            FmCommand::ClipboardCopy
-        );
-        assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Char('x'), KeyModifiers::CONTROL), &kb, false),
-            FmCommand::ClipboardCut
-        );
-        assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Char('v'), KeyModifiers::CONTROL), &kb, false),
-            FmCommand::ClipboardPaste
-        );
-    }
-
-    #[test]
     fn test_file_operations() {
         let kb = default_keybindings();
 
@@ -566,12 +435,6 @@ mod tests {
     #[test]
     fn test_search_keys() {
         let kb = default_keybindings();
-
-        // Ctrl+F → file search
-        assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Char('f'), KeyModifiers::CONTROL), &kb, false),
-            FmCommand::Search
-        );
 
         // Ctrl+Shift+F → content search
         assert_eq!(

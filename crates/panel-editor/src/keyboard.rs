@@ -193,14 +193,9 @@ impl EditorCommand {
         }
         // Check configurable bindings first (order matters for conflicts)
         // File operations
-        if !read_only
-            && matches_binding_or_default(
-                &keybindings.save,
-                &key,
-                KeyCode::Char('s'),
-                KeyModifiers::CONTROL,
-            )
-        {
+        // Note: Save (Ctrl+S) is now handled by the global normalizer via handle_action.
+        // The raw key still arrives here when forwarded, so we keep the match.
+        if !read_only && key.code == KeyCode::Char('s') && key.modifiers == KeyModifiers::CONTROL {
             return Self::Save;
         }
         if !read_only
@@ -222,36 +217,20 @@ impl EditorCommand {
             return Self::ReloadFromDisk;
         }
 
-        // Undo/Redo
-        if !read_only
-            && matches_binding_or_default(
-                &keybindings.undo,
-                &key,
-                KeyCode::Char('z'),
-                KeyModifiers::CONTROL,
-            )
-        {
+        // Undo/Redo — now handled globally, but raw keys still arrive when forwarded
+        if !read_only && key.code == KeyCode::Char('z') && key.modifiers == KeyModifiers::CONTROL {
             return Self::Undo;
         }
         if !read_only
-            && (matches_binding_or_default(
-                &keybindings.redo,
-                &key,
-                KeyCode::Char('y'),
-                KeyModifiers::CONTROL,
-            ) || (key.code == KeyCode::Char('z')
-                && key.modifiers == KeyModifiers::CONTROL | KeyModifiers::SHIFT))
+            && ((key.code == KeyCode::Char('y') && key.modifiers == KeyModifiers::CONTROL)
+                || (key.code == KeyCode::Char('z')
+                    && key.modifiers == KeyModifiers::CONTROL | KeyModifiers::SHIFT))
         {
             return Self::Redo;
         }
 
-        // Search & Replace
-        if matches_binding_or_default(
-            &keybindings.search,
-            &key,
-            KeyCode::Char('f'),
-            KeyModifiers::CONTROL,
-        ) {
+        // Search & Replace — Search (Ctrl+F) now handled globally, raw key forwarded
+        if key.code == KeyCode::Char('f') && key.modifiers == KeyModifiers::CONTROL {
             return Self::StartSearch;
         }
         if matches_binding_or_default(
@@ -301,68 +280,46 @@ impl EditorCommand {
             return Self::ReplaceNext;
         }
 
-        // Selection
-        if matches_binding_or_default(
-            &keybindings.select_all,
-            &key,
-            KeyCode::Char('a'),
-            KeyModifiers::CONTROL,
-        ) {
+        // Selection — SelectAll (Ctrl+A) now handled globally, raw key forwarded
+        if key.code == KeyCode::Char('a') && key.modifiers == KeyModifiers::CONTROL {
             return Self::SelectAll;
         }
 
-        // Clipboard - copy with multiple defaults
-        if matches_binding_or_defaults(
-            &keybindings.copy,
-            &key,
-            &[
-                (KeyCode::Char('c'), KeyModifiers::CONTROL),
-                (KeyCode::Insert, KeyModifiers::CONTROL),
-                (
-                    KeyCode::Char('c'),
-                    KeyModifiers::CONTROL | KeyModifiers::SHIFT,
-                ),
-                (
-                    KeyCode::Char('C'),
-                    KeyModifiers::CONTROL | KeyModifiers::SHIFT,
-                ),
-            ],
-        ) {
-            return Self::Copy;
+        // Clipboard — Copy/Cut/Paste (Ctrl+C/X/V) now handled globally, raw keys forwarded.
+        // Keep secondary bindings (Ctrl+Insert, Shift+Delete, Shift+Insert) as hardcoded.
+        {
+            let is_copy = matches!(key.code, KeyCode::Char('c') | KeyCode::Insert)
+                && key.modifiers == KeyModifiers::CONTROL
+                || matches!(key.code, KeyCode::Char('c') | KeyCode::Char('C'))
+                    && key.modifiers == KeyModifiers::CONTROL.union(KeyModifiers::SHIFT);
+            if is_copy {
+                return Self::Copy;
+            }
         }
 
-        // Cut with multiple defaults
         if !read_only
-            && matches_binding_or_defaults(
-                &keybindings.cut,
-                &key,
-                &[
-                    (KeyCode::Char('x'), KeyModifiers::CONTROL),
-                    (KeyCode::Delete, KeyModifiers::SHIFT),
-                ],
+            && matches!(
+                (key.code, key.modifiers),
+                (KeyCode::Char('x'), KeyModifiers::CONTROL)
+                    | (KeyCode::Delete, KeyModifiers::SHIFT)
             )
         {
             return Self::Cut;
         }
 
-        // Paste with multiple defaults
         if !read_only
-            && matches_binding_or_defaults(
-                &keybindings.paste,
-                &key,
-                &[
-                    (KeyCode::Char('v'), KeyModifiers::CONTROL),
-                    (KeyCode::Insert, KeyModifiers::SHIFT),
-                    (
-                        KeyCode::Char('v'),
-                        KeyModifiers::CONTROL | KeyModifiers::SHIFT,
-                    ),
-                    (
-                        KeyCode::Char('V'),
-                        KeyModifiers::CONTROL | KeyModifiers::SHIFT,
-                    ),
-                ],
+            && matches!(
+                (key.code, key.modifiers),
+                (KeyCode::Char('v'), KeyModifiers::CONTROL)
+                    | (KeyCode::Insert, KeyModifiers::SHIFT)
             )
+        {
+            return Self::Paste;
+        }
+        // Also handle Ctrl+Shift+V
+        if !read_only
+            && matches!(key.code, KeyCode::Char('v') | KeyCode::Char('V'))
+            && key.modifiers == KeyModifiers::CONTROL.union(KeyModifiers::SHIFT)
         {
             return Self::Paste;
         }

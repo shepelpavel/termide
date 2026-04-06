@@ -1730,7 +1730,11 @@ impl Panel for Editor {
             }
             // Navigation and other actions — forward raw key events
             // The editor's EditorCommand::from_key_event handles all key routing
-            HotkeyKind::Undo
+            HotkeyKind::SelectAll
+            | HotkeyKind::Cut
+            | HotkeyKind::Copy
+            | HotkeyKind::Paste
+            | HotkeyKind::Undo
             | HotkeyKind::Redo
             | HotkeyKind::Cancel
             | HotkeyKind::Search

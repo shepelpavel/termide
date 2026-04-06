@@ -16,7 +16,7 @@ use std::any::Any;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -25,10 +25,7 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthStr;
 
-use termide_config::{
-    is_go_end, is_go_home, is_move_down, is_move_up, matches_binding_or_defaults, Config,
-    GitStatusKeybindings,
-};
+use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up, Config};
 use termide_core::{
     CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel, ThemeColors,
     WidthPreference,
@@ -66,8 +63,6 @@ pub struct GitStatusPanel {
     viewport_height: usize,
     /// Cached theme colors for rendering
     cached_theme: ThemeColors,
-    /// Cached keybindings for keyboard handling
-    keybindings: GitStatusKeybindings,
     /// Last render area (for mouse handling)
     last_area: Rect,
     /// Status message
@@ -156,7 +151,6 @@ impl GitStatusPanel {
             scroll_offset: 0,
             viewport_height: 0,
             cached_theme: ThemeColors::default(),
-            keybindings: GitStatusKeybindings::default(),
             last_area: Rect::default(),
             status_message: None,
             repo_dropdown_open: false,
@@ -872,7 +866,6 @@ impl Panel for GitStatusPanel {
 
     fn prepare_render(&mut self, theme: &Theme, config: std::sync::Arc<Config>) {
         self.cached_theme = ThemeColors::from(theme);
-        self.keybindings = config.git_status.keybindings.clone();
         self.vim_mode = config.general.vim_mode;
     }
 
@@ -1250,19 +1243,8 @@ impl Panel for GitStatusPanel {
         // Clear status message on any key
         self.status_message = None;
 
-        let kb = &self.keybindings;
-
-        // Configurable keybindings (checked first)
-
-        // Stage file (Ctrl+S — Insert is handled as Action::Insert in handle_action)
-        if matches_binding_or_defaults(
-            &kb.stage_file,
-            &key,
-            &[
-                (KeyCode::Insert, KeyModifiers::NONE),
-                (KeyCode::Char('s'), KeyModifiers::CONTROL),
-            ],
-        ) {
+        // Stage file (S/s letter shortcut — Insert is handled as Action::Insert in handle_action)
+        if key.modifiers.is_empty() && matches!(key.code, KeyCode::Char('s') | KeyCode::Char('S')) {
             if self.current_section == Section::Files
                 && matches!(
                     self.get_selection(),
@@ -1274,12 +1256,8 @@ impl Panel for GitStatusPanel {
             return vec![];
         }
 
-        // Unstage file (Ctrl+U) — Delete is handled as Action::DeleteItem
-        if matches_binding_or_defaults(
-            &kb.unstage_file,
-            &key,
-            &[(KeyCode::Char('u'), KeyModifiers::CONTROL)],
-        ) {
+        // Unstage file (U/u letter shortcut — Delete is handled as Action::DeleteItem)
+        if key.modifiers.is_empty() && matches!(key.code, KeyCode::Char('u') | KeyCode::Char('U')) {
             if self.current_section == Section::Files
                 && matches!(
                     self.get_selection(),
