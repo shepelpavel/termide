@@ -141,11 +141,71 @@ impl FmCommand {
         }
 
         // =================================================================
+        // F-key universal actions (previously handled by handle_action)
+        // =================================================================
+        match (key.code, key.modifiers) {
+            (KeyCode::F(2), KeyModifiers::NONE) => return Self::RenameFile,
+            (KeyCode::F(3), KeyModifiers::NONE) => return Self::ViewFile,
+            (KeyCode::F(4), KeyModifiers::NONE) => return Self::EditFile,
+            (KeyCode::F(5), KeyModifiers::NONE) => return Self::CopyFiles,
+            (KeyCode::F(6), KeyModifiers::NONE) => return Self::MoveFiles,
+            (KeyCode::F(7), KeyModifiers::NONE) => return Self::NewDirectory,
+            (KeyCode::F(8), KeyModifiers::NONE) => return Self::DeleteFiles,
+            (KeyCode::F(12), KeyModifiers::NONE) => return Self::ShowFileInfo,
+            _ => {}
+        }
+
+        // Ctrl+S → rename (same as F2)
+        if key.code == KeyCode::Char('s') && key.modifiers == KeyModifiers::CONTROL {
+            return Self::RenameFile;
+        }
+        // Ctrl+N → new directory (same as F7)
+        if key.code == KeyCode::Char('n') && key.modifiers == KeyModifiers::CONTROL {
+            return Self::NewDirectory;
+        }
+
+        // Ctrl+F → search
+        if key.code == KeyCode::Char('f') && key.modifiers == KeyModifiers::CONTROL {
+            return Self::Search;
+        }
+        // Ctrl+R → refresh
+        if key.code == KeyCode::Char('r') && key.modifiers == KeyModifiers::CONTROL {
+            return Self::Refresh;
+        }
+        // Ctrl+A → select all
+        if key.code == KeyCode::Char('a') && key.modifiers == KeyModifiers::CONTROL {
+            return Self::SelectAll;
+        }
+        // Ctrl+C → clipboard copy
+        if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
+            return Self::ClipboardCopy;
+        }
+        // Ctrl+X → clipboard cut
+        if key.code == KeyCode::Char('x') && key.modifiers == KeyModifiers::CONTROL {
+            return Self::ClipboardCut;
+        }
+        // Ctrl+V → clipboard paste
+        if key.code == KeyCode::Char('v') && key.modifiers == KeyModifiers::CONTROL {
+            return Self::ClipboardPaste;
+        }
+        // Insert → toggle selection
+        if key.code == KeyCode::Insert && key.modifiers.is_empty() {
+            return Self::ToggleSelection;
+        }
+        // Space → show file info
+        if key.code == KeyCode::Char(' ') && key.modifiers.is_empty() {
+            return Self::ShowFileInfo;
+        }
+        // Backspace → go parent
+        if key.code == KeyCode::Backspace && key.modifiers.is_empty() {
+            return Self::GoParent;
+        }
+
+        // =================================================================
         // Hardcoded letter shortcuts (FM-specific, no config needed)
         // =================================================================
 
         // These are simple letter keys that only make sense in the file manager.
-        // F-key equivalents (F2-F8) are handled by handle_action via the normalizer.
         if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT {
             match key.code {
                 // File operations
@@ -182,7 +242,7 @@ impl FmCommand {
             return Self::OpenExternal;
         }
 
-        // Delete files (Delete key — F8 handled by handle_action)
+        // Delete files (Delete key — F8 also handled above)
         if matches!(key.code, KeyCode::Delete) && key.modifiers.is_empty() {
             return Self::DeleteFiles;
         }
@@ -399,12 +459,18 @@ mod tests {
             FmCommand::DeleteFiles
         );
 
-        // F-keys (F2-F8) are handled by handle_action via Action normalizer,
-        // NOT by from_key_event. They arrive as Action::Save/View/EditItem/etc.
-        // and are mapped in handle_action(). from_key_event returns None for them.
+        // F-keys (F2-F8, F12) are now handled directly by from_key_event.
+        assert_eq!(
+            FmCommand::from_key_event(key(KeyCode::F(2), KeyModifiers::NONE), &kb, false),
+            FmCommand::RenameFile
+        );
         assert_eq!(
             FmCommand::from_key_event(key(KeyCode::F(4), KeyModifiers::NONE), &kb, false),
-            FmCommand::None
+            FmCommand::EditFile
+        );
+        assert_eq!(
+            FmCommand::from_key_event(key(KeyCode::F(5), KeyModifiers::NONE), &kb, false),
+            FmCommand::CopyFiles
         );
     }
 
@@ -451,12 +517,12 @@ mod tests {
     }
 
     #[test]
-    fn test_unknown_key_returns_none() {
+    fn test_f12_returns_show_file_info() {
         let kb = default_keybindings();
 
         assert_eq!(
             FmCommand::from_key_event(key(KeyCode::F(12), KeyModifiers::NONE), &kb, false),
-            FmCommand::None
+            FmCommand::ShowFileInfo
         );
     }
 }

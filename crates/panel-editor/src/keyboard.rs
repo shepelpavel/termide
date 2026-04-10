@@ -191,9 +191,11 @@ impl EditorCommand {
         }
         // Check configurable bindings first (order matters for conflicts)
         // File operations
-        // Note: Save (Ctrl+S) is now handled by the global normalizer via handle_action.
-        // The raw key still arrives here when forwarded, so we keep the match.
-        if !read_only && key.code == KeyCode::Char('s') && key.modifiers == KeyModifiers::CONTROL {
+        // F2 and Ctrl+S both save
+        if !read_only
+            && ((key.code == KeyCode::Char('s') && key.modifiers == KeyModifiers::CONTROL)
+                || (key.code == KeyCode::F(2) && key.modifiers.is_empty()))
+        {
             return Self::Save;
         }
         if !read_only

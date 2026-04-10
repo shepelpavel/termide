@@ -3188,6 +3188,7 @@ dependencies = [
  "ratatui",
  "termide-config",
  "termide-file-ops",
+ "termide-keyboard",
  "termide-session",
  "termide-theme",
  "termide-vfs",
