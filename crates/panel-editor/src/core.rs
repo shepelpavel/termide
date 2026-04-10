@@ -822,15 +822,6 @@ impl Editor {
         }
     }
 
-    /// Toggle inline blame annotation for the current file (Alt+B).
-    pub fn toggle_blame(&mut self) {
-        let repo = self.get_or_compute_repo_root().cloned();
-        let file = self.file_path().map(|p| p.to_path_buf());
-        if let (Some(repo), Some(file)) = (repo, file) {
-            self.git.toggle_blame(&repo, &file);
-        }
-    }
-
     /// Check if the file was modified externally (outside of this editor)
     pub fn check_external_modification(&mut self) {
         // Skip check for remote files - temp file changes don't indicate external edits
@@ -1689,6 +1680,7 @@ impl Panel for Editor {
         self.config.tab_size = config.editor.tab_size;
         self.config.auto_indent = config.editor.auto_indent;
         self.config.auto_close_brackets = config.editor.auto_close_brackets;
+        self.git.blame_enabled = config.editor.show_blame;
 
         // Sync highlight cache with theme's light/dark mode and default foreground color
         self.render_cache

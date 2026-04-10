@@ -135,6 +135,10 @@ pub struct EditorSettings {
     #[serde(default = "default_large_file_threshold_mb")]
     pub large_file_threshold_mb: u64,
 
+    /// Show inline git blame annotations
+    #[serde(default = "default_true")]
+    pub show_blame: bool,
+
     /// Editor keyboard shortcuts
     #[serde(default)]
     pub keybindings: EditorKeybindings,
@@ -438,6 +442,7 @@ impl From<LegacyConfig> for Config {
                 auto_indent: true,
                 auto_close_brackets: true,
                 large_file_threshold_mb: legacy.large_file_threshold_mb,
+                show_blame: true,
                 keybindings: EditorKeybindings::default(),
             },
             file_manager: FileManagerSettings {
@@ -485,6 +490,7 @@ impl Default for EditorSettings {
             auto_indent: true,
             auto_close_brackets: true,
             large_file_threshold_mb: default_large_file_threshold_mb(),
+            show_blame: true,
             keybindings: EditorKeybindings::default(),
         }
     }

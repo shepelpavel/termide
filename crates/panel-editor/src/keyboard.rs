@@ -118,8 +118,6 @@ pub enum EditorCommand {
     BackspaceCompletion,
 
     // Git
-    /// Toggle inline blame annotation on the cursor line (no default key)
-    ToggleBlame,
 
     // LSP Hover
     /// Show hover documentation (Ctrl+K)
@@ -354,13 +352,6 @@ impl EditorCommand {
             KeyModifiers::CONTROL,
         ) {
             return Self::TriggerCompletion;
-        }
-
-        // Toggle blame (no default — configure via [editor.keybindings] show_blame)
-        if let Some(ref binding) = keybindings.show_blame {
-            if binding.matches(&key) {
-                return Self::ToggleBlame;
-            }
         }
 
         // LSP Hover (configurable, default Ctrl+K)
@@ -825,10 +816,6 @@ impl EditorCommand {
             }
             Self::BackspaceCompletion => {
                 editor.backspace_completion();
-                Ok(())
-            }
-            Self::ToggleBlame => {
-                editor.toggle_blame();
                 Ok(())
             }
             Self::ShowHover => {
