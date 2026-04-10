@@ -1,6 +1,6 @@
 //! Keyboard handling for Git Stash Panel.
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent};
 
 use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up};
 use termide_core::PanelEvent;
@@ -28,15 +28,17 @@ impl GitStashPanel {
             return vec![];
         }
 
+        if self.hotkeys.matches("refresh", &key) {
+            self.refresh();
+            return vec![];
+        }
+
         match key.code {
             KeyCode::Enter => {
                 return self.action_new();
             }
             KeyCode::Esc => {
                 return vec![PanelEvent::ClosePanel];
-            }
-            KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.refresh();
             }
             _ => {}
         }
@@ -76,18 +78,21 @@ impl GitStashPanel {
             return vec![];
         }
 
+        // Configurable actions via HotkeyTable
+        if self.hotkeys.matches("new_stash", &key) {
+            return self.action_new();
+        }
+        if self.hotkeys.matches("refresh", &key) {
+            self.refresh();
+            return vec![];
+        }
+
         match key.code {
             KeyCode::Enter => {
                 return self.action_show_context_menu();
             }
-            KeyCode::Char('n') | KeyCode::Char('N') => {
-                return self.action_new();
-            }
             KeyCode::Esc => {
                 return vec![PanelEvent::ClosePanel];
-            }
-            KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.refresh();
             }
             _ => {}
         }

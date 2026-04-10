@@ -16,8 +16,8 @@ use ratatui::{buffer::Buffer, layout::Rect, widgets::Widget};
 
 use termide_config::Config;
 use termide_core::{
-    CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel, ThemeColors,
-    WidthPreference,
+    CommandResult, HotkeyTable, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel,
+    ThemeColors, WidthPreference,
 };
 use termide_file_ops::OperationId;
 use termide_state::{ActiveOperation, OperationProgress, OperationType};
@@ -95,6 +95,8 @@ pub struct OperationsPanel {
     card_areas: Vec<(usize, Rect)>,
     /// Snapshot of operations for rendering (updated before each render)
     operations: Vec<OperationSnapshot>,
+    /// Hotkey table for configurable keyboard shortcuts
+    hotkeys: HotkeyTable,
 }
 
 impl OperationsPanel {
@@ -108,6 +110,7 @@ impl OperationsPanel {
             last_area: Rect::default(),
             card_areas: Vec::new(),
             operations: Vec::new(),
+            hotkeys: HotkeyTable::default(),
         }
     }
 
@@ -254,6 +257,8 @@ impl Panel for OperationsPanel {
     fn prepare_render(&mut self, theme: &Theme, config: std::sync::Arc<Config>) {
         self.cached_theme = ThemeColors::from(theme);
         self.vim_mode = config.general.vim_mode;
+        // Operations panel has no configurable hotkeys — vim navigation only
+        let _ = &self.hotkeys;
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {

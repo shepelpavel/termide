@@ -25,10 +25,10 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthStr;
 
-use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up, Config};
+use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up, Config, KeyBinding};
 use termide_core::{
-    CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel, ThemeColors,
-    WidthPreference,
+    CommandResult, HotkeyTable, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel,
+    ThemeColors, WidthPreference,
 };
 use termide_git::{self as git, RepoManager, StagedFile, UnstagedFile};
 use termide_modal::ActiveModal;
@@ -122,6 +122,24 @@ pub struct GitStatusPanel {
     pending_init_fetch: bool,
     /// Cached stash count (for button label)
     stash_count: usize,
+    /// Hotkey table for configurable keyboard shortcuts
+    hotkeys: HotkeyTable,
+}
+
+/// Build HotkeyTable for the git status panel.
+fn build_git_status_hotkey_table() -> HotkeyTable {
+    let mut t = HotkeyTable::new();
+
+    t.insert("stage", &Some(KeyBinding::Single("S".into())));
+    t.insert("unstage", &Some(KeyBinding::Single("U".into())));
+    t.insert("view", &Some(KeyBinding::Single("F3".into())));
+    t.insert("edit", &Some(KeyBinding::Single("F4".into())));
+    t.insert(
+        "info",
+        &Some(KeyBinding::Multiple(vec!["Space".into(), "F12".into()])),
+    );
+    t.insert("revert", &Some(KeyBinding::Single("Backspace".into())));
+    t
 }
 
 impl GitStatusPanel {
@@ -180,6 +198,7 @@ impl GitStatusPanel {
             staged: FileTree::new(),
             pending_init_fetch: true,
             stash_count: 0,
+            hotkeys: HotkeyTable::default(),
         };
 
         panel.refresh();
@@ -867,6 +886,7 @@ impl Panel for GitStatusPanel {
     fn prepare_render(&mut self, theme: &Theme, config: std::sync::Arc<Config>) {
         self.cached_theme = ThemeColors::from(theme);
         self.vim_mode = config.general.vim_mode;
+        self.hotkeys = build_git_status_hotkey_table();
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
@@ -976,8 +996,8 @@ impl Panel for GitStatusPanel {
         // Clear status message on any key
         self.status_message = None;
 
-        // Stage file (S/s letter shortcut)
-        if key.modifiers.is_empty() && matches!(key.code, KeyCode::Char('s') | KeyCode::Char('S')) {
+        // Configurable actions via HotkeyTable
+        if self.hotkeys.matches("stage", &key) {
             if self.current_section == Section::Files
                 && matches!(
                     self.get_selection(),
@@ -989,8 +1009,7 @@ impl Panel for GitStatusPanel {
             return vec![];
         }
 
-        // Unstage file (U/u letter shortcut — Delete is handled as Action::DeleteItem)
-        if key.modifiers.is_empty() && matches!(key.code, KeyCode::Char('u') | KeyCode::Char('U')) {
+        if self.hotkeys.matches("unstage", &key) {
             if self.current_section == Section::Files
                 && matches!(
                     self.get_selection(),
@@ -1000,6 +1019,19 @@ impl Panel for GitStatusPanel {
                 self.do_unstage();
             }
             return vec![];
+        }
+
+        if self.hotkeys.matches("view", &key) {
+            return self.open_file(false);
+        }
+        if self.hotkeys.matches("edit", &key) {
+            return self.open_file(true);
+        }
+        if self.hotkeys.matches("info", &key) {
+            return self.show_file_properties();
+        }
+        if self.hotkeys.matches("revert", &key) && self.current_section == Section::Files {
+            return self.initiate_revert();
         }
 
         // Vim-aware navigation (j/k/g/G when vim_mode is enabled)
@@ -1031,20 +1063,6 @@ impl Panel for GitStatusPanel {
             }
             KeyCode::Enter => {
                 return self.handle_enter_key();
-            }
-            KeyCode::Backspace => {
-                if self.current_section == Section::Files {
-                    return self.initiate_revert();
-                }
-            }
-            KeyCode::F(3) => {
-                return self.open_file(false);
-            }
-            KeyCode::F(4) => {
-                return self.open_file(true);
-            }
-            KeyCode::Char(' ') | KeyCode::F(12) => {
-                return self.show_file_properties();
             }
             _ => {}
         }

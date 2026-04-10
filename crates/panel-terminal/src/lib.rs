@@ -35,10 +35,10 @@ use std::thread;
 use terminal::{Cell, CellStyle, MouseTrackingMode, TerminalScreen};
 use vte::Parser;
 
-use termide_config::{matches_binding_or_default, Config, TerminalKeybindings};
+use termide_config::{Config, KeyBinding, TerminalKeybindings};
 use termide_core::{
-    get_terminal_caps, CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, Searchable,
-    SessionPanel, WidthPreference,
+    get_terminal_caps, CommandResult, HotkeyTable, Panel, PanelCommand, PanelEvent, RenderContext,
+    Searchable, SessionPanel, WidthPreference,
 };
 use termide_theme::Theme;
 use termide_ui::{extract_hex_color_at_col, ColorPreview, ScrollBar};
@@ -101,6 +101,35 @@ pub struct Terminal {
     panel_bounds: Option<Rect>,
     /// Active color preview popup (shown while Ctrl+click is held on a hex color)
     color_preview: Option<ColorPreview>,
+    /// Hotkey table for configurable keyboard shortcuts
+    hotkeys: HotkeyTable,
+}
+
+/// Helper: return config binding or fallback default.
+fn or_default(cfg: &Option<KeyBinding>, default: &str) -> Option<KeyBinding> {
+    cfg.clone().or(Some(KeyBinding::Single(default.into())))
+}
+
+/// Build HotkeyTable for the terminal panel from config.
+fn build_terminal_hotkey_table(config: &Config) -> HotkeyTable {
+    let mut t = HotkeyTable::new();
+    let kb = &config.terminal.keybindings;
+
+    t.insert("paste", &or_default(&kb.paste, "Ctrl+Shift+V"));
+    t.insert("copy", &or_default(&kb.copy, "Ctrl+Shift+C"));
+    t.insert("search", &or_default(&kb.search, "Ctrl+F"));
+    t.insert(
+        "switch_directory",
+        &Some(KeyBinding::Single("Ctrl+/".into())),
+    );
+    t.insert("scroll_up", &or_default(&kb.scroll_up, "Shift+PageUp"));
+    t.insert(
+        "scroll_down",
+        &or_default(&kb.scroll_down, "Shift+PageDown"),
+    );
+    t.insert("scroll_top", &or_default(&kb.scroll_top, "Shift+Home"));
+    t.insert("scroll_bottom", &or_default(&kb.scroll_bottom, "Shift+End"));
+    t
 }
 
 impl Terminal {
@@ -209,6 +238,7 @@ impl Terminal {
             last_mouse_position: None,
             panel_bounds: None,
             color_preview: None,
+            hotkeys: HotkeyTable::default(),
         }
     }
 
@@ -1359,6 +1389,7 @@ impl Panel for Terminal {
         if self.keybindings != config.terminal.keybindings {
             self.keybindings = config.terminal.keybindings.clone();
         }
+        self.hotkeys = build_terminal_hotkey_table(&config);
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
@@ -1439,74 +1470,42 @@ impl Panel for Terminal {
         // Translate Cyrillic to Latin for hotkeys
         let key = termide_keyboard::translate_hotkey(key);
 
-        let kb = &self.keybindings;
-
-        // Configurable clipboard operations
-        // Paste (Ctrl+Shift+V)
-        if matches_binding_or_default(
-            &kb.paste,
-            &key,
-            KeyCode::Char('V'),
-            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
-        ) {
+        // Configurable actions via HotkeyTable
+        if self.hotkeys.matches("paste", &key) {
             let _ = self.paste_from_clipboard();
             return vec![];
         }
-
-        // Copy (Ctrl+Shift+C)
-        if matches_binding_or_default(
-            &kb.copy,
-            &key,
-            KeyCode::Char('C'),
-            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
-        ) {
+        if self.hotkeys.matches("copy", &key) {
             let _ = self.copy_selection_to_clipboard();
             return vec![];
         }
-
-        // Search (Ctrl+F)
-        if matches_binding_or_default(&kb.search, &key, KeyCode::Char('f'), KeyModifiers::CONTROL) {
+        if self.hotkeys.matches("search", &key) {
             return vec![PanelEvent::ShowSearch {
                 mode: termide_core::SearchMode::Text,
                 initial_query: None,
             }];
         }
-
-        // Directory switcher (Ctrl+/)
-        if key.code == KeyCode::Char('/') && key.modifiers == KeyModifiers::CONTROL {
+        if self.hotkeys.matches("switch_directory", &key) {
             return vec![PanelEvent::OpenDirectorySwitcher];
         }
-
-        // Scroll up (Shift+PageUp)
-        if matches_binding_or_default(&kb.scroll_up, &key, KeyCode::PageUp, KeyModifiers::SHIFT) {
+        if self.hotkeys.matches("scroll_up", &key) {
             let mut screen = self.write_screen();
             let scroll_amount = screen.rows.saturating_sub(1);
             screen.scroll_view_up(scroll_amount);
             return vec![];
         }
-
-        // Scroll down (Shift+PageDown)
-        if matches_binding_or_default(
-            &kb.scroll_down,
-            &key,
-            KeyCode::PageDown,
-            KeyModifiers::SHIFT,
-        ) {
+        if self.hotkeys.matches("scroll_down", &key) {
             let mut screen = self.write_screen();
             let scroll_amount = screen.rows.saturating_sub(1);
             screen.scroll_view_down(scroll_amount);
             return vec![];
         }
-
-        // Scroll top (Shift+Home)
-        if matches_binding_or_default(&kb.scroll_top, &key, KeyCode::Home, KeyModifiers::SHIFT) {
+        if self.hotkeys.matches("scroll_top", &key) {
             let mut screen = self.write_screen();
             screen.scroll_offset = screen.scrollback.len();
             return vec![];
         }
-
-        // Scroll bottom (Shift+End)
-        if matches_binding_or_default(&kb.scroll_bottom, &key, KeyCode::End, KeyModifiers::SHIFT) {
+        if self.hotkeys.matches("scroll_bottom", &key) {
             self.write_screen().reset_scroll();
             return vec![];
         }

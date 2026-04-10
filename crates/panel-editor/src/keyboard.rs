@@ -5,7 +5,7 @@
 
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use termide_config::{matches_binding_or_default, matches_binding_or_defaults, EditorKeybindings};
+use termide_core::HotkeyTable;
 
 /// Editor command representing a user action.
 ///
@@ -142,8 +142,8 @@ pub enum EditorCommand {
 impl EditorCommand {
     /// Parse a KeyEvent into an EditorCommand.
     ///
-    /// This function encapsulates all keyboard shortcuts and their modifiers,
-    /// making it easy to see all bindings in one place and test them independently.
+    /// Configurable actions are resolved via HotkeyTable.
+    /// Non-configurable navigation (arrows, shift+arrows) remains hardcoded.
     ///
     /// # Arguments
     ///
@@ -152,14 +152,14 @@ impl EditorCommand {
     /// * `has_search` - Whether there's an active search
     /// * `has_selection` - Whether there's an active text selection
     /// * `has_completion` - Whether completion popup is open
-    /// * `keybindings` - Configurable keybindings from config
+    /// * `hotkeys` - HotkeyTable built from config
     pub fn from_key_event(
         key: KeyEvent,
         read_only: bool,
         has_search: bool,
         has_selection: bool,
         has_completion: bool,
-        keybindings: &EditorKeybindings,
+        hotkeys: &HotkeyTable,
     ) -> Self {
         // When completion popup is open, intercept navigation keys
         if has_completion {
@@ -189,219 +189,94 @@ impl EditorCommand {
                 _ => {}
             }
         }
-        // Check configurable bindings first (order matters for conflicts)
+
+        // =================================================================
+        // Configurable actions from HotkeyTable
+        // =================================================================
+
         // File operations
-        // F2 and Ctrl+S both save
-        if !read_only
-            && ((key.code == KeyCode::Char('s') && key.modifiers == KeyModifiers::CONTROL)
-                || (key.code == KeyCode::F(2) && key.modifiers.is_empty()))
-        {
+        if !read_only && hotkeys.matches("save", &key) {
             return Self::Save;
         }
-        if !read_only
-            && matches_binding_or_default(
-                &keybindings.save_as,
-                &key,
-                KeyCode::Char('S'),
-                KeyModifiers::CONTROL | KeyModifiers::SHIFT,
-            )
-        {
+        if !read_only && hotkeys.matches("save_as", &key) {
             return Self::SaveAs;
         }
-        if matches_binding_or_default(
-            &keybindings.reload,
-            &key,
-            KeyCode::Char('R'),
-            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
-        ) {
+        if hotkeys.matches("reload", &key) {
             return Self::ReloadFromDisk;
         }
 
-        // Undo/Redo — now handled globally, but raw keys still arrive when forwarded
-        if !read_only && key.code == KeyCode::Char('z') && key.modifiers == KeyModifiers::CONTROL {
+        // Undo/Redo
+        if !read_only && hotkeys.matches("undo", &key) {
             return Self::Undo;
         }
-        if !read_only
-            && ((key.code == KeyCode::Char('y') && key.modifiers == KeyModifiers::CONTROL)
-                || (key.code == KeyCode::Char('z')
-                    && key.modifiers == KeyModifiers::CONTROL | KeyModifiers::SHIFT))
-        {
+        if !read_only && hotkeys.matches("redo", &key) {
             return Self::Redo;
         }
 
-        // Search & Replace — Search (Ctrl+F) now handled globally, raw key forwarded
-        if key.code == KeyCode::Char('f') && key.modifiers == KeyModifiers::CONTROL {
+        // Search & Replace
+        if hotkeys.matches("search", &key) {
             return Self::StartSearch;
         }
-        if matches_binding_or_default(
-            &keybindings.search_next,
-            &key,
-            KeyCode::F(3),
-            KeyModifiers::NONE,
-        ) {
+        if hotkeys.matches("search_next", &key) {
             return Self::SearchNextOrOpen;
         }
-        if matches_binding_or_default(
-            &keybindings.search_prev,
-            &key,
-            KeyCode::F(3),
-            KeyModifiers::SHIFT,
-        ) {
+        if hotkeys.matches("search_prev", &key) {
             return Self::SearchPrevOrOpen;
         }
-        if !read_only
-            && matches_binding_or_default(
-                &keybindings.replace,
-                &key,
-                KeyCode::Char('h'),
-                KeyModifiers::CONTROL,
-            )
-        {
+        if !read_only && hotkeys.matches("replace", &key) {
             return Self::StartReplace;
         }
-        if !read_only
-            && matches_binding_or_default(
-                &keybindings.replace_all,
-                &key,
-                KeyCode::Char('r'),
-                KeyModifiers::CONTROL | KeyModifiers::ALT,
-            )
-        {
+        if !read_only && hotkeys.matches("replace_all", &key) {
             return Self::ReplaceAll;
         }
-        if !read_only
-            && matches_binding_or_default(
-                &keybindings.replace_current,
-                &key,
-                KeyCode::Char('r'),
-                KeyModifiers::CONTROL,
-            )
-        {
+        if !read_only && hotkeys.matches("replace_current", &key) {
             return Self::ReplaceNext;
         }
 
-        // Selection — SelectAll (Ctrl+A) now handled globally, raw key forwarded
-        if key.code == KeyCode::Char('a') && key.modifiers == KeyModifiers::CONTROL {
+        // Selection
+        if hotkeys.matches("select_all", &key) {
             return Self::SelectAll;
         }
 
-        // Clipboard — Copy/Cut/Paste (Ctrl+C/X/V) now handled globally, raw keys forwarded.
-        // Keep secondary bindings (Ctrl+Insert, Shift+Delete, Shift+Insert) as hardcoded.
-        {
-            let is_copy = matches!(key.code, KeyCode::Char('c') | KeyCode::Insert)
-                && key.modifiers == KeyModifiers::CONTROL
-                || matches!(key.code, KeyCode::Char('c') | KeyCode::Char('C'))
-                    && key.modifiers == KeyModifiers::CONTROL.union(KeyModifiers::SHIFT);
-            if is_copy {
-                return Self::Copy;
-            }
+        // Clipboard
+        if hotkeys.matches("copy", &key) {
+            return Self::Copy;
         }
-
-        if !read_only
-            && matches!(
-                (key.code, key.modifiers),
-                (KeyCode::Char('x'), KeyModifiers::CONTROL)
-                    | (KeyCode::Delete, KeyModifiers::SHIFT)
-            )
-        {
+        if !read_only && hotkeys.matches("cut", &key) {
             return Self::Cut;
         }
-
-        if !read_only
-            && matches!(
-                (key.code, key.modifiers),
-                (KeyCode::Char('v'), KeyModifiers::CONTROL)
-                    | (KeyCode::Insert, KeyModifiers::SHIFT)
-            )
-        {
-            return Self::Paste;
-        }
-        // Also handle Ctrl+Shift+V
-        if !read_only
-            && matches!(key.code, KeyCode::Char('v') | KeyCode::Char('V'))
-            && key.modifiers == KeyModifiers::CONTROL.union(KeyModifiers::SHIFT)
-        {
+        if !read_only && hotkeys.matches("paste", &key) {
             return Self::Paste;
         }
 
         // Advanced editing
-        if !read_only
-            && matches_binding_or_default(
-                &keybindings.duplicate_line,
-                &key,
-                KeyCode::Char('d'),
-                KeyModifiers::CONTROL,
-            )
-        {
+        if !read_only && hotkeys.matches("duplicate_line", &key) {
             return Self::DuplicateLine;
         }
-        if !read_only
-            && matches_binding_or_default(
-                &keybindings.toggle_comment,
-                &key,
-                KeyCode::Char('/'),
-                KeyModifiers::CONTROL,
-            )
-        {
+        if !read_only && hotkeys.matches("toggle_comment", &key) {
             return Self::ToggleComment;
         }
 
-        // LSP Completion trigger (configurable, default Ctrl+.)
-        if matches_binding_or_default(
-            &keybindings.trigger_completion,
-            &key,
-            KeyCode::Char('.'),
-            KeyModifiers::CONTROL,
-        ) {
+        // LSP
+        if hotkeys.matches("trigger_completion", &key) {
             return Self::TriggerCompletion;
         }
-
-        // LSP Hover (configurable, default Ctrl+K)
-        if matches_binding_or_default(
-            &keybindings.show_hover,
-            &key,
-            KeyCode::Char('k'),
-            KeyModifiers::CONTROL,
-        ) {
+        if hotkeys.matches("show_hover", &key) {
             return Self::ShowHover;
         }
-
-        // LSP Go-to-Definition (configurable, default F12)
-        if matches_binding_or_default(
-            &keybindings.goto_definition,
-            &key,
-            KeyCode::F(12),
-            KeyModifiers::NONE,
-        ) {
+        if hotkeys.matches("goto_definition", &key) {
             return Self::GotoDefinition;
         }
-
-        // LSP Find References (configurable, default Shift+F12)
-        // F(24) is the fallback for terminals (e.g. gnome-terminal/VTE) that encode
-        // Shift+F12 as F24 instead of F12+SHIFT.
-        if matches_binding_or_defaults(
-            &keybindings.find_references,
-            &key,
-            &[
-                (KeyCode::F(12), KeyModifiers::SHIFT),
-                (KeyCode::F(24), KeyModifiers::NONE),
-            ],
-        ) {
+        if hotkeys.matches("find_references", &key) {
             return Self::FindReferences;
         }
-
-        // LSP Rename Symbol (configurable, default F4)
-        // F4 = EditItem globally, but Editor intercepts it for rename_symbol
-        if matches_binding_or_default(
-            &keybindings.rename_symbol,
-            &key,
-            KeyCode::F(4),
-            KeyModifiers::NONE,
-        ) {
+        if hotkeys.matches("rename_symbol", &key) {
             return Self::RenameSymbol;
         }
 
+        // =================================================================
         // Non-configurable bindings (navigation, basic editing)
+        // =================================================================
         match (key.code, key.modifiers) {
             // Navigation (clears selection and closes search)
             (KeyCode::Up, KeyModifiers::NONE) => Self::MoveCursorUp,

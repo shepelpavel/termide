@@ -4,10 +4,8 @@
 //! key parsing from command execution for better testability and maintainability.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use termide_config::{
-    is_go_end, is_go_home, is_move_down, is_move_up, matches_binding_or_default,
-    matches_binding_or_defaults, FileManagerKeybindings,
-};
+use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up};
+use termide_core::HotkeyTable;
 
 /// File manager command representing a user action.
 ///
@@ -87,162 +85,87 @@ pub enum FmCommand {
 impl FmCommand {
     /// Parse a KeyEvent into an FmCommand.
     ///
-    /// This function handles all FM keys including F-keys and global actions.
+    /// Configurable actions are resolved via HotkeyTable.
+    /// Non-configurable navigation (arrows, shift+arrows, vim mode) remains hardcoded.
     ///
     /// # Arguments
     ///
     /// * `key` - The key event to parse (should already be translated via translate_hotkey)
-    /// * `keybindings` - Configurable keybindings from config (only panel-specific ones remain)
+    /// * `hotkeys` - HotkeyTable built from config (configurable bindings)
     /// * `vim_mode` - Whether vim mode is enabled (adds j/k/g/G navigation)
-    pub fn from_key_event(
-        key: KeyEvent,
-        keybindings: &FileManagerKeybindings,
-        vim_mode: bool,
-    ) -> Self {
+    pub fn from_key_event(key: KeyEvent, hotkeys: &HotkeyTable, vim_mode: bool) -> Self {
         // =================================================================
-        // Configurable panel-specific keybindings
+        // Configurable actions from HotkeyTable
         // =================================================================
 
-        // Go to home directory (~)
-        if matches_binding_or_default(
-            &keybindings.go_home,
-            &key,
-            KeyCode::Char('~'),
-            KeyModifiers::NONE,
-        ) {
-            return Self::GoHomeDir;
-        }
-
-        // Content search (Ctrl+Shift+F)
-        if matches_binding_or_default(
-            &keybindings.search_content,
-            &key,
-            KeyCode::Char('F'),
-            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
-        ) {
-            return Self::SearchContent;
-        }
-
-        // Go to path (Ctrl+G) - enter path/URL directly
-        if key.code == KeyCode::Char('g') && key.modifiers == KeyModifiers::CONTROL {
-            return Self::GoToPath;
-        }
-
-        // Switch directory - open directory switcher modal (Ctrl+/)
-        if matches_binding_or_default(
-            &keybindings.switch_directory,
-            &key,
-            KeyCode::Char('/'),
-            KeyModifiers::CONTROL,
-        ) {
-            return Self::SwitchDirectory;
-        }
-
-        // =================================================================
-        // F-key universal actions
-        // =================================================================
-        match (key.code, key.modifiers) {
-            (KeyCode::F(2), KeyModifiers::NONE) => return Self::RenameFile,
-            (KeyCode::F(3), KeyModifiers::NONE) => return Self::ViewFile,
-            (KeyCode::F(4), KeyModifiers::NONE) => return Self::EditFile,
-            (KeyCode::F(5), KeyModifiers::NONE) => return Self::CopyFiles,
-            (KeyCode::F(6), KeyModifiers::NONE) => return Self::MoveFiles,
-            (KeyCode::F(7), KeyModifiers::NONE) => return Self::NewDirectory,
-            (KeyCode::F(8), KeyModifiers::NONE) => return Self::DeleteFiles,
-            (KeyCode::F(12), KeyModifiers::NONE) => return Self::ShowFileInfo,
-            _ => {}
-        }
-
-        // Ctrl+S → rename (same as F2)
-        if key.code == KeyCode::Char('s') && key.modifiers == KeyModifiers::CONTROL {
+        if hotkeys.matches("rename", &key) {
             return Self::RenameFile;
         }
-        // Ctrl+N → new directory (same as F7)
-        if key.code == KeyCode::Char('n') && key.modifiers == KeyModifiers::CONTROL {
+        if hotkeys.matches("view", &key) {
+            return Self::ViewFile;
+        }
+        if hotkeys.matches("edit", &key) {
+            return Self::EditFile;
+        }
+        if hotkeys.matches("copy", &key) {
+            return Self::CopyFiles;
+        }
+        if hotkeys.matches("move", &key) {
+            return Self::MoveFiles;
+        }
+        if hotkeys.matches("create_dir", &key) {
             return Self::NewDirectory;
         }
-
-        // Ctrl+F → search
-        if key.code == KeyCode::Char('f') && key.modifiers == KeyModifiers::CONTROL {
-            return Self::Search;
+        if hotkeys.matches("create_file", &key) {
+            return Self::NewFile;
         }
-        // Ctrl+R → refresh
-        if key.code == KeyCode::Char('r') && key.modifiers == KeyModifiers::CONTROL {
-            return Self::Refresh;
+        if hotkeys.matches("delete", &key) {
+            return Self::DeleteFiles;
         }
-        // Ctrl+A → select all
-        if key.code == KeyCode::Char('a') && key.modifiers == KeyModifiers::CONTROL {
-            return Self::SelectAll;
-        }
-        // Ctrl+C → clipboard copy
-        if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
-            return Self::ClipboardCopy;
-        }
-        // Ctrl+X → clipboard cut
-        if key.code == KeyCode::Char('x') && key.modifiers == KeyModifiers::CONTROL {
-            return Self::ClipboardCut;
-        }
-        // Ctrl+V → clipboard paste
-        if key.code == KeyCode::Char('v') && key.modifiers == KeyModifiers::CONTROL {
-            return Self::ClipboardPaste;
-        }
-        // Insert → toggle selection
-        if key.code == KeyCode::Insert && key.modifiers.is_empty() {
-            return Self::ToggleSelection;
-        }
-        // Space → show file info
-        if key.code == KeyCode::Char(' ') && key.modifiers.is_empty() {
+        if hotkeys.matches("info", &key) {
             return Self::ShowFileInfo;
         }
-        // Backspace → go parent
-        if key.code == KeyCode::Backspace && key.modifiers.is_empty() {
+        if hotkeys.matches("search", &key) {
+            return Self::Search;
+        }
+        if hotkeys.matches("search_content", &key) {
+            return Self::SearchContent;
+        }
+        if hotkeys.matches("refresh", &key) {
+            return Self::Refresh;
+        }
+        if hotkeys.matches("go_parent", &key) {
             return Self::GoParent;
         }
-
-        // =================================================================
-        // Hardcoded letter shortcuts (FM-specific, no config needed)
-        // =================================================================
-
-        // These are simple letter keys that only make sense in the file manager.
-        if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT {
-            match key.code {
-                // File operations
-                KeyCode::Char('c') | KeyCode::Char('C') => return Self::CopyFiles,
-                KeyCode::Char('m') | KeyCode::Char('M') => return Self::MoveFiles,
-                KeyCode::Char('v') | KeyCode::Char('V') => return Self::ViewFile,
-                KeyCode::Char('e') | KeyCode::Char('E') => return Self::EditFile,
-                KeyCode::Char('r') | KeyCode::Char('R') => return Self::RenameFile,
-                KeyCode::Char('d') | KeyCode::Char('D') => return Self::NewDirectory,
-                KeyCode::Char('f') | KeyCode::Char('F') => return Self::NewFile,
-                // Toggle hidden files (.)
-                KeyCode::Char('.') => {
-                    if matches_binding_or_default(
-                        &keybindings.toggle_hidden,
-                        &key,
-                        KeyCode::Char('.'),
-                        KeyModifiers::NONE,
-                    ) {
-                        return Self::ToggleHidden;
-                    }
-                }
-                // Open external (o/O) — Ctrl+Enter also handled via config
-                KeyCode::Char('o') | KeyCode::Char('O') => return Self::OpenExternal,
-                _ => {}
-            }
+        if hotkeys.matches("go_home", &key) {
+            return Self::GoHomeDir;
         }
-
-        // Open external via Ctrl+Enter (configurable)
-        if matches_binding_or_defaults(
-            &keybindings.open_external,
-            &key,
-            &[(KeyCode::Enter, KeyModifiers::CONTROL)],
-        ) {
+        if hotkeys.matches("toggle_selection", &key) {
+            return Self::ToggleSelection;
+        }
+        if hotkeys.matches("select_all", &key) {
+            return Self::SelectAll;
+        }
+        if hotkeys.matches("toggle_hidden", &key) {
+            return Self::ToggleHidden;
+        }
+        if hotkeys.matches("open_external", &key) {
             return Self::OpenExternal;
         }
-
-        // Delete files (Delete key — F8 also handled above)
-        if matches!(key.code, KeyCode::Delete) && key.modifiers.is_empty() {
-            return Self::DeleteFiles;
+        if hotkeys.matches("switch_directory", &key) {
+            return Self::SwitchDirectory;
+        }
+        if hotkeys.matches("go_to_path", &key) {
+            return Self::GoToPath;
+        }
+        if hotkeys.matches("clipboard_copy", &key) {
+            return Self::ClipboardCopy;
+        }
+        if hotkeys.matches("clipboard_cut", &key) {
+            return Self::ClipboardCut;
+        }
+        if hotkeys.matches("clipboard_paste", &key) {
+            return Self::ClipboardPaste;
         }
 
         // =================================================================
@@ -305,200 +228,202 @@ impl FmCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use termide_config::KeyBinding;
 
     fn key(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
         KeyEvent::new(code, modifiers)
     }
 
-    fn default_keybindings() -> FileManagerKeybindings {
-        FileManagerKeybindings::default()
+    fn default_hotkeys() -> HotkeyTable {
+        let config = termide_config::Config::default();
+        crate::build_fm_hotkey_table(&config)
     }
 
     #[test]
     fn test_navigation_keys() {
-        let kb = default_keybindings();
+        let hk = default_hotkeys();
 
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Up, KeyModifiers::NONE), &kb, false),
+            FmCommand::from_key_event(key(KeyCode::Up, KeyModifiers::NONE), &hk, false),
             FmCommand::MoveUp
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Down, KeyModifiers::NONE), &kb, false),
+            FmCommand::from_key_event(key(KeyCode::Down, KeyModifiers::NONE), &hk, false),
             FmCommand::MoveDown
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::PageUp, KeyModifiers::NONE), &kb, false),
+            FmCommand::from_key_event(key(KeyCode::PageUp, KeyModifiers::NONE), &hk, false),
             FmCommand::PageUp
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::PageDown, KeyModifiers::NONE), &kb, false),
+            FmCommand::from_key_event(key(KeyCode::PageDown, KeyModifiers::NONE), &hk, false),
             FmCommand::PageDown
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Home, KeyModifiers::NONE), &kb, false),
+            FmCommand::from_key_event(key(KeyCode::Home, KeyModifiers::NONE), &hk, false),
             FmCommand::GoHome
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::End, KeyModifiers::NONE), &kb, false),
+            FmCommand::from_key_event(key(KeyCode::End, KeyModifiers::NONE), &hk, false),
             FmCommand::GoEnd
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Enter, KeyModifiers::NONE), &kb, false),
+            FmCommand::from_key_event(key(KeyCode::Enter, KeyModifiers::NONE), &hk, false),
             FmCommand::Enter
         );
     }
 
     #[test]
     fn test_tree_expand_collapse_keys() {
-        let kb = default_keybindings();
+        let hk = default_hotkeys();
 
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Right, KeyModifiers::NONE), &kb, false),
+            FmCommand::from_key_event(key(KeyCode::Right, KeyModifiers::NONE), &hk, false),
             FmCommand::ExpandDir
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Left, KeyModifiers::NONE), &kb, false),
+            FmCommand::from_key_event(key(KeyCode::Left, KeyModifiers::NONE), &hk, false),
             FmCommand::CollapseDir
         );
 
         // Vim mode: l/h for expand/collapse
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Char('l'), KeyModifiers::NONE), &kb, true),
+            FmCommand::from_key_event(key(KeyCode::Char('l'), KeyModifiers::NONE), &hk, true),
             FmCommand::ExpandDir
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Char('h'), KeyModifiers::NONE), &kb, true),
+            FmCommand::from_key_event(key(KeyCode::Char('h'), KeyModifiers::NONE), &hk, true),
             FmCommand::CollapseDir
         );
     }
 
     #[test]
     fn test_vim_navigation_keys() {
-        let kb = default_keybindings();
+        let hk = default_hotkeys();
 
         // Vim keys should not work when vim_mode is false
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Char('j'), KeyModifiers::NONE), &kb, false),
+            FmCommand::from_key_event(key(KeyCode::Char('j'), KeyModifiers::NONE), &hk, false),
             FmCommand::None
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Char('k'), KeyModifiers::NONE), &kb, false),
+            FmCommand::from_key_event(key(KeyCode::Char('k'), KeyModifiers::NONE), &hk, false),
             FmCommand::None
         );
 
         // Vim keys should work when vim_mode is true
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Char('j'), KeyModifiers::NONE), &kb, true),
+            FmCommand::from_key_event(key(KeyCode::Char('j'), KeyModifiers::NONE), &hk, true),
             FmCommand::MoveDown
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Char('k'), KeyModifiers::NONE), &kb, true),
+            FmCommand::from_key_event(key(KeyCode::Char('k'), KeyModifiers::NONE), &hk, true),
             FmCommand::MoveUp
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Char('g'), KeyModifiers::NONE), &kb, true),
+            FmCommand::from_key_event(key(KeyCode::Char('g'), KeyModifiers::NONE), &hk, true),
             FmCommand::GoHome
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Char('G'), KeyModifiers::SHIFT), &kb, true),
+            FmCommand::from_key_event(key(KeyCode::Char('G'), KeyModifiers::SHIFT), &hk, true),
             FmCommand::GoEnd
         );
     }
 
     #[test]
     fn test_selection_keys() {
-        let kb = default_keybindings();
+        let hk = default_hotkeys();
 
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Down, KeyModifiers::SHIFT), &kb, false),
+            FmCommand::from_key_event(key(KeyCode::Down, KeyModifiers::SHIFT), &hk, false),
             FmCommand::MoveDownWithSelection
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Up, KeyModifiers::SHIFT), &kb, false),
+            FmCommand::from_key_event(key(KeyCode::Up, KeyModifiers::SHIFT), &hk, false),
             FmCommand::MoveUpWithSelection
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Esc, KeyModifiers::NONE), &kb, false),
+            FmCommand::from_key_event(key(KeyCode::Esc, KeyModifiers::NONE), &hk, false),
             FmCommand::ClearSelection
         );
     }
 
     #[test]
     fn test_file_operations() {
-        let kb = default_keybindings();
+        let hk = default_hotkeys();
 
-        // Letter shortcuts (handled by from_key_event via Other)
+        // Letter shortcuts
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Char('v'), KeyModifiers::NONE), &kb, false),
+            FmCommand::from_key_event(key(KeyCode::Char('v'), KeyModifiers::NONE), &hk, false),
             FmCommand::ViewFile
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Char('e'), KeyModifiers::NONE), &kb, false),
+            FmCommand::from_key_event(key(KeyCode::Char('e'), KeyModifiers::NONE), &hk, false),
             FmCommand::EditFile
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Char('r'), KeyModifiers::NONE), &kb, false),
+            FmCommand::from_key_event(key(KeyCode::Char('r'), KeyModifiers::NONE), &hk, false),
             FmCommand::RenameFile
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Char('c'), KeyModifiers::NONE), &kb, false),
+            FmCommand::from_key_event(key(KeyCode::Char('c'), KeyModifiers::NONE), &hk, false),
             FmCommand::CopyFiles
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Char('m'), KeyModifiers::NONE), &kb, false),
+            FmCommand::from_key_event(key(KeyCode::Char('m'), KeyModifiers::NONE), &hk, false),
             FmCommand::MoveFiles
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Char('d'), KeyModifiers::NONE), &kb, false),
+            FmCommand::from_key_event(key(KeyCode::Char('d'), KeyModifiers::NONE), &hk, false),
             FmCommand::NewDirectory
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Delete, KeyModifiers::NONE), &kb, false),
+            FmCommand::from_key_event(key(KeyCode::Delete, KeyModifiers::NONE), &hk, false),
             FmCommand::DeleteFiles
         );
 
-        // F-keys (F2-F8, F12) are now handled directly by from_key_event.
+        // F-keys
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::F(2), KeyModifiers::NONE), &kb, false),
+            FmCommand::from_key_event(key(KeyCode::F(2), KeyModifiers::NONE), &hk, false),
             FmCommand::RenameFile
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::F(4), KeyModifiers::NONE), &kb, false),
+            FmCommand::from_key_event(key(KeyCode::F(4), KeyModifiers::NONE), &hk, false),
             FmCommand::EditFile
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::F(5), KeyModifiers::NONE), &kb, false),
+            FmCommand::from_key_event(key(KeyCode::F(5), KeyModifiers::NONE), &hk, false),
             FmCommand::CopyFiles
         );
     }
 
     #[test]
     fn test_panel_navigation() {
-        let kb = default_keybindings();
+        let hk = default_hotkeys();
 
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Tab, KeyModifiers::NONE), &kb, false),
+            FmCommand::from_key_event(key(KeyCode::Tab, KeyModifiers::NONE), &hk, false),
             FmCommand::NextPanel
         );
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::BackTab, KeyModifiers::SHIFT), &kb, false),
+            FmCommand::from_key_event(key(KeyCode::BackTab, KeyModifiers::SHIFT), &hk, false),
             FmCommand::PrevPanel
         );
     }
 
     #[test]
     fn test_toggle_hidden() {
-        let kb = default_keybindings();
+        let hk = default_hotkeys();
 
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::Char('.'), KeyModifiers::NONE), &kb, false),
+            FmCommand::from_key_event(key(KeyCode::Char('.'), KeyModifiers::NONE), &hk, false),
             FmCommand::ToggleHidden
         );
     }
 
     #[test]
     fn test_search_keys() {
-        let kb = default_keybindings();
+        let hk = default_hotkeys();
 
         // Ctrl+Shift+F → content search
         assert_eq!(
@@ -507,7 +432,7 @@ mod tests {
                     KeyCode::Char('F'),
                     KeyModifiers::CONTROL | KeyModifiers::SHIFT
                 ),
-                &kb,
+                &hk,
                 false
             ),
             FmCommand::SearchContent
@@ -516,10 +441,10 @@ mod tests {
 
     #[test]
     fn test_f12_returns_show_file_info() {
-        let kb = default_keybindings();
+        let hk = default_hotkeys();
 
         assert_eq!(
-            FmCommand::from_key_event(key(KeyCode::F(12), KeyModifiers::NONE), &kb, false),
+            FmCommand::from_key_event(key(KeyCode::F(12), KeyModifiers::NONE), &hk, false),
             FmCommand::ShowFileInfo
         );
     }

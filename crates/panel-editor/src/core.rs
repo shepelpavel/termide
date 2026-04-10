@@ -6,9 +6,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use termide_buffer::{Cursor, LineEnding, Selection, TextBuffer, Viewport};
-use termide_config::Config;
+use termide_config::{Config, KeyBinding};
 use termide_core::{
-    CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel, WidthPreference,
+    CommandResult, HotkeyTable, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel,
+    WidthPreference,
 };
 use termide_git::GitDiffCache;
 use termide_i18n::t;
@@ -108,6 +109,9 @@ pub struct Editor {
     // === Stale-on-collapse optimization ===
     /// Whether panel is stale (collapsed, skipping background work)
     is_stale: bool,
+
+    /// Hotkey table for configurable keyboard shortcuts
+    hotkeys: HotkeyTable,
 }
 
 impl Editor {
@@ -150,6 +154,7 @@ impl Editor {
             vim,
             symbol_lines: Vec::new(),
             is_stale: false,
+            hotkeys: HotkeyTable::default(),
         }
     }
 
@@ -613,6 +618,7 @@ impl Editor {
             vim,
             symbol_lines: Vec::new(),
             is_stale: false,
+            hotkeys: HotkeyTable::default(),
         })
     }
 
@@ -649,6 +655,7 @@ impl Editor {
             vim: None, // view_only mode doesn't have vim
             symbol_lines: Vec::new(),
             is_stale: false,
+            hotkeys: HotkeyTable::default(),
         }
     }
 
@@ -1687,6 +1694,8 @@ impl Panel for Editor {
             .highlight
             .set_light_theme(theme.is_light_theme());
         self.render_cache.highlight.set_default_fg(theme.fg);
+
+        self.hotkeys = build_editor_hotkey_table(&config);
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
@@ -1765,7 +1774,7 @@ impl Panel for Editor {
             self.search.state.is_some(),
             self.selection.is_some(),
             self.lsp.completion_popup.is_some(),
-            &self.config.keybindings,
+            &self.hotkeys,
         );
 
         // Execute command and handle errors
@@ -2089,6 +2098,100 @@ impl Editor {
     pub fn set_pending_remote_open(&mut self, pending: crate::remote::PendingRemoteOpen) {
         self.pending_remote_open = Some(pending);
     }
+}
+
+/// Helper: return config binding or fallback default.
+fn or_default(cfg: &Option<KeyBinding>, default: &str) -> Option<KeyBinding> {
+    cfg.clone().or(Some(KeyBinding::Single(default.into())))
+}
+
+/// Helper: return config binding or fallback multiple defaults.
+fn or_defaults(cfg: &Option<KeyBinding>, defaults: &[&str]) -> Option<KeyBinding> {
+    cfg.clone().or(Some(KeyBinding::Multiple(
+        defaults.iter().map(|s| (*s).into()).collect(),
+    )))
+}
+
+/// Build HotkeyTable for the editor from config.
+pub(crate) fn build_editor_hotkey_table(config: &Config) -> HotkeyTable {
+    let mut t = HotkeyTable::new();
+    let kb = &config.editor.keybindings;
+
+    // File operations
+    t.insert(
+        "save",
+        &Some(KeyBinding::Multiple(vec!["Ctrl+S".into(), "F2".into()])),
+    );
+    t.insert("save_as", &or_default(&kb.save_as, "Ctrl+Shift+S"));
+    t.insert("reload", &or_default(&kb.reload, "Ctrl+Shift+R"));
+
+    // Undo/Redo
+    t.insert("undo", &Some(KeyBinding::Single("Ctrl+Z".into())));
+    t.insert(
+        "redo",
+        &Some(KeyBinding::Multiple(vec![
+            "Ctrl+Y".into(),
+            "Ctrl+Shift+Z".into(),
+        ])),
+    );
+
+    // Search & Replace
+    t.insert("search", &Some(KeyBinding::Single("Ctrl+F".into())));
+    t.insert("search_next", &or_default(&kb.search_next, "F3"));
+    t.insert("search_prev", &or_default(&kb.search_prev, "Shift+F3"));
+    t.insert("replace", &or_default(&kb.replace, "Ctrl+H"));
+    t.insert(
+        "replace_current",
+        &or_default(&kb.replace_current, "Ctrl+R"),
+    );
+    t.insert("replace_all", &or_default(&kb.replace_all, "Ctrl+Alt+R"));
+
+    // Selection
+    t.insert("select_all", &Some(KeyBinding::Single("Ctrl+A".into())));
+
+    // Clipboard
+    t.insert(
+        "copy",
+        &Some(KeyBinding::Multiple(vec![
+            "Ctrl+C".into(),
+            "Ctrl+Insert".into(),
+            "Ctrl+Shift+C".into(),
+        ])),
+    );
+    t.insert(
+        "cut",
+        &Some(KeyBinding::Multiple(vec![
+            "Ctrl+X".into(),
+            "Shift+Delete".into(),
+        ])),
+    );
+    t.insert(
+        "paste",
+        &Some(KeyBinding::Multiple(vec![
+            "Ctrl+V".into(),
+            "Shift+Insert".into(),
+            "Ctrl+Shift+V".into(),
+        ])),
+    );
+
+    // Advanced editing
+    t.insert("duplicate_line", &or_default(&kb.duplicate_line, "Ctrl+D"));
+    t.insert("toggle_comment", &or_default(&kb.toggle_comment, "Ctrl+/"));
+
+    // LSP
+    t.insert(
+        "trigger_completion",
+        &or_default(&kb.trigger_completion, "Ctrl+."),
+    );
+    t.insert("show_hover", &or_default(&kb.show_hover, "Ctrl+K"));
+    t.insert("goto_definition", &or_default(&kb.goto_definition, "F12"));
+    t.insert(
+        "find_references",
+        &or_defaults(&kb.find_references, &["Shift+F12", "F24"]),
+    );
+    t.insert("rename_symbol", &or_default(&kb.rename_symbol, "F4"));
+
+    t
 }
 
 impl Default for Editor {

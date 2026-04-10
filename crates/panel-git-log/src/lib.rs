@@ -9,10 +9,10 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent,
 use ratatui::{buffer::Buffer, layout::Rect, style::Style};
 use unicode_width::UnicodeWidthStr;
 
-use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up, Config};
+use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up, Config, KeyBinding};
 use termide_core::{
-    CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel, ThemeColors,
-    WidthPreference,
+    CommandResult, HotkeyTable, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel,
+    ThemeColors, WidthPreference,
 };
 use termide_git::{self as git, truncate_right, truncate_to_width, CommitInfo, RepoManager};
 use termide_modal::{ActiveModal, InfoModal, ModalValue, SegmentStyle, StyledSegment};
@@ -74,6 +74,22 @@ pub struct GitLogPanel {
     vim_mode: bool,
     /// Pending modal request for the app to pick up
     modal_request: Option<(PendingAction, ActiveModal)>,
+    /// Hotkey table for configurable keyboard shortcuts
+    hotkeys: HotkeyTable,
+}
+
+/// Build HotkeyTable for the git log panel.
+fn build_git_log_hotkey_table() -> HotkeyTable {
+    let mut t = HotkeyTable::new();
+
+    t.insert("info", &Some(KeyBinding::Single("Space".into())));
+    t.insert("view_diff", &Some(KeyBinding::Single("D".into())));
+    t.insert(
+        "open_external",
+        &Some(KeyBinding::Multiple(vec!["O".into(), "Shift+Enter".into()])),
+    );
+    t.insert("checkout", &Some(KeyBinding::Single("C".into())));
+    t
 }
 
 impl GitLogPanel {
@@ -99,6 +115,7 @@ impl GitLogPanel {
             status_message: None,
             vim_mode: false,
             modal_request: None,
+            hotkeys: HotkeyTable::default(),
         };
         panel.refresh();
         panel
@@ -835,6 +852,7 @@ impl Panel for GitLogPanel {
     fn prepare_render(&mut self, theme: &Theme, config: std::sync::Arc<Config>) {
         self.cached_theme = ThemeColors::from(theme);
         self.vim_mode = config.general.vim_mode;
+        self.hotkeys = build_git_log_hotkey_table();
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
@@ -859,6 +877,33 @@ impl Panel for GitLogPanel {
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
         // Clear status message on any key
         self.status_message = None;
+
+        // Configurable actions via HotkeyTable
+        if self.hotkeys.matches("info", &key) {
+            if self.current_section == Section::Commits {
+                self.show_commit_info();
+            }
+            return vec![];
+        }
+        if self.hotkeys.matches("view_diff", &key) {
+            return self.view_diff();
+        }
+        if self.hotkeys.matches("open_external", &key) {
+            return self.open_commit_external();
+        }
+        if self.hotkeys.matches("checkout", &key) {
+            if let Some(commit) = self.selected_commit() {
+                if !commit.hash.is_empty() {
+                    let t = termide_i18n::t();
+                    self.status_message = Some(format!(
+                        "Checkout {} {}",
+                        commit.hash,
+                        t.git_checkout_not_impl()
+                    ));
+                }
+            }
+            return vec![];
+        }
 
         // Vim-aware navigation (j/k/g/G when vim_mode is enabled)
         if is_move_up(&key, self.vim_mode) {
@@ -935,32 +980,8 @@ impl Panel for GitLogPanel {
                 let page = self.last_area.height.saturating_sub(2) as usize;
                 self.page_down(page);
             }
-            KeyCode::Char(' ') => {
-                if self.current_section == Section::Commits {
-                    self.show_commit_info();
-                }
-            }
             KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
                 return self.open_commit_external();
-            }
-            KeyCode::Char('d') => {
-                return self.view_diff();
-            }
-            KeyCode::Char('o') => {
-                return self.open_commit_external();
-            }
-            KeyCode::Char('c') | KeyCode::Char('C') => {
-                // Checkout commit (show message for now)
-                if let Some(commit) = self.selected_commit() {
-                    if !commit.hash.is_empty() {
-                        let t = termide_i18n::t();
-                        self.status_message = Some(format!(
-                            "Checkout {} {}",
-                            commit.hash,
-                            t.git_checkout_not_impl()
-                        ));
-                    }
-                }
             }
             _ => {}
         }

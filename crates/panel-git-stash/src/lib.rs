@@ -14,10 +14,10 @@ use std::sync::Arc;
 use crossterm::event::{KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::{buffer::Buffer, layout::Rect};
 
-use termide_config::Config;
+use termide_config::{Config, KeyBinding};
 use termide_core::{
-    CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel, ThemeColors,
-    WidthPreference,
+    CommandResult, HotkeyTable, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel,
+    ThemeColors, WidthPreference,
 };
 use termide_git::{self as git, StashEntry};
 use termide_modal::{ActiveModal, SelectModal};
@@ -52,6 +52,17 @@ pub struct GitStashPanel {
     pub(crate) vim_mode: bool,
     /// Modal request (for InputModal / SelectModal / ConfirmModal)
     modal_request: Option<(PendingAction, ActiveModal)>,
+    /// Hotkey table for configurable keyboard shortcuts
+    pub(crate) hotkeys: HotkeyTable,
+}
+
+/// Build HotkeyTable for the git stash panel.
+fn build_git_stash_hotkey_table() -> HotkeyTable {
+    let mut t = HotkeyTable::new();
+
+    t.insert("new_stash", &Some(KeyBinding::Single("N".into())));
+    t.insert("refresh", &Some(KeyBinding::Single("Ctrl+R".into())));
+    t
 }
 
 impl GitStashPanel {
@@ -71,6 +82,7 @@ impl GitStashPanel {
             status_message: None,
             vim_mode: false,
             modal_request: None,
+            hotkeys: HotkeyTable::default(),
         }
     }
 
@@ -153,6 +165,7 @@ impl Panel for GitStashPanel {
     fn prepare_render(&mut self, theme: &Theme, config: Arc<Config>) {
         self.cached_theme = ThemeColors::from(theme);
         self.vim_mode = config.general.vim_mode;
+        self.hotkeys = build_git_stash_hotkey_table();
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {

@@ -6,7 +6,7 @@ use std::any::Any;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -14,8 +14,10 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthStr;
 
-use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up, Config};
-use termide_core::{Panel, PanelEvent, RenderContext, SessionPanel, ThemeColors, WidthPreference};
+use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up, Config, KeyBinding};
+use termide_core::{
+    HotkeyTable, Panel, PanelEvent, RenderContext, SessionPanel, ThemeColors, WidthPreference,
+};
 use termide_git::{self as git};
 use termide_theme::Theme;
 use termide_ui::ScrollBar;
@@ -151,6 +153,32 @@ pub struct GitDiffPanel {
     status_message: Option<String>,
     /// Cached vim_mode setting for keyboard handling
     vim_mode: bool,
+    /// Hotkey table for configurable keyboard shortcuts
+    hotkeys: HotkeyTable,
+}
+
+/// Build HotkeyTable for the git diff panel.
+fn build_git_diff_hotkey_table() -> HotkeyTable {
+    let mut t = HotkeyTable::new();
+
+    t.insert(
+        "toggle_collapse",
+        &Some(KeyBinding::Multiple(vec!["Enter".into(), "Space".into()])),
+    );
+    t.insert(
+        "edit",
+        &Some(KeyBinding::Multiple(vec!["F4".into(), "E".into()])),
+    );
+    t.insert(
+        "refresh",
+        &Some(KeyBinding::Multiple(vec!["F5".into(), "Ctrl+R".into()])),
+    );
+    t.insert("scroll_half_up", &Some(KeyBinding::Single("Ctrl+U".into())));
+    t.insert(
+        "scroll_half_down",
+        &Some(KeyBinding::Single("Ctrl+D".into())),
+    );
+    t
 }
 
 impl GitDiffPanel {
@@ -187,6 +215,7 @@ impl GitDiffPanel {
             visible_height: 0,
             status_message: None,
             vim_mode: false,
+            hotkeys: HotkeyTable::default(),
         };
         panel.refresh();
         panel
@@ -210,6 +239,7 @@ impl GitDiffPanel {
             visible_height: 0,
             status_message: None,
             vim_mode: false,
+            hotkeys: HotkeyTable::default(),
         };
         panel.refresh();
         panel
@@ -234,6 +264,7 @@ impl GitDiffPanel {
             visible_height: 0,
             status_message: None,
             vim_mode: false,
+            hotkeys: HotkeyTable::default(),
         };
         panel.refresh();
         panel
@@ -917,6 +948,7 @@ impl Panel for GitDiffPanel {
     fn prepare_render(&mut self, theme: &Theme, config: std::sync::Arc<Config>) {
         self.cached_theme = ThemeColors::from(theme);
         self.vim_mode = config.general.vim_mode;
+        self.hotkeys = build_git_diff_hotkey_table();
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
@@ -926,6 +958,27 @@ impl Panel for GitDiffPanel {
 
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
         self.status_message = None;
+
+        // Configurable actions via HotkeyTable
+        if self.hotkeys.matches("toggle_collapse", &key) {
+            self.toggle_collapse();
+            return vec![];
+        }
+        if self.hotkeys.matches("edit", &key) {
+            return self.open_file();
+        }
+        if self.hotkeys.matches("refresh", &key) {
+            self.refresh();
+            return vec![PanelEvent::NeedsRedraw];
+        }
+        if self.hotkeys.matches("scroll_half_up", &key) {
+            self.scroll_up(self.visible_height / 2);
+            return vec![];
+        }
+        if self.hotkeys.matches("scroll_half_down", &key) {
+            self.scroll_down(self.visible_height / 2);
+            return vec![];
+        }
 
         // Vim-aware navigation (j/k/g/G when vim_mode is enabled)
         if is_move_up(&key, self.vim_mode) {
@@ -946,36 +999,12 @@ impl Panel for GitDiffPanel {
         }
 
         match key.code {
-            // Toggle collapse
-            KeyCode::Enter | KeyCode::Char(' ') if key.modifiers.is_empty() => {
-                self.toggle_collapse();
-            }
             // Collapse / Expand
             KeyCode::Left if key.modifiers.is_empty() => self.collapse_current(),
             KeyCode::Right if key.modifiers.is_empty() => self.expand_current(),
             // Page navigation
             KeyCode::PageUp => self.page_up(),
             KeyCode::PageDown => self.page_down(),
-            // Edit file (F4 or 'e')
-            KeyCode::F(4) | KeyCode::Char('e') if key.modifiers.is_empty() => {
-                return self.open_file()
-            }
-            // Refresh
-            KeyCode::F(5) if key.modifiers.is_empty() => {
-                self.refresh();
-                return vec![PanelEvent::NeedsRedraw];
-            }
-            KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.refresh();
-                return vec![PanelEvent::NeedsRedraw];
-            }
-            // Scroll half page
-            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.scroll_up(self.visible_height / 2);
-            }
-            KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.scroll_down(self.visible_height / 2);
-            }
             _ => {}
         }
 

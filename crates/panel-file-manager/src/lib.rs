@@ -19,6 +19,110 @@ use navigation::NavigationState;
 use selection::SelectionState;
 use vfs_state::VfsState;
 
+/// Build HotkeyTable for the file manager from config.
+pub(crate) fn build_fm_hotkey_table(config: &Config) -> HotkeyTable {
+    let mut t = HotkeyTable::new();
+    let kb = &config.file_manager.keybindings;
+
+    // F-keys + Ctrl combos + letter shortcuts
+    t.insert(
+        "rename",
+        &Some(KeyBinding::Multiple(vec![
+            "F2".into(),
+            "Ctrl+S".into(),
+            "R".into(),
+        ])),
+    );
+    t.insert(
+        "view",
+        &Some(KeyBinding::Multiple(vec!["F3".into(), "V".into()])),
+    );
+    t.insert(
+        "edit",
+        &Some(KeyBinding::Multiple(vec!["F4".into(), "E".into()])),
+    );
+    t.insert(
+        "copy",
+        &Some(KeyBinding::Multiple(vec!["F5".into(), "C".into()])),
+    );
+    t.insert(
+        "move",
+        &Some(KeyBinding::Multiple(vec!["F6".into(), "M".into()])),
+    );
+    t.insert(
+        "create_dir",
+        &Some(KeyBinding::Multiple(vec![
+            "F7".into(),
+            "Ctrl+N".into(),
+            "D".into(),
+        ])),
+    );
+    t.insert("create_file", &Some(KeyBinding::Single("F".into())));
+    t.insert(
+        "delete",
+        &Some(KeyBinding::Multiple(vec!["Delete".into(), "F8".into()])),
+    );
+    t.insert(
+        "info",
+        &Some(KeyBinding::Multiple(vec!["F12".into(), "Space".into()])),
+    );
+    t.insert("search", &Some(KeyBinding::Single("Ctrl+F".into())));
+    t.insert(
+        "search_content",
+        &kb.search_content
+            .clone()
+            .or(Some(KeyBinding::Single("Ctrl+Shift+F".into()))),
+    );
+    t.insert("refresh", &Some(KeyBinding::Single("Ctrl+R".into())));
+    t.insert("go_parent", &Some(KeyBinding::Single("Backspace".into())));
+    t.insert(
+        "go_home",
+        &kb.go_home.clone().or(Some(KeyBinding::Single("~".into()))),
+    );
+    t.insert(
+        "toggle_selection",
+        &Some(KeyBinding::Single("Insert".into())),
+    );
+    t.insert("select_all", &Some(KeyBinding::Single("Ctrl+A".into())));
+    t.insert(
+        "toggle_hidden",
+        &kb.toggle_hidden
+            .clone()
+            .or(Some(KeyBinding::Single(".".into()))),
+    );
+    // open_external: config binding (default Ctrl+Enter) + letter shortcut O
+    if let Some(ref binding) = kb.open_external {
+        // Merge config binding with letter shortcut
+        let mut keys: Vec<String> = match binding {
+            KeyBinding::Single(s) => vec![s.clone()],
+            KeyBinding::Multiple(v) => v.clone(),
+        };
+        if !keys.iter().any(|k| k == "O") {
+            keys.push("O".into());
+        }
+        t.insert("open_external", &Some(KeyBinding::Multiple(keys)));
+    } else {
+        t.insert(
+            "open_external",
+            &Some(KeyBinding::Multiple(vec!["Ctrl+Enter".into(), "O".into()])),
+        );
+    }
+    t.insert(
+        "switch_directory",
+        &kb.switch_directory
+            .clone()
+            .or(Some(KeyBinding::Single("Ctrl+/".into()))),
+    );
+    t.insert("go_to_path", &Some(KeyBinding::Single("Ctrl+G".into())));
+    t.insert("clipboard_copy", &Some(KeyBinding::Single("Ctrl+C".into())));
+    t.insert("clipboard_cut", &Some(KeyBinding::Single("Ctrl+X".into())));
+    t.insert(
+        "clipboard_paste",
+        &Some(KeyBinding::Single("Ctrl+V".into())),
+    );
+    t
+}
+
 /// Case-insensitive string comparison without allocation.
 fn cmp_ignore_case(a: &str, b: &str) -> std::cmp::Ordering {
     a.chars()
@@ -56,8 +160,10 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::mpsc;
 
-use termide_config::{constants, Config, FileManagerSettings};
-use termide_core::{CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel};
+use termide_config::{constants, Config, FileManagerSettings, KeyBinding};
+use termide_core::{
+    CommandResult, HotkeyTable, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel,
+};
 use termide_git::{get_git_status_async, GitStatus, GitStatusAsyncResult, GitStatusCache};
 use termide_modal::{ActionButton, ActiveModal, ConfirmModal, InfoActionModal, InputModal};
 use termide_state::{DirSizeResult, PendingAction};
@@ -114,6 +220,8 @@ pub struct FileManager {
     show_hidden: bool,
     /// File/content search state (replaces TreeSearchModal results display)
     file_search: Option<file_search::FileSearchState>,
+    /// Hotkey table for configurable keyboard shortcuts
+    hotkeys: HotkeyTable,
 }
 
 #[derive(Debug, Clone)]
@@ -227,6 +335,7 @@ impl FileManager {
             is_stale: false,
             show_hidden: true,
             file_search: None,
+            hotkeys: HotkeyTable::default(),
         };
         let _ = fm.load_directory();
         fm
@@ -265,6 +374,7 @@ impl FileManager {
             is_stale: false,
             show_hidden: true,
             file_search: None,
+            hotkeys: HotkeyTable::default(),
         };
 
         // Start the directory listing operation for remote paths
@@ -1143,6 +1253,7 @@ impl Panel for FileManager {
         self.cached_config = config.file_manager.clone();
         self.vim_mode = config.general.vim_mode;
         self.cached_vfs_timeout_secs = config.vfs.connection_timeout_secs;
+        self.hotkeys = build_fm_hotkey_table(&config);
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
@@ -1196,11 +1307,9 @@ impl Panel for FileManager {
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
         use keyboard::FmCommand;
 
-        // Legacy path: translate and parse FM-specific keys
         let key = termide_keyboard::translate_hotkey(key);
         let key = termide_keyboard::translate_all_chars(key);
-        let command =
-            FmCommand::from_key_event(key, &self.cached_config.keybindings, self.vim_mode);
+        let command = FmCommand::from_key_event(key, &self.hotkeys, self.vim_mode);
         self.execute_command(command)
     }
 
