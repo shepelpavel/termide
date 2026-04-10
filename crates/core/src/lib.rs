@@ -6,6 +6,7 @@
 pub mod command;
 pub mod event;
 pub mod hotkey;
+pub mod hotkey_table;
 pub mod panel;
 pub mod terminal_caps;
 pub mod util;
@@ -16,6 +17,7 @@ pub use event::{
     PanelEvent, ReferenceLocation, SearchMode, SelectAction, SplitDirection, VimPanelDirection,
 };
 pub use hotkey::{normalize, Hotkey, HotkeyKind};
+pub use hotkey_table::{normalize_key, HotkeyTable};
 pub use panel::{
     Panel, PanelConfig, RenderContext, Searchable, SessionPanel, ThemeColors, WidthPreference,
 };
