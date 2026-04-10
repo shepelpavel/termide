@@ -267,7 +267,7 @@ pub struct EditorKeybindings {
     pub rename_symbol: Option<KeyBinding>,
 
     // Git
-    /// Toggle inline git blame annotation on cursor line (default: Alt+B)
+    /// Toggle inline git blame annotation on cursor line (no default key)
     pub show_blame: Option<KeyBinding>,
 }
 

@@ -118,7 +118,7 @@ pub enum EditorCommand {
     BackspaceCompletion,
 
     // Git
-    /// Toggle inline blame annotation on the cursor line (Alt+B)
+    /// Toggle inline blame annotation on the cursor line (no default key)
     ToggleBlame,
 
     // LSP Hover
@@ -356,14 +356,11 @@ impl EditorCommand {
             return Self::TriggerCompletion;
         }
 
-        // Toggle blame (configurable, default Alt+B)
-        if matches_binding_or_default(
-            &keybindings.show_blame,
-            &key,
-            KeyCode::Char('b'),
-            KeyModifiers::ALT,
-        ) {
-            return Self::ToggleBlame;
+        // Toggle blame (no default — configure via [editor.keybindings] show_blame)
+        if let Some(ref binding) = keybindings.show_blame {
+            if binding.matches(&key) {
+                return Self::ToggleBlame;
+            }
         }
 
         // LSP Hover (configurable, default Ctrl+K)

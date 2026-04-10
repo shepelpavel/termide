@@ -165,7 +165,7 @@ impl Panel for GitStashPanel {
         match hotkey.kind {
             HotkeyKind::Escape => {
                 self.status_message = None;
-                vec![PanelEvent::ClosePanel]
+                vec![PanelEvent::NeedsRedraw]
             }
             HotkeyKind::Refresh => {
                 self.status_message = None;
