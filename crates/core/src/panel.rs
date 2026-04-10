@@ -207,16 +207,7 @@ pub trait Panel: Any {
     /// * `ctx` - Render context with theme and focus info
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext);
 
-    /// Handle semantic hotkey from the normalizer.
-    ///
-    /// Override this to handle universal actions (Save, View, EditItem, etc.).
-    /// Default: forwards the raw key event to `handle_key()`,
-    /// so panels without override work transparently.
-    fn handle_action(&mut self, hotkey: crate::Hotkey) -> Vec<PanelEvent> {
-        self.handle_key(hotkey.raw)
-    }
-
-    /// Handle raw keyboard input (for panel-specific keys not covered by Action).
+    /// Handle raw keyboard input.
     ///
     /// Returns a list of events to be processed by the application.
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent>;

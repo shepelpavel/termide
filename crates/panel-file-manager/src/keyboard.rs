@@ -87,9 +87,7 @@ pub enum FmCommand {
 impl FmCommand {
     /// Parse a KeyEvent into an FmCommand.
     ///
-    /// This function handles FM-specific keys that are NOT covered by the global
-    /// hotkey normalizer. Global actions (F-keys, Ctrl+F, Ctrl+R, Ctrl+A, Ctrl+C/X/V,
-    /// Insert, Backspace, etc.) arrive via handle_action and are mapped there.
+    /// This function handles all FM keys including F-keys and global actions.
     ///
     /// # Arguments
     ///
@@ -141,7 +139,7 @@ impl FmCommand {
         }
 
         // =================================================================
-        // F-key universal actions (previously handled by handle_action)
+        // F-key universal actions
         // =================================================================
         match (key.code, key.modifiers) {
             (KeyCode::F(2), KeyModifiers::NONE) => return Self::RenameFile,

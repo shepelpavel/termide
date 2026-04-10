@@ -856,185 +856,6 @@ impl Panel for GitLogPanel {
         }
     }
 
-    fn handle_action(&mut self, hotkey: termide_core::Hotkey) -> Vec<PanelEvent> {
-        use termide_core::HotkeyKind;
-        self.status_message = None;
-        let page_size = self.last_area.height.saturating_sub(4) as usize;
-
-        match hotkey.kind {
-            HotkeyKind::ContextMenu => {
-                // Show commit info (same as Space)
-                self.show_commit_info();
-                vec![]
-            }
-            HotkeyKind::Refresh => {
-                self.refresh();
-                let t = termide_i18n::t();
-                self.status_message = Some(t.git_refreshed().to_string());
-                vec![]
-            }
-            HotkeyKind::Escape => {
-                if self.repo_dropdown_open || self.branch_dropdown_open {
-                    self.repo_dropdown_open = false;
-                    self.branch_dropdown_open = false;
-                    self.dropdown_cursor = 0;
-                }
-                vec![]
-            }
-            HotkeyKind::Up => {
-                if self.repo_dropdown_open || self.branch_dropdown_open {
-                    self.dropdown_cursor = self.dropdown_cursor.saturating_sub(1);
-                } else {
-                    match self.current_section {
-                        Section::RepoSelector => {
-                            if self.repo_manager.selected_index() > 0 {
-                                self.repo_manager.select_prev();
-                                self.selected = 0;
-                                self.refresh();
-                            }
-                        }
-                        Section::BranchSelector => {}
-                        Section::Commits => self.move_up(),
-                    }
-                }
-                vec![]
-            }
-            HotkeyKind::Down => {
-                if self.repo_dropdown_open {
-                    let max = self.repo_manager.len().saturating_sub(1);
-                    if self.dropdown_cursor < max {
-                        self.dropdown_cursor += 1;
-                    }
-                } else if self.branch_dropdown_open {
-                    let max = self.branches.len().saturating_sub(1);
-                    if self.dropdown_cursor < max {
-                        self.dropdown_cursor += 1;
-                    }
-                } else {
-                    match self.current_section {
-                        Section::RepoSelector => {
-                            if self.repo_manager.selected_index() + 1 < self.repo_manager.len() {
-                                self.repo_manager.select_next();
-                                self.selected = 0;
-                                self.refresh();
-                            }
-                        }
-                        Section::BranchSelector => {}
-                        Section::Commits => self.move_down(),
-                    }
-                }
-                vec![]
-            }
-            HotkeyKind::Home => {
-                if !self.repo_dropdown_open && !self.branch_dropdown_open {
-                    self.go_to_start();
-                }
-                vec![]
-            }
-            HotkeyKind::End => {
-                if !self.repo_dropdown_open && !self.branch_dropdown_open {
-                    self.go_to_end();
-                }
-                vec![]
-            }
-            HotkeyKind::PageUp => {
-                self.page_up(page_size);
-                vec![]
-            }
-            HotkeyKind::PageDown => {
-                self.page_down(page_size);
-                vec![]
-            }
-            HotkeyKind::Tab => {
-                self.repo_dropdown_open = false;
-                self.branch_dropdown_open = false;
-                self.next_section();
-                vec![]
-            }
-            HotkeyKind::BackTab => {
-                self.repo_dropdown_open = false;
-                self.branch_dropdown_open = false;
-                self.prev_section();
-                vec![]
-            }
-            HotkeyKind::Enter => {
-                match self.current_section {
-                    Section::RepoSelector => {
-                        if self.repo_dropdown_open {
-                            let idx = self.dropdown_cursor;
-                            self.repo_manager.select(idx);
-                            self.repo_dropdown_open = false;
-                            self.selected_branch = None;
-                            self.refresh();
-                        } else {
-                            self.dropdown_cursor = self.repo_manager.selected_index();
-                            self.repo_dropdown_open = true;
-                        }
-                    }
-                    Section::BranchSelector => {
-                        if self.branch_dropdown_open {
-                            let selected = self.branches.get(self.dropdown_cursor).cloned();
-                            let is_current = selected.as_deref() == self.branch.as_deref();
-                            self.selected_branch = if is_current { None } else { selected };
-                            self.branch_dropdown_open = false;
-                            self.refresh();
-                        } else {
-                            self.dropdown_cursor = self
-                                .branches
-                                .iter()
-                                .position(|b| Some(b.as_str()) == self.branch.as_deref())
-                                .unwrap_or(0);
-                            self.branch_dropdown_open = true;
-                        }
-                    }
-                    Section::Commits => {
-                        return self.view_diff();
-                    }
-                }
-                vec![]
-            }
-            HotkeyKind::Space => {
-                // Space — context-dependent (same as Enter for dropdowns, commit info for commits)
-                match self.current_section {
-                    Section::RepoSelector => {
-                        if self.repo_dropdown_open {
-                            let idx = self.dropdown_cursor;
-                            self.repo_manager.select(idx);
-                            self.repo_dropdown_open = false;
-                            self.selected_branch = None;
-                            self.refresh();
-                        } else {
-                            self.dropdown_cursor = self.repo_manager.selected_index();
-                            self.repo_dropdown_open = true;
-                        }
-                    }
-                    Section::BranchSelector => {
-                        if self.branch_dropdown_open {
-                            let selected = self.branches.get(self.dropdown_cursor).cloned();
-                            let is_current = selected.as_deref() == self.branch.as_deref();
-                            self.selected_branch = if is_current { None } else { selected };
-                            self.branch_dropdown_open = false;
-                            self.refresh();
-                        } else {
-                            self.dropdown_cursor = self
-                                .branches
-                                .iter()
-                                .position(|b| Some(b.as_str()) == self.branch.as_deref())
-                                .unwrap_or(0);
-                            self.branch_dropdown_open = true;
-                        }
-                    }
-                    Section::Commits => {
-                        self.show_commit_info();
-                    }
-                }
-                vec![]
-            }
-            HotkeyKind::Other => self.handle_key(hotkey.raw),
-            _ => vec![],
-        }
-    }
-
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
         // Clear status message on any key
         self.status_message = None;
@@ -1100,10 +921,28 @@ impl Panel for GitLogPanel {
         }
 
         match key.code {
+            KeyCode::Tab => {
+                self.next_section();
+            }
+            KeyCode::BackTab => {
+                self.prev_section();
+            }
+            KeyCode::PageUp => {
+                let page = self.last_area.height.saturating_sub(2) as usize;
+                self.page_up(page);
+            }
+            KeyCode::PageDown => {
+                let page = self.last_area.height.saturating_sub(2) as usize;
+                self.page_down(page);
+            }
+            KeyCode::Char(' ') => {
+                if self.current_section == Section::Commits {
+                    self.show_commit_info();
+                }
+            }
             KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
                 return self.open_commit_external();
             }
-            // Space is handled as Action::Space in handle_action
             KeyCode::Char('d') => {
                 return self.view_diff();
             }

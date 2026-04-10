@@ -280,44 +280,6 @@ impl Panel for OperationsPanel {
         self.card_areas = card_areas;
     }
 
-    fn handle_action(&mut self, hotkey: termide_core::Hotkey) -> Vec<PanelEvent> {
-        use termide_core::HotkeyKind;
-        let total = self.operations.len();
-        match hotkey.kind {
-            HotkeyKind::DeleteItem => {
-                if let Some(op_id) = self.selected_operation_id() {
-                    return vec![PanelEvent::CancelOperation(op_id)];
-                }
-                vec![]
-            }
-            HotkeyKind::Up => {
-                self.select_prev();
-                vec![PanelEvent::NeedsRedraw]
-            }
-            HotkeyKind::Down => {
-                self.select_next(total);
-                vec![PanelEvent::NeedsRedraw]
-            }
-            HotkeyKind::Home => {
-                self.select_first();
-                vec![PanelEvent::NeedsRedraw]
-            }
-            HotkeyKind::End => {
-                self.select_last(total);
-                vec![PanelEvent::NeedsRedraw]
-            }
-            HotkeyKind::Space => {
-                if let Some(op_id) = self.selected_operation_id() {
-                    vec![PanelEvent::ToggleOperationPause(op_id)]
-                } else {
-                    vec![]
-                }
-            }
-            HotkeyKind::Other => self.handle_key(hotkey.raw),
-            _ => vec![],
-        }
-    }
-
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
         let total = self.operations.len();
         let events = vec![];
@@ -344,8 +306,6 @@ impl Panel for OperationsPanel {
                 _ => {}
             }
         }
-
-        // Space is handled as HotkeyKind::Space in handle_action
 
         events
     }

@@ -924,32 +924,6 @@ impl Panel for GitDiffPanel {
         self.render_content(area, buf, ctx.is_focused, ctx.border_right_x);
     }
 
-    fn handle_action(&mut self, hotkey: termide_core::Hotkey) -> Vec<PanelEvent> {
-        use termide_core::HotkeyKind;
-        self.status_message = None;
-        match hotkey.kind {
-            HotkeyKind::EditItem => return self.open_file(),
-            HotkeyKind::Refresh => {
-                self.refresh();
-                let t = termide_i18n::t();
-                self.status_message = Some(t.git_refreshed().to_string());
-            }
-            HotkeyKind::Up => self.move_up(),
-            HotkeyKind::Down => self.move_down(),
-            HotkeyKind::Home => self.go_to_start(),
-            HotkeyKind::End => self.go_to_end(),
-            HotkeyKind::PageUp => self.page_up(),
-            HotkeyKind::PageDown => self.page_down(),
-            HotkeyKind::Enter => self.toggle_collapse(),
-            HotkeyKind::Space => self.toggle_collapse(),
-            HotkeyKind::Left => self.collapse_current(),
-            HotkeyKind::Right => self.expand_current(),
-            HotkeyKind::Other => return self.handle_key(hotkey.raw),
-            _ => {}
-        }
-        vec![]
-    }
-
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
         self.status_message = None;
 
@@ -972,19 +946,36 @@ impl Panel for GitDiffPanel {
         }
 
         match key.code {
-            // Scroll without changing selection
+            // Toggle collapse
+            KeyCode::Enter | KeyCode::Char(' ') if key.modifiers.is_empty() => {
+                self.toggle_collapse();
+            }
+            // Collapse / Expand
+            KeyCode::Left if key.modifiers.is_empty() => self.collapse_current(),
+            KeyCode::Right if key.modifiers.is_empty() => self.expand_current(),
+            // Page navigation
+            KeyCode::PageUp => self.page_up(),
+            KeyCode::PageDown => self.page_down(),
+            // Edit file (F4 or 'e')
+            KeyCode::F(4) | KeyCode::Char('e') if key.modifiers.is_empty() => {
+                return self.open_file()
+            }
+            // Refresh
+            KeyCode::F(5) if key.modifiers.is_empty() => {
+                self.refresh();
+                return vec![PanelEvent::NeedsRedraw];
+            }
+            KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.refresh();
+                return vec![PanelEvent::NeedsRedraw];
+            }
+            // Scroll half page
             KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.scroll_up(self.visible_height / 2);
             }
             KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.scroll_down(self.visible_height / 2);
             }
-
-            // Space is handled as HotkeyKind::Space in handle_action
-
-            // Open file
-            KeyCode::Char('e') => return self.open_file(),
-
             _ => {}
         }
 

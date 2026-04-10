@@ -20,8 +20,8 @@ impl App {
         // Translate Cyrillic to Latin for hotkeys
         let key = termide_keyboard::translate_hotkey(key);
 
-        // Normalize KeyEvent → semantic Hotkey
-        let hotkey = termide_core::normalize(key, &self.state.config.general.keybindings);
+        // Normalize KeyEvent → semantic Hotkey for app-level dispatch
+        let hotkey = super::hotkey::normalize(key, &self.state.config.general.keybindings);
 
         // Log hotkey for debugging
         log::trace!("Key {:?} → {:?}", key.code, hotkey.kind);
@@ -31,7 +31,7 @@ impl App {
             self.state.clear_status();
         }
 
-        // Modals and menus use the raw key event from the hotkey
+        // Modals and menus use the raw key event
         let key_for_ui = hotkey.raw;
 
         // If modal window is open, handle it
@@ -74,12 +74,11 @@ impl App {
             return Ok(());
         }
 
-        // Pass hotkey to active panel
+        // Pass key to active panel
         let (events, modal_request, config_update) = if let Some(panel) =
             self.layout_manager.active_panel_mut()
         {
-            // handle_action dispatches to handle_key for Other
-            let mut events = panel.handle_action(hotkey);
+            let mut events = panel.handle_key(key);
 
             // Legacy methods still in use
             let modal_request = panel.take_modal_request();

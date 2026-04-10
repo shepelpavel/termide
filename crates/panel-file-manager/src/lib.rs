@@ -1193,56 +1193,6 @@ impl Panel for FileManager {
         }
     }
 
-    fn handle_action(&mut self, hotkey: termide_core::Hotkey) -> Vec<PanelEvent> {
-        use keyboard::FmCommand;
-        use termide_core::HotkeyKind;
-
-        // Map universal actions to FM commands
-        let command = match hotkey.kind {
-            // F-key actions
-            HotkeyKind::Save => FmCommand::RenameFile,
-            HotkeyKind::View => FmCommand::ViewFile,
-            HotkeyKind::EditItem => FmCommand::EditFile,
-            HotkeyKind::CopyItem => FmCommand::CopyFiles,
-            HotkeyKind::MoveItem => FmCommand::MoveFiles,
-            HotkeyKind::CreateItem => FmCommand::NewDirectory,
-            HotkeyKind::DeleteItem => FmCommand::DeleteFiles,
-            HotkeyKind::ContextMenu => FmCommand::ShowFileInfo,
-            // Non-F-key actions
-            HotkeyKind::Escape => FmCommand::ClearSelection,
-            HotkeyKind::Search => FmCommand::Search,
-            HotkeyKind::Refresh => FmCommand::Refresh,
-            HotkeyKind::Backspace => FmCommand::GoParent,
-            HotkeyKind::Space => FmCommand::ShowFileInfo,
-            HotkeyKind::Insert => FmCommand::ToggleSelection,
-            HotkeyKind::SelectAll => FmCommand::SelectAll,
-            HotkeyKind::Cut => FmCommand::ClipboardCut,
-            HotkeyKind::Copy => FmCommand::ClipboardCopy,
-            HotkeyKind::Paste => FmCommand::ClipboardPaste,
-            // Navigation
-            HotkeyKind::Up => FmCommand::MoveUp,
-            HotkeyKind::Down => FmCommand::MoveDown,
-            HotkeyKind::PageUp => FmCommand::PageUp,
-            HotkeyKind::PageDown => FmCommand::PageDown,
-            HotkeyKind::Home => FmCommand::GoHome,
-            HotkeyKind::End => FmCommand::GoEnd,
-            HotkeyKind::Enter => FmCommand::Enter,
-            HotkeyKind::Left => FmCommand::CollapseDir,
-            HotkeyKind::Right => FmCommand::ExpandDir,
-            HotkeyKind::Tab => FmCommand::NextPanel,
-            HotkeyKind::BackTab => FmCommand::PrevPanel,
-            // FM-specific keys (E, V, C, M, R, D, vim, etc.)
-            HotkeyKind::Other => {
-                let key = termide_keyboard::translate_hotkey(hotkey.raw);
-                let key = termide_keyboard::translate_all_chars(key);
-                FmCommand::from_key_event(key, &self.cached_config.keybindings, self.vim_mode)
-            }
-            _ => return vec![], // app-level actions handled upstream
-        };
-
-        self.execute_command(command)
-    }
-
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
         use keyboard::FmCommand;
 

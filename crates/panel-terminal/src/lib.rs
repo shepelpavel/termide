@@ -1430,11 +1430,6 @@ impl Panel for Terminal {
         }
     }
 
-    fn handle_action(&mut self, hotkey: termide_core::Hotkey) -> Vec<PanelEvent> {
-        // Terminal sends everything to the shell — forward raw key
-        self.handle_key(hotkey.raw)
-    }
-
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
         // If process exited, don't handle input
         if !self.is_alive() {

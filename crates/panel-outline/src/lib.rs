@@ -17,8 +17,7 @@ use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up};
 use unicode_width::UnicodeWidthStr;
 
 use termide_core::{
-    CommandResult, HotkeyKind, Panel, PanelCommand, PanelEvent, RenderContext, ThemeColors,
-    WidthPreference,
+    CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, ThemeColors, WidthPreference,
 };
 use termide_theme::Theme;
 use termide_ui::ScrollBar;
@@ -474,49 +473,6 @@ impl Panel for OutlinePanel {
                 true,
             );
         }
-    }
-
-    fn handle_action(&mut self, hotkey: termide_core::Hotkey) -> Vec<PanelEvent> {
-        match hotkey.kind {
-            HotkeyKind::Up => {
-                self.select_prev();
-                self.navigate_to_selected();
-            }
-            HotkeyKind::Down => {
-                self.select_next();
-                self.navigate_to_selected();
-            }
-            HotkeyKind::Home => {
-                self.selected_index = 0;
-                self.scroll_offset = 0;
-                self.navigate_to_selected();
-            }
-            HotkeyKind::End => {
-                self.selected_index = self.symbols.len().saturating_sub(1);
-                self.ensure_visible();
-                self.navigate_to_selected();
-            }
-            HotkeyKind::PageUp => {
-                let page_size = self.last_height;
-                for _ in 0..page_size {
-                    self.select_prev();
-                }
-                self.navigate_to_selected();
-            }
-            HotkeyKind::PageDown => {
-                let page_size = self.last_height;
-                for _ in 0..page_size {
-                    self.select_next();
-                }
-                self.navigate_to_selected();
-            }
-            HotkeyKind::Enter => {
-                self.navigate_to_selected();
-            }
-            HotkeyKind::Other => return self.handle_key(hotkey.raw),
-            _ => {}
-        }
-        vec![]
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {

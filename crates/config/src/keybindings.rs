@@ -241,7 +241,7 @@ pub struct GlobalKeybindings {
 ///
 /// Fields that duplicate global keybindings (save, undo, redo, search,
 /// copy, cut, paste, select_all) have been removed — they are now handled
-/// by the global normalizer and forwarded via handle_action.
+/// by the global normalizer.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EditorKeybindings {
     // File operations

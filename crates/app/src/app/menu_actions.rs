@@ -2037,7 +2037,7 @@ impl App {
 
     /// Open the command palette modal.
     pub(super) fn handle_open_command_palette(&mut self) -> Result<()> {
-        use termide_core::HotkeyKind;
+        use super::hotkey::HotkeyKind;
         use termide_modal::{ActiveModal, CommandEntry, CommandPaletteModal};
         use termide_state::PendingAction;
 

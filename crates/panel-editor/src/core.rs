@@ -1703,66 +1703,6 @@ impl Panel for Editor {
         );
     }
 
-    fn handle_action(&mut self, hotkey: termide_core::Hotkey) -> Vec<PanelEvent> {
-        use termide_core::HotkeyKind;
-        match hotkey.kind {
-            HotkeyKind::Save => {
-                // F2 = save file in editor (forward as Ctrl+S)
-                self.handle_key(crossterm::event::KeyEvent::new(
-                    crossterm::event::KeyCode::Char('s'),
-                    crossterm::event::KeyModifiers::CONTROL,
-                ))
-            }
-            HotkeyKind::View => {
-                // F3 = search next in editor
-                self.handle_key(crossterm::event::KeyEvent::new(
-                    crossterm::event::KeyCode::F(3),
-                    crossterm::event::KeyModifiers::NONE,
-                ))
-            }
-            HotkeyKind::EditItem => {
-                // F4 = rename symbol in editor (LSP rename)
-                self.handle_key(crossterm::event::KeyEvent::new(
-                    crossterm::event::KeyCode::F(4),
-                    crossterm::event::KeyModifiers::NONE,
-                ))
-            }
-            HotkeyKind::ContextMenu => {
-                // F12 = goto definition in editor (LSP)
-                self.handle_key(crossterm::event::KeyEvent::new(
-                    crossterm::event::KeyCode::F(12),
-                    crossterm::event::KeyModifiers::NONE,
-                ))
-            }
-            // Navigation and other actions — forward raw key events
-            // The editor's EditorCommand::from_key_event handles all key routing
-            HotkeyKind::SelectAll
-            | HotkeyKind::Cut
-            | HotkeyKind::Copy
-            | HotkeyKind::Paste
-            | HotkeyKind::Undo
-            | HotkeyKind::Redo
-            | HotkeyKind::Escape
-            | HotkeyKind::Search
-            | HotkeyKind::Refresh
-            | HotkeyKind::Backspace
-            | HotkeyKind::Up
-            | HotkeyKind::Down
-            | HotkeyKind::Left
-            | HotkeyKind::Right
-            | HotkeyKind::PageUp
-            | HotkeyKind::PageDown
-            | HotkeyKind::Home
-            | HotkeyKind::End
-            | HotkeyKind::Enter
-            | HotkeyKind::Tab
-            | HotkeyKind::BackTab
-            | HotkeyKind::DeleteItem => self.handle_key(hotkey.raw),
-            HotkeyKind::Other => self.handle_key(hotkey.raw),
-            _ => vec![],
-        }
-    }
-
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
         // Any keyboard input should make viewport follow cursor again
         self.scroll_follows_cursor = true;

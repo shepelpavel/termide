@@ -18,8 +18,8 @@ use ratatui::{
 use ratatui_image::{picker::Picker, protocol::StatefulProtocol, StatefulImage};
 
 use termide_core::{
-    CommandResult, Config, HotkeyKind, Panel, PanelCommand, PanelEvent, RenderContext,
-    SessionPanel, Theme, WidthPreference,
+    CommandResult, Config, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel, Theme,
+    WidthPreference,
 };
 
 /// Image panel for displaying images using terminal graphics protocols.
@@ -141,14 +141,6 @@ impl Panel for ImagePanel {
         if let Some(ref mut state) = self.image_state {
             let image_widget = StatefulImage::default();
             ratatui::prelude::StatefulWidget::render(image_widget, area, buf, state);
-        }
-    }
-
-    fn handle_action(&mut self, hotkey: termide_core::Hotkey) -> Vec<PanelEvent> {
-        match hotkey.kind {
-            HotkeyKind::Escape => vec![PanelEvent::ClosePanel],
-            HotkeyKind::Other => self.handle_key(hotkey.raw),
-            _ => vec![],
         }
     }
 

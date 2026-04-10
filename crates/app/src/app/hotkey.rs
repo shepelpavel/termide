@@ -1,7 +1,7 @@
-//! Semantic hotkey system for termide.
+//! Semantic hotkey system for app-level dispatch.
 //!
 //! The normalizer converts raw `KeyEvent`s into semantic `Hotkey` values.
-//! Panels, modals, and menus react to intentions, not keycodes.
+//! Used by the global hotkey handler and command palette.
 //! Unrecognized keys get `HotkeyKind::Other` with the raw event preserved.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -19,72 +19,16 @@ pub struct Hotkey {
 
 /// Semantic hotkey kind recognized from a KeyEvent.
 ///
-/// Panels interpret these contextually:
-/// - `Save` → FM: rename, Editor: save file, Git Status: commit
-/// - `View` → FM: view file, Editor: search next, Git Status: view file
-/// - `Other` → panel-specific parsing (navigation, text input, etc.)
+/// Used for app-level dispatch (global hotkeys, command palette).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HotkeyKind {
     // === F-key universal actions (context-dependent per panel) ===
-    /// F2, Ctrl+S — Save (FM: rename, Editor: save, Git: commit)
-    Save,
-    /// F3 — View / search next
-    View,
-    /// F4 — Edit item
-    EditItem,
-    /// F5 — Copy item
-    CopyItem,
-    /// F6 — Move item
-    MoveItem,
-    /// F7 — Create new item
-    CreateItem,
-    /// Delete, F8 — Delete item / cancel operation
-    DeleteItem,
     /// F9, Alt+M — Toggle menu
     Menu,
     /// F10, Alt+X — Close panel
     ClosePanel,
     /// F11, Alt+Backspace — Toggle panel stacking
     ToggleStack,
-    /// F12 — Context menu / properties
-    ContextMenu,
-
-    // === Non-F-key semantic actions ===
-    /// Ctrl+F — Search
-    Search,
-    /// Ctrl+R — Refresh
-    Refresh,
-
-    // === Key-named variants (no unified semantics, panels interpret freely) ===
-    Escape,
-    Backspace,
-    Space,
-    Insert,
-    /// Ctrl+Z — Undo
-    Undo,
-    /// Ctrl+Y / Ctrl+Shift+Z — Redo
-    Redo,
-    /// Ctrl+A — Select all
-    SelectAll,
-    /// Ctrl+X — Cut (clipboard)
-    Cut,
-    /// Ctrl+C — Copy (clipboard)
-    Copy,
-    /// Ctrl+V — Paste (clipboard)
-    Paste,
-
-    // === Navigation ===
-    Up,
-    Down,
-    Left,
-    Right,
-    PageUp,
-    PageDown,
-    Home,
-    End,
-    Enter,
-    Tab,
-    BackTab,
 
     // === App-level actions (handled before reaching panels) ===
     /// Alt+Q — Quit application
@@ -148,7 +92,7 @@ pub enum HotkeyKind {
 ///
 /// The key should already be translated (Cyrillic → Latin) before calling this.
 /// Order: app-level actions first (most specific), then universal F-key actions,
-/// then non-F-key actions, then Other.
+/// then Other.
 pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Hotkey {
     macro_rules! hotkey {
         ($kind:expr) => {
@@ -161,7 +105,6 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Hotkey {
 
     // =========================================================================
     // App-level actions (Alt+key combinations, Ctrl+P)
-    // These are checked first because Alt+M should be Menu, not a char input.
     // =========================================================================
 
     if matches_binding_or_defaults(&kb.quit, &key, &[(KeyCode::Char('q'), KeyModifiers::ALT)]) {
@@ -397,59 +340,8 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Hotkey {
     }
 
     // =========================================================================
-    // F-key universal actions
+    // F-key actions used at app level
     // =========================================================================
-
-    // F1 is handled by open_help above (defaults: "Alt+H", "F1")
-
-    if matches_binding_or_defaults(
-        &kb.save,
-        &key,
-        &[
-            (KeyCode::F(2), KeyModifiers::NONE),
-            (KeyCode::Char('s'), KeyModifiers::CONTROL),
-        ],
-    ) {
-        hotkey!(HotkeyKind::Save);
-    }
-
-    if matches_binding_or_default(&kb.view, &key, KeyCode::F(3), KeyModifiers::NONE) {
-        hotkey!(HotkeyKind::View);
-    }
-
-    if matches_binding_or_default(&kb.edit_item, &key, KeyCode::F(4), KeyModifiers::NONE) {
-        hotkey!(HotkeyKind::EditItem);
-    }
-
-    if matches_binding_or_default(&kb.copy_item, &key, KeyCode::F(5), KeyModifiers::NONE) {
-        hotkey!(HotkeyKind::CopyItem);
-    }
-
-    if matches_binding_or_default(&kb.move_item, &key, KeyCode::F(6), KeyModifiers::NONE) {
-        hotkey!(HotkeyKind::MoveItem);
-    }
-
-    if matches_binding_or_defaults(
-        &kb.create_item,
-        &key,
-        &[
-            (KeyCode::F(7), KeyModifiers::NONE),
-            (KeyCode::Char('n'), KeyModifiers::CONTROL),
-        ],
-    ) {
-        hotkey!(HotkeyKind::CreateItem);
-    }
-
-    if matches_binding_or_defaults(
-        &kb.delete_item,
-        &key,
-        &[
-            (KeyCode::Delete, KeyModifiers::NONE),
-            (KeyCode::F(8), KeyModifiers::NONE),
-        ],
-    ) {
-        hotkey!(HotkeyKind::DeleteItem);
-    }
 
     if matches_binding_or_defaults(
         &kb.toggle_menu,
@@ -484,102 +376,8 @@ pub fn normalize(key: KeyEvent, kb: &GlobalKeybindings) -> Hotkey {
         hotkey!(HotkeyKind::ToggleStack);
     }
 
-    if matches_binding_or_default(&kb.context_menu, &key, KeyCode::F(12), KeyModifiers::NONE) {
-        hotkey!(HotkeyKind::ContextMenu);
-    }
-
     // =========================================================================
-    // Non-F-key universal actions
-    // =========================================================================
-
-    // Semantic actions with configurable bindings
-    if matches_binding_or_default(&kb.search, &key, KeyCode::Char('f'), KeyModifiers::CONTROL) {
-        hotkey!(HotkeyKind::Search);
-    }
-
-    if matches_binding_or_default(&kb.refresh, &key, KeyCode::Char('r'), KeyModifiers::CONTROL) {
-        hotkey!(HotkeyKind::Refresh);
-    }
-
-    // Key-named variants (no config, direct key match)
-    if key.code == KeyCode::Esc && key.modifiers.is_empty() {
-        hotkey!(HotkeyKind::Escape);
-    }
-    if key.code == KeyCode::Backspace && key.modifiers.is_empty() {
-        hotkey!(HotkeyKind::Backspace);
-    }
-    if key.code == KeyCode::Char(' ') && key.modifiers.is_empty() {
-        hotkey!(HotkeyKind::Space);
-    }
-    if key.code == KeyCode::Insert && key.modifiers.is_empty() {
-        hotkey!(HotkeyKind::Insert);
-    }
-
-    if matches_binding_or_default(&kb.undo, &key, KeyCode::Char('z'), KeyModifiers::CONTROL) {
-        hotkey!(HotkeyKind::Undo);
-    }
-
-    if matches_binding_or_defaults(
-        &kb.redo,
-        &key,
-        &[
-            (KeyCode::Char('y'), KeyModifiers::CONTROL),
-            (
-                KeyCode::Char('Z'),
-                KeyModifiers::CONTROL.union(KeyModifiers::SHIFT),
-            ),
-        ],
-    ) {
-        hotkey!(HotkeyKind::Redo);
-    }
-
-    if matches_binding_or_default(
-        &kb.select_all,
-        &key,
-        KeyCode::Char('a'),
-        KeyModifiers::CONTROL,
-    ) {
-        hotkey!(HotkeyKind::SelectAll);
-    }
-
-    if matches_binding_or_default(&kb.cut, &key, KeyCode::Char('x'), KeyModifiers::CONTROL) {
-        hotkey!(HotkeyKind::Cut);
-    }
-
-    if matches_binding_or_default(&kb.copy, &key, KeyCode::Char('c'), KeyModifiers::CONTROL) {
-        hotkey!(HotkeyKind::Copy);
-    }
-
-    if matches_binding_or_default(&kb.paste, &key, KeyCode::Char('v'), KeyModifiers::CONTROL) {
-        hotkey!(HotkeyKind::Paste);
-    }
-
-    // =========================================================================
-    // Navigation
-    // =========================================================================
-
-    if key.modifiers.is_empty() {
-        match key.code {
-            KeyCode::Up => hotkey!(HotkeyKind::Up),
-            KeyCode::Down => hotkey!(HotkeyKind::Down),
-            KeyCode::Left => hotkey!(HotkeyKind::Left),
-            KeyCode::Right => hotkey!(HotkeyKind::Right),
-            KeyCode::PageUp => hotkey!(HotkeyKind::PageUp),
-            KeyCode::PageDown => hotkey!(HotkeyKind::PageDown),
-            KeyCode::Home => hotkey!(HotkeyKind::Home),
-            KeyCode::End => hotkey!(HotkeyKind::End),
-            KeyCode::Enter => hotkey!(HotkeyKind::Enter),
-            KeyCode::Tab => hotkey!(HotkeyKind::Tab),
-            _ => {}
-        }
-    }
-
-    if key.code == KeyCode::BackTab {
-        hotkey!(HotkeyKind::BackTab);
-    }
-
-    // =========================================================================
-    // Unrecognized — pass through (chars, modifiers+nav, etc.)
+    // Unrecognized — pass through
     // =========================================================================
     Hotkey {
         kind: HotkeyKind::Other,

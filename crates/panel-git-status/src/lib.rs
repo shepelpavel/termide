@@ -972,278 +972,11 @@ impl Panel for GitStatusPanel {
         }
     }
 
-    fn handle_action(&mut self, hotkey: termide_core::Hotkey) -> Vec<PanelEvent> {
-        use termide_core::HotkeyKind;
-        self.status_message = None;
-
-        match hotkey.kind {
-            // F-key actions
-            HotkeyKind::View => {
-                if self.current_section == Section::Files
-                    && matches!(
-                        self.get_selection(),
-                        Some(Selection::UnstagedFile(_)) | Some(Selection::StagedFile(_))
-                    )
-                {
-                    return self.open_file(false);
-                }
-                vec![]
-            }
-            HotkeyKind::EditItem => {
-                if self.current_section == Section::Files
-                    && matches!(
-                        self.get_selection(),
-                        Some(Selection::UnstagedFile(_)) | Some(Selection::StagedFile(_))
-                    )
-                {
-                    return self.open_file(true);
-                }
-                vec![]
-            }
-            HotkeyKind::ContextMenu => self.show_file_properties(),
-            HotkeyKind::DeleteItem => {
-                // Delete key: unstage if staged, revert if unstaged
-                if self.current_section == Section::Files {
-                    if matches!(
-                        self.get_selection(),
-                        Some(Selection::StagedFile(_)) | Some(Selection::StagedDir(_))
-                    ) {
-                        self.do_unstage();
-                    } else if matches!(
-                        self.get_selection(),
-                        Some(Selection::UnstagedFile(_)) | Some(Selection::StagedFile(_))
-                    ) {
-                        return self.initiate_revert();
-                    }
-                }
-                vec![]
-            }
-            // Non-F-key actions
-            HotkeyKind::Escape => {
-                if self.branch_dropdown_open {
-                    self.branch_dropdown_open = false;
-                } else if self.repo_dropdown_open {
-                    self.repo_dropdown_open = false;
-                }
-                vec![]
-            }
-            HotkeyKind::Refresh => {
-                self.refresh();
-                self.status_message = Some(termide_i18n::t().git_refreshed().to_string());
-                if let Some(repo) = self.repo_manager.current() {
-                    use termide_core::event::{GitOperationType, PanelEvent};
-                    return vec![PanelEvent::GitOperation {
-                        operation: GitOperationType::Fetch,
-                        repo_path: repo.to_path_buf(),
-                    }];
-                }
-                vec![]
-            }
-            HotkeyKind::Backspace => {
-                // Backspace: revert file
-                if self.current_section == Section::Files
-                    && matches!(
-                        self.get_selection(),
-                        Some(Selection::UnstagedFile(_)) | Some(Selection::StagedFile(_))
-                    )
-                {
-                    return self.initiate_revert();
-                }
-                vec![]
-            }
-            // Navigation
-            HotkeyKind::Up => {
-                self.handle_up_key();
-                vec![]
-            }
-            HotkeyKind::Down => {
-                self.handle_down_key();
-                vec![]
-            }
-            HotkeyKind::Home => {
-                if self.current_section == Section::Files {
-                    let unstaged_end = 1 + self.unstaged_files.len();
-                    let staged_header = unstaged_end;
-
-                    if self.cursor < staged_header {
-                        if !self.unstaged_files.is_empty() {
-                            self.cursor = 1;
-                        } else {
-                            self.cursor = 0;
-                        }
-                    } else if !self.staged_files.is_empty() {
-                        self.cursor = staged_header + 1;
-                    } else {
-                        self.cursor = staged_header;
-                    }
-                    self.ensure_cursor_visible();
-                }
-                vec![]
-            }
-            HotkeyKind::End => {
-                if self.current_section == Section::Files {
-                    let unstaged_end = 1 + self.unstaged_files.len();
-                    let staged_header = unstaged_end;
-                    let staged_end = staged_header + 1 + self.staged_files.len();
-
-                    if self.cursor < staged_header {
-                        if !self.unstaged_files.is_empty() {
-                            self.cursor = unstaged_end - 1;
-                        } else {
-                            self.cursor = 0;
-                        }
-                    } else if !self.staged_files.is_empty() {
-                        self.cursor = staged_end - 1;
-                    } else {
-                        self.cursor = staged_header;
-                    }
-                    self.ensure_cursor_visible();
-                }
-                vec![]
-            }
-            HotkeyKind::PageUp => {
-                if self.current_section == Section::Files {
-                    let page_size = self.viewport_height.max(1);
-                    let mut new_cursor = self.cursor.saturating_sub(page_size);
-                    while new_cursor > 0 && !self.is_selectable_line(new_cursor) {
-                        new_cursor -= 1;
-                    }
-                    if self.is_selectable_line(new_cursor) {
-                        self.cursor = new_cursor;
-                    }
-                    self.ensure_cursor_visible();
-                }
-                vec![]
-            }
-            HotkeyKind::PageDown => {
-                if self.current_section == Section::Files {
-                    let max = self.total_virtual_lines();
-                    let page_size = self.viewport_height.max(1);
-                    let target = (self.cursor + page_size).min(max.saturating_sub(1));
-                    let mut new_cursor = target;
-                    while new_cursor > self.cursor && !self.is_selectable_line(new_cursor) {
-                        new_cursor -= 1;
-                    }
-                    if new_cursor > self.cursor && self.is_selectable_line(new_cursor) {
-                        self.cursor = new_cursor;
-                    }
-                    self.ensure_cursor_visible();
-                    if self.cursor == self.last_selectable_line() && max > self.viewport_height {
-                        self.scroll_offset = max.saturating_sub(self.viewport_height);
-                    }
-                }
-                vec![]
-            }
-            HotkeyKind::Left => {
-                match self.current_section {
-                    Section::BranchSelector => {
-                        self.current_section = Section::RepoSelector;
-                    }
-                    Section::Buttons => {
-                        if self.selected_button > 0 {
-                            self.selected_button -= 1;
-                        }
-                    }
-                    Section::Files => match self.get_selection() {
-                        Some(Selection::UnstagedDir(idx)) => {
-                            if matches!(
-                                self.unstaged.tree[idx].kind,
-                                tree::TreeNodeKind::Directory { expanded: true }
-                            ) {
-                                self.toggle_dir_expand(true, idx);
-                            }
-                        }
-                        Some(Selection::StagedDir(idx)) => {
-                            if matches!(
-                                self.staged.tree[idx].kind,
-                                tree::TreeNodeKind::Directory { expanded: true }
-                            ) {
-                                self.toggle_dir_expand(false, idx);
-                            }
-                        }
-                        _ => {}
-                    },
-                    _ => {}
-                }
-                vec![]
-            }
-            HotkeyKind::Right => {
-                match self.current_section {
-                    Section::RepoSelector => {
-                        self.current_section = Section::BranchSelector;
-                    }
-                    Section::Files => match self.get_selection() {
-                        Some(Selection::UnstagedDir(idx)) => {
-                            if matches!(
-                                self.unstaged.tree[idx].kind,
-                                tree::TreeNodeKind::Directory { expanded: false }
-                            ) {
-                                self.toggle_dir_expand(true, idx);
-                            }
-                        }
-                        Some(Selection::StagedDir(idx)) => {
-                            if matches!(
-                                self.staged.tree[idx].kind,
-                                tree::TreeNodeKind::Directory { expanded: false }
-                            ) {
-                                self.toggle_dir_expand(false, idx);
-                            }
-                        }
-                        _ => {}
-                    },
-                    Section::Buttons => {
-                        let max = self.get_visible_buttons().len().saturating_sub(1);
-                        if self.selected_button < max {
-                            self.selected_button += 1;
-                        }
-                    }
-                    _ => {}
-                }
-                vec![]
-            }
-            HotkeyKind::Tab => {
-                self.next_section();
-                vec![]
-            }
-            HotkeyKind::BackTab => {
-                self.prev_section();
-                vec![]
-            }
-            HotkeyKind::Enter => self.handle_enter_key(),
-            HotkeyKind::Space => {
-                // Space — show file properties
-                if self.current_section == Section::Files
-                    && matches!(
-                        self.get_selection(),
-                        Some(Selection::UnstagedFile(_)) | Some(Selection::StagedFile(_))
-                    )
-                {
-                    return self.show_file_properties();
-                }
-                vec![]
-            }
-            HotkeyKind::Insert => {
-                // Insert — stage file
-                if self.current_section == Section::Files
-                    && matches!(
-                        self.get_selection(),
-                        Some(Selection::UnstagedFile(_)) | Some(Selection::UnstagedDir(_))
-                    )
-                {
-                    self.do_stage();
-                }
-                vec![]
-            }
-            HotkeyKind::Other => self.handle_key(hotkey.raw),
-            _ => vec![],
-        }
-    }
-
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
         // Clear status message on any key
         self.status_message = None;
 
-        // Stage file (S/s letter shortcut — Insert is handled as Action::Insert in handle_action)
+        // Stage file (S/s letter shortcut)
         if key.modifiers.is_empty() && matches!(key.code, KeyCode::Char('s') | KeyCode::Char('S')) {
             if self.current_section == Section::Files
                 && matches!(
@@ -1289,7 +1022,32 @@ impl Panel for GitStatusPanel {
             return vec![];
         }
 
-        // Space is handled as Action::Space in handle_action
+        match key.code {
+            KeyCode::Tab => {
+                self.next_section();
+            }
+            KeyCode::BackTab => {
+                self.prev_section();
+            }
+            KeyCode::Enter => {
+                return self.handle_enter_key();
+            }
+            KeyCode::Backspace => {
+                if self.current_section == Section::Files {
+                    return self.initiate_revert();
+                }
+            }
+            KeyCode::F(3) => {
+                return self.open_file(false);
+            }
+            KeyCode::F(4) => {
+                return self.open_file(true);
+            }
+            KeyCode::Char(' ') | KeyCode::F(12) => {
+                return self.show_file_properties();
+            }
+            _ => {}
+        }
 
         vec![]
     }

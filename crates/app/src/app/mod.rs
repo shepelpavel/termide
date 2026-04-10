@@ -30,6 +30,7 @@ mod background_ops;
 mod event_handler;
 mod file_transfer_ops;
 mod global_hotkeys;
+pub(crate) mod hotkey;
 mod key_handler;
 mod local_ops;
 mod menu_actions;
@@ -60,7 +61,7 @@ pub struct App {
     /// Click tracker for double-click on panel title (directory picker).
     title_click_tracker: ClickTracker<(u16, u16)>,
     /// Cached command list for Command Palette (index → HotkeyKind).
-    command_palette_actions: Option<Vec<termide_core::HotkeyKind>>,
+    command_palette_actions: Option<Vec<hotkey::HotkeyKind>>,
 }
 
 impl App {

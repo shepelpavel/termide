@@ -5,6 +5,7 @@
 
 use anyhow::Result;
 
+use super::hotkey::HotkeyKind;
 use super::App;
 use crate::state::{ActiveModal, PendingAction};
 use crate::PanelExt;
@@ -14,9 +15,7 @@ impl App {
     /// Handle app-level actions from the normalizer.
     ///
     /// Returns `true` if the action was handled, `false` to pass to panel.
-    pub(super) fn handle_app_action(&mut self, kind: &termide_core::HotkeyKind) -> Result<bool> {
-        use termide_core::HotkeyKind;
-
+    pub(super) fn handle_app_action(&mut self, kind: &HotkeyKind) -> Result<bool> {
         match kind {
             // Menu
             HotkeyKind::Menu => {
