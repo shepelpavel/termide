@@ -13,8 +13,8 @@ mod xdg;
 pub use bookmarks::{Bookmark, BookmarkType, BookmarksConfig};
 pub use keybindings::{
     cyrillic_to_latin, is_go_end, is_go_home, is_move_down, is_move_up, latin_to_cyrillic,
-    matches_binding_or_default, matches_binding_or_defaults, parse_keybinding, EditorKeybindings,
-    FileManagerKeybindings, GlobalKeybindings, KeyBinding, ParsedKeyBinding, TerminalKeybindings,
+    parse_keybinding, EditorKeybindings, FileManagerKeybindings, GlobalKeybindings, KeyBinding,
+    ParsedKeyBinding, TerminalKeybindings,
 };
 pub use settings::{
     Config, EditorSettings, FileManagerSettings, GeneralSettings, GitStatusSettings, IconMode,

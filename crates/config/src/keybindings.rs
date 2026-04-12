@@ -183,7 +183,6 @@ pub struct GlobalKeybindings {
     pub open_sessions: Option<KeyBinding>,
     pub new_session: Option<KeyBinding>,
     pub open_git_status: Option<KeyBinding>,
-    pub open_directory_switcher: Option<KeyBinding>,
     pub open_bookmark_add: Option<KeyBinding>,
     pub open_outline: Option<KeyBinding>,
     pub open_diagnostics: Option<KeyBinding>,
@@ -486,47 +485,6 @@ impl TerminalKeybindings {
         set_default!(scroll_top, "Shift+Home");
         set_default!(scroll_bottom, "Shift+End");
         set_default!(search, "Ctrl+F");
-    }
-}
-
-// =============================================================================
-// Helper macros and functions for matching keybindings
-// =============================================================================
-
-/// Helper to check if an event matches a keybinding or a default.
-pub fn matches_binding_or_default(
-    binding: &Option<KeyBinding>,
-    event: &KeyEvent,
-    default_key: KeyCode,
-    default_modifiers: KeyModifiers,
-) -> bool {
-    if let Some(kb) = binding {
-        kb.matches(event)
-    } else {
-        let default = ParsedKeyBinding {
-            key: default_key,
-            modifiers: default_modifiers,
-        };
-        default.matches(event)
-    }
-}
-
-/// Helper to check if an event matches any of multiple default bindings.
-pub fn matches_binding_or_defaults(
-    binding: &Option<KeyBinding>,
-    event: &KeyEvent,
-    defaults: &[(KeyCode, KeyModifiers)],
-) -> bool {
-    if let Some(kb) = binding {
-        kb.matches(event)
-    } else {
-        defaults.iter().any(|(key, mods)| {
-            let default = ParsedKeyBinding {
-                key: *key,
-                modifiers: *mods,
-            };
-            default.matches(event)
-        })
     }
 }
 

@@ -240,7 +240,6 @@ impl FmCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use termide_config::KeyBinding;
 
     fn key(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
         KeyEvent::new(code, modifiers)
