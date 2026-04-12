@@ -1467,10 +1467,7 @@ impl Panel for Terminal {
             return vec![];
         }
 
-        // Translate Cyrillic to Latin for hotkeys
-        let key = termide_keyboard::translate_hotkey(key);
-
-        // Configurable actions via HotkeyTable
+        // Configurable actions via HotkeyTable (key already translated by app)
         if self.hotkeys.matches("paste", &key) {
             let _ = self.paste_from_clipboard();
             return vec![];

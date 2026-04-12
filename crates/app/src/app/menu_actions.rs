@@ -2037,7 +2037,6 @@ impl App {
 
     /// Open the command palette modal.
     pub(super) fn handle_open_command_palette(&mut self) -> Result<()> {
-        use super::hotkey::HotkeyKind;
         use termide_modal::{ActiveModal, CommandEntry, CommandPaletteModal};
         use termide_state::PendingAction;
 
@@ -2049,11 +2048,11 @@ impl App {
                 .unwrap_or_default()
         };
 
-        // Build paired lists: actions Vec and display entries Vec.
+        // Build paired lists: action name strings and display entries.
         // Order: Panels, Git, Navigation, Panel Management, Application.
-        let commands: Vec<(HotkeyKind, CommandEntry)> = vec![
+        let commands: Vec<(&str, CommandEntry)> = vec![
             (
-                HotkeyKind::NewEditor,
+                "new_editor",
                 CommandEntry {
                     label: "New Editor".into(),
                     category: "Panels",
@@ -2061,7 +2060,7 @@ impl App {
                 },
             ),
             (
-                HotkeyKind::NewFileManager,
+                "new_file_manager",
                 CommandEntry {
                     label: "New File Manager".into(),
                     category: "Panels",
@@ -2069,7 +2068,7 @@ impl App {
                 },
             ),
             (
-                HotkeyKind::NewTerminal,
+                "new_terminal",
                 CommandEntry {
                     label: "New Terminal".into(),
                     category: "Panels",
@@ -2077,7 +2076,7 @@ impl App {
                 },
             ),
             (
-                HotkeyKind::NewJournal,
+                "new_journal",
                 CommandEntry {
                     label: "New Journal".into(),
                     category: "Panels",
@@ -2085,7 +2084,7 @@ impl App {
                 },
             ),
             (
-                HotkeyKind::OpenHelp,
+                "open_help",
                 CommandEntry {
                     label: "Open Help".into(),
                     category: "Panels",
@@ -2093,7 +2092,7 @@ impl App {
                 },
             ),
             (
-                HotkeyKind::OpenPreferences,
+                "open_preferences",
                 CommandEntry {
                     label: "Open Preferences".into(),
                     category: "Panels",
@@ -2101,7 +2100,7 @@ impl App {
                 },
             ),
             (
-                HotkeyKind::OpenGitStatus,
+                "open_git_status",
                 CommandEntry {
                     label: "Open Git Status".into(),
                     category: "Git",
@@ -2109,7 +2108,7 @@ impl App {
                 },
             ),
             (
-                HotkeyKind::OpenGitLog,
+                "open_git_log",
                 CommandEntry {
                     label: "Open Git Log".into(),
                     category: "Git",
@@ -2117,7 +2116,7 @@ impl App {
                 },
             ),
             (
-                HotkeyKind::OpenSessions,
+                "open_sessions",
                 CommandEntry {
                     label: "Open Sessions".into(),
                     category: "Navigation",
@@ -2125,7 +2124,7 @@ impl App {
                 },
             ),
             (
-                HotkeyKind::OpenSessions,
+                "open_sessions",
                 CommandEntry {
                     label: "Switch Directory".into(),
                     category: "Navigation",
@@ -2135,7 +2134,7 @@ impl App {
                 },
             ),
             (
-                HotkeyKind::OpenOutline,
+                "open_outline",
                 CommandEntry {
                     label: "Open Outline".into(),
                     category: "Navigation",
@@ -2143,7 +2142,7 @@ impl App {
                 },
             ),
             (
-                HotkeyKind::OpenDiagnostics,
+                "open_diagnostics",
                 CommandEntry {
                     label: "Open Diagnostics".into(),
                     category: "Navigation",
@@ -2151,7 +2150,7 @@ impl App {
                 },
             ),
             (
-                HotkeyKind::OpenBookmarkAdd,
+                "open_bookmark_add",
                 CommandEntry {
                     label: "Add Bookmark".into(),
                     category: "Navigation",
@@ -2159,7 +2158,7 @@ impl App {
                 },
             ),
             (
-                HotkeyKind::ClosePanel,
+                "close_panel",
                 CommandEntry {
                     label: "Close Panel".into(),
                     category: "Panel Management",
@@ -2167,7 +2166,7 @@ impl App {
                 },
             ),
             (
-                HotkeyKind::ToggleStack,
+                "toggle_stack",
                 CommandEntry {
                     label: "Toggle Stacking".into(),
                     category: "Panel Management",
@@ -2175,7 +2174,7 @@ impl App {
                 },
             ),
             (
-                HotkeyKind::SwapLeft,
+                "swap_left",
                 CommandEntry {
                     label: "Move Panel Left".into(),
                     category: "Panel Management",
@@ -2183,7 +2182,7 @@ impl App {
                 },
             ),
             (
-                HotkeyKind::SwapRight,
+                "swap_right",
                 CommandEntry {
                     label: "Move Panel Right".into(),
                     category: "Panel Management",
@@ -2191,7 +2190,7 @@ impl App {
                 },
             ),
             (
-                HotkeyKind::MoveFirst,
+                "move_first",
                 CommandEntry {
                     label: "Move to First".into(),
                     category: "Panel Management",
@@ -2199,7 +2198,7 @@ impl App {
                 },
             ),
             (
-                HotkeyKind::MoveLast,
+                "move_last",
                 CommandEntry {
                     label: "Move to Last".into(),
                     category: "Panel Management",
@@ -2207,7 +2206,7 @@ impl App {
                 },
             ),
             (
-                HotkeyKind::Quit,
+                "quit",
                 CommandEntry {
                     label: "Quit".into(),
                     category: "Application",
@@ -2215,7 +2214,7 @@ impl App {
                 },
             ),
             (
-                HotkeyKind::Menu,
+                "menu",
                 CommandEntry {
                     label: "Toggle Menu".into(),
                     category: "Application",
@@ -2224,9 +2223,9 @@ impl App {
             ),
         ];
 
-        let (actions, entries): (Vec<HotkeyKind>, Vec<CommandEntry>) = commands.into_iter().unzip();
+        let (actions, entries): (Vec<&str>, Vec<CommandEntry>) = commands.into_iter().unzip();
 
-        self.command_palette_actions = Some(actions);
+        self.command_palette_actions = Some(actions.into_iter().map(String::from).collect());
 
         let modal = CommandPaletteModal::new(entries);
         self.state.set_pending_action(

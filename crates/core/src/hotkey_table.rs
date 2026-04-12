@@ -133,9 +133,3 @@ fn format_binding(binding: &ParsedKeyBinding) -> String {
     result.push_str(&key_name);
     result
 }
-
-/// Normalize a raw KeyEvent: translate Cyrillic, fix shift quirks, normalize case.
-/// This is the only transformation before dispatch — no semantic mapping.
-pub fn normalize_key(key: KeyEvent) -> KeyEvent {
-    termide_keyboard::translate_hotkey(key)
-}

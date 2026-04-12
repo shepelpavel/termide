@@ -15,7 +15,7 @@ pub use event::{
     ConfirmAction, ConflictResolution, Event, EventHandler, GitOperationType, InputAction,
     PanelEvent, ReferenceLocation, SearchMode, SelectAction, SplitDirection, VimPanelDirection,
 };
-pub use hotkey_table::{normalize_key, HotkeyTable};
+pub use hotkey_table::HotkeyTable;
 pub use panel::{
     Panel, PanelConfig, RenderContext, Searchable, SessionPanel, ThemeColors, WidthPreference,
 };

@@ -30,7 +30,6 @@ mod background_ops;
 mod event_handler;
 mod file_transfer_ops;
 mod global_hotkeys;
-pub(crate) mod hotkey;
 mod key_handler;
 mod local_ops;
 mod menu_actions;
@@ -60,8 +59,8 @@ pub struct App {
     outline_last_edit_time: Option<std::time::Instant>,
     /// Click tracker for double-click on panel title (directory picker).
     title_click_tracker: ClickTracker<(u16, u16)>,
-    /// Cached command list for Command Palette (index → HotkeyKind).
-    command_palette_actions: Option<Vec<hotkey::HotkeyKind>>,
+    /// Cached command list for Command Palette (index → action name).
+    command_palette_actions: Option<Vec<String>>,
 }
 
 impl App {

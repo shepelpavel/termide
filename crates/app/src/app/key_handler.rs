@@ -20,57 +20,51 @@ impl App {
         // Translate Cyrillic to Latin for hotkeys
         let key = termide_keyboard::translate_hotkey(key);
 
-        // Normalize KeyEvent → semantic Hotkey for app-level dispatch
-        let hotkey = super::hotkey::normalize(key, &self.state.config.general.keybindings);
-
-        // Log hotkey for debugging
-        log::trace!("Key {:?} → {:?}", key.code, hotkey.kind);
+        // Log key for debugging
+        log::trace!("Key {:?}", key.code);
 
         // Clear status message on any key press
         if self.state.ui.status_message.is_some() {
             self.state.clear_status();
         }
 
-        // Modals and menus use the raw key event
-        let key_for_ui = hotkey.raw;
-
         // If modal window is open, handle it
         if self.state.has_modal() {
-            return self.handle_modal_key(key_for_ui);
+            return self.handle_modal_key(key);
         }
 
         // If Sessions submenu is open, handle its navigation
         if self.state.ui.sessions_submenu.open {
-            return self.handle_sessions_submenu_key(key_for_ui);
+            return self.handle_sessions_submenu_key(key);
         }
 
         // If Tools submenu is open, handle its navigation
         if self.state.ui.tools_submenu.open {
-            return self.handle_tools_submenu_key(key_for_ui);
+            return self.handle_tools_submenu_key(key);
         }
 
         // If Scripts submenu is open, handle its navigation
         if self.state.ui.scripts_submenu.open {
-            return self.handle_scripts_submenu_key(key_for_ui);
+            return self.handle_scripts_submenu_key(key);
         }
 
         // If Bookmarks submenu is open, handle its navigation
         if self.state.ui.bookmarks_submenu.open {
-            return self.handle_bookmarks_submenu_key(key_for_ui);
+            return self.handle_bookmarks_submenu_key(key);
         }
 
         // If Options submenu is open, handle submenu navigation
         if self.state.ui.options_submenu.open {
-            return self.handle_submenu_key(key_for_ui);
+            return self.handle_submenu_key(key);
         }
 
         // If menu is open, handle menu navigation
         if self.state.ui.menu_open {
-            return self.handle_menu_key(key_for_ui);
+            return self.handle_menu_key(key);
         }
 
-        // Handle app-level actions (Quit, NewTerminal, PrevGroup, etc.)
-        if self.handle_app_action(&hotkey.kind)? {
+        // Handle app-level actions via HotkeyTable
+        if self.handle_global_hotkey(&key)? {
             return Ok(());
         }
 

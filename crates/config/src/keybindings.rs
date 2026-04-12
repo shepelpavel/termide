@@ -468,11 +468,6 @@ impl FileManagerKeybindings {
     }
 }
 
-impl GitStatusKeybindings {
-    /// Fill None values with default keybindings (no-op, all fields removed)
-    pub fn with_defaults(&mut self) {}
-}
-
 impl TerminalKeybindings {
     /// Fill None values with default keybindings
     pub fn with_defaults(&mut self) {

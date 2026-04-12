@@ -546,7 +546,6 @@ impl Config {
         self.general.keybindings.with_defaults();
         self.editor.keybindings.with_defaults();
         self.file_manager.keybindings.with_defaults();
-        self.git_status.keybindings.with_defaults();
         self.terminal.keybindings.with_defaults();
     }
 }
