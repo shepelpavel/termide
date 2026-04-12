@@ -27,11 +27,7 @@ pub(crate) fn build_fm_hotkey_table(config: &Config) -> HotkeyTable {
     // F-keys + Ctrl combos + letter shortcuts
     t.insert(
         "rename",
-        &Some(KeyBinding::Multiple(vec![
-            "F2".into(),
-            "Ctrl+S".into(),
-            "R".into(),
-        ])),
+        &Some(KeyBinding::Multiple(vec!["F2".into(), "R".into()])),
     );
     t.insert(
         "view",
@@ -51,13 +47,12 @@ pub(crate) fn build_fm_hotkey_table(config: &Config) -> HotkeyTable {
     );
     t.insert(
         "create_dir",
-        &Some(KeyBinding::Multiple(vec![
-            "F7".into(),
-            "Ctrl+N".into(),
-            "D".into(),
-        ])),
+        &Some(KeyBinding::Multiple(vec!["F7".into(), "D".into()])),
     );
-    t.insert("create_file", &Some(KeyBinding::Single("F".into())));
+    t.insert(
+        "create_file",
+        &Some(KeyBinding::Multiple(vec!["F".into(), "Ctrl+N".into()])),
+    );
     t.insert(
         "delete",
         &Some(KeyBinding::Multiple(vec!["Delete".into(), "F8".into()])),

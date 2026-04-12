@@ -34,7 +34,7 @@ impl GitStashPanel {
         }
 
         match key.code {
-            KeyCode::Enter => {
+            KeyCode::Enter | KeyCode::Char(' ') => {
                 return self.action_new();
             }
             KeyCode::Esc => {
@@ -88,7 +88,7 @@ impl GitStashPanel {
         }
 
         match key.code {
-            KeyCode::Enter => {
+            KeyCode::Enter | KeyCode::Char(' ') => {
                 return self.action_show_context_menu();
             }
             KeyCode::Esc => {

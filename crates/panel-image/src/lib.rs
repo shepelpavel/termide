@@ -146,7 +146,7 @@ impl Panel for ImagePanel {
 
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
         match key.code {
-            KeyCode::Char('q') => {
+            KeyCode::Char('q') | KeyCode::Esc => {
                 vec![PanelEvent::ClosePanel]
             }
             _ => vec![],

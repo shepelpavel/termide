@@ -878,31 +878,34 @@ impl Panel for GitLogPanel {
         // Clear status message on any key
         self.status_message = None;
 
-        // Configurable actions via HotkeyTable
-        if self.hotkeys.matches("info", &key) {
-            if self.current_section == Section::Commits {
-                self.show_commit_info();
-            }
+        let page_size = self.last_area.height.saturating_sub(4) as usize;
+
+        // Escape closes any open dropdown
+        if key.code == KeyCode::Esc && (self.repo_dropdown_open || self.branch_dropdown_open) {
+            self.repo_dropdown_open = false;
+            self.branch_dropdown_open = false;
+            self.dropdown_cursor = 0;
             return vec![];
         }
-        if self.hotkeys.matches("view_diff", &key) {
-            return self.view_diff();
-        }
-        if self.hotkeys.matches("open_external", &key) {
-            return self.open_commit_external();
-        }
-        if self.hotkeys.matches("checkout", &key) {
-            if let Some(commit) = self.selected_commit() {
-                if !commit.hash.is_empty() {
-                    let t = termide_i18n::t();
-                    self.status_message = Some(format!(
-                        "Checkout {} {}",
-                        commit.hash,
-                        t.git_checkout_not_impl()
-                    ));
+
+        // Configurable actions via HotkeyTable (only for Commits section, not dropdowns)
+        if !self.repo_dropdown_open && !self.branch_dropdown_open {
+            if self.hotkeys.matches("open_external", &key) {
+                return self.open_commit_external();
+            }
+            if self.hotkeys.matches("checkout", &key) {
+                if let Some(commit) = self.selected_commit() {
+                    if !commit.hash.is_empty() {
+                        let t = termide_i18n::t();
+                        self.status_message = Some(format!(
+                            "Checkout {} {}",
+                            commit.hash,
+                            t.git_checkout_not_impl()
+                        ));
+                    }
                 }
+                return vec![];
             }
-            return vec![];
         }
 
         // Vim-aware navigation (j/k/g/G when vim_mode is enabled)
@@ -966,22 +969,75 @@ impl Panel for GitLogPanel {
         }
 
         match key.code {
+            // Tab switches sections
             KeyCode::Tab => {
+                self.repo_dropdown_open = false;
+                self.branch_dropdown_open = false;
                 self.next_section();
             }
             KeyCode::BackTab => {
+                self.repo_dropdown_open = false;
+                self.branch_dropdown_open = false;
                 self.prev_section();
             }
             KeyCode::PageUp => {
-                let page = self.last_area.height.saturating_sub(2) as usize;
-                self.page_up(page);
+                self.page_up(page_size);
             }
             KeyCode::PageDown => {
-                let page = self.last_area.height.saturating_sub(2) as usize;
-                self.page_down(page);
+                self.page_down(page_size);
             }
             KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
                 return self.open_commit_external();
+            }
+            KeyCode::Enter | KeyCode::Char(' ') => {
+                match self.current_section {
+                    Section::RepoSelector => {
+                        if self.repo_dropdown_open {
+                            // Confirm repo selection
+                            let idx = self.dropdown_cursor;
+                            self.repo_manager.select(idx);
+                            self.repo_dropdown_open = false;
+                            self.selected_branch = None;
+                            self.refresh();
+                        } else {
+                            self.dropdown_cursor = self.repo_manager.selected_index();
+                            self.repo_dropdown_open = true;
+                        }
+                    }
+                    Section::BranchSelector => {
+                        if self.branch_dropdown_open {
+                            // Confirm branch selection
+                            let selected = self.branches.get(self.dropdown_cursor).cloned();
+                            let is_current = selected.as_deref() == self.branch.as_deref();
+                            self.selected_branch = if is_current { None } else { selected };
+                            self.branch_dropdown_open = false;
+                            self.refresh();
+                        } else {
+                            self.dropdown_cursor = self
+                                .branches
+                                .iter()
+                                .position(|b| Some(b.as_str()) == self.branch.as_deref())
+                                .unwrap_or(0);
+                            self.branch_dropdown_open = true;
+                        }
+                    }
+                    Section::Commits => {
+                        if key.code == KeyCode::Enter {
+                            return self.view_diff();
+                        } else {
+                            // Space on commits shows commit info
+                            self.show_commit_info();
+                        }
+                    }
+                }
+            }
+            KeyCode::Char('d') => {
+                return self.view_diff();
+            }
+            KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.refresh();
+                let t = termide_i18n::t();
+                self.status_message = Some(t.git_refreshed().to_string());
             }
             _ => {}
         }

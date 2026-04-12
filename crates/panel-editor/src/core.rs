@@ -2120,7 +2120,7 @@ pub(crate) fn build_editor_hotkey_table(config: &Config) -> HotkeyTable {
     // File operations
     t.insert(
         "save",
-        &Some(KeyBinding::Multiple(vec!["Ctrl+S".into(), "F2".into()])),
+        &Some(KeyBinding::Multiple(vec!["F2".into(), "Ctrl+S".into()])),
     );
     t.insert("save_as", &or_default(&kb.save_as, "Ctrl+Shift+S"));
     t.insert("reload", &or_default(&kb.reload, "Ctrl+Shift+R"));

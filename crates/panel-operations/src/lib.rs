@@ -287,29 +287,42 @@ impl Panel for OperationsPanel {
 
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
         let total = self.operations.len();
-        let events = vec![];
+        let mut events = vec![];
 
-        // Vim-mode navigation (j/k/g/G)
-        if self.vim_mode {
-            match key.code {
-                KeyCode::Char('k') => {
-                    self.select_prev();
-                    return vec![PanelEvent::NeedsRedraw];
-                }
-                KeyCode::Char('j') => {
-                    self.select_next(total);
-                    return vec![PanelEvent::NeedsRedraw];
-                }
-                KeyCode::Char('g') => {
-                    self.select_first();
-                    return vec![PanelEvent::NeedsRedraw];
-                }
-                KeyCode::Char('G') => {
-                    self.select_last(total);
-                    return vec![PanelEvent::NeedsRedraw];
-                }
-                _ => {}
+        match key.code {
+            // Navigation
+            KeyCode::Up | KeyCode::Char('k') if self.vim_mode || key.code == KeyCode::Up => {
+                self.select_prev();
+                events.push(PanelEvent::NeedsRedraw);
             }
+            KeyCode::Down | KeyCode::Char('j') if self.vim_mode || key.code == KeyCode::Down => {
+                self.select_next(total);
+                events.push(PanelEvent::NeedsRedraw);
+            }
+            KeyCode::Home | KeyCode::Char('g') if self.vim_mode || key.code == KeyCode::Home => {
+                self.select_first();
+                events.push(PanelEvent::NeedsRedraw);
+            }
+            KeyCode::End | KeyCode::Char('G') if self.vim_mode || key.code == KeyCode::End => {
+                self.select_last(total);
+                events.push(PanelEvent::NeedsRedraw);
+            }
+
+            // Pause/Resume (Space)
+            KeyCode::Char(' ') => {
+                if let Some(op_id) = self.selected_operation_id() {
+                    events.push(PanelEvent::ToggleOperationPause(op_id));
+                }
+            }
+
+            // Cancel operation (Delete/Backspace)
+            KeyCode::Delete | KeyCode::Backspace => {
+                if let Some(op_id) = self.selected_operation_id() {
+                    events.push(PanelEvent::CancelOperation(op_id));
+                }
+            }
+
+            _ => {}
         }
 
         events

@@ -11,7 +11,7 @@ mod treesitter;
 use std::any::Any;
 use std::path::PathBuf;
 
-use crossterm::event::{KeyEvent, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::{buffer::Buffer, layout::Rect, style::Style};
 use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up};
 use unicode_width::UnicodeWidthStr;
@@ -498,6 +498,27 @@ impl Panel for OutlinePanel {
             self.ensure_visible();
             self.navigate_to_selected();
             return vec![];
+        }
+
+        match key.code {
+            KeyCode::PageUp => {
+                let page_size = self.last_height;
+                for _ in 0..page_size {
+                    self.select_prev();
+                }
+                self.navigate_to_selected();
+            }
+            KeyCode::PageDown => {
+                let page_size = self.last_height;
+                for _ in 0..page_size {
+                    self.select_next();
+                }
+                self.navigate_to_selected();
+            }
+            KeyCode::Enter => {
+                self.navigate_to_selected();
+            }
+            _ => {}
         }
         vec![]
     }
