@@ -3175,6 +3175,7 @@ dependencies = [
  "crossterm 0.28.1",
  "dirs",
  "serde",
+ "termide-keyboard",
  "toml",
 ]
 

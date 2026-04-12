@@ -655,37 +655,53 @@ pub fn latin_to_cyrillic(c: char) -> Option<char> {
 /// Check if key event is a "move up" action.
 /// Returns true for Up arrow (without modifiers), or 'k'/'л' when vim_mode is enabled.
 pub fn is_move_up(key: &KeyEvent, vim_mode: bool) -> bool {
-    (key.code == KeyCode::Up && key.modifiers.is_empty())
-        || (vim_mode
-            && key.modifiers.is_empty()
-            && matches!(key.code, KeyCode::Char('k') | KeyCode::Char('л')))
+    if key.code == KeyCode::Up && key.modifiers.is_empty() {
+        return true;
+    }
+    if vim_mode && key.modifiers.is_empty() {
+        let normalized = termide_keyboard::normalize_for_matching(key);
+        return matches!(normalized.code, KeyCode::Char('k'));
+    }
+    false
 }
 
 /// Check if key event is a "move down" action.
-/// Returns true for Down arrow (without modifiers), or 'j'/'о' when vim_mode is enabled.
+/// Returns true for Down arrow, or 'j' (any layout) when vim_mode is enabled.
 pub fn is_move_down(key: &KeyEvent, vim_mode: bool) -> bool {
-    (key.code == KeyCode::Down && key.modifiers.is_empty())
-        || (vim_mode
-            && key.modifiers.is_empty()
-            && matches!(key.code, KeyCode::Char('j') | KeyCode::Char('о')))
+    if key.code == KeyCode::Down && key.modifiers.is_empty() {
+        return true;
+    }
+    if vim_mode && key.modifiers.is_empty() {
+        let normalized = termide_keyboard::normalize_for_matching(key);
+        return matches!(normalized.code, KeyCode::Char('j'));
+    }
+    false
 }
 
 /// Check if key event is a "go to start/home" action.
-/// Returns true for Home key (without modifiers), or 'g'/'п' when vim_mode is enabled.
+/// Returns true for Home key, or 'g' (any layout) when vim_mode is enabled.
 pub fn is_go_home(key: &KeyEvent, vim_mode: bool) -> bool {
-    (key.code == KeyCode::Home && key.modifiers.is_empty())
-        || (vim_mode
-            && key.modifiers.is_empty()
-            && matches!(key.code, KeyCode::Char('g') | KeyCode::Char('п')))
+    if key.code == KeyCode::Home && key.modifiers.is_empty() {
+        return true;
+    }
+    if vim_mode && key.modifiers.is_empty() {
+        let normalized = termide_keyboard::normalize_for_matching(key);
+        return matches!(normalized.code, KeyCode::Char('g'));
+    }
+    false
 }
 
 /// Check if key event is a "go to end" action.
-/// Returns true for End key (without modifiers), or 'G'/'П' (Shift+g) when vim_mode is enabled.
+/// Returns true for End key, or 'G' (any layout, Shift) when vim_mode is enabled.
 pub fn is_go_end(key: &KeyEvent, vim_mode: bool) -> bool {
-    (key.code == KeyCode::End && key.modifiers.is_empty())
-        || (vim_mode
-            && key.modifiers == KeyModifiers::SHIFT
-            && matches!(key.code, KeyCode::Char('G') | KeyCode::Char('П')))
+    if key.code == KeyCode::End && key.modifiers.is_empty() {
+        return true;
+    }
+    if vim_mode && key.modifiers == KeyModifiers::SHIFT {
+        let normalized = termide_keyboard::normalize_for_matching(key);
+        return matches!(normalized.code, KeyCode::Char('G'));
+    }
+    false
 }
 
 #[cfg(test)]

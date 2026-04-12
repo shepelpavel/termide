@@ -46,9 +46,21 @@ impl HotkeyTable {
     }
 
     /// Check if a key event matches the given action name.
+    ///
+    /// Checks both the raw key and its Cyrillic→Latin normalized alternative,
+    /// so hotkeys work regardless of keyboard layout.
     pub fn matches(&self, action: &str, key: &KeyEvent) -> bool {
         if let Some(bindings) = self.bindings.get(action) {
-            bindings.iter().any(|b| b.matches(key))
+            // Check raw key first
+            if bindings.iter().any(|b| b.matches(key)) {
+                return true;
+            }
+            // Check normalized (Cyrillic → Latin QWERTY) alternative
+            let normalized = termide_keyboard::normalize_for_matching(key);
+            if normalized != *key {
+                return bindings.iter().any(|b| b.matches(&normalized));
+            }
+            false
         } else {
             false
         }

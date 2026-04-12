@@ -134,6 +134,28 @@ pub fn translate_all_chars(key: KeyEvent) -> KeyEvent {
     key
 }
 
+/// Normalize key for hotkey matching: Cyrillic → Latin QWERTY.
+///
+/// Applied to ALL character keys regardless of modifiers.
+/// Does NOT replace the original KeyEvent — used as an **alternative**
+/// for matching. HotkeyTable.matches() checks both raw and normalized.
+///
+/// Also fixes legacy Ctrl+/ (0x1F) terminal encoding.
+pub fn normalize_for_matching(key: &KeyEvent) -> KeyEvent {
+    // Normalize Ctrl+/ — legacy terminals send it as 0x1F (Unit Separator)
+    if key.code == KeyCode::Char('\x1f') {
+        return KeyEvent::new(KeyCode::Char('/'), key.modifiers | KeyModifiers::CONTROL);
+    }
+    // Cyrillic → Latin for any char key (with or without modifiers)
+    if let KeyCode::Char(ch) = key.code {
+        let translated = cyrillic_to_latin(ch);
+        if translated != ch {
+            return KeyEvent::new(KeyCode::Char(translated), key.modifiers);
+        }
+    }
+    *key
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -14,3 +14,4 @@ toml.workspace = true
 dirs.workspace = true
 crossterm.workspace = true
 chrono.workspace = true
+termide-keyboard = { path = "../keyboard" }

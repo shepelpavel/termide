@@ -1307,8 +1307,7 @@ impl Panel for FileManager {
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
         use keyboard::FmCommand;
 
-        let key = termide_keyboard::translate_hotkey(key);
-        let key = termide_keyboard::translate_all_chars(key);
+        // Raw key — HotkeyTable.matches() handles Cyrillic normalization internally.
         let command = FmCommand::from_key_event(key, &self.hotkeys, self.vim_mode);
         self.execute_command(command)
     }

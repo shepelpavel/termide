@@ -204,8 +204,20 @@ impl FmCommand {
             // Tree expand/collapse
             (KeyCode::Right, KeyModifiers::NONE) => Self::ExpandDir,
             (KeyCode::Left, KeyModifiers::NONE) => Self::CollapseDir,
-            (KeyCode::Char('l'), KeyModifiers::NONE) if vim_mode => Self::ExpandDir,
-            (KeyCode::Char('h'), KeyModifiers::NONE) if vim_mode => Self::CollapseDir,
+            _ if vim_mode && {
+                let n = termide_keyboard::normalize_for_matching(&key);
+                n.code == KeyCode::Char('l') && n.modifiers.is_empty()
+            } =>
+            {
+                Self::ExpandDir
+            }
+            _ if vim_mode && {
+                let n = termide_keyboard::normalize_for_matching(&key);
+                n.code == KeyCode::Char('h') && n.modifiers.is_empty()
+            } =>
+            {
+                Self::CollapseDir
+            }
 
             // Regular navigation (arrows-only, vim handled above)
             (KeyCode::PageUp, KeyModifiers::NONE) => Self::PageUp,

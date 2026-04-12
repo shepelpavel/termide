@@ -17,10 +17,8 @@ use termide_i18n as i18n;
 impl App {
     /// Handle keyboard event
     pub(super) fn handle_key_event(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
-        // Translate Cyrillic to Latin for hotkeys
-        let key = termide_keyboard::translate_hotkey(key);
-
-        // Log key for debugging
+        // Raw key — no translation here.
+        // HotkeyTable.matches() handles Cyrillic normalization internally.
         log::trace!("Key {:?}", key.code);
 
         // Clear status message on any key press
