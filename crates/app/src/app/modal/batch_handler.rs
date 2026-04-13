@@ -780,34 +780,42 @@ impl App {
                         let is_remote_dest_ow = termide_vfs::is_vfs_url(&dest_str_ow);
                         let item_name_ow = path_utils::get_file_name_string(&source);
 
-                        let final_dest = if is_remote_dest_ow {
-                            let base = termide_vfs::parse_vfs_url(&dest_str_ow)
-                                .map(|p| p.path)
-                                .unwrap_or_else(|e| {
-                                    log::warn!("Failed to parse VFS URL: {}", e);
-                                    operation.destination.clone()
-                                });
-                            // Don't join filename if destination URL already ends with it
-                            // (user specified full file path, not directory)
-                            if base.file_name().and_then(|n| n.to_str()) == Some(&item_name_ow) {
-                                base
-                            } else {
-                                base.join(&item_name_ow)
-                            }
-                        } else {
-                            path_utils::resolve_batch_destination_path(
-                                &source,
-                                &operation.destination,
-                                operation.sources.len() == 1,
-                            )
-                        };
-
                         // Execute operation - only use remote path when source or dest is remote
                         let needs_remote_ow = is_remote_dest_ow || !source.exists();
                         if needs_remote_ow {
                             if let Some((vfs_manager, vfs_current_path)) =
                                 self.find_remote_file_manager_info()
                             {
+                                // Resolve final_dest using VFS stat to distinguish file vs directory
+                                let final_dest = if is_remote_dest_ow {
+                                    let base = termide_vfs::parse_vfs_url(&dest_str_ow)
+                                        .map(|p| p.path)
+                                        .unwrap_or_else(|e| {
+                                            log::warn!("Failed to parse VFS URL: {}", e);
+                                            operation.destination.clone()
+                                        });
+                                    // Stat remote path to check if it's a directory
+                                    let base_vfs = Self::vfs_path_with_connection(
+                                        &vfs_current_path,
+                                        base.clone(),
+                                    );
+                                    let base_is_dir = vfs_manager
+                                        .metadata(&base_vfs)
+                                        .recv()
+                                        .map(|m| m.file_type.is_dir())
+                                        .unwrap_or(false);
+                                    if base_is_dir {
+                                        base.join(&item_name_ow)
+                                    } else {
+                                        base
+                                    }
+                                } else {
+                                    path_utils::resolve_batch_destination_path(
+                                        &source,
+                                        &operation.destination,
+                                        operation.sources.len() == 1,
+                                    )
+                                };
                                 let src_name = source_name(&source);
                                 let vfs_source = vfs_current_path.join(&src_name);
 
@@ -855,6 +863,11 @@ impl App {
                         if source.is_file() || source.is_dir() {
                             use termide_file_ops::ConflictMode as FileOpsConflictMode;
 
+                            let final_dest = path_utils::resolve_batch_destination_path(
+                                &source,
+                                &operation.destination,
+                                operation.sources.len() == 1,
+                            );
                             let is_move = operation.operation_type == BatchOperationType::Move;
                             let worker_dest = if source.is_dir() && final_dest.is_dir() {
                                 final_dest
