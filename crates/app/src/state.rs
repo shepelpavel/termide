@@ -462,27 +462,33 @@ impl AppState {
         self.ui.options_submenu.open();
     }
 
-    /// Close submenu and all nested menus
-    pub fn close_submenu(&mut self) {
-        self.ui.options_submenu.close();
-        self.ui.nested_submenu.close();
-    }
-
     /// Open Sessions submenu
     pub fn open_sessions_submenu(&mut self) {
         self.ui.close_all_submenus();
         self.ui.sessions_submenu.open();
     }
 
-    /// Close Sessions submenu
-    pub fn close_sessions_submenu(&mut self) {
-        self.ui.sessions_submenu.close();
-    }
-
     /// Open Tools submenu
     pub fn open_tools_submenu(&mut self) {
         self.ui.close_all_submenus();
         self.ui.tools_submenu.open();
+    }
+
+    /// Open Scripts submenu
+    pub fn open_scripts_submenu(&mut self) {
+        self.ui.close_all_submenus();
+        self.ui.scripts_submenu.open();
+    }
+
+    /// Close submenu and all nested menus
+    pub fn close_submenu(&mut self) {
+        self.ui.options_submenu.close();
+        self.ui.nested_submenu.close();
+    }
+
+    /// Close Sessions submenu
+    pub fn close_sessions_submenu(&mut self) {
+        self.ui.sessions_submenu.close();
     }
 
     /// Close Tools submenu
@@ -502,12 +508,6 @@ impl AppState {
     pub fn close_tools_nested_submenu(&mut self) {
         self.ui.tools_nested.close();
         self.cached_shells.clear();
-    }
-
-    /// Open Scripts submenu
-    pub fn open_scripts_submenu(&mut self) {
-        self.ui.close_all_submenus();
-        self.ui.scripts_submenu.open();
     }
 
     /// Close Scripts submenu

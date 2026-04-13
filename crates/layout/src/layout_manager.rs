@@ -576,21 +576,75 @@ impl LayoutManager {
             return;
         }
 
-        let mut new_widths = Vec::with_capacity(actual_widths.len());
+        let min_width: u16 = 20;
+        let n = actual_widths.len();
+        let min_total = min_width * n as u16;
+
+        // If all groups at minimum already exceed budget, just assign minimums.
+        if min_total >= available_width {
+            let mut new_widths = vec![min_width; n];
+            // Give any leftover to the last group (may be 0)
+            let last = n - 1;
+            new_widths[last] = available_width
+                .saturating_sub(min_width * (n - 1) as u16)
+                .max(min_width);
+            for (idx, &width) in new_widths.iter().enumerate() {
+                self.panel_groups[idx].width = Some(width);
+            }
+            return;
+        }
+
+        // Compute proportional widths using floor, enforcing minimum.
+        // Track fractional remainders for largest-remainder distribution.
+        let mut new_widths = Vec::with_capacity(n);
+        let mut remainders = Vec::with_capacity(n);
         let mut allocated_width: u16 = 0;
 
         for (idx, &actual_width) in actual_widths.iter().enumerate() {
-            let is_last = idx == actual_widths.len() - 1;
-            let width = if is_last {
-                available_width.saturating_sub(allocated_width).max(20)
+            let proportion = actual_width as f64 / total_actual as f64;
+            let exact = available_width as f64 * proportion;
+            let floored = (exact.floor() as u16).max(min_width);
+            new_widths.push(floored);
+            // Only groups above minimum can receive remainder pixels
+            let remainder = if floored > min_width {
+                exact - floored as f64
             } else {
-                let proportion = actual_width as f64 / total_actual as f64;
-                let w = (available_width as f64 * proportion).round() as u16;
-                let w = w.max(20);
-                allocated_width = allocated_width.saturating_add(w);
-                w
+                // Was clamped to min_width, fractional part is not meaningful
+                -1.0
             };
-            new_widths.push(width);
+            remainders.push((idx, remainder));
+            allocated_width += floored;
+        }
+
+        // Distribute leftover pixels to groups with the largest fractional remainders
+        let mut leftover = available_width.saturating_sub(allocated_width);
+        if leftover > 0 {
+            remainders.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            for &(idx, _) in &remainders {
+                if leftover == 0 {
+                    break;
+                }
+                new_widths[idx] += 1;
+                leftover -= 1;
+            }
+        }
+
+        // If over-allocated (due to min_width clamps pushing total up), trim largest groups
+        let mut total: u16 = new_widths.iter().sum();
+        while total > available_width {
+            // Find largest group above minimum
+            if let Some(idx) = new_widths
+                .iter()
+                .enumerate()
+                .filter(|(_, &w)| w > min_width)
+                .max_by_key(|(_, &w)| w)
+                .map(|(i, _)| i)
+            {
+                new_widths[idx] -= 1;
+                total -= 1;
+            } else {
+                break; // all at minimum, can't reduce further
+            }
         }
 
         for (idx, &width) in new_widths.iter().enumerate() {
