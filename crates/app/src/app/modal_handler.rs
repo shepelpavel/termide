@@ -555,10 +555,47 @@ impl App {
                     }
                 }
                 PendingAction::DeleteScript { path, .. } => {
-                    // ConfirmModal returns bool
                     if value.downcast_ref::<bool>().copied().unwrap_or(false) {
                         let _ = std::fs::remove_file(&path);
+                        // Remove empty parent directory (group folder) if it was the last script
+                        if let Some(parent) = path.parent() {
+                            if parent
+                                .read_dir()
+                                .map(|mut d| d.next().is_none())
+                                .unwrap_or(false)
+                            {
+                                let _ = std::fs::remove_dir(parent);
+                            }
+                        }
                         self.state.needs_redraw = true;
+                    }
+                }
+                PendingAction::RenameScript { old_path } => {
+                    if let Some(new_name) = value.downcast_ref::<String>() {
+                        if !new_name.is_empty() {
+                            let new_path = old_path.with_file_name(new_name);
+                            let _ = std::fs::rename(&old_path, &new_path);
+                            self.state.needs_redraw = true;
+                        }
+                    }
+                }
+                PendingAction::RenameBookmark {
+                    path, is_project, ..
+                } => {
+                    if let Some(new_name) = value.downcast_ref::<String>() {
+                        if !new_name.is_empty() {
+                            let config = if is_project {
+                                self.state.project_bookmarks.as_mut()
+                            } else {
+                                Some(&mut self.state.bookmarks)
+                            };
+                            if let Some(config) = config {
+                                if let Some(bm) = config.find_mut(&path) {
+                                    bm.description = Some(new_name.clone());
+                                }
+                                let _ = config.save();
+                            }
+                        }
                     }
                 }
             }

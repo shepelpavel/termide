@@ -30,6 +30,8 @@ enum SubmenuNavAction {
     Right,
     /// User pressed Left — close nested or go to prev root menu
     Left,
+    /// User pressed F2 — rename selected item
+    Rename,
     /// User pressed F4 — edit selected item
     Edit,
     /// User pressed Delete — delete selected item
@@ -70,8 +72,7 @@ fn navigate_submenu(
         }
         KeyCode::Enter => SubmenuNavAction::Execute,
         KeyCode::Right => SubmenuNavAction::Right,
-        // F4 arrives here because normalizer converts it to Action::EditItem,
-        // then key_handler reconstructs F4 via to_default_key()
+        KeyCode::F(2) => SubmenuNavAction::Rename,
         KeyCode::F(4) => SubmenuNavAction::Edit,
         KeyCode::Delete | KeyCode::F(8) => SubmenuNavAction::Delete,
         _ => SubmenuNavAction::None,
@@ -415,7 +416,10 @@ impl App {
                 }
             }
             SubmenuNavAction::Left => self.switch_to_prev_menu()?,
-            SubmenuNavAction::Edit | SubmenuNavAction::Delete | SubmenuNavAction::None => {}
+            SubmenuNavAction::Rename
+            | SubmenuNavAction::Edit
+            | SubmenuNavAction::Delete
+            | SubmenuNavAction::None => {}
         }
         Ok(())
     }
@@ -633,7 +637,10 @@ impl App {
             SubmenuNavAction::Execute => self.execute_sessions_submenu_action()?,
             SubmenuNavAction::Right => self.switch_to_next_menu()?,
             SubmenuNavAction::Left => self.switch_to_prev_menu()?,
-            SubmenuNavAction::Edit | SubmenuNavAction::Delete | SubmenuNavAction::None => {}
+            SubmenuNavAction::Rename
+            | SubmenuNavAction::Edit
+            | SubmenuNavAction::Delete
+            | SubmenuNavAction::None => {}
         }
         Ok(())
     }
@@ -757,7 +764,10 @@ impl App {
                 }
             }
             SubmenuNavAction::Left => self.switch_to_prev_menu()?,
-            SubmenuNavAction::Edit | SubmenuNavAction::Delete | SubmenuNavAction::None => {}
+            SubmenuNavAction::Rename
+            | SubmenuNavAction::Edit
+            | SubmenuNavAction::Delete
+            | SubmenuNavAction::None => {}
         }
         Ok(())
     }
@@ -794,7 +804,10 @@ impl App {
             }
             SubmenuNavAction::Right => self.switch_to_next_menu()?,
             SubmenuNavAction::Left => self.state.close_tools_nested_submenu(),
-            SubmenuNavAction::Edit | SubmenuNavAction::Delete | SubmenuNavAction::None => {}
+            SubmenuNavAction::Rename
+            | SubmenuNavAction::Edit
+            | SubmenuNavAction::Delete
+            | SubmenuNavAction::None => {}
         }
         Ok(())
     }
@@ -1197,6 +1210,7 @@ impl App {
                 }
             }
             SubmenuNavAction::Left => self.switch_to_prev_menu()?,
+            SubmenuNavAction::Rename => self.rename_selected_script()?,
             SubmenuNavAction::Edit => self.edit_selected_script()?,
             SubmenuNavAction::Delete => self.delete_selected_script()?,
             SubmenuNavAction::None => {}
@@ -1267,6 +1281,7 @@ impl App {
             }
             SubmenuNavAction::Execute => self.execute_scripts_nested_action()?,
             SubmenuNavAction::Right => self.switch_to_next_menu()?,
+            SubmenuNavAction::Rename => self.rename_selected_nested_script()?,
             SubmenuNavAction::Edit => self.edit_selected_nested_script()?,
             SubmenuNavAction::Delete => self.delete_selected_nested_script()?,
             SubmenuNavAction::None => {}
@@ -1418,6 +1433,161 @@ impl App {
                         selected,
                     },
                     crate::state::ActiveModal::Confirm(Box::new(modal)),
+                );
+            }
+        }
+        Ok(())
+    }
+
+    /// Rename selected script (F2) — shows InputModal with current filename
+    fn rename_selected_script(&mut self) -> Result<()> {
+        let selected = self.state.ui.scripts_submenu.selected;
+        if let Some(registry) =
+            termide_config::scripts::ScriptsRegistry::load_merged(Some(&self.project_root))
+        {
+            let items = termide_ui_render::get_scripts_items(&registry);
+            if let Some(item) = items.get(selected) {
+                if item.is_separator || item.has_submenu {
+                    return Ok(());
+                }
+                if let Some(script) = registry.find_script_by_name(&item.key) {
+                    let filename = script
+                        .path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or(&script.name);
+                    self.state.close_menu();
+                    let t = termide_i18n::t();
+                    let modal = termide_modal::InputModal::with_default(
+                        t.help_desc_rename(),
+                        t.help_desc_rename(),
+                        filename,
+                    );
+                    self.state.set_pending_action(
+                        termide_state::PendingAction::RenameScript {
+                            old_path: script.path.clone(),
+                        },
+                        crate::state::ActiveModal::Input(Box::new(modal)),
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Rename selected script in nested submenu (F2)
+    fn rename_selected_nested_script(&mut self) -> Result<()> {
+        let registry =
+            match termide_config::scripts::ScriptsRegistry::load_merged(Some(&self.project_root)) {
+                Some(r) => r,
+                None => return Ok(()),
+            };
+        let group_name = match &self.state.ui.current_scripts_group {
+            Some(name) => name.clone(),
+            None => return Ok(()),
+        };
+        if let Some(group) = registry.groups.iter().find(|g| g.name == group_name) {
+            let selected = self.state.ui.scripts_nested.selected;
+            if let Some(script) = group.items.get(selected) {
+                let filename = script
+                    .path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or(&script.name);
+                self.state.close_menu();
+                let t = termide_i18n::t();
+                let modal = termide_modal::InputModal::with_default(
+                    t.help_desc_rename(),
+                    t.help_desc_rename(),
+                    filename,
+                );
+                self.state.set_pending_action(
+                    termide_state::PendingAction::RenameScript {
+                        old_path: script.path.clone(),
+                    },
+                    crate::state::ActiveModal::Input(Box::new(modal)),
+                );
+            }
+        }
+        Ok(())
+    }
+
+    /// Rename selected bookmark (F2) — edit description via InputModal
+    fn rename_selected_bookmark(&mut self) -> Result<()> {
+        let items = termide_ui_render::get_bookmarks_items(
+            &self.state.bookmarks,
+            self.state.project_bookmarks.as_ref(),
+        );
+        let sel = self.state.ui.bookmarks_submenu.selected;
+        if let Some(item) = items.get(sel) {
+            if item.is_separator || item.has_submenu {
+                return Ok(());
+            }
+            // Find bookmark — clone data before mutating state
+            let key = item.key.clone();
+            if let Some(bm) = self.state.bookmarks.find(&key) {
+                let current_name = bm.display_name().to_string();
+                let bm_path = bm.path.clone();
+                let bm_group = bm.group.clone();
+                let bm_is_project = bm.is_project;
+                self.state.close_menu();
+                let t = termide_i18n::t();
+                let modal = termide_modal::InputModal::with_default(
+                    t.help_desc_rename(),
+                    t.help_desc_rename(),
+                    &current_name,
+                );
+                self.state.set_pending_action(
+                    termide_state::PendingAction::RenameBookmark {
+                        path: bm_path,
+                        group: bm_group,
+                        is_project: bm_is_project,
+                    },
+                    crate::state::ActiveModal::Input(Box::new(modal)),
+                );
+            }
+        }
+        Ok(())
+    }
+
+    /// Rename selected bookmark in nested submenu (F2)
+    fn rename_selected_nested_bookmark(&mut self) -> Result<()> {
+        let group_name = match &self.state.ui.current_bookmarks_group {
+            Some(name) => name.clone(),
+            None => return Ok(()),
+        };
+        let is_project = self.state.ui.current_bookmarks_group_is_project;
+        let items = termide_ui_render::get_bookmarks_group_items(
+            &self.state.bookmarks,
+            self.state.project_bookmarks.as_ref(),
+            &group_name,
+            is_project,
+        );
+        let sel = self.state.ui.bookmarks_nested.selected;
+        if let Some(item) = items.get(sel) {
+            if item.is_separator {
+                return Ok(());
+            }
+            let key = item.key.clone();
+            if let Some(bm) = self.state.bookmarks.find(&key) {
+                let current_name = bm.display_name().to_string();
+                let bm_path = bm.path.clone();
+                let bm_group = bm.group.clone();
+                let bm_is_project = bm.is_project;
+                self.state.close_menu();
+                let t = termide_i18n::t();
+                let modal = termide_modal::InputModal::with_default(
+                    t.help_desc_rename(),
+                    t.help_desc_rename(),
+                    &current_name,
+                );
+                self.state.set_pending_action(
+                    termide_state::PendingAction::RenameBookmark {
+                        path: bm_path,
+                        group: bm_group,
+                        is_project: bm_is_project,
+                    },
+                    crate::state::ActiveModal::Input(Box::new(modal)),
                 );
             }
         }
@@ -1636,6 +1806,7 @@ impl App {
                 }
             }
             SubmenuNavAction::Left => self.switch_to_prev_menu()?,
+            SubmenuNavAction::Rename => self.rename_selected_bookmark()?,
             SubmenuNavAction::Edit => self.edit_selected_bookmark()?,
             SubmenuNavAction::None => {}
             SubmenuNavAction::Delete => self.delete_selected_bookmark()?,
@@ -1714,6 +1885,7 @@ impl App {
             }
             SubmenuNavAction::Execute => self.execute_bookmarks_nested_action()?,
             SubmenuNavAction::Right => self.switch_to_next_menu()?,
+            SubmenuNavAction::Rename => self.rename_selected_nested_bookmark()?,
             SubmenuNavAction::Edit => self.edit_selected_nested_bookmark()?,
             SubmenuNavAction::None => {}
             SubmenuNavAction::Delete => self.delete_selected_nested_bookmark()?,

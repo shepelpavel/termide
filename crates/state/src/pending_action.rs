@@ -193,4 +193,12 @@ pub enum PendingAction {
         /// Selected index in scripts submenu to restore on return
         selected: usize,
     },
+    /// Rename a script file
+    RenameScript { old_path: PathBuf },
+    /// Rename a bookmark (change description)
+    RenameBookmark {
+        path: String,
+        group: Option<String>,
+        is_project: bool,
+    },
 }

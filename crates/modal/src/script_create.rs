@@ -353,6 +353,9 @@ impl ScriptCreateModal {
             let g = self.group_suggestion.text().trim().to_string();
             if g.is_empty() {
                 None
+            } else if g.contains('/') || g.contains('\\') {
+                // No nested subdirectories — groups are one level only
+                return None;
             } else {
                 Some(g)
             }
