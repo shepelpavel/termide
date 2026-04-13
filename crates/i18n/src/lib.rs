@@ -109,6 +109,7 @@ pub trait Translation: Send + Sync {
     fn help_desc_quit(&self) -> &str;
     fn help_desc_help(&self) -> &str;
     fn help_desc_close_panel(&self) -> &str;
+    fn help_desc_escape_close(&self) -> &str;
     fn help_desc_select(&self) -> &str;
     fn help_desc_select_all(&self) -> &str;
     fn help_desc_new_terminal(&self) -> &str;

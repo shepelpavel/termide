@@ -219,6 +219,10 @@ impl HelpGenerator {
     ) -> HelpSection {
         let entries = vec![
             HelpEntry {
+                keys: "Esc".to_string(),
+                description: t.help_desc_escape_close().to_string(),
+            },
+            HelpEntry {
                 keys: Self::format_keys(&kb.close_panel),
                 description: t.help_desc_close_panel().to_string(),
             },

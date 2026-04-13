@@ -260,6 +260,10 @@ impl Translation for RuntimeTranslation {
         self.get_string("help_desc_close_panel")
     }
 
+    fn help_desc_escape_close(&self) -> &str {
+        self.get_string("help_desc_escape_close")
+    }
+
     fn help_desc_select(&self) -> &str {
         self.get_string("help_desc_select")
     }
