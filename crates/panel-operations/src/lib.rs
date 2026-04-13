@@ -59,7 +59,7 @@ impl OperationSnapshot {
     /// Card height for this operation based on its type and state.
     /// Type label and percent are in the border title, not content lines.
     pub fn card_height(&self) -> u16 {
-        let is_script = self.op_type == termide_state::OperationType::Script;
+        let is_script = self.op_type.is_script();
         let has_dest = !self.dest.is_empty();
         let has_data = !self.is_scanning && self.op_type.has_data_progress();
         // Content lines:

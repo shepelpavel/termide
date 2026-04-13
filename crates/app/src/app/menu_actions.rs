@@ -1370,9 +1370,9 @@ impl App {
                     let op_id = self.state.next_synthetic_operation_id();
                     self.state.track_operation(
                         op_id,
-                        termide_state::OperationType::Script,
+                        termide_state::OperationType::ScriptBackground,
                         script.name.clone(),
-                        "bg".to_string(), // script subtype for icon
+                        String::new(),
                         0,
                         0,
                     );
@@ -1470,9 +1470,9 @@ impl App {
                 let op_id = self.state.next_synthetic_operation_id();
                 self.state.track_operation(
                     op_id,
-                    termide_state::OperationType::Script,
+                    termide_state::OperationType::ScriptReport,
                     script.name.clone(),
-                    "report".to_string(), // script subtype for icon
+                    String::new(),
                     0,
                     0,
                 );

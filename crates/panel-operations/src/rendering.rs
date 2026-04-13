@@ -41,7 +41,8 @@ fn op_type_icon(op_type: &termide_state::OperationType) -> &'static str {
         termide_state::OperationType::MoveUpload => "\u{2191}", // ↑
         termide_state::OperationType::MoveDownload => "\u{2193}", // ↓
         termide_state::OperationType::Delete => "\u{2715}", // ✕
-        termide_state::OperationType::Script => "\u{2699}", // ⚙
+        termide_state::OperationType::ScriptBackground => "\u{2699}", // ⚙
+        termide_state::OperationType::ScriptReport => "\u{1F4CB}", // 📋
     }
 }
 
@@ -57,7 +58,8 @@ fn op_type_label(op_type: &termide_state::OperationType) -> &str {
         termide_state::OperationType::MoveUpload => t.op_type_move_upload(),
         termide_state::OperationType::MoveDownload => t.op_type_move_download(),
         termide_state::OperationType::Delete => t.progress_delete_title(),
-        termide_state::OperationType::Script => t.op_type_script(),
+        termide_state::OperationType::ScriptBackground => t.op_type_script(),
+        termide_state::OperationType::ScriptReport => t.op_type_script(),
     }
 }
 
@@ -78,20 +80,13 @@ fn render_snapshot_card(
     };
 
     let t = termide_i18n::t();
-    let is_script = op.op_type == termide_state::OperationType::Script;
+    let is_script = op.op_type.is_script();
     let is_scanning = op.is_scanning;
     let has_data = !is_scanning && op.op_type.has_data_progress();
 
     // Build border title: " icon Label " or " icon Label ── 45% "
     let icon = if is_scanning {
         "\u{25CE}" // ◎
-    } else if is_script {
-        // Script subtype icon: 📋 report, ⚙ background, 💻 terminal
-        match op.dest.as_str() {
-            "report" => "📋",
-            "bg" => "⚙",
-            _ => "💻",
-        }
     } else {
         op_type_icon(&op.op_type)
     };

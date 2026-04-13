@@ -1311,7 +1311,7 @@ impl App {
     fn event_cancel_operation(&mut self, op_id: termide_file_ops::OperationId) {
         // Check if this is a script operation (not managed by OperationManager)
         if let Some(op) = self.state.active_operations.get(&op_id) {
-            if op.op_type == termide_state::OperationType::Script {
+            if op.op_type.is_script() {
                 // Kill the process and remove from tracking
                 use crate::state::kill_process_tree;
 
