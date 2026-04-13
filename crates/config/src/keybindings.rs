@@ -462,7 +462,9 @@ impl FileManagerKeybindings {
         set_default_single!(switch_directory, "Ctrl+/");
 
         // Other
-        set_default_single!(open_external, "Ctrl+Enter");
+        if self.open_external.is_none() {
+            self.open_external = Some(KeyBinding::Multiple(vec!["O".into(), "Alt+Enter".into()]));
+        }
         set_default_single!(toggle_hidden, ".");
     }
 }

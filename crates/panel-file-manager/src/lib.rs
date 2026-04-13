@@ -85,9 +85,8 @@ pub(crate) fn build_fm_hotkey_table(config: &Config) -> HotkeyTable {
             .clone()
             .or(Some(KeyBinding::Single(".".into()))),
     );
-    // open_external: config binding (default Ctrl+Enter) + letter shortcut O
+    // open_external: config binding (default O + Alt+Enter), always ensure O present
     if let Some(ref binding) = kb.open_external {
-        // Merge config binding with letter shortcut
         let mut keys: Vec<String> = match binding {
             KeyBinding::Single(s) => vec![s.clone()],
             KeyBinding::Multiple(v) => v.clone(),
@@ -99,7 +98,7 @@ pub(crate) fn build_fm_hotkey_table(config: &Config) -> HotkeyTable {
     } else {
         t.insert(
             "open_external",
-            &Some(KeyBinding::Multiple(vec!["Ctrl+Enter".into(), "O".into()])),
+            &Some(KeyBinding::Multiple(vec!["O".into(), "Alt+Enter".into()])),
         );
     }
     t.insert(

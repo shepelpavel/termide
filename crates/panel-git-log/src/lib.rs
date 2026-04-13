@@ -79,15 +79,30 @@ pub struct GitLogPanel {
 }
 
 /// Build HotkeyTable for the git log panel.
-fn build_git_log_hotkey_table() -> HotkeyTable {
+fn build_git_log_hotkey_table(config: &Config) -> HotkeyTable {
     let mut t = HotkeyTable::new();
 
     t.insert("info", &Some(KeyBinding::Single("Space".into())));
     t.insert("view_diff", &Some(KeyBinding::Single("D".into())));
-    t.insert(
-        "open_external",
-        &Some(KeyBinding::Multiple(vec!["O".into(), "Shift+Enter".into()])),
-    );
+
+    // open_external: shared config binding (file_manager.keybindings.open_external)
+    let kb = &config.file_manager.keybindings;
+    if let Some(ref binding) = kb.open_external {
+        let mut keys: Vec<String> = match binding {
+            KeyBinding::Single(s) => vec![s.clone()],
+            KeyBinding::Multiple(v) => v.clone(),
+        };
+        if !keys.iter().any(|k| k == "O") {
+            keys.push("O".into());
+        }
+        t.insert("open_external", &Some(KeyBinding::Multiple(keys)));
+    } else {
+        t.insert(
+            "open_external",
+            &Some(KeyBinding::Multiple(vec!["O".into(), "Alt+Enter".into()])),
+        );
+    }
+
     t.insert("checkout", &Some(KeyBinding::Single("C".into())));
     t
 }
@@ -852,7 +867,7 @@ impl Panel for GitLogPanel {
     fn prepare_render(&mut self, theme: &Theme, config: std::sync::Arc<Config>) {
         self.cached_theme = ThemeColors::from(theme);
         self.vim_mode = config.general.vim_mode;
-        self.hotkeys = build_git_log_hotkey_table();
+        self.hotkeys = build_git_log_hotkey_table(&config);
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
