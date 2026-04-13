@@ -40,9 +40,33 @@ struct Cli {
     config: Option<std::path::PathBuf>,
 }
 
+/// Restore terminal to a usable state (raw mode off, alternate screen off, etc.).
+/// Called both on normal exit and from the panic handler.
+fn restore_terminal() {
+    let _ = disable_raw_mode();
+    let _ = execute!(
+        io::stdout(),
+        LeaveAlternateScreen,
+        DisableMouseCapture,
+        DisableFocusChange,
+        DisableBracketedPaste,
+        SetTitle("")
+    );
+    let _ = execute!(io::stdout(), crossterm::cursor::Show);
+}
+
 fn main() -> Result<()> {
     // Parse CLI arguments
     let cli = Cli::parse();
+
+    // Install panic handler that restores terminal before printing the panic.
+    // Without this, a panic leaves the terminal in raw mode + alternate screen,
+    // which looks like a frozen blank screen (especially over SSH).
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        restore_terminal();
+        default_hook(info);
+    }));
 
     // Detect terminal capabilities first (before loading themes)
     let caps = init_terminal_caps();
@@ -90,9 +114,16 @@ fn main() -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
 
-    // Check if terminal supports enhanced keyboard protocol (kitty protocol)
-    // This enables proper Alt+Cyrillic handling in modern terminals like Ghostty, Kitty, WezTerm
-    let keyboard_enhanced = supports_keyboard_enhancement().unwrap_or(false);
+    // Check if terminal supports enhanced keyboard protocol (kitty protocol).
+    // This enables proper Alt+Cyrillic handling in modern terminals like Ghostty, Kitty, WezTerm.
+    // Skip on SSH: the detection sends escape sequences and waits for a response,
+    // which can hang indefinitely if the SSH terminal doesn't reply.
+    let keyboard_enhanced =
+        if std::env::var_os("SSH_CONNECTION").is_some() || std::env::var_os("SSH_TTY").is_some() {
+            false
+        } else {
+            supports_keyboard_enhancement().unwrap_or(false)
+        };
 
     let title = format!(
         "Termide: {}",
@@ -128,11 +159,14 @@ fn main() -> Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    // Get terminal size and use it to initialize app with correct dimensions
+    // Get terminal size and use it to initialize app with correct dimensions.
+    // Guard against 0x0 (can happen on SSH before PTY size negotiation completes).
     let size = terminal.size()?;
+    let width = size.width.max(20);
+    let height = size.height.max(5);
 
     // Create application with pre-loaded config (avoids double config loading)
-    let mut app = App::new_with_config(config, size.width, size.height);
+    let mut app = App::new_with_config(config, width, height);
 
     // Log git availability to journal (not to stderr)
     app.log_git_status(git_available);
@@ -149,19 +183,10 @@ fn main() -> Result<()> {
     });
 
     // Restore terminal
-    disable_raw_mode()?;
     if keyboard_enhanced {
         let _ = execute!(terminal.backend_mut(), PopKeyboardEnhancementFlags);
     }
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture,
-        DisableFocusChange,
-        DisableBracketedPaste,
-        SetTitle("")
-    )?;
-    terminal.show_cursor()?;
+    restore_terminal();
 
     // Print error if there was one
     if let Err(err) = result {
