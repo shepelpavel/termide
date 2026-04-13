@@ -42,7 +42,7 @@ impl App {
                                 match editor.save() {
                                     Err(e) => {
                                         log::error!("Save error: {}", e);
-                                        self.state.set_error(t.status_error_save(&e.to_string()));
+                                        self.show_error_modal(t.status_error_save(&e.to_string()));
                                         return Ok(());
                                     }
                                     Ok(Some((temp_path, remote_path, vfs_manager))) => {
@@ -87,8 +87,10 @@ impl App {
                                             }
                                             Err(e) => {
                                                 log::error!("Failed to start upload: {}", e);
-                                                self.state
-                                                    .set_error(format!("Upload failed: {}", e));
+                                                self.show_error_modal(format!(
+                                                    "Upload failed: {}",
+                                                    e
+                                                ));
                                                 // Clear uploading flag
                                                 if let Some(panel) =
                                                     self.layout_manager.active_panel_mut()
@@ -176,7 +178,7 @@ impl App {
                             match editor.force_save() {
                                 Err(e) => {
                                     log::error!("Force save error: {}", e);
-                                    self.state.set_error(t.status_error_save(&e.to_string()));
+                                    self.show_error_modal(t.status_error_save(&e.to_string()));
                                     return Ok(());
                                 }
                                 Ok(_upload_op) => {
@@ -200,7 +202,7 @@ impl App {
                             let t = i18n::t();
                             if let Err(e) = editor.reload_from_disk() {
                                 log::error!("Reload error: {}", e);
-                                self.state.set_error(t.status_error_reload(&e.to_string()));
+                                self.show_error_modal(t.status_error_reload(&e.to_string()));
                             } else {
                                 self.state.set_info(t.status_file_reloaded().to_string());
                             }
@@ -233,7 +235,7 @@ impl App {
                             match editor.force_save() {
                                 Err(e) => {
                                     log::error!("Force save error: {}", e);
-                                    self.state.set_error(t.status_error_save(&e.to_string()));
+                                    self.show_error_modal(t.status_error_save(&e.to_string()));
                                     return Ok(());
                                 }
                                 Ok(_upload_op) => {
@@ -252,7 +254,7 @@ impl App {
                             let t = i18n::t();
                             if let Err(e) = editor.reload_from_disk() {
                                 log::error!("Reload error: {}", e);
-                                self.state.set_error(t.status_error_reload(&e.to_string()));
+                                self.show_error_modal(t.status_error_reload(&e.to_string()));
                                 return Ok(());
                             }
                         }
@@ -303,7 +305,7 @@ impl App {
                         );
                         if partial_path.exists() {
                             if let Err(e) = std::fs::remove_file(&partial_path) {
-                                self.state.set_error(format!("Failed to delete: {}", e));
+                                self.show_error_modal(format!("Failed to delete: {}", e));
                             } else {
                                 self.state.set_info("Partial file deleted".to_string());
                             }
@@ -315,7 +317,7 @@ impl App {
                             log::info!("Cancel cleanup: delete all {}", dest_dir.display());
                             if dest_dir.exists() {
                                 if let Err(e) = std::fs::remove_dir_all(dest_dir) {
-                                    self.state.set_error(format!("Failed to delete: {}", e));
+                                    self.show_error_modal(format!("Failed to delete: {}", e));
                                 } else {
                                     self.state.set_info("Directory deleted".to_string());
                                 }
@@ -337,7 +339,7 @@ impl App {
                         log::info!("Cancel cleanup: delete partial {}", partial_path.display());
                         if partial_path.exists() {
                             if let Err(e) = std::fs::remove_file(&partial_path) {
-                                self.state.set_error(format!("Failed to delete: {}", e));
+                                self.show_error_modal(format!("Failed to delete: {}", e));
                             } else {
                                 self.state.set_info("File deleted".to_string());
                             }
@@ -378,8 +380,10 @@ impl App {
                         }
 
                         if errors > 0 {
-                            self.state
-                                .set_error(format!("Deleted {} items, {} errors", deleted, errors));
+                            self.show_error_modal(format!(
+                                "Deleted {} items, {} errors",
+                                deleted, errors
+                            ));
                         } else {
                             self.state.set_info(format!("Deleted {} items", deleted));
                         }

@@ -76,12 +76,12 @@ impl App {
             }
 
             PanelEvent::ShowError(message) => {
-                self.state.set_error(message);
+                self.show_error_modal(message);
             }
 
             PanelEvent::SetStatusMessage { message, is_error } => {
                 if is_error {
-                    self.state.set_error(message);
+                    self.show_error_modal(message);
                 } else {
                     self.state.set_info(message);
                 }
@@ -390,7 +390,7 @@ impl App {
             Err(e) => {
                 let error_msg = t.status_error_open_file(filename, &e.to_string());
                 log::error!("Error opening '{}': {}", filename, e);
-                self.state.set_error(error_msg);
+                self.show_error_modal(error_msg);
             }
         }
         Ok(())
@@ -501,8 +501,7 @@ impl App {
         log::info!("Opening '{}' with system viewer", filename);
         if let Err(e) = open::that(&file_path) {
             log::error!("Failed to open '{}': {}", filename, e);
-            self.state
-                .set_error(format!("Failed to open {}: {}", filename, e));
+            self.show_error_modal(format!("Failed to open {}: {}", filename, e));
         }
         Ok(())
     }
@@ -522,8 +521,7 @@ impl App {
 
         if let Err(e) = open::that(&file_path) {
             log::error!("Failed to open '{}': {}", filename, e);
-            self.state
-                .set_error(format!("Failed to open {}: {}", filename, e));
+            self.show_error_modal(format!("Failed to open {}: {}", filename, e));
         }
         Ok(())
     }
@@ -538,7 +536,7 @@ impl App {
             Err(e) => {
                 let error_msg = format!("Invalid remote URL: {}", e);
                 log::error!("{}", error_msg);
-                self.state.set_error(error_msg);
+                self.show_error_modal(error_msg);
                 return Ok(());
             }
         };
@@ -559,13 +557,13 @@ impl App {
             } else {
                 let error_msg = "No file manager panel available for remote file access";
                 log::error!("{}", error_msg);
-                self.state.set_error(error_msg.to_string());
+                self.show_error_modal(error_msg.to_string());
                 return Ok(());
             }
         } else {
             let error_msg = "No active panel";
             log::error!("{}", error_msg);
-            self.state.set_error(error_msg.to_string());
+            self.show_error_modal(error_msg.to_string());
             return Ok(());
         };
 
@@ -576,7 +574,7 @@ impl App {
         if let Err(e) = std::fs::create_dir_all(&temp_dir) {
             let error_msg = format!("Failed to create temp directory: {}", e);
             log::error!("{}", error_msg);
-            self.state.set_error(error_msg);
+            self.show_error_modal(error_msg);
             return Ok(());
         }
 
@@ -625,7 +623,7 @@ impl App {
             Err(e) => {
                 let error_msg = format!("Failed to start download: {}", e);
                 log::error!("{}", error_msg);
-                self.state.set_error(error_msg);
+                self.show_error_modal(error_msg);
             }
         }
 
@@ -650,8 +648,7 @@ impl App {
             if let Some(fm) = panel.as_file_manager_mut() {
                 if let Err(e) = fm.navigate_to(path.clone()) {
                     log::error!("Navigation failed: {}", e);
-                    self.state
-                        .set_error(format!("Cannot navigate to: {}", path.display()));
+                    self.show_error_modal(format!("Cannot navigate to: {}", path.display()));
                 } else {
                     // Navigation resets watched_root; trigger watcher re-registration
                     self.state.needs_watcher_registration = true;
@@ -703,7 +700,7 @@ impl App {
                     }
                     Err(e) => {
                         log::error!("Save failed: {}", e);
-                        self.state.set_error(format!("Save failed: {}", e));
+                        self.show_error_modal(format!("Save failed: {}", e));
                     }
                 }
             }
@@ -1019,7 +1016,7 @@ impl App {
         {
             Ok(child) => child,
             Err(e) => {
-                self.state.set_error(format!("Failed to spawn git: {}", e));
+                self.show_error_modal(format!("Failed to spawn git: {}", e));
                 return Ok(());
             }
         };

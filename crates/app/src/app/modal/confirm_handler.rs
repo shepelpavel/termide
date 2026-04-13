@@ -81,8 +81,7 @@ impl App {
             Ok(_operation_id) => {}
             Err(e) => {
                 log::error!("Failed to start delete operation: {}", e);
-                self.state
-                    .set_error(termide_i18n::t().status_delete_failed(&e.to_string()));
+                self.show_error_modal(termide_i18n::t().status_delete_failed(&e.to_string()));
             }
         }
     }

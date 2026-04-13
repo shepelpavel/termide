@@ -112,7 +112,7 @@ impl App {
             Ok(path) => Some(path),
             Err(e) => {
                 log::error!("Invalid remote URL '{}': {}", remote_url, e);
-                self.state.set_error(format!("Invalid remote URL: {}", e));
+                self.show_error_modal(format!("Invalid remote URL: {}", e));
                 None
             }
         }
@@ -352,8 +352,7 @@ impl App {
                     "No active connection to remote host: {}",
                     remote_path.log_safe_key()
                 );
-                self.state
-                    .set_error("No active connection to remote host".to_string());
+                self.show_error_modal("No active connection to remote host".to_string());
                 return Ok(());
             }
         };
@@ -434,7 +433,7 @@ impl App {
             Err(e) => {
                 log::error!("Failed to start upload operation: {}", e);
                 self.state.pending_batch_upload = None;
-                self.state.set_error(format!("Upload failed: {}", e));
+                self.show_error_modal(format!("Upload failed: {}", e));
             }
         }
 
@@ -530,7 +529,7 @@ impl App {
             }
             Err(e) => {
                 log::error!("Failed to start remote copy operation: {}", e);
-                self.state.set_error(format!("Remote copy failed: {}", e));
+                self.show_error_modal(format!("Remote copy failed: {}", e));
             }
         }
 
@@ -687,8 +686,7 @@ impl App {
 
         // Create destination directory if needed
         if let Err(e) = std::fs::create_dir_all(&absolute_destination) {
-            self.state
-                .set_error(format!("Failed to create directory: {}", e));
+            self.show_error_modal(format!("Failed to create directory: {}", e));
             return Ok(());
         }
 
@@ -745,7 +743,7 @@ impl App {
                 if success_count == 1 { "" } else { "s" }
             ));
         } else {
-            self.state.set_error(format!(
+            self.show_error_modal(format!(
                 "Symlinks: {} created, {} errors",
                 success_count, error_count
             ));
@@ -1346,7 +1344,7 @@ impl App {
                     BatchOperationType::Copy => t.batch_result_error_copy(),
                     BatchOperationType::Move => t.batch_result_error_move(),
                 };
-                self.state.set_error(error_msg.to_string());
+                self.show_error_modal(error_msg.to_string());
             }
         } else {
             let mut parts = vec![];

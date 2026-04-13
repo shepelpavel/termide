@@ -330,8 +330,7 @@ impl App {
     fn toggle_panel_stacking(&mut self) {
         let terminal_width = self.state.terminal.width;
         if let Err(e) = self.layout_manager.toggle_panel_stacking(terminal_width) {
-            self.state
-                .set_error(format!("Cannot toggle stacking: {}", e));
+            self.show_error_modal(format!("Cannot toggle stacking: {}", e));
         } else {
             self.auto_save_session();
         }
@@ -344,7 +343,7 @@ impl App {
             .layout_manager
             .move_panel_to_first_group(terminal_width)
         {
-            self.state.set_error(format!("Cannot move panel: {}", e));
+            self.show_error_modal(format!("Cannot move panel: {}", e));
         } else {
             self.auto_save_session();
         }
@@ -354,7 +353,7 @@ impl App {
     fn move_panel_to_last(&mut self) {
         let terminal_width = self.state.terminal.width;
         if let Err(e) = self.layout_manager.move_panel_to_last_group(terminal_width) {
-            self.state.set_error(format!("Cannot move panel: {}", e));
+            self.show_error_modal(format!("Cannot move panel: {}", e));
         } else {
             self.auto_save_session();
         }

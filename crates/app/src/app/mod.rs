@@ -786,6 +786,17 @@ impl App {
         }
         false
     }
+
+    /// Show error as InfoModal; fall back to status bar if a modal is already active.
+    pub(crate) fn show_error_modal(&mut self, message: String) {
+        if self.state.active_modal.is_some() {
+            self.state.set_error(message);
+            return;
+        }
+        let lines = vec![(String::new(), message)];
+        let modal = termide_modal::InfoModal::new(termide_i18n::t().modal_error_title(), lines);
+        self.state.active_modal = Some(termide_modal::ActiveModal::Info(Box::new(modal)));
+    }
 }
 
 impl Default for App {

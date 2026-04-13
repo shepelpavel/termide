@@ -76,11 +76,8 @@ impl App {
                     Err(e) => {
                         let kind = if is_directory { "directory" } else { "file" };
                         log::error!("{} creation error '{}': {}", kind, name, e);
-                        use termide_modal::{ActiveModal, InfoModal};
                         let error_msg = format!("Failed to create {} '{}': {}", kind, name, e);
-                        let lines = vec![(String::new(), error_msg)];
-                        let modal = InfoModal::new(termide_i18n::t().modal_error_title(), lines);
-                        self.state.active_modal = Some(ActiveModal::Info(Box::new(modal)));
+                        self.show_error_modal(error_msg);
                     }
                 }
             }
@@ -136,7 +133,7 @@ impl App {
                         }
                         Err(e) => {
                             log::error!("Save error '{}': {}", display_path, e);
-                            self.state.set_error(t.status_error_save(&e.to_string()));
+                            self.show_error_modal(t.status_error_save(&e.to_string()));
                         }
                     }
                 }
@@ -189,7 +186,7 @@ impl App {
                 self.send_git_update(&repo_path);
             }
             Err(e) => {
-                self.state.set_error(format!("Stash push error: {}", e));
+                self.show_error_modal(format!("Stash push error: {}", e));
             }
         }
         Ok(())

@@ -200,7 +200,7 @@ impl App {
                                         }
                                         Err(e) => {
                                             log::error!("Failed to open downloaded file: {}", e);
-                                            self.state.set_error(format!(
+                                            self.show_error_modal(format!(
                                                 "Failed to open downloaded file: {}",
                                                 e
                                             ));
@@ -279,15 +279,18 @@ impl App {
                                             Err(e) => {
                                                 log::error!("Failed to start next upload: {}", e);
                                                 self.state.close_modal();
-                                                self.state
-                                                    .set_error(format!("Upload failed: {}", e));
+                                                self.show_error_modal(format!(
+                                                    "Upload failed: {}",
+                                                    e
+                                                ));
                                             }
                                         }
                                     } else {
                                         // Failed to parse URL - abort
                                         self.state.close_modal();
-                                        self.state
-                                            .set_error("Failed to parse remote URL".to_string());
+                                        self.show_error_modal(
+                                            "Failed to parse remote URL".to_string(),
+                                        );
                                     }
                                 } else {
                                     // All files uploaded!
@@ -470,7 +473,7 @@ impl App {
                                     self.process_batch_operation(operation);
                                 }
                             } else {
-                                self.state.set_error(format!("Operation failed: {}", err));
+                                self.show_error_modal(format!("Operation failed: {}", err));
                             }
 
                             // Untrack failed operation from operations panel

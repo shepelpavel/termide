@@ -99,7 +99,7 @@ impl App {
                             "git fetch failed: {}",
                             result.stderr.lines().next().unwrap_or("unknown error")
                         );
-                        self.state.set_error(msg);
+                        self.show_error_modal(msg);
                     }
                     // Refresh all git panels silently
                     for panel in self.layout_manager.iter_all_panels_mut() {
@@ -189,7 +189,7 @@ impl App {
                     self.notify_git_operation_state(false, None, 0);
 
                     let t = termide_i18n::t();
-                    self.state.set_error(format!(
+                    self.show_error_modal(format!(
                         "git {} {}",
                         handle.operation,
                         t.git_operation_timed_out()
@@ -509,7 +509,7 @@ impl App {
                 }
                 Err(e) => {
                     log::error!("Rename failed: {}", e);
-                    self.state.set_error(format!("Rename failed: {}", e));
+                    self.show_error_modal(format!("Rename failed: {}", e));
                 }
             }
         }

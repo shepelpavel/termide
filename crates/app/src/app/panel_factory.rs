@@ -177,8 +177,7 @@ impl App {
             }
             Err(e) => {
                 log::warn!("Failed to get data dir: {}", e);
-                self.state
-                    .set_error(format!("Failed to get scripts directory: {}", e));
+                self.show_error_modal(format!("Failed to get scripts directory: {}", e));
                 return Ok(());
             }
         };
@@ -197,8 +196,7 @@ impl App {
             Ok(path) => path,
             Err(e) => {
                 log::warn!("Failed to get config path: {}", e);
-                self.state
-                    .set_error(format!("Failed to get config path: {}", e));
+                self.show_error_modal(format!("Failed to get config path: {}", e));
                 return Ok(());
             }
         };

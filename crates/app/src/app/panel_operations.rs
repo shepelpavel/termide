@@ -412,8 +412,7 @@ impl App {
     pub(super) fn handle_delete_session(&mut self, path: &std::path::Path) -> Result<()> {
         if let Err(e) = termide_session::Session::delete_session(path) {
             log::error!("Failed to delete session for {:?}: {}", path, e);
-            self.state
-                .set_error(format!("Failed to delete session: {e}"));
+            self.show_error_modal(format!("Failed to delete session: {e}"));
         } else {
             log::info!("Deleted session for {:?}", path);
         }
@@ -597,7 +596,7 @@ impl App {
             Err(e) => {
                 let t = i18n::t();
                 let error_msg = t.status_error_open_file(&filename, &e.to_string());
-                self.state.set_error(error_msg.clone());
+                self.show_error_modal(error_msg.clone());
                 anyhow::bail!(error_msg)
             }
         }
@@ -636,7 +635,7 @@ impl App {
             Err(e) => {
                 let t = i18n::t();
                 let error_msg = t.status_error_open_file(&filename, &e.to_string());
-                self.state.set_error(error_msg.clone());
+                self.show_error_modal(error_msg.clone());
                 anyhow::bail!(error_msg)
             }
         }
@@ -705,7 +704,7 @@ impl App {
             Err(e) => {
                 let error_msg = format!("Failed to create terminal: {}", e);
                 log::error!("{}", error_msg);
-                self.state.set_error(error_msg.clone());
+                self.show_error_modal(error_msg.clone());
                 anyhow::bail!(error_msg)
             }
         }
