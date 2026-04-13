@@ -1198,7 +1198,8 @@ impl App {
             }
             SubmenuNavAction::Left => self.switch_to_prev_menu()?,
             SubmenuNavAction::Edit => self.edit_selected_script()?,
-            SubmenuNavAction::Delete | SubmenuNavAction::None => {}
+            SubmenuNavAction::Delete => self.delete_selected_script()?,
+            SubmenuNavAction::None => {}
         }
         Ok(())
     }
@@ -1225,7 +1226,7 @@ impl App {
         // Special keys: "Manage scripts" or "Add script..."
         if key == termide_ui_render::SCRIPT_MANAGE || key == termide_ui_render::SCRIPT_ADD_NEW {
             self.state.close_menu();
-            self.handle_manage_scripts()?;
+            self.handle_add_script()?;
             return Ok(());
         }
 
@@ -1267,7 +1268,8 @@ impl App {
             SubmenuNavAction::Execute => self.execute_scripts_nested_action()?,
             SubmenuNavAction::Right => self.switch_to_next_menu()?,
             SubmenuNavAction::Edit => self.edit_selected_nested_script()?,
-            SubmenuNavAction::Delete | SubmenuNavAction::None => {}
+            SubmenuNavAction::Delete => self.delete_selected_nested_script()?,
+            SubmenuNavAction::None => {}
         }
         Ok(())
     }
@@ -1302,10 +1304,8 @@ impl App {
     fn edit_selected_script(&mut self) -> Result<()> {
         let selected = self.state.ui.scripts_submenu.selected;
 
-        // Index 0: Manage scripts — open scripts folder
+        // Index 0: "Add script..." — nothing to edit
         if selected == 0 {
-            self.state.close_menu();
-            self.handle_manage_scripts()?;
             return Ok(());
         }
 
@@ -1313,15 +1313,17 @@ impl App {
         if let Some(registry) =
             termide_config::scripts::ScriptsRegistry::load_merged(Some(&self.project_root))
         {
-            let adjusted = selected.saturating_sub(2);
-            let root_count = registry.root_items.len();
-            if adjusted < root_count {
-                if let Some(script) = registry.root_items.get(adjusted) {
+            let items = termide_ui_render::get_scripts_items(&registry);
+            if let Some(item) = items.get(selected) {
+                if item.is_separator || item.has_submenu {
+                    return Ok(());
+                }
+                // Find the script by name
+                if let Some(script) = registry.find_script_by_name(&item.key) {
                     self.state.close_menu();
                     let _ = self.open_editor_for_file(script.path.clone());
                 }
             }
-            // Groups can't be edited directly
         }
         Ok(())
     }
@@ -1341,6 +1343,82 @@ impl App {
             if let Some(script) = group.items.get(self.state.ui.scripts_nested.selected) {
                 self.state.close_menu();
                 let _ = self.open_editor_for_file(script.path.clone());
+            }
+        }
+        Ok(())
+    }
+
+    /// Open the "Add script" modal form
+    fn handle_add_script(&mut self) -> Result<()> {
+        let registry =
+            termide_config::scripts::ScriptsRegistry::load_merged(Some(&self.project_root));
+        let groups: Vec<String> = registry
+            .map(|r| r.groups.iter().map(|g| g.name.clone()).collect())
+            .unwrap_or_default();
+
+        let t = termide_i18n::t();
+        let modal = termide_modal::ScriptCreateModal::new(t.menu_scripts_add(), groups);
+        self.state.set_pending_action(
+            termide_state::PendingAction::CreateScript,
+            crate::state::ActiveModal::ScriptCreate(Box::new(modal)),
+        );
+        Ok(())
+    }
+
+    /// Delete selected script with confirmation
+    fn delete_selected_script(&mut self) -> Result<()> {
+        let selected = self.state.ui.scripts_submenu.selected;
+        if let Some(registry) =
+            termide_config::scripts::ScriptsRegistry::load_merged(Some(&self.project_root))
+        {
+            let items = termide_ui_render::get_scripts_items(&registry);
+            if let Some(item) = items.get(selected) {
+                if item.is_separator || item.has_submenu {
+                    return Ok(());
+                }
+                if let Some(script) = registry.find_script_by_name(&item.key) {
+                    self.state.close_menu();
+                    let t = termide_i18n::t();
+                    let message = format!("{} \"{}\"?", t.help_desc_delete_generic(), script.name);
+                    let modal = termide_modal::ConfirmModal::new(t.modal_confirm_title(), &message);
+                    self.state.set_pending_action(
+                        termide_state::PendingAction::DeleteScript {
+                            path: script.path.clone(),
+                            selected,
+                        },
+                        crate::state::ActiveModal::Confirm(Box::new(modal)),
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Delete selected script in nested submenu with confirmation
+    fn delete_selected_nested_script(&mut self) -> Result<()> {
+        let registry =
+            match termide_config::scripts::ScriptsRegistry::load_merged(Some(&self.project_root)) {
+                Some(r) => r,
+                None => return Ok(()),
+            };
+        let group_name = match &self.state.ui.current_scripts_group {
+            Some(name) => name.clone(),
+            None => return Ok(()),
+        };
+        if let Some(group) = registry.groups.iter().find(|g| g.name == group_name) {
+            let selected = self.state.ui.scripts_nested.selected;
+            if let Some(script) = group.items.get(selected) {
+                self.state.close_menu();
+                let t = termide_i18n::t();
+                let message = format!("{} \"{}\"?", t.help_desc_delete_generic(), script.name);
+                let modal = termide_modal::ConfirmModal::new(t.modal_confirm_title(), &message);
+                self.state.set_pending_action(
+                    termide_state::PendingAction::DeleteScript {
+                        path: script.path.clone(),
+                        selected,
+                    },
+                    crate::state::ActiveModal::Confirm(Box::new(modal)),
+                );
             }
         }
         Ok(())

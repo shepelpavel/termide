@@ -378,7 +378,7 @@ fn script_label(script: &termide_config::scripts::ScriptItem) -> String {
 pub fn get_scripts_items(registry: &termide_config::scripts::ScriptsRegistry) -> Vec<DropdownItem> {
     let t = i18n::t();
     let mut items = vec![
-        DropdownItem::new(t.options_manage_scripts(), SCRIPT_MANAGE),
+        DropdownItem::new(t.menu_scripts_add(), SCRIPT_ADD_NEW),
         DropdownItem::separator(),
     ];
 

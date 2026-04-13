@@ -38,6 +38,7 @@ pub mod progress;
 pub mod rename_pattern;
 pub mod replace;
 pub mod save_as;
+pub mod script_create;
 pub mod search;
 pub mod select;
 pub mod sessions;
@@ -61,6 +62,7 @@ pub use progress::ProgressModal;
 pub use rename_pattern::RenamePatternModal;
 pub use replace::{ReplaceAction, ReplaceModal, ReplaceModalResult};
 pub use save_as::{SaveAsModal, SaveAsResult};
+pub use script_create::{ScriptCreateModal, ScriptCreateResult, ScriptType};
 pub use search::{SearchAction, SearchModal, SearchModalResult};
 pub use select::SelectModal;
 pub use sessions::{SessionAction, SessionItem, SessionsModal};
@@ -110,6 +112,8 @@ pub enum ActiveModal {
     Progress(Box<ProgressModal>),
     /// Command palette modal
     CommandPalette(Box<CommandPaletteModal>),
+    /// Script create modal
+    ScriptCreate(Box<ScriptCreateModal>),
 }
 
 /// Helper to convert a typed ModalResult into a type-erased ModalResult<Box<dyn Any>>.
@@ -146,6 +150,7 @@ macro_rules! dispatch_modal {
             ActiveModal::Calendar(m) => m.$method($($arg),*),
             ActiveModal::Progress(m) => m.$method($($arg),*),
             ActiveModal::CommandPalette(m) => m.$method($($arg),*),
+            ActiveModal::ScriptCreate(m) => m.$method($($arg),*),
         }
     };
 }
@@ -174,6 +179,7 @@ macro_rules! dispatch_modal_erased {
             ActiveModal::Calendar(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::Progress(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::CommandPalette(m) => m.$method($($arg),*)?.map(erase_modal_result),
+            ActiveModal::ScriptCreate(m) => m.$method($($arg),*)?.map(erase_modal_result),
         }
     };
 }

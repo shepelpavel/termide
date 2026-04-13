@@ -548,8 +548,75 @@ impl App {
                 } => {
                     self.handle_git_stash_action(repo_path, index, ref_str, value)?;
                 }
+                PendingAction::CreateScript => {
+                    use termide_modal::ScriptCreateResult;
+                    if let Some(result) = value.downcast_ref::<ScriptCreateResult>() {
+                        self.handle_create_script_result(result)?;
+                    }
+                }
+                PendingAction::DeleteScript { path, .. } => {
+                    // ConfirmModal returns bool
+                    if value.downcast_ref::<bool>().copied().unwrap_or(false) {
+                        let _ = std::fs::remove_file(&path);
+                        self.state.needs_redraw = true;
+                    }
+                }
             }
         }
+        Ok(())
+    }
+
+    /// Handle script creation result from ScriptCreateModal.
+    fn handle_create_script_result(
+        &mut self,
+        result: &termide_modal::ScriptCreateResult,
+    ) -> Result<()> {
+        use termide_modal::ScriptType;
+
+        // Determine base directory
+        let base_dir = if result.is_project {
+            self.project_root.join(".termide").join("scripts")
+        } else {
+            termide_config::get_data_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                .join("scripts")
+        };
+
+        // Create group subdirectory if needed
+        let dir = if let Some(ref group) = result.group {
+            base_dir.join(group)
+        } else {
+            base_dir
+        };
+        std::fs::create_dir_all(&dir)?;
+
+        // Build filename: name[.bg.|.report.].sh/.cmd
+        #[cfg(unix)]
+        let (template, ext) = ("#!/bin/sh\n\n", ".sh");
+        #[cfg(not(unix))]
+        let (template, ext) = ("@echo off\r\n\r\n", ".cmd");
+
+        let type_suffix = match result.script_type {
+            ScriptType::Terminal => "",
+            ScriptType::Background => ".bg",
+            ScriptType::Report => ".report",
+        };
+        let filename = format!("{}{}{}", result.name, type_suffix, ext);
+        let path = dir.join(&filename);
+
+        // Write template content
+        std::fs::write(&path, template)?;
+
+        // Make executable on Unix
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))?;
+        }
+
+        // Open in editor
+        let _ = self.open_editor_for_file(path);
+
         Ok(())
     }
 

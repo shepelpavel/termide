@@ -185,4 +185,12 @@ pub enum PendingAction {
         /// Stash ref string (e.g. "stash@{0}") for diff
         ref_str: String,
     },
+    /// Create a new script via ScriptCreateModal
+    CreateScript,
+    /// Delete a script file (with confirmation)
+    DeleteScript {
+        path: PathBuf,
+        /// Selected index in scripts submenu to restore on return
+        selected: usize,
+    },
 }

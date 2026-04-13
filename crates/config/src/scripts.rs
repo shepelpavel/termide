@@ -77,6 +77,11 @@ impl ScriptItem {
 }
 
 impl ScriptsRegistry {
+    /// Find a root-level script by name.
+    pub fn find_script_by_name(&self, name: &str) -> Option<&ScriptItem> {
+        self.root_items.iter().find(|s| s.name == name)
+    }
+
     /// Load scripts from the global scripts directory.
     ///
     /// Returns None if the directory doesn't exist or can't be read.
