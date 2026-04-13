@@ -348,8 +348,8 @@ impl TerminalScreen {
         let rows = self.rows;
         let style = self.current_style;
 
-        if row < rows && col < cols {
-            let buffer = self.active_buffer_mut();
+        let buffer = self.active_buffer_mut();
+        if row < rows && col < cols && row < buffer.len() {
             buffer[row][col] = Cell { ch, style };
             // Move cursor right
             if col + 1 >= cols {

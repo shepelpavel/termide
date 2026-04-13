@@ -323,14 +323,16 @@ impl Perform for VtPerformer {
                     };
 
                     let buffer = screen.active_buffer_mut();
-                    // Shift characters left from deleted position using copy_within (3-5x faster)
-                    if col + n < cols {
-                        buffer[row].copy_within(col + n..cols, col);
-                    }
+                    if row < buffer.len() {
+                        // Shift characters left from deleted position using copy_within (3-5x faster)
+                        if col + n < cols {
+                            buffer[row].copy_within(col + n..cols, col);
+                        }
 
-                    // Fill freed space with blanks
-                    for i in (cols - n)..cols {
-                        buffer[row][i] = empty_cell;
+                        // Fill freed space with blanks
+                        for i in (cols - n)..cols {
+                            buffer[row][i] = empty_cell;
+                        }
                     }
                     // Force cache invalidation after character deletion
                     screen.force_cache_invalidation = true;
@@ -351,8 +353,10 @@ impl Perform for VtPerformer {
                     };
 
                     let buffer = screen.active_buffer_mut();
-                    for i in col..(col + n).min(cols) {
-                        buffer[row][i] = empty_cell;
+                    if row < buffer.len() {
+                        for i in col..(col + n).min(cols) {
+                            buffer[row][i] = empty_cell;
+                        }
                     }
                     // Force cache invalidation after character erasure
                     screen.force_cache_invalidation = true;
@@ -373,14 +377,16 @@ impl Perform for VtPerformer {
                     };
 
                     let buffer = screen.active_buffer_mut();
-                    // Shift characters right using copy_within (3-5x faster)
-                    if col + n < cols {
-                        buffer[row].copy_within(col..cols - n, col + n);
-                    }
+                    if row < buffer.len() {
+                        // Shift characters right using copy_within (3-5x faster)
+                        if col + n < cols {
+                            buffer[row].copy_within(col..cols - n, col + n);
+                        }
 
-                    // Insert blanks at freed positions
-                    for i in col..(col + n).min(cols) {
-                        buffer[row][i] = empty_cell;
+                        // Insert blanks at freed positions
+                        for i in col..(col + n).min(cols) {
+                            buffer[row][i] = empty_cell;
+                        }
                     }
                     // Force cache invalidation after character insertion
                     screen.force_cache_invalidation = true;
