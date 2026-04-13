@@ -88,6 +88,13 @@ pub fn cyrillic_to_latin(ch: char) -> char {
         'Б' => '<',
         'Ю' => '>',
 
+        // Punctuation keys that differ between ЙЦУКЕН and QWERTY
+        // (physical key position mapping, not character translation)
+        '.' => '/', // Точка (рус) → Slash (eng) — key next to right Shift
+        ',' => '.', // Запятая (рус) → Period (eng)
+        'ё' => '`', // Ё → backtick (top-left key)
+        'Ё' => '~', // Ё + Shift → tilde
+
         // No change for other characters
         _ => ch,
     }
