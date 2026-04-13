@@ -592,8 +592,7 @@ impl App {
     pub(super) fn apply_language(&mut self, lang_code: &str, lang_name: &str) -> Result<()> {
         if let Err(e) = i18n::set_language(lang_code) {
             log::warn!("Failed to set language: {}", e);
-            self.state
-                .set_error(format!("Failed to set language: {}", e));
+            self.show_error_modal(format!("Failed to set language: {}", e));
             return Ok(());
         }
 
@@ -1466,6 +1465,8 @@ impl App {
                     self.state.set_pending_action(
                         termide_state::PendingAction::RenameScript {
                             old_path: script.path.clone(),
+                            group: None,
+                            selected,
                         },
                         crate::state::ActiveModal::Input(Box::new(modal)),
                     );
@@ -1504,6 +1505,8 @@ impl App {
                 self.state.set_pending_action(
                     termide_state::PendingAction::RenameScript {
                         old_path: script.path.clone(),
+                        group: Some(group_name),
+                        selected,
                     },
                     crate::state::ActiveModal::Input(Box::new(modal)),
                 );
@@ -1542,6 +1545,7 @@ impl App {
                         path: bm_path,
                         group: bm_group,
                         is_project: bm_is_project,
+                        selected: sel,
                     },
                     crate::state::ActiveModal::Input(Box::new(modal)),
                 );
@@ -1586,6 +1590,7 @@ impl App {
                         path: bm_path,
                         group: bm_group,
                         is_project: bm_is_project,
+                        selected: sel,
                     },
                     crate::state::ActiveModal::Input(Box::new(modal)),
                 );
@@ -1637,7 +1642,7 @@ impl App {
                 }
                 Err(e) => {
                     log::error!("Failed to run background script '{}': {}", script.name, e);
-                    self.state.set_error(format!("Failed to run script: {}", e));
+                    self.show_error_modal(format!("Failed to run script: {}", e));
                 }
             }
         } else {
@@ -1665,7 +1670,7 @@ impl App {
                         script.name,
                         e
                     );
-                    self.state.set_error(format!("Failed to run script: {}", e));
+                    self.show_error_modal(format!("Failed to run script: {}", e));
                 }
             }
         }
@@ -1739,7 +1744,7 @@ impl App {
             }
             Err(e) => {
                 log::error!("Failed to run report script '{}': {}", script.name, e);
-                self.state.set_error(format!("Failed to run script: {}", e));
+                self.show_error_modal(format!("Failed to run script: {}", e));
             }
         }
 
@@ -2134,6 +2139,31 @@ impl App {
                 .open_bookmarks_nested_submenu(group_name, is_project);
         } else {
             self.state.ui.bookmarks_submenu.selected = fallback_selected;
+        }
+    }
+
+    /// Reopen scripts menu after modal (rename/delete).
+    /// If `group` is Some, also opens the nested submenu for that group.
+    pub(super) fn reopen_scripts_menu(&mut self, group: Option<String>, fallback_selected: usize) {
+        use termide_ui_render::menu::SCRIPTS_MENU_INDEX;
+        self.state.ui.menu_open = true;
+        self.state.ui.selected_menu_item = Some(SCRIPTS_MENU_INDEX);
+        self.state.open_scripts_submenu();
+
+        if let Some(group_name) = group {
+            if let Some(registry) =
+                termide_config::scripts::ScriptsRegistry::load_merged(Some(&self.project_root))
+            {
+                let items = termide_ui_render::get_scripts_items(&registry);
+                let group_idx = items
+                    .iter()
+                    .position(|i| i.has_submenu && i.key == group_name)
+                    .unwrap_or(fallback_selected);
+                self.state.ui.scripts_submenu.selected = group_idx;
+                self.state.open_scripts_nested_submenu(group_name);
+            }
+        } else {
+            self.state.ui.scripts_submenu.selected = fallback_selected;
         }
     }
 

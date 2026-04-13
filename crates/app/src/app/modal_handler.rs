@@ -570,18 +570,25 @@ impl App {
                         self.state.needs_redraw = true;
                     }
                 }
-                PendingAction::RenameScript { old_path } => {
+                PendingAction::RenameScript {
+                    old_path,
+                    group,
+                    selected,
+                } => {
                     if let Some(new_name) = value.downcast_ref::<String>() {
                         let sanitized = termide_modal::sanitize_filename(new_name.trim());
                         if !sanitized.is_empty() {
                             let new_path = old_path.with_file_name(&sanitized);
                             let _ = std::fs::rename(&old_path, &new_path);
-                            self.state.needs_redraw = true;
                         }
                     }
+                    self.reopen_scripts_menu(group, selected);
                 }
                 PendingAction::RenameBookmark {
-                    path, is_project, ..
+                    path,
+                    group,
+                    is_project,
+                    selected,
                 } => {
                     if let Some(new_name) = value.downcast_ref::<String>() {
                         if !new_name.is_empty() {
@@ -598,6 +605,7 @@ impl App {
                             }
                         }
                     }
+                    self.reopen_bookmarks_menu(group, is_project, selected);
                 }
             }
         }
@@ -673,7 +681,7 @@ impl App {
                         self.send_git_update(&repo_path);
                     }
                     Err(e) => {
-                        self.state.set_error(format!("Stash drop error: {}", e));
+                        self.show_error_modal(format!("Stash drop error: {}", e));
                     }
                 }
             }
@@ -705,7 +713,7 @@ impl App {
                     self.send_git_update(&repo_path);
                 }
                 Err(e) => {
-                    self.state.set_error(format!("Stash pop error: {}", e));
+                    self.show_error_modal(format!("Stash pop error: {}", e));
                 }
             },
             // Apply
@@ -715,7 +723,7 @@ impl App {
                     self.send_git_update(&repo_path);
                 }
                 Err(e) => {
-                    self.state.set_error(format!("Stash apply error: {}", e));
+                    self.show_error_modal(format!("Stash apply error: {}", e));
                 }
             },
             // Drop → chain to ConfirmModal
@@ -1344,14 +1352,14 @@ impl App {
                     }
                     "stage" => {
                         if let Err(e) = termide_git::stage_file(repo_path, file_path) {
-                            self.state.set_error(format!("Stage error: {}", e));
+                            self.show_error_modal(format!("Stage error: {}", e));
                         } else {
                             self.state.set_info("File staged".to_string());
                         }
                     }
                     "unstage" => {
                         if let Err(e) = termide_git::unstage_file(repo_path, file_path) {
-                            self.state.set_error(format!("Unstage error: {}", e));
+                            self.show_error_modal(format!("Unstage error: {}", e));
                         } else {
                             self.state.set_info("File unstaged".to_string());
                         }
@@ -1418,7 +1426,7 @@ impl App {
                     self.send_git_update(repo_path);
                 }
                 Err(e) => {
-                    self.state.set_error(format!("Commit failed: {}", e));
+                    self.show_error_modal(format!("Commit failed: {}", e));
                 }
             }
         }
@@ -1439,13 +1447,13 @@ impl App {
                 // If file is staged, unstage it first
                 if is_staged {
                     if let Err(e) = termide_git::unstage_file(repo_path, file_path) {
-                        self.state.set_error(format!("Unstage error: {}", e));
+                        self.show_error_modal(format!("Unstage error: {}", e));
                         return Ok(());
                     }
                 }
                 // Now revert the file
                 if let Err(e) = termide_git::revert_file(repo_path, file_path) {
-                    self.state.set_error(format!("Revert error: {}", e));
+                    self.show_error_modal(format!("Revert error: {}", e));
                 } else {
                     self.state.set_info("File reverted".to_string());
                     // Trigger git update event to refresh panels
