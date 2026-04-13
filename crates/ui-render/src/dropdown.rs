@@ -358,6 +358,23 @@ pub const SCRIPT_ADD_NEW: &str = "__add_script__";
 pub const SCRIPT_MANAGE: &str = "__manage_scripts__";
 
 /// Get scripts submenu items from ScriptsRegistry
+/// Format script label with type icon prefix (when terminal supports emoji).
+/// 💻 = runs in terminal panel, ⚙ = background, 📋 = background with result modal
+fn script_label(script: &termide_config::scripts::ScriptItem) -> String {
+    if termide_core::use_emoji_icons() {
+        let icon = if script.is_report {
+            "📋"
+        } else if script.is_background {
+            "⚙"
+        } else {
+            "💻"
+        };
+        format!("{} {}", icon, script.name)
+    } else {
+        script.name.clone()
+    }
+}
+
 pub fn get_scripts_items(registry: &termide_config::scripts::ScriptsRegistry) -> Vec<DropdownItem> {
     let t = i18n::t();
     let mut items = vec![
@@ -372,7 +389,7 @@ pub fn get_scripts_items(registry: &termide_config::scripts::ScriptsRegistry) ->
 
     // Project scripts first (bold)
     for script in registry.root_items.iter().filter(|s| s.is_project) {
-        items.push(DropdownItem::new(&script.name, &script.name).with_project());
+        items.push(DropdownItem::new(script_label(script), &script.name).with_project());
     }
     for group in registry.groups.iter().filter(|g| g.is_project) {
         items.push(
@@ -389,7 +406,7 @@ pub fn get_scripts_items(registry: &termide_config::scripts::ScriptsRegistry) ->
 
     // Global scripts
     for script in registry.root_items.iter().filter(|s| !s.is_project) {
-        items.push(DropdownItem::new(&script.name, &script.name));
+        items.push(DropdownItem::new(script_label(script), &script.name));
     }
     for group in registry.groups.iter().filter(|g| !g.is_project) {
         items.push(DropdownItem::new(&group.name, &group.name).with_submenu());
@@ -417,7 +434,7 @@ pub fn get_scripts_group_items(
                 .items
                 .iter()
                 .map(|script| {
-                    let mut item = DropdownItem::new(&script.name, &script.name);
+                    let mut item = DropdownItem::new(script_label(script), &script.name);
                     if script.is_project {
                         item = item.with_project();
                     }

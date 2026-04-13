@@ -85,6 +85,13 @@ fn render_snapshot_card(
     // Build border title: " icon Label " or " icon Label ── 45% "
     let icon = if is_scanning {
         "\u{25CE}" // ◎
+    } else if is_script {
+        // Script subtype icon: 📋 report, ⚙ background, 💻 terminal
+        match op.dest.as_str() {
+            "report" => "📋",
+            "bg" => "⚙",
+            _ => "💻",
+        }
     } else {
         op_type_icon(&op.op_type)
     };

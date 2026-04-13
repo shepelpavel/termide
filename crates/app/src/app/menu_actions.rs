@@ -1372,7 +1372,7 @@ impl App {
                         op_id,
                         termide_state::OperationType::Script,
                         script.name.clone(),
-                        String::new(),
+                        "bg".to_string(), // script subtype for icon
                         0,
                         0,
                     );
@@ -1472,7 +1472,7 @@ impl App {
                     op_id,
                     termide_state::OperationType::Script,
                     script.name.clone(),
-                    String::new(),
+                    "report".to_string(), // script subtype for icon
                     0,
                     0,
                 );
