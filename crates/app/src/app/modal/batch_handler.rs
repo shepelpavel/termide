@@ -787,7 +787,13 @@ impl App {
                                     log::warn!("Failed to parse VFS URL: {}", e);
                                     operation.destination.clone()
                                 });
-                            base.join(&item_name_ow)
+                            // Don't join filename if destination URL already ends with it
+                            // (user specified full file path, not directory)
+                            if base.file_name().and_then(|n| n.to_str()) == Some(&item_name_ow) {
+                                base
+                            } else {
+                                base.join(&item_name_ow)
+                            }
                         } else {
                             path_utils::resolve_batch_destination_path(
                                 &source,
