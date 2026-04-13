@@ -92,6 +92,36 @@ impl App {
         Ok(())
     }
 
+    /// Handle Escape-triggered close: always shows confirmation.
+    /// Unlike F10/Alt+X which closes simple panels immediately,
+    /// Escape always asks because it's too easy to press accidentally.
+    pub(crate) fn handle_escape_close_request(&mut self) -> Result<()> {
+        // Delegate to normal close request — it already handles:
+        // - Editor with unsaved changes → save/discard/cancel dialog
+        // - Terminal with running process → confirm dialog
+        // For panels without needs_close_confirmation, show simple confirm
+        if let Some(panel) = self.layout_manager.active_panel_mut() {
+            if panel.needs_close_confirmation().is_some() {
+                // Use existing confirmation logic (save dialog, etc.)
+                // (panel borrow ends here, handle_close_panel_request will re-borrow)
+            } else {
+                // Simple confirmation for panels without special needs
+                let panel_title = panel.title();
+                let t = i18n::t();
+                let message = format!("{} \"{}\"?", t.help_desc_close_panel(), panel_title);
+                let modal = termide_modal::ConfirmModal::new(t.modal_confirm_title(), &message);
+                self.state.set_pending_action(
+                    PendingAction::ClosePanel,
+                    ActiveModal::Confirm(Box::new(modal)),
+                );
+                return Ok(());
+            }
+        }
+
+        // Panel has needs_close_confirmation — delegate to standard close flow
+        self.handle_close_panel_request()
+    }
+
     /// Close all Operations panels (called when no active operations remain)
     pub(super) fn close_operations_panel(&mut self) {
         log::debug!("Closing Operations panel(s)");

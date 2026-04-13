@@ -67,10 +67,15 @@ impl App {
         }
 
         // Pass key to active panel
-        let (events, modal_request, config_update) = if let Some(panel) =
+        let (events, modal_request, config_update, escape_close) = if let Some(panel) =
             self.layout_manager.active_panel_mut()
         {
             let mut events = panel.handle_key(key);
+
+            // Escape: if panel didn't capture it, request close with confirmation
+            let escape_close = key.code == crossterm::event::KeyCode::Esc
+                && key.modifiers.is_empty()
+                && !panel.captures_escape();
 
             // Legacy methods still in use
             let modal_request = panel.take_modal_request();
@@ -186,13 +191,18 @@ impl App {
                 None
             };
 
-            (events, modal_request, config_update)
+            (events, modal_request, config_update, escape_close)
         } else {
-            (vec![], None, None)
+            (vec![], None, None, false)
         };
 
         // Process panel events (new event-based architecture)
         self.process_panel_events(events)?;
+
+        // Escape close: show confirmation before closing panel
+        if escape_close {
+            self.handle_escape_close_request()?;
+        }
 
         // Apply config update if present (legacy, still used by Editor)
         if let Some(new_config) = config_update {

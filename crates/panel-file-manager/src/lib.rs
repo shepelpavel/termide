@@ -1574,9 +1574,8 @@ impl Panel for FileManager {
     }
 
     fn captures_escape(&self) -> bool {
-        // Capture Escape when there's a pending VFS operation (e.g., connecting to remote)
-        // This prevents the global handler from closing the panel
-        self.vfs.has_pending_operation()
+        // Capture Escape when there's a pending VFS operation or active selection
+        self.vfs.has_pending_operation() || !self.selection.items.is_empty()
     }
 
     fn tick(&mut self) -> Vec<PanelEvent> {
