@@ -101,8 +101,9 @@ fn render_snapshot_card(
     let pause_icon = if op.is_paused { " \u{23F8}" } else { "" }; // ⏸
 
     let title = if is_script {
+        // Script: show script name in title instead of generic "Script" label
         Line::from(Span::styled(
-            format!(" {} {}{} ", icon, type_label, pause_icon),
+            format!(" {} {}{} ", icon, op.source, pause_icon),
             title_style,
         ))
     } else {
@@ -162,17 +163,8 @@ fn render_snapshot_card(
         y += 1;
     }
 
-    // Source path (file ops) or script name (scripts)
-    if is_script {
-        let name = truncate_left(&op.source, content_width);
-        buf.set_line(
-            inner.x,
-            y,
-            &Line::from(Span::styled(name, Style::default().fg(fg_color))),
-            inner.width,
-        );
-        y += 1;
-    } else {
+    // Source path (file ops only — script name is in border title)
+    if !is_script {
         let source = truncate_left(&op.source, content_width);
         buf.set_line(
             inner.x,

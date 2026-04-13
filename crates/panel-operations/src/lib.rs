@@ -63,10 +63,10 @@ impl OperationSnapshot {
         let has_dest = !self.dest.is_empty();
         let has_data = !self.is_scanning && self.op_type.has_data_progress();
         // Content lines:
-        //   Script: name(1) + dest(?) + elapsed(1)
+        //   Script: elapsed(1) only (name is in border title)
         //   File op: bar(1) + source(1) + dest(?) + files(1) + data+speed(?) + elapsed(1)
         let content_lines: u16 = if is_script {
-            1 + has_dest as u16 + 1
+            has_dest as u16 + 1
         } else {
             1 // progress bar
             + 1 // source path
