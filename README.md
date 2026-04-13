@@ -299,7 +299,7 @@ For detailed documentation, see:
 - `M` / `F6` - Move
 - `Delete` / `F8` - Delete
 - `F3` - Preview file
-- `Shift+Enter` - Open with system app
+- `O` / `Alt+Enter` - Open with system app
 - `.` - Toggle hidden files
 - `Ctrl+G` - Go to path/URL
 
@@ -331,7 +331,7 @@ For detailed documentation, see:
 - `Enter` / `d` - View diff
 - `c` - Copy commit hash
 - `g/G` - First/last commit
-- `o` / `Shift+Enter` - Open commit in browser
+- `O` / `Alt+Enter` - Open commit in browser
 
 ## Configuration
 

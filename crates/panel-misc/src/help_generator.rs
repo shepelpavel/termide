@@ -42,11 +42,11 @@ impl HelpGenerator {
             Self::generate_global_section(&config.general.keybindings, t),
             Self::generate_panel_section(&config.general.keybindings, t),
             Self::generate_navigation_section(t),
-            Self::generate_file_manager_section(t),
+            Self::generate_file_manager_section(config, t),
             Self::generate_editor_section(&config.editor.keybindings, t),
             Self::generate_git_status_section(t),
             Self::generate_git_diff_section(t),
-            Self::generate_git_log_section(t),
+            Self::generate_git_log_section(config, t),
             Self::generate_terminal_section(&config.terminal.keybindings, t),
         ]
     }
@@ -283,7 +283,10 @@ impl HelpGenerator {
     }
 
     /// Generate file manager keybindings section.
-    fn generate_file_manager_section(t: &dyn termide_i18n::Translation) -> HelpSection {
+    fn generate_file_manager_section(
+        config: &Config,
+        t: &dyn termide_i18n::Translation,
+    ) -> HelpSection {
         let entries = vec![
             HelpEntry {
                 keys: "C".to_string(),
@@ -326,7 +329,7 @@ impl HelpGenerator {
                 description: t.help_desc_toggle_hidden().to_string(),
             },
             HelpEntry {
-                keys: "O".to_string(),
+                keys: Self::format_keys(&config.file_manager.keybindings.open_external),
                 description: t.help_desc_open_external().to_string(),
             },
         ];
@@ -530,8 +533,8 @@ impl HelpGenerator {
         }
     }
 
-    /// Generate Git Log section (static keys).
-    fn generate_git_log_section(t: &dyn termide_i18n::Translation) -> HelpSection {
+    /// Generate Git Log section.
+    fn generate_git_log_section(config: &Config, t: &dyn termide_i18n::Translation) -> HelpSection {
         let entries = vec![
             HelpEntry {
                 keys: "Enter / d".to_string(),
@@ -542,7 +545,7 @@ impl HelpGenerator {
                 description: t.help_desc_show_hover().to_string(),
             },
             HelpEntry {
-                keys: "o / Shift+Enter".to_string(),
+                keys: Self::format_keys(&config.file_manager.keybindings.open_external),
                 description: t.help_desc_open_external().to_string(),
             },
         ];

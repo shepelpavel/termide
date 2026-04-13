@@ -117,7 +117,7 @@ The file manager can preview images and videos using console image viewers.
 **Shortcuts:**
 - `Enter` → smart open (see table above)
 - `F3` → view file (like Enter, but executables open in editor instead of running)
-- `Shift+Enter` → force open with xdg-open (system default application)
+- `O` / `Alt+Enter` → force open with xdg-open (system default application)
 - `F4` → always open in editor
 
 **Native Graphics:**
