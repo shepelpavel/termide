@@ -572,8 +572,9 @@ impl App {
                 }
                 PendingAction::RenameScript { old_path } => {
                     if let Some(new_name) = value.downcast_ref::<String>() {
-                        if !new_name.is_empty() {
-                            let new_path = old_path.with_file_name(new_name);
+                        let sanitized = termide_modal::sanitize_filename(new_name.trim());
+                        if !sanitized.is_empty() {
+                            let new_path = old_path.with_file_name(&sanitized);
                             let _ = std::fs::rename(&old_path, &new_path);
                             self.state.needs_redraw = true;
                         }

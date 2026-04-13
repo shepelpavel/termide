@@ -3,6 +3,17 @@
 //! Provides a modal with group, name, type selector, and project checkbox fields.
 
 use anyhow::Result;
+
+/// Sanitize a string for use as filename/directory name.
+/// Replaces characters invalid in file/directory names with "-".
+pub fn sanitize_filename(s: &str) -> String {
+    s.chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '.' => '-',
+            _ => c,
+        })
+        .collect()
+}
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     buffer::Buffer,
@@ -340,22 +351,15 @@ impl ScriptCreateModal {
 
     /// Build the confirmed result if validation passes.
     fn try_confirm(&self) -> Option<ModalResult<ScriptCreateResult>> {
-        let name = self.name_input.text().trim().to_string();
+        let name = sanitize_filename(self.name_input.text().trim());
         if name.is_empty() {
-            return None;
-        }
-        // Name should not contain dots
-        if name.contains('.') {
             return None;
         }
 
         let group = {
-            let g = self.group_suggestion.text().trim().to_string();
+            let g = sanitize_filename(self.group_suggestion.text().trim());
             if g.is_empty() {
                 None
-            } else if g.contains('/') || g.contains('\\') {
-                // No nested subdirectories — groups are one level only
-                return None;
             } else {
                 Some(g)
             }

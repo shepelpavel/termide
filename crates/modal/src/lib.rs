@@ -62,7 +62,7 @@ pub use progress::ProgressModal;
 pub use rename_pattern::RenamePatternModal;
 pub use replace::{ReplaceAction, ReplaceModal, ReplaceModalResult};
 pub use save_as::{SaveAsModal, SaveAsResult};
-pub use script_create::{ScriptCreateModal, ScriptCreateResult, ScriptType};
+pub use script_create::{sanitize_filename, ScriptCreateModal, ScriptCreateResult, ScriptType};
 pub use search::{SearchAction, SearchModal, SearchModalResult};
 pub use select::SelectModal;
 pub use sessions::{SessionAction, SessionItem, SessionsModal};
