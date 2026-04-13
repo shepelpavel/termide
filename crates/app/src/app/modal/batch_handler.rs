@@ -807,7 +807,17 @@ impl App {
 
                                 let is_move = operation.operation_type == BatchOperationType::Move;
 
-                                let request = if is_remote_dest_ow {
+                                let request = if is_remote_dest_ow && source.exists() {
+                                    // Local source → remote destination: upload with overwrite
+                                    let vfs_dest = Self::vfs_path_with_connection(
+                                        &vfs_current_path,
+                                        final_dest,
+                                    );
+                                    let mut r = OperationRequest::upload(source.clone(), vfs_dest);
+                                    r.is_move = is_move;
+                                    r
+                                } else if is_remote_dest_ow {
+                                    // Remote source → remote destination
                                     let vfs_dest = Self::vfs_path_with_connection(
                                         &vfs_current_path,
                                         final_dest,
