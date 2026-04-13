@@ -2959,7 +2959,7 @@ dependencies = [
 
 [[package]]
 name = "termide"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "arboard",
@@ -3043,7 +3043,7 @@ dependencies = [
 
 [[package]]
 name = "termide-app"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3098,7 +3098,7 @@ dependencies = [
 
 [[package]]
 name = "termide-app-core"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "termide-core",
@@ -3108,11 +3108,11 @@ dependencies = [
 
 [[package]]
 name = "termide-app-event"
-version = "0.18.2"
+version = "0.19.0"
 
 [[package]]
 name = "termide-app-modal"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "termide-app-core",
@@ -3121,7 +3121,7 @@ dependencies = [
 
 [[package]]
 name = "termide-app-panel"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "termide-app-core",
@@ -3129,7 +3129,7 @@ dependencies = [
 
 [[package]]
 name = "termide-app-session"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "dirs",
@@ -3138,7 +3138,7 @@ dependencies = [
 
 [[package]]
 name = "termide-app-watcher"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "termide-app-core",
@@ -3146,7 +3146,7 @@ dependencies = [
 
 [[package]]
 name = "termide-buffer"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "regex",
@@ -3158,7 +3158,7 @@ dependencies = [
 
 [[package]]
 name = "termide-clipboard"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "arboard",
@@ -3168,7 +3168,7 @@ dependencies = [
 
 [[package]]
 name = "termide-config"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3181,7 +3181,7 @@ dependencies = [
 
 [[package]]
 name = "termide-core"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "crossterm 0.28.1",
@@ -3197,7 +3197,7 @@ dependencies = [
 
 [[package]]
 name = "termide-file-ops"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "log",
@@ -3209,7 +3209,7 @@ dependencies = [
 
 [[package]]
 name = "termide-git"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "log",
@@ -3222,7 +3222,7 @@ dependencies = [
 
 [[package]]
 name = "termide-highlight"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "ratatui",
@@ -3251,7 +3251,7 @@ dependencies = [
 
 [[package]]
 name = "termide-i18n"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "log",
@@ -3262,14 +3262,14 @@ dependencies = [
 
 [[package]]
 name = "termide-keyboard"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "crossterm 0.28.1",
 ]
 
 [[package]]
 name = "termide-layout"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "crossterm 0.28.1",
@@ -3282,7 +3282,7 @@ dependencies = [
 
 [[package]]
 name = "termide-logger"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "chrono",
  "log",
@@ -3290,7 +3290,7 @@ dependencies = [
 
 [[package]]
 name = "termide-lsp"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "log",
@@ -3303,7 +3303,7 @@ dependencies = [
 
 [[package]]
 name = "termide-modal"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3326,7 +3326,7 @@ dependencies = [
 
 [[package]]
 name = "termide-panel-diagnostics"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "crossterm 0.28.1",
  "lsp-types",
@@ -3341,7 +3341,7 @@ dependencies = [
 
 [[package]]
 name = "termide-panel-editor"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3373,7 +3373,7 @@ dependencies = [
 
 [[package]]
 name = "termide-panel-file-manager"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3406,7 +3406,7 @@ dependencies = [
 
 [[package]]
 name = "termide-panel-git-diff"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "crossterm 0.28.1",
@@ -3424,7 +3424,7 @@ dependencies = [
 
 [[package]]
 name = "termide-panel-git-log"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "crossterm 0.28.1",
@@ -3444,7 +3444,7 @@ dependencies = [
 
 [[package]]
 name = "termide-panel-git-stash"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "crossterm 0.28.1",
  "ratatui",
@@ -3461,7 +3461,7 @@ dependencies = [
 
 [[package]]
 name = "termide-panel-git-status"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "crossterm 0.28.1",
@@ -3482,7 +3482,7 @@ dependencies = [
 
 [[package]]
 name = "termide-panel-image"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "crossterm 0.28.1",
@@ -3495,7 +3495,7 @@ dependencies = [
 
 [[package]]
 name = "termide-panel-misc"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3515,7 +3515,7 @@ dependencies = [
 
 [[package]]
 name = "termide-panel-operations"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "crossterm 0.28.1",
@@ -3531,7 +3531,7 @@ dependencies = [
 
 [[package]]
 name = "termide-panel-outline"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "crossterm 0.28.1",
  "log",
@@ -3566,7 +3566,7 @@ dependencies = [
 
 [[package]]
 name = "termide-panel-terminal"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3592,7 +3592,7 @@ dependencies = [
 
 [[package]]
 name = "termide-session"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3604,7 +3604,7 @@ dependencies = [
 
 [[package]]
 name = "termide-state"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "chrono",
  "termide-config",
@@ -3614,7 +3614,7 @@ dependencies = [
 
 [[package]]
 name = "termide-system-monitor"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "libc",
  "sysinfo",
@@ -3624,7 +3624,7 @@ dependencies = [
 
 [[package]]
 name = "termide-theme"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "ratatui",
@@ -3634,7 +3634,7 @@ dependencies = [
 
 [[package]]
 name = "termide-ui"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "crossterm 0.28.1",
@@ -3651,7 +3651,7 @@ dependencies = [
 
 [[package]]
 name = "termide-ui-render"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "chrono",
  "ratatui",
@@ -3669,7 +3669,7 @@ dependencies = [
 
 [[package]]
 name = "termide-vfs"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "chrono",
  "dirs",
@@ -3688,7 +3688,7 @@ dependencies = [
 
 [[package]]
 name = "termide-watcher"
-version = "0.18.2"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "ignore",
