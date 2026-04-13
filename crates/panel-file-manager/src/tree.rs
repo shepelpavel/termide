@@ -114,7 +114,7 @@ pub(crate) fn compute_prefixes(tree: &[TreeEntry], visible: &[usize]) -> Vec<Str
 
 /// Count children of a directory node in tree_entries (direct and nested).
 /// Returns the number of entries immediately following `dir_idx` that have depth > dir's depth.
-#[allow(dead_code)]
+#[cfg(test)]
 pub(crate) fn count_children(tree: &[TreeEntry], dir_idx: usize) -> usize {
     let dir_depth = tree[dir_idx].depth;
     tree[dir_idx + 1..]

@@ -71,7 +71,6 @@ pub enum EditorCommand {
     /// Save file with new name/path
     SaveAs,
     /// Force save (ignore external changes)
-    #[allow(dead_code)]
     ForceSave,
     /// Reload file from disk (discard local changes)
     ReloadFromDisk,

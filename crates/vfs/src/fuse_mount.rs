@@ -16,7 +16,6 @@ use crate::types::{
 };
 
 /// Default NFS port.
-#[allow(dead_code)]
 const DEFAULT_PORT: u16 = 2049;
 
 /// NFS provider that mounts via FUSE.

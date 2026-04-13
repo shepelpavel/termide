@@ -13,7 +13,6 @@ use crate::types::{
 };
 
 /// Default SMB port.
-#[allow(dead_code)]
 const DEFAULT_PORT: u16 = 445;
 
 /// SMB filesystem provider.
