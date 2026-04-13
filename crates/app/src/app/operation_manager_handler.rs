@@ -204,8 +204,15 @@ impl App {
                                                 "Failed to open downloaded file: {}",
                                                 e
                                             ));
-                                            let _ =
-                                                std::fs::remove_file(&pending_download.temp_path);
+                                            if let Err(e) =
+                                                std::fs::remove_file(&pending_download.temp_path)
+                                            {
+                                                log::warn!(
+                                                    "Failed to remove temp file {}: {}",
+                                                    pending_download.temp_path.display(),
+                                                    e
+                                                );
+                                            }
                                         }
                                     }
                                 } else {
@@ -429,7 +436,13 @@ impl App {
                             // Clear pending editor download on failure
                             if let Some(pending) = self.state.pending_editor_download.take() {
                                 if pending.operation_id == id {
-                                    let _ = std::fs::remove_file(&pending.temp_path);
+                                    if let Err(e) = std::fs::remove_file(&pending.temp_path) {
+                                        log::warn!(
+                                            "Failed to remove temp file {}: {}",
+                                            pending.temp_path.display(),
+                                            e
+                                        );
+                                    }
                                 } else {
                                     self.state.pending_editor_download = Some(pending);
                                 }
@@ -488,7 +501,13 @@ impl App {
                             // Clear pending editor download on cancel
                             if let Some(pending) = self.state.pending_editor_download.take() {
                                 if pending.operation_id == id {
-                                    let _ = std::fs::remove_file(&pending.temp_path);
+                                    if let Err(e) = std::fs::remove_file(&pending.temp_path) {
+                                        log::warn!(
+                                            "Failed to remove temp file {}: {}",
+                                            pending.temp_path.display(),
+                                            e
+                                        );
+                                    }
                                 } else {
                                     self.state.pending_editor_download = Some(pending);
                                 }

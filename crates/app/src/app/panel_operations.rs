@@ -446,8 +446,15 @@ impl App {
             // Remove session file if it exists (this clears the session)
             let session_file = session_dir.join("session.toml");
             if session_file.exists() {
-                let _ = std::fs::remove_file(&session_file);
-                log::info!("Cleared existing session in: {:?}", new_project_root);
+                if let Err(e) = std::fs::remove_file(&session_file) {
+                    log::error!(
+                        "Failed to remove session file {}: {}",
+                        session_file.display(),
+                        e
+                    );
+                } else {
+                    log::info!("Cleared existing session in: {:?}", new_project_root);
+                }
             }
         }
 
@@ -516,7 +523,13 @@ impl App {
         if let Ok(old_session_dir) = Session::get_session_dir(&old_project_root) {
             if let Ok(new_session_dir) = Session::get_session_dir(&new_project_root) {
                 // Create new session directory if needed
-                let _ = std::fs::create_dir_all(&new_session_dir);
+                if let Err(e) = std::fs::create_dir_all(&new_session_dir) {
+                    log::error!(
+                        "Failed to create session directory {}: {}",
+                        new_session_dir.display(),
+                        e
+                    );
+                }
 
                 // Copy all files from old session directory
                 if let Ok(entries) = std::fs::read_dir(&old_session_dir) {
@@ -525,14 +538,27 @@ impl App {
                         if path.is_file() {
                             if let Some(filename) = path.file_name() {
                                 let new_path = new_session_dir.join(filename);
-                                let _ = std::fs::copy(&path, &new_path);
+                                if let Err(e) = std::fs::copy(&path, &new_path) {
+                                    log::error!(
+                                        "Failed to copy session file {} -> {}: {}",
+                                        path.display(),
+                                        new_path.display(),
+                                        e
+                                    );
+                                }
                             }
                         }
                     }
                 }
 
                 // Remove old session directory
-                let _ = std::fs::remove_dir_all(&old_session_dir);
+                if let Err(e) = std::fs::remove_dir_all(&old_session_dir) {
+                    log::warn!(
+                        "Failed to remove old session directory {}: {}",
+                        old_session_dir.display(),
+                        e
+                    );
+                }
             }
         }
 

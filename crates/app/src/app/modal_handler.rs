@@ -386,13 +386,21 @@ impl App {
                             if let Some(ref mut proj) = self.state.project_bookmarks {
                                 proj.remove_in_group(&path, group.as_deref());
                                 let proj_dir = self.state.project_root.join(".termide");
-                                let _ = proj.save_to_dir(&proj_dir);
+                                if let Err(e) = proj.save_to_dir(&proj_dir) {
+                                    log::error!(
+                                        "Failed to save project bookmarks to {}: {}",
+                                        proj_dir.display(),
+                                        e
+                                    );
+                                }
                             }
                         } else {
                             self.state
                                 .bookmarks
                                 .remove_in_group(&path, group.as_deref());
-                            let _ = self.state.bookmarks.save();
+                            if let Err(e) = self.state.bookmarks.save() {
+                                log::error!("Failed to save bookmarks after removing entry: {}", e);
+                            }
                         }
                     }
                     self.reopen_bookmarks_menu(group, is_project, selected);
@@ -407,11 +415,19 @@ impl App {
                             if let Some(ref mut proj) = self.state.project_bookmarks {
                                 proj.remove_group(&group);
                                 let proj_dir = self.state.project_root.join(".termide");
-                                let _ = proj.save_to_dir(&proj_dir);
+                                if let Err(e) = proj.save_to_dir(&proj_dir) {
+                                    log::error!(
+                                        "Failed to save project bookmarks to {}: {}",
+                                        proj_dir.display(),
+                                        e
+                                    );
+                                }
                             }
                         } else {
                             self.state.bookmarks.remove_group(&group);
-                            let _ = self.state.bookmarks.save();
+                            if let Err(e) = self.state.bookmarks.save() {
+                                log::error!("Failed to save bookmarks after removing group: {}", e);
+                            }
                         }
                     }
                     self.reopen_bookmarks_menu(None, false, selected);
@@ -556,7 +572,9 @@ impl App {
                 }
                 PendingAction::DeleteScript { path, .. } => {
                     if value.downcast_ref::<bool>().copied().unwrap_or(false) {
-                        let _ = std::fs::remove_file(&path);
+                        if let Err(e) = std::fs::remove_file(&path) {
+                            log::error!("Failed to delete script file {}: {}", path.display(), e);
+                        }
                         // Remove empty parent directory (group folder) if it was the last script
                         if let Some(parent) = path.parent() {
                             if parent
@@ -564,7 +582,13 @@ impl App {
                                 .map(|mut d| d.next().is_none())
                                 .unwrap_or(false)
                             {
-                                let _ = std::fs::remove_dir(parent);
+                                if let Err(e) = std::fs::remove_dir(parent) {
+                                    log::warn!(
+                                        "Failed to remove empty script group folder {}: {}",
+                                        parent.display(),
+                                        e
+                                    );
+                                }
                             }
                         }
                         self.state.needs_redraw = true;
@@ -579,7 +603,14 @@ impl App {
                         let sanitized = termide_modal::sanitize_filename(new_name.trim());
                         if !sanitized.is_empty() {
                             let new_path = old_path.with_file_name(&sanitized);
-                            let _ = std::fs::rename(&old_path, &new_path);
+                            if let Err(e) = std::fs::rename(&old_path, &new_path) {
+                                log::error!(
+                                    "Failed to rename script {} -> {}: {}",
+                                    old_path.display(),
+                                    new_path.display(),
+                                    e
+                                );
+                            }
                         }
                     }
                     self.reopen_scripts_menu(group, selected);
@@ -601,7 +632,12 @@ impl App {
                                 if let Some(bm) = config.find_mut(&path) {
                                     bm.description = Some(new_name.clone());
                                 }
-                                let _ = config.save();
+                                if let Err(e) = config.save() {
+                                    log::error!(
+                                        "Failed to save bookmark config after rename: {}",
+                                        e
+                                    );
+                                }
                             }
                         }
                     }
@@ -978,10 +1014,18 @@ impl App {
         if was_project && !result.is_project {
             if let Some(ref proj) = self.state.project_bookmarks {
                 let proj_dir = self.state.project_root.join(".termide");
-                let _ = proj.save_to_dir(&proj_dir);
+                if let Err(e) = proj.save_to_dir(&proj_dir) {
+                    log::error!(
+                        "Failed to save project bookmarks to {}: {}",
+                        proj_dir.display(),
+                        e
+                    );
+                }
             }
         } else if !was_project && result.is_project {
-            let _ = self.state.bookmarks.save();
+            if let Err(e) = self.state.bookmarks.save() {
+                log::error!("Failed to save bookmarks after location change: {}", e);
+            }
         }
 
         Ok(None)
