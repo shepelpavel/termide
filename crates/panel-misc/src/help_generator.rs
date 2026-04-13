@@ -38,7 +38,6 @@ impl HelpGenerator {
         let t = termide_i18n::t();
 
         vec![
-            Self::generate_common_actions_section(&config.general.keybindings, t),
             Self::generate_global_section(&config.general.keybindings, t),
             Self::generate_panel_section(&config.general.keybindings, t),
             Self::generate_navigation_section(t),
@@ -57,84 +56,6 @@ impl HelpGenerator {
             Some(KeyBinding::Single(s)) => s.clone(),
             Some(KeyBinding::Multiple(v)) => v.join(" / "),
             None => String::new(),
-        }
-    }
-
-    /// Generate common F-key and universal actions section.
-    fn generate_common_actions_section(
-        kb: &GlobalKeybindings,
-        t: &dyn termide_i18n::Translation,
-    ) -> HelpSection {
-        let entries = vec![
-            HelpEntry {
-                keys: Self::format_keys(&kb.save),
-                description: t.help_desc_save_generic().to_string(),
-            },
-            HelpEntry {
-                keys: Self::format_keys(&kb.view),
-                description: t.help_desc_view_generic().to_string(),
-            },
-            HelpEntry {
-                keys: Self::format_keys(&kb.edit_item),
-                description: t.help_desc_edit_generic().to_string(),
-            },
-            HelpEntry {
-                keys: Self::format_keys(&kb.copy_item),
-                description: t.help_desc_copy_generic().to_string(),
-            },
-            HelpEntry {
-                keys: Self::format_keys(&kb.move_item),
-                description: t.help_desc_move_generic().to_string(),
-            },
-            HelpEntry {
-                keys: Self::format_keys(&kb.create_item),
-                description: t.help_desc_create_generic().to_string(),
-            },
-            HelpEntry {
-                keys: Self::format_keys(&kb.delete_item),
-                description: t.help_desc_delete_generic().to_string(),
-            },
-            HelpEntry {
-                keys: Self::format_keys(&kb.context_menu),
-                description: t.help_desc_properties().to_string(),
-            },
-            HelpEntry {
-                keys: Self::format_keys(&kb.search),
-                description: t.help_desc_search().to_string(),
-            },
-            HelpEntry {
-                keys: Self::format_keys(&kb.refresh),
-                description: t.help_desc_refresh().to_string(),
-            },
-            HelpEntry {
-                keys: Self::format_keys(&kb.undo),
-                description: t.help_desc_undo().to_string(),
-            },
-            HelpEntry {
-                keys: Self::format_keys(&kb.redo),
-                description: t.help_desc_redo().to_string(),
-            },
-            HelpEntry {
-                keys: Self::format_keys(&kb.select_all),
-                description: t.help_desc_select_all().to_string(),
-            },
-            HelpEntry {
-                keys: Self::format_keys(&kb.cut),
-                description: t.help_desc_cut_system().to_string(),
-            },
-            HelpEntry {
-                keys: Self::format_keys(&kb.copy),
-                description: t.help_desc_copy_system().to_string(),
-            },
-            HelpEntry {
-                keys: Self::format_keys(&kb.paste),
-                description: t.help_desc_paste_system().to_string(),
-            },
-        ];
-
-        HelpSection {
-            header: t.help_section_universal().to_string(),
-            entries,
         }
     }
 

@@ -216,24 +216,6 @@ pub struct GlobalKeybindings {
     // Application
     pub quit: Option<KeyBinding>,
     pub open_command_palette: Option<KeyBinding>,
-
-    // Common item actions (used across panels, menus, modals)
-    pub save: Option<KeyBinding>,
-    pub view: Option<KeyBinding>,
-    pub edit_item: Option<KeyBinding>,
-    pub copy_item: Option<KeyBinding>,
-    pub move_item: Option<KeyBinding>,
-    pub create_item: Option<KeyBinding>,
-    pub delete_item: Option<KeyBinding>,
-    pub context_menu: Option<KeyBinding>,
-    pub search: Option<KeyBinding>,
-    pub refresh: Option<KeyBinding>,
-    pub undo: Option<KeyBinding>,
-    pub redo: Option<KeyBinding>,
-    pub select_all: Option<KeyBinding>,
-    pub cut: Option<KeyBinding>,
-    pub copy: Option<KeyBinding>,
-    pub paste: Option<KeyBinding>,
 }
 
 /// Editor keybindings (editor.keybindings section).
@@ -379,24 +361,6 @@ impl GlobalKeybindings {
         // Application
         set_default!(quit, "Alt+Q");
         set_default!(open_command_palette, "Ctrl+P");
-
-        // Common item actions (F-key universal)
-        set_default_multiple!(save, "F2", "Ctrl+S");
-        set_default!(view, "F3");
-        set_default!(edit_item, "F4");
-        set_default!(copy_item, "F5");
-        set_default!(move_item, "F6");
-        set_default_multiple!(create_item, "F7", "Ctrl+N");
-        set_default_multiple!(delete_item, "Delete", "F8");
-        set_default!(context_menu, "F12");
-        set_default!(search, "Ctrl+F");
-        set_default!(refresh, "Ctrl+R");
-        set_default!(undo, "Ctrl+Z");
-        set_default_multiple!(redo, "Ctrl+Y", "Ctrl+Shift+Z");
-        set_default!(select_all, "Ctrl+A");
-        set_default!(cut, "Ctrl+X");
-        set_default!(copy, "Ctrl+C");
-        set_default!(paste, "Ctrl+V");
     }
 }
 

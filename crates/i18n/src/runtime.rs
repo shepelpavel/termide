@@ -268,10 +268,6 @@ impl Translation for RuntimeTranslation {
         self.get_string("help_desc_select")
     }
 
-    fn help_desc_select_all(&self) -> &str {
-        self.get_string("help_desc_select_all")
-    }
-
     fn help_desc_new_terminal(&self) -> &str {
         self.get_string("help_desc_new_terminal")
     }
@@ -316,36 +312,8 @@ impl Translation for RuntimeTranslation {
         self.get_string("help_desc_rename")
     }
 
-    fn help_desc_search(&self) -> &str {
-        self.get_string("help_desc_search")
-    }
-
     fn help_desc_save(&self) -> &str {
         self.get_string("help_desc_save")
-    }
-
-    fn help_desc_copy_system(&self) -> &str {
-        self.get_string("help_desc_copy_system")
-    }
-
-    fn help_desc_paste_system(&self) -> &str {
-        self.get_string("help_desc_paste_system")
-    }
-
-    fn help_desc_cut_system(&self) -> &str {
-        self.get_string("help_desc_cut_system")
-    }
-
-    fn help_desc_undo(&self) -> &str {
-        self.get_string("help_desc_undo")
-    }
-
-    fn help_desc_redo(&self) -> &str {
-        self.get_string("help_desc_redo")
-    }
-
-    fn help_section_universal(&self) -> &str {
-        self.get_string("help_section_universal")
     }
 
     fn help_section_panels(&self) -> &str {
@@ -521,36 +489,8 @@ impl Translation for RuntimeTranslation {
         self.get_string("help_desc_rename_symbol")
     }
 
-    fn help_desc_save_generic(&self) -> &str {
-        self.get_string("help_desc_save_generic")
-    }
-
-    fn help_desc_view_generic(&self) -> &str {
-        self.get_string("help_desc_view_generic")
-    }
-
-    fn help_desc_edit_generic(&self) -> &str {
-        self.get_string("help_desc_edit_generic")
-    }
-
-    fn help_desc_copy_generic(&self) -> &str {
-        self.get_string("help_desc_copy_generic")
-    }
-
-    fn help_desc_move_generic(&self) -> &str {
-        self.get_string("help_desc_move_generic")
-    }
-
-    fn help_desc_create_generic(&self) -> &str {
-        self.get_string("help_desc_create_generic")
-    }
-
     fn help_desc_delete_generic(&self) -> &str {
         self.get_string("help_desc_delete_generic")
-    }
-
-    fn help_desc_properties(&self) -> &str {
-        self.get_string("help_desc_properties")
     }
 
     fn help_desc_open_bookmark_add(&self) -> &str {
@@ -583,10 +523,6 @@ impl Translation for RuntimeTranslation {
 
     fn help_desc_go_home(&self) -> &str {
         self.get_string("help_desc_go_home")
-    }
-
-    fn help_desc_refresh(&self) -> &str {
-        self.get_string("help_desc_refresh")
     }
 
     fn help_desc_toggle_hidden(&self) -> &str {

@@ -111,7 +111,6 @@ pub trait Translation: Send + Sync {
     fn help_desc_close_panel(&self) -> &str;
     fn help_desc_escape_close(&self) -> &str;
     fn help_desc_select(&self) -> &str;
-    fn help_desc_select_all(&self) -> &str;
     fn help_desc_new_terminal(&self) -> &str;
     fn help_desc_parent_dir(&self) -> &str;
     fn help_desc_home(&self) -> &str;
@@ -123,15 +122,8 @@ pub trait Translation: Send + Sync {
     fn help_desc_move(&self) -> &str;
     fn help_desc_delete(&self) -> &str;
     fn help_desc_rename(&self) -> &str;
-    fn help_desc_search(&self) -> &str;
     fn help_desc_save(&self) -> &str;
-    fn help_desc_copy_system(&self) -> &str;
-    fn help_desc_paste_system(&self) -> &str;
-    fn help_desc_cut_system(&self) -> &str;
-    fn help_desc_undo(&self) -> &str;
-    fn help_desc_redo(&self) -> &str;
     // Help section headers
-    fn help_section_universal(&self) -> &str;
     fn help_section_panels(&self) -> &str;
     fn help_section_git_status(&self) -> &str;
     fn help_section_navigation(&self) -> &str;
@@ -184,17 +176,9 @@ pub trait Translation: Send + Sync {
     fn help_desc_edit_file(&self) -> &str;
     fn help_desc_search_content(&self) -> &str;
     fn help_desc_go_home(&self) -> &str;
-    fn help_desc_refresh(&self) -> &str;
     fn help_desc_toggle_hidden(&self) -> &str;
     fn help_desc_open_external(&self) -> &str;
-    fn help_desc_save_generic(&self) -> &str;
-    fn help_desc_view_generic(&self) -> &str;
-    fn help_desc_edit_generic(&self) -> &str;
-    fn help_desc_copy_generic(&self) -> &str;
-    fn help_desc_move_generic(&self) -> &str;
-    fn help_desc_create_generic(&self) -> &str;
     fn help_desc_delete_generic(&self) -> &str;
-    fn help_desc_properties(&self) -> &str;
     fn help_desc_open_bookmark_add(&self) -> &str;
     fn help_desc_command_palette(&self) -> &str;
     fn help_desc_stage_file(&self) -> &str;
