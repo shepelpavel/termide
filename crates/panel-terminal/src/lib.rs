@@ -103,6 +103,8 @@ pub struct Terminal {
     color_preview: Option<ColorPreview>,
     /// Hotkey table for configurable keyboard shortcuts
     hotkeys: HotkeyTable,
+    /// Pointer of the last Arc<Config> used to build hotkeys (skip rebuild when unchanged)
+    last_config_ptr: usize,
 }
 
 /// Build HotkeyTable for the terminal panel from config.
@@ -228,6 +230,7 @@ impl Terminal {
             panel_bounds: None,
             color_preview: None,
             hotkeys: HotkeyTable::default(),
+            last_config_ptr: 0,
         }
     }
 
@@ -1378,7 +1381,11 @@ impl Panel for Terminal {
         if self.keybindings != config.terminal.keybindings {
             self.keybindings = config.terminal.keybindings.clone();
         }
-        self.hotkeys = build_terminal_hotkey_table(&config);
+        let config_ptr = std::sync::Arc::as_ptr(&config) as usize;
+        if self.last_config_ptr != config_ptr {
+            self.last_config_ptr = config_ptr;
+            self.hotkeys = build_terminal_hotkey_table(&config);
+        }
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {

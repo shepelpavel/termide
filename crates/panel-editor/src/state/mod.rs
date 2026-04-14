@@ -3,7 +3,7 @@
 //! Groups related Editor fields into focused structs for better organization
 //! and cache locality.
 
-// Allow unused methods - they are helpers for future refactoring phases
+// WIP module: fields/methods used in upcoming phases
 #![allow(dead_code)]
 
 mod file_state;

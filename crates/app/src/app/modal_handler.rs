@@ -228,7 +228,7 @@ impl App {
                 // Read InputModal checkbox before closing (used by stash push)
                 if let Some(termide_modal::ActiveModal::Input(ref modal)) = self.state.active_modal
                 {
-                    self.state.stash_include_untracked = modal.is_checkbox_checked();
+                    self.state.stash.include_untracked = modal.is_checkbox_checked();
                 }
                 self.state.close_modal();
                 if let ModalResult::Confirmed(value) = result {
@@ -292,7 +292,7 @@ impl App {
                 // Read InputModal checkbox before closing (used by stash push)
                 if let Some(termide_modal::ActiveModal::Input(ref modal)) = self.state.active_modal
                 {
-                    self.state.stash_include_untracked = modal.is_checkbox_checked();
+                    self.state.stash.include_untracked = modal.is_checkbox_checked();
                 }
                 self.state.close_modal();
                 if let ModalResult::Confirmed(value) = result {
@@ -408,9 +408,7 @@ impl App {
                             self.state
                                 .bookmarks
                                 .remove_in_group(&path, group.as_deref());
-                            if let Err(e) = self.state.bookmarks.save() {
-                                log::error!("Failed to save bookmarks after removing entry: {}", e);
-                            }
+                            self.state.save_bookmarks();
                         }
                     }
                     self.reopen_bookmarks_menu(group, is_project, selected);
@@ -435,9 +433,7 @@ impl App {
                             }
                         } else {
                             self.state.bookmarks.remove_group(&group);
-                            if let Err(e) = self.state.bookmarks.save() {
-                                log::error!("Failed to save bookmarks after removing group: {}", e);
-                            }
+                            self.state.save_bookmarks();
                         }
                     }
                     self.reopen_bookmarks_menu(None, false, selected);
@@ -796,7 +792,8 @@ impl App {
             "drop" => {
                 let message = self
                     .state
-                    .stash_entries
+                    .stash
+                    .entries
                     .get(index)
                     .map(|e| e.message.as_str())
                     .unwrap_or("?");
@@ -811,7 +808,8 @@ impl App {
                 use termide_panel_git_diff::GitDiffPanel;
                 let message = self
                     .state
-                    .stash_entries
+                    .stash
+                    .entries
                     .get(index)
                     .map(|e| e.message.clone())
                     .unwrap_or_default();
@@ -1064,9 +1062,7 @@ impl App {
                 }
             }
         } else if !was_project && result.is_project {
-            if let Err(e) = self.state.bookmarks.save() {
-                log::error!("Failed to save bookmarks after location change: {}", e);
-            }
+            self.state.save_bookmarks();
         }
 
         Ok(None)

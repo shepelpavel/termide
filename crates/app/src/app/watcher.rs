@@ -111,6 +111,20 @@ impl App {
             let _ = watcher.watch_repository(repo_root);
         }
 
+        // Invalidate cached scripts registry on any filesystem change in scripts directories.
+        // Scripts live in ~/.local/share/termide/scripts/ or .termide/scripts/.
+        if self.state.cache.scripts_registry.is_some() {
+            let scripts_dir_suffix = std::path::Path::new("scripts");
+            let invalidate = fs_paths.iter().any(|p| {
+                p.components()
+                    .any(|c| c.as_os_str() == scripts_dir_suffix.as_os_str())
+                    || p.ancestors().any(|a| a.ends_with("scripts"))
+            });
+            if invalidate {
+                self.state.cache.scripts_registry = None;
+            }
+        }
+
         // Process git events — expanded panels get the update, collapsed panels get marked stale
         if !git_repos.is_empty() {
             let repo_paths: Vec<&std::path::Path> = git_repos.iter().map(|p| p.as_path()).collect();

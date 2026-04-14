@@ -122,6 +122,8 @@ pub struct GitStatusPanel {
     stash_count: usize,
     /// Hotkey table for configurable keyboard shortcuts
     hotkeys: HotkeyTable,
+    /// Pointer of the last Arc<Config> used to build hotkeys (skip rebuild when unchanged)
+    last_config_ptr: usize,
 }
 
 /// Build HotkeyTable for the git status panel.
@@ -195,6 +197,7 @@ impl GitStatusPanel {
             pending_init_fetch: true,
             stash_count: 0,
             hotkeys: HotkeyTable::default(),
+            last_config_ptr: 0,
         };
 
         panel.refresh();
@@ -880,7 +883,11 @@ impl Panel for GitStatusPanel {
     fn prepare_render(&mut self, theme: &Theme, config: std::sync::Arc<Config>) {
         self.cached_theme = ThemeColors::from(theme);
         self.vim_mode = config.general.vim_mode;
-        self.hotkeys = build_git_status_hotkey_table(&config);
+        let config_ptr = std::sync::Arc::as_ptr(&config) as usize;
+        if self.last_config_ptr != config_ptr {
+            self.last_config_ptr = config_ptr;
+            self.hotkeys = build_git_status_hotkey_table(&config);
+        }
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {

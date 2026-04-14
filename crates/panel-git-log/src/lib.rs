@@ -76,6 +76,8 @@ pub struct GitLogPanel {
     modal_request: Option<(PendingAction, ActiveModal)>,
     /// Hotkey table for configurable keyboard shortcuts
     hotkeys: HotkeyTable,
+    /// Pointer of the last Arc<Config> used to build hotkeys (skip rebuild when unchanged)
+    last_config_ptr: usize,
 }
 
 /// Build HotkeyTable for the git log panel from config.
@@ -132,6 +134,7 @@ impl GitLogPanel {
             vim_mode: false,
             modal_request: None,
             hotkeys: HotkeyTable::default(),
+            last_config_ptr: 0,
         };
         panel.refresh();
         panel
@@ -868,7 +871,11 @@ impl Panel for GitLogPanel {
     fn prepare_render(&mut self, theme: &Theme, config: std::sync::Arc<Config>) {
         self.cached_theme = ThemeColors::from(theme);
         self.vim_mode = config.general.vim_mode;
-        self.hotkeys = build_git_log_hotkey_table(&config);
+        let config_ptr = std::sync::Arc::as_ptr(&config) as usize;
+        if self.last_config_ptr != config_ptr {
+            self.last_config_ptr = config_ptr;
+            self.hotkeys = build_git_log_hotkey_table(&config);
+        }
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {

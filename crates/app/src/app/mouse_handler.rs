@@ -676,6 +676,8 @@ impl App {
         let processes = match kind {
             ResourceModalKind::Cpu => self.state.system_monitor.top_cpu_processes(10),
             ResourceModalKind::Ram => self.state.system_monitor.top_memory_processes(10),
+            // Only Cpu and Ram modals have process lists;
+            // Network/Disk kinds should never reach this code path.
             ResourceModalKind::Network | ResourceModalKind::Disk => {
                 unreachable!("build_process_lines called with {:?} kind", kind)
             }
@@ -1147,7 +1149,7 @@ impl App {
         // If shell picker nested submenu is open, check clicks on it first
         if self.state.ui.tools_nested.open {
             let shell_items = get_shell_items(
-                &self.state.cached_shells,
+                &self.state.cache.shells,
                 self.state.config.terminal.default_shell.as_deref(),
             );
             if !shell_items.is_empty() {
@@ -1158,13 +1160,12 @@ impl App {
                 let nested_x = menu_x + parent_width;
                 let nested_y = dropdown_y + 1 + self.state.ui.tools_submenu.selected as u16;
                 if let Some(index) = hit_dropdown_item(x, y, nested_x, nested_y, &shell_items) {
-                    if let Some(shell) = self.state.cached_shells.get(index) {
+                    if let Some(shell) = self.state.cache.shells.get(index) {
                         let shell_path = shell.path.clone();
-                        // Copy-on-write: clone config, modify, replace Arc
+                        // Copy-on-write: mutate in-place if single owner, else clone
                         {
-                            let mut config = (*self.state.config).clone();
+                            let config = Arc::make_mut(&mut self.state.config);
                             config.terminal.default_shell = Some(shell_path.clone());
-                            self.state.config = Arc::new(config);
                         }
                         if let Err(e) = self.save_shell_preference(&shell_path) {
                             log::warn!("Failed to save shell preference: {}", e);
@@ -1190,14 +1191,13 @@ impl App {
     /// Handle click on Scripts submenu dropdown
     /// Returns true if click was handled
     fn handle_scripts_submenu_click(&mut self, x: u16, y: u16) -> Result<bool> {
-        let registry =
-            match termide_config::scripts::ScriptsRegistry::load_merged(Some(&self.project_root)) {
-                Some(r) => r,
-                None => {
-                    self.state.close_menu();
-                    return Ok(true);
-                }
-            };
+        let registry = match self.scripts_registry() {
+            Some(r) => r,
+            None => {
+                self.state.close_menu();
+                return Ok(true);
+            }
+        };
 
         // If nested submenu is open, handle clicks on it first
         if self.state.ui.scripts_nested.open {
@@ -1242,8 +1242,8 @@ impl App {
     /// Handle click on stash dropdown or outside it (close).
     fn handle_stash_dropdown_click(&mut self, x: u16, y: u16) -> Result<()> {
         let items = termide_ui_render::get_stash_items(
-            &self.state.stash_entries,
-            self.state.stash_has_changes,
+            &self.state.stash.entries,
+            self.state.stash.has_changes,
         );
         if let Some(btn_area) = self.state.ui.stash_button_area {
             // Calculate actual dropdown position (same clamp logic as Dropdown::render)

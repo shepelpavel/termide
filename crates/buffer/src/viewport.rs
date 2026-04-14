@@ -1,4 +1,4 @@
-// Allow dead code for future API methods
+// WIP module: fields/methods used in upcoming phases
 #![allow(dead_code)]
 
 use super::Cursor;

@@ -71,7 +71,7 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
         // Render shell picker nested submenu if open (Terminal selected)
         if state.ui.tools_nested.open && state.ui.tools_submenu.selected == 0 {
             let shell_items = get_shell_items(
-                &state.cached_shells,
+                &state.cache.shells,
                 state.config.terminal.default_shell.as_deref(),
             );
             if !shell_items.is_empty() {
@@ -95,10 +95,16 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
         && state.ui.selected_menu_item == Some(SCRIPTS_MENU_INDEX)
         && state.ui.scripts_submenu.open
     {
-        // Load scripts registry
-        if let Some(registry) =
-            termide_config::scripts::ScriptsRegistry::load_merged(Some(&state.project_root))
-        {
+        // Load scripts registry (use cache if available)
+        let registry = if let Some(ref cached) = state.cache.scripts_registry {
+            Some(cached.clone())
+        } else {
+            let loaded =
+                termide_config::scripts::ScriptsRegistry::load_merged(Some(&state.project_root));
+            state.cache.scripts_registry = loaded.clone();
+            loaded
+        };
+        if let Some(registry) = registry {
             let menu_x = get_menu_item_x_position(SCRIPTS_MENU_INDEX);
             let dropdown_y = 1_u16; // Below menu bar
 
@@ -189,7 +195,7 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
     if state.ui.stash_submenu.open {
         if let Some(btn_area) = state.ui.stash_button_area {
             let items =
-                termide_ui_render::get_stash_items(&state.stash_entries, state.stash_has_changes);
+                termide_ui_render::get_stash_items(&state.stash.entries, state.stash.has_changes);
             let dropdown = termide_ui_render::Dropdown::new(
                 &items,
                 state.ui.stash_submenu.selected,
@@ -467,7 +473,7 @@ fn render_status_bar_for_active(
             (None, None, None, None)
         };
         // Disk space is read from the tick-updated cache instead of calling statvfs per render.
-        let disk_space = state.cached_disk_space.as_ref();
+        let disk_space = state.cache.disk_space.as_ref();
 
         // Build background operations summary if available
         let background_ops = state.background_operations_summary().map(|summary| {

@@ -227,6 +227,9 @@ pub trait Panel: Any {
     /// Called when multiple scroll events are batched together.
     /// This is more efficient than processing individual scroll events.
     ///
+    /// Optional — panels that don't need custom scroll handling can rely on
+    /// the default empty implementation.
+    ///
     /// # Arguments
     /// * `delta` - Combined scroll delta (positive=down, negative=up)
     /// * `panel_area` - The panel's area

@@ -112,6 +112,8 @@ pub struct Editor {
 
     /// Hotkey table for configurable keyboard shortcuts
     hotkeys: HotkeyTable,
+    /// Pointer of the last Arc<Config> used to build hotkeys (skip rebuild when unchanged)
+    last_config_ptr: usize,
 }
 
 impl Editor {
@@ -155,6 +157,7 @@ impl Editor {
             symbol_lines: Vec::new(),
             is_stale: false,
             hotkeys: HotkeyTable::default(),
+            last_config_ptr: 0,
         }
     }
 
@@ -619,6 +622,7 @@ impl Editor {
             symbol_lines: Vec::new(),
             is_stale: false,
             hotkeys: HotkeyTable::default(),
+            last_config_ptr: 0,
         })
     }
 
@@ -656,6 +660,7 @@ impl Editor {
             symbol_lines: Vec::new(),
             is_stale: false,
             hotkeys: HotkeyTable::default(),
+            last_config_ptr: 0,
         }
     }
 
@@ -1695,7 +1700,11 @@ impl Panel for Editor {
             .set_light_theme(theme.is_light_theme());
         self.render_cache.highlight.set_default_fg(theme.fg);
 
-        self.hotkeys = build_editor_hotkey_table(&config);
+        let config_ptr = Arc::as_ptr(&config) as usize;
+        if self.last_config_ptr != config_ptr {
+            self.last_config_ptr = config_ptr;
+            self.hotkeys = build_editor_hotkey_table(&config);
+        }
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {

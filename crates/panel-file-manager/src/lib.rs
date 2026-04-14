@@ -170,6 +170,8 @@ pub struct FileManager {
     file_search: Option<file_search::FileSearchState>,
     /// Hotkey table for configurable keyboard shortcuts
     hotkeys: HotkeyTable,
+    /// Pointer of the last Arc<Config> used to build hotkeys (skip rebuild when unchanged)
+    last_config_ptr: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -284,6 +286,7 @@ impl FileManager {
             show_hidden: true,
             file_search: None,
             hotkeys: HotkeyTable::default(),
+            last_config_ptr: 0,
         };
         let _ = fm.load_directory();
         fm
@@ -323,6 +326,7 @@ impl FileManager {
             show_hidden: true,
             file_search: None,
             hotkeys: HotkeyTable::default(),
+            last_config_ptr: 0,
         };
 
         // Start the directory listing operation for remote paths
@@ -1201,7 +1205,11 @@ impl Panel for FileManager {
         self.cached_config = config.file_manager.clone();
         self.vim_mode = config.general.vim_mode;
         self.cached_vfs_timeout_secs = config.vfs.connection_timeout_secs;
-        self.hotkeys = build_fm_hotkey_table(&config);
+        let config_ptr = std::sync::Arc::as_ptr(&config) as usize;
+        if self.last_config_ptr != config_ptr {
+            self.last_config_ptr = config_ptr;
+            self.hotkeys = build_fm_hotkey_table(&config);
+        }
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {

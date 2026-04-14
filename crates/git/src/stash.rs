@@ -4,6 +4,11 @@ use std::path::Path;
 
 use super::command::{git_command_stdout, run_git_simple, run_git_with_stderr};
 
+/// Format a stash ref string, e.g. `stash@{0}`.
+fn stash_ref(index: usize) -> String {
+    format!("stash@{{{}}}", index)
+}
+
 /// A single stash entry from `git stash list`.
 #[derive(Debug, Clone)]
 pub struct StashEntry {
@@ -93,19 +98,19 @@ pub fn stash_push(repo: &Path, message: &str, include_untracked: bool) -> Result
 
 /// Pop (apply + drop) the stash at the given index.
 pub fn stash_pop(repo: &Path, index: usize) -> Result<(), String> {
-    let ref_str = format!("stash@{{{}}}", index);
+    let ref_str = stash_ref(index);
     run_git_simple(repo, &["stash", "pop", &ref_str], "Failed to pop stash")
 }
 
 /// Apply the stash at the given index (keep it in the stash list).
 pub fn stash_apply(repo: &Path, index: usize) -> Result<(), String> {
-    let ref_str = format!("stash@{{{}}}", index);
+    let ref_str = stash_ref(index);
     run_git_simple(repo, &["stash", "apply", &ref_str], "Failed to apply stash")
 }
 
 /// Drop (delete) the stash at the given index.
 pub fn stash_drop(repo: &Path, index: usize) -> Result<(), String> {
-    let ref_str = format!("stash@{{{}}}", index);
+    let ref_str = stash_ref(index);
     run_git_simple(repo, &["stash", "drop", &ref_str], "Failed to drop stash")
 }
 
@@ -116,7 +121,7 @@ pub fn stash_drop(repo: &Path, index: usize) -> Result<(), String> {
 /// 2. Dropping the old stash entry
 /// 3. Re-storing it with the new message via `git stash store`
 pub fn stash_rename(repo: &Path, index: usize, new_message: &str) -> Result<(), String> {
-    let ref_str = format!("stash@{{{}}}", index);
+    let ref_str = stash_ref(index);
     // Get the commit hash before dropping
     let hash = git_command_stdout(repo, &["rev-parse", &ref_str])
         .map(|s| s.trim().to_string())
@@ -158,7 +163,7 @@ pub struct StashInfo {
 
 /// Get detailed info about a stash entry for the info modal.
 pub fn stash_info(repo: &Path, index: usize) -> Option<StashInfo> {
-    let ref_str = format!("stash@{{{}}}", index);
+    let ref_str = stash_ref(index);
 
     // Get date
     let date_raw = git_command_stdout(repo, &["log", "-1", "--format=%ci", &ref_str])?;

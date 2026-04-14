@@ -58,7 +58,7 @@ pub enum ServerStatus {
 type PendingRequests = Arc<Mutex<HashMap<RequestId, mpsc::Sender<Value>>>>;
 
 /// LSP server instance
-#[allow(dead_code)] // Fields will be used in future phases
+#[allow(dead_code)] // Fields used once didOpen/didChange/completion are wired up
 pub struct LspServer {
     /// Language ID
     language_id: String,

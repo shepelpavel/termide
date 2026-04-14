@@ -548,8 +548,8 @@ impl App {
     /// Called on each resource tick so status bar reads from cache instead of per-render statvfs.
     fn update_disk_space(&mut self) {
         let disk = self.get_active_panel_disk_space();
-        if disk != self.state.cached_disk_space {
-            self.state.cached_disk_space = disk;
+        if disk != self.state.cache.disk_space {
+            self.state.cache.disk_space = disk;
             self.state.needs_redraw = true;
         }
     }

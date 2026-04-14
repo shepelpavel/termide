@@ -206,6 +206,30 @@ impl std::fmt::Debug for PendingBatchUpload {
     }
 }
 
+/// Stash dropdown state (entries, repo context, modal flags).
+#[derive(Debug, Default)]
+pub struct StashState {
+    /// Cached stash entries for the stash dropdown
+    pub entries: Vec<termide_git::StashEntry>,
+    /// Repository path for stash dropdown operations
+    pub repo_path: Option<std::path::PathBuf>,
+    /// Whether the repo has local changes (for stash "New" item visibility)
+    pub has_changes: bool,
+    /// Checkbox state from stash push InputModal (include untracked files)
+    pub include_untracked: bool,
+}
+
+/// Cache state — menus, scripts registry, disk space.
+#[derive(Debug, Default)]
+pub struct CacheState {
+    /// Cached shell list for the shell picker submenu (populated on open, cleared on close).
+    pub shells: Vec<termide_panel_terminal::shell_utils::ShellInfo>,
+    /// Cached disk space for the active panel (updated on tick, used in status bar rendering).
+    pub disk_space: Option<termide_system_monitor::DiskSpaceInfo>,
+    /// Cached scripts registry (invalidated on menu close and filesystem changes)
+    pub scripts_registry: Option<termide_config::scripts::ScriptsRegistry>,
+}
+
 /// Global application state
 #[derive(Debug)]
 pub struct AppState {
@@ -229,7 +253,6 @@ pub struct AppState {
     pub git_operation_handle: Option<GitOperationHandle>,
     /// Handles for background script operations (.report. scripts)
     pub script_operation_handles: Vec<ScriptOperationHandle>,
-    /// Handles for background scripts (.bg.) tracked in Operations panel
     /// Handles for background scripts (.bg.) tracked in Operations panel: (op_id, receiver, pid)
     pub bg_script_handles: Vec<(termide_file_ops::OperationId, mpsc::Receiver<()>, u32)>,
     /// Pending editor download via OperationManager (replaces download_operation for editor opens)
@@ -309,17 +332,9 @@ pub struct AppState {
     /// Counter for generating synthetic batch operation IDs.
     batch_id_counter: u64,
     /// Cached shell list for the shell picker submenu (populated on open, cleared on close).
-    pub cached_shells: Vec<termide_panel_terminal::shell_utils::ShellInfo>,
-    /// Cached disk space for the active panel (updated on tick, used in status bar rendering).
-    pub cached_disk_space: Option<termide_system_monitor::DiskSpaceInfo>,
-    /// Cached stash entries for the stash dropdown
-    pub stash_entries: Vec<termide_git::StashEntry>,
-    /// Repository path for stash dropdown operations
-    pub stash_repo_path: Option<std::path::PathBuf>,
-    /// Whether the repo has local changes (for stash "New" item visibility)
-    pub stash_has_changes: bool,
-    /// Checkbox state from stash push InputModal (include untracked files)
-    pub stash_include_untracked: bool,
+    pub stash: StashState,
+    /// Cached menus, scripts registry, disk space.
+    pub cache: CacheState,
 }
 
 impl Default for AppState {
@@ -404,12 +419,8 @@ impl AppState {
             batch_tracking_id: None,
             batch_sub_operation_id: None,
             batch_id_counter: u64::MAX / 2,
-            cached_shells: Vec::new(),
-            cached_disk_space: None,
-            stash_entries: Vec::new(),
-            stash_repo_path: None,
-            stash_has_changes: false,
-            stash_include_untracked: false,
+            stash: StashState::default(),
+            cache: CacheState::default(),
         }
     }
 
@@ -458,7 +469,8 @@ impl AppState {
         self.ui.selected_menu_item = None;
         self.ui.selected_dropdown_item = 0;
         self.ui.close_all_submenus();
-        self.cached_shells.clear();
+        self.cache.shells.clear();
+        self.cache.scripts_registry = None;
     }
 
     /// Close resource indicator modal (CPU/RAM/Net/Calendar) and clear refresh state.
@@ -507,19 +519,19 @@ impl AppState {
     pub fn close_tools_submenu(&mut self) {
         self.ui.tools_submenu.close();
         self.ui.tools_nested.close();
-        self.cached_shells.clear();
+        self.cache.shells.clear();
     }
 
     /// Open Tools nested submenu (shell picker) and cache the shell list
     pub fn open_tools_nested_submenu(&mut self, initial_item: usize) {
-        self.cached_shells = termide_panel_terminal::shell_utils::discover_shells();
+        self.cache.shells = termide_panel_terminal::shell_utils::discover_shells();
         self.ui.tools_nested.open_at(initial_item);
     }
 
     /// Close Tools nested submenu and clear cached shells
     pub fn close_tools_nested_submenu(&mut self) {
         self.ui.tools_nested.close();
-        self.cached_shells.clear();
+        self.cache.shells.clear();
     }
 
     /// Close Scripts submenu
