@@ -24,68 +24,30 @@ pub(crate) fn build_fm_hotkey_table(config: &Config) -> HotkeyTable {
     let mut t = HotkeyTable::new();
     let kb = &config.file_manager.keybindings;
 
-    // F-keys + Ctrl combos + letter shortcuts
-    t.insert(
-        "rename",
-        &Some(KeyBinding::Multiple(vec!["F2".into(), "R".into()])),
-    );
-    t.insert(
-        "view",
-        &Some(KeyBinding::Multiple(vec!["F3".into(), "V".into()])),
-    );
-    t.insert(
-        "edit",
-        &Some(KeyBinding::Multiple(vec!["F4".into(), "E".into()])),
-    );
-    t.insert(
-        "copy",
-        &Some(KeyBinding::Multiple(vec!["F5".into(), "C".into()])),
-    );
-    t.insert(
-        "move",
-        &Some(KeyBinding::Multiple(vec!["F6".into(), "M".into()])),
-    );
-    t.insert(
-        "create_dir",
-        &Some(KeyBinding::Multiple(vec!["F7".into(), "D".into()])),
-    );
-    t.insert(
-        "create_file",
-        &Some(KeyBinding::Multiple(vec!["F".into(), "Ctrl+N".into()])),
-    );
-    t.insert(
-        "delete",
-        &Some(KeyBinding::Multiple(vec!["Delete".into(), "F8".into()])),
-    );
-    t.insert(
-        "info",
-        &Some(KeyBinding::Multiple(vec!["F12".into(), "Space".into()])),
-    );
-    t.insert("search", &Some(KeyBinding::Single("Ctrl+F".into())));
-    t.insert(
-        "search_content",
-        &kb.search_content
-            .clone()
-            .or(Some(KeyBinding::Single("Ctrl+Shift+F".into()))),
-    );
-    t.insert("refresh", &Some(KeyBinding::Single("Ctrl+R".into())));
-    t.insert("go_parent", &Some(KeyBinding::Single("Backspace".into())));
-    t.insert(
-        "go_home",
-        &kb.go_home.clone().or(Some(KeyBinding::Single("~".into()))),
-    );
-    t.insert(
-        "toggle_selection",
-        &Some(KeyBinding::Single("Insert".into())),
-    );
-    t.insert("select_all", &Some(KeyBinding::Single("Ctrl+A".into())));
-    t.insert(
-        "toggle_hidden",
-        &kb.toggle_hidden
-            .clone()
-            .or(Some(KeyBinding::Single(".".into()))),
-    );
-    // open_external: config binding (default O + Alt+Enter), always ensure O present
+    // File operations
+    t.insert("rename", &kb.rename);
+    t.insert("view", &kb.view);
+    t.insert("edit", &kb.edit);
+    t.insert("copy", &kb.copy);
+    t.insert("move", &kb.move_item);
+    t.insert("create_dir", &kb.create_dir);
+    t.insert("create_file", &kb.create_file);
+    t.insert("delete", &kb.delete);
+    t.insert("info", &kb.info);
+
+    // Search
+    t.insert("search", &kb.search);
+    t.insert("search_content", &kb.search_content);
+
+    // Navigation
+    t.insert("refresh", &kb.refresh);
+    t.insert("go_parent", &kb.go_parent);
+    t.insert("go_home", &kb.go_home);
+    t.insert("toggle_selection", &kb.toggle_selection);
+    t.insert("select_all", &kb.select_all);
+    t.insert("toggle_hidden", &kb.toggle_hidden);
+
+    // open_external: config binding, always ensure O present
     if let Some(ref binding) = kb.open_external {
         let mut keys: Vec<String> = match binding {
             KeyBinding::Single(s) => vec![s.clone()],
@@ -101,19 +63,11 @@ pub(crate) fn build_fm_hotkey_table(config: &Config) -> HotkeyTable {
             &Some(KeyBinding::Multiple(vec!["O".into(), "Alt+Enter".into()])),
         );
     }
-    t.insert(
-        "switch_directory",
-        &kb.switch_directory
-            .clone()
-            .or(Some(KeyBinding::Single("Ctrl+/".into()))),
-    );
-    t.insert("go_to_path", &Some(KeyBinding::Single("Ctrl+G".into())));
-    t.insert("clipboard_copy", &Some(KeyBinding::Single("Ctrl+C".into())));
-    t.insert("clipboard_cut", &Some(KeyBinding::Single("Ctrl+X".into())));
-    t.insert(
-        "clipboard_paste",
-        &Some(KeyBinding::Single("Ctrl+V".into())),
-    );
+    t.insert("switch_directory", &kb.switch_directory);
+    t.insert("go_to_path", &kb.go_to_path);
+    t.insert("clipboard_copy", &kb.clipboard_copy);
+    t.insert("clipboard_cut", &kb.clipboard_cut);
+    t.insert("clipboard_paste", &kb.clipboard_paste);
     t
 }
 

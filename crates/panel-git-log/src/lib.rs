@@ -78,16 +78,17 @@ pub struct GitLogPanel {
     hotkeys: HotkeyTable,
 }
 
-/// Build HotkeyTable for the git log panel.
+/// Build HotkeyTable for the git log panel from config.
 fn build_git_log_hotkey_table(config: &Config) -> HotkeyTable {
     let mut t = HotkeyTable::new();
+    let kb = &config.git_log.keybindings;
 
-    t.insert("info", &Some(KeyBinding::Single("Space".into())));
-    t.insert("view_diff", &Some(KeyBinding::Single("D".into())));
+    t.insert("info", &kb.info);
+    t.insert("view_diff", &kb.view_diff);
 
     // open_external: shared config binding (file_manager.keybindings.open_external)
-    let kb = &config.file_manager.keybindings;
-    if let Some(ref binding) = kb.open_external {
+    let fm_kb = &config.file_manager.keybindings;
+    if let Some(ref binding) = fm_kb.open_external {
         let mut keys: Vec<String> = match binding {
             KeyBinding::Single(s) => vec![s.clone()],
             KeyBinding::Multiple(v) => v.clone(),
@@ -103,7 +104,7 @@ fn build_git_log_hotkey_table(config: &Config) -> HotkeyTable {
         );
     }
 
-    t.insert("checkout", &Some(KeyBinding::Single("C".into())));
+    t.insert("checkout", &kb.checkout);
     t
 }
 

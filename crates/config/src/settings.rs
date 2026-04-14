@@ -17,8 +17,8 @@ pub enum IconMode {
     Unicode,
 }
 use crate::keybindings::{
-    EditorKeybindings, FileManagerKeybindings, GitStatusKeybindings, GlobalKeybindings,
-    TerminalKeybindings,
+    EditorKeybindings, FileManagerKeybindings, GitDiffKeybindings, GitLogKeybindings,
+    GitStatusKeybindings, GlobalKeybindings, TerminalKeybindings,
 };
 
 /// Application configuration with nested sections.
@@ -39,6 +39,14 @@ pub struct Config {
     /// Git status panel settings
     #[serde(default)]
     pub git_status: GitStatusSettings,
+
+    /// Git diff panel settings
+    #[serde(default)]
+    pub git_diff: GitDiffSettings,
+
+    /// Git log panel settings
+    #[serde(default)]
+    pub git_log: GitLogSettings,
 
     /// Terminal panel settings
     #[serde(default)]
@@ -166,6 +174,22 @@ pub struct GitStatusSettings {
     /// Git status panel keyboard shortcuts
     #[serde(default)]
     pub keybindings: GitStatusKeybindings,
+}
+
+/// Git diff panel settings.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GitDiffSettings {
+    /// Git diff panel keyboard shortcuts
+    #[serde(default)]
+    pub keybindings: GitDiffKeybindings,
+}
+
+/// Git log panel settings.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GitLogSettings {
+    /// Git log panel keyboard shortcuts
+    #[serde(default)]
+    pub keybindings: GitLogKeybindings,
 }
 
 /// Terminal panel settings.
@@ -451,6 +475,8 @@ impl From<LegacyConfig> for Config {
                 keybindings: FileManagerKeybindings::default(),
             },
             git_status: GitStatusSettings::default(),
+            git_diff: GitDiffSettings::default(),
+            git_log: GitLogSettings::default(),
             terminal: TerminalSettings::default(),
             lsp: LspSettings::default(),
             logging: LoggingSettings {
@@ -546,6 +572,9 @@ impl Config {
         self.general.keybindings.with_defaults();
         self.editor.keybindings.with_defaults();
         self.file_manager.keybindings.with_defaults();
+        self.git_status.keybindings.with_defaults();
+        self.git_diff.keybindings.with_defaults();
+        self.git_log.keybindings.with_defaults();
         self.terminal.keybindings.with_defaults();
     }
 }

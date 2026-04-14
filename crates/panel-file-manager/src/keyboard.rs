@@ -246,7 +246,8 @@ mod tests {
     }
 
     fn default_hotkeys() -> HotkeyTable {
-        let config = termide_config::Config::default();
+        let mut config = termide_config::Config::default();
+        config.normalize();
         crate::build_fm_hotkey_table(&config)
     }
 

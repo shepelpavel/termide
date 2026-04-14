@@ -35,7 +35,7 @@ use std::thread;
 use terminal::{Cell, CellStyle, MouseTrackingMode, TerminalScreen};
 use vte::Parser;
 
-use termide_config::{Config, KeyBinding, TerminalKeybindings};
+use termide_config::{Config, TerminalKeybindings};
 use termide_core::{
     get_terminal_caps, CommandResult, HotkeyTable, Panel, PanelCommand, PanelEvent, RenderContext,
     Searchable, SessionPanel, WidthPreference,
@@ -105,30 +105,19 @@ pub struct Terminal {
     hotkeys: HotkeyTable,
 }
 
-/// Helper: return config binding or fallback default.
-fn or_default(cfg: &Option<KeyBinding>, default: &str) -> Option<KeyBinding> {
-    cfg.clone().or(Some(KeyBinding::Single(default.into())))
-}
-
 /// Build HotkeyTable for the terminal panel from config.
 fn build_terminal_hotkey_table(config: &Config) -> HotkeyTable {
     let mut t = HotkeyTable::new();
     let kb = &config.terminal.keybindings;
 
-    t.insert("paste", &or_default(&kb.paste, "Ctrl+Shift+V"));
-    t.insert("copy", &or_default(&kb.copy, "Ctrl+Shift+C"));
-    t.insert("search", &or_default(&kb.search, "Ctrl+F"));
-    t.insert(
-        "switch_directory",
-        &Some(KeyBinding::Single("Ctrl+/".into())),
-    );
-    t.insert("scroll_up", &or_default(&kb.scroll_up, "Shift+PageUp"));
-    t.insert(
-        "scroll_down",
-        &or_default(&kb.scroll_down, "Shift+PageDown"),
-    );
-    t.insert("scroll_top", &or_default(&kb.scroll_top, "Shift+Home"));
-    t.insert("scroll_bottom", &or_default(&kb.scroll_bottom, "Shift+End"));
+    t.insert("paste", &kb.paste);
+    t.insert("copy", &kb.copy);
+    t.insert("search", &kb.search);
+    t.insert("switch_directory", &kb.switch_directory);
+    t.insert("scroll_up", &kb.scroll_up);
+    t.insert("scroll_down", &kb.scroll_down);
+    t.insert("scroll_top", &kb.scroll_top);
+    t.insert("scroll_bottom", &kb.scroll_bottom);
     t
 }
 

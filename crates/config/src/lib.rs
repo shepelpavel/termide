@@ -13,12 +13,13 @@ mod xdg;
 pub use bookmarks::{Bookmark, BookmarkType, BookmarksConfig};
 pub use keybindings::{
     cyrillic_to_latin, is_go_end, is_go_home, is_move_down, is_move_up, latin_to_cyrillic,
-    parse_keybinding, EditorKeybindings, FileManagerKeybindings, GlobalKeybindings, KeyBinding,
-    ParsedKeyBinding, TerminalKeybindings,
+    parse_keybinding, EditorKeybindings, FileManagerKeybindings, GitDiffKeybindings,
+    GitLogKeybindings, GlobalKeybindings, KeyBinding, ParsedKeyBinding, TerminalKeybindings,
 };
 pub use settings::{
-    Config, EditorSettings, FileManagerSettings, GeneralSettings, GitStatusSettings, IconMode,
-    LegacyConfig, LoggingSettings, LspServerSettings, LspSettings, TerminalSettings, VfsSettings,
+    Config, EditorSettings, FileManagerSettings, GeneralSettings, GitDiffSettings, GitLogSettings,
+    GitStatusSettings, IconMode, LegacyConfig, LoggingSettings, LspServerSettings, LspSettings,
+    TerminalSettings, VfsSettings,
 };
 pub use xdg::{get_cache_dir, get_config_dir, get_data_dir};
 

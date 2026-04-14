@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use termide_buffer::{Cursor, LineEnding, Selection, TextBuffer, Viewport};
-use termide_config::{Config, KeyBinding};
+use termide_config::Config;
 use termide_core::{
     CommandResult, HotkeyTable, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel,
     WidthPreference,
@@ -2100,96 +2100,46 @@ impl Editor {
     }
 }
 
-/// Helper: return config binding or fallback default.
-fn or_default(cfg: &Option<KeyBinding>, default: &str) -> Option<KeyBinding> {
-    cfg.clone().or(Some(KeyBinding::Single(default.into())))
-}
-
-/// Helper: return config binding or fallback multiple defaults.
-fn or_defaults(cfg: &Option<KeyBinding>, defaults: &[&str]) -> Option<KeyBinding> {
-    cfg.clone().or(Some(KeyBinding::Multiple(
-        defaults.iter().map(|s| (*s).into()).collect(),
-    )))
-}
-
 /// Build HotkeyTable for the editor from config.
 pub(crate) fn build_editor_hotkey_table(config: &Config) -> HotkeyTable {
     let mut t = HotkeyTable::new();
     let kb = &config.editor.keybindings;
 
     // File operations
-    t.insert(
-        "save",
-        &Some(KeyBinding::Multiple(vec!["F2".into(), "Ctrl+S".into()])),
-    );
-    t.insert("save_as", &or_default(&kb.save_as, "Ctrl+Shift+S"));
-    t.insert("reload", &or_default(&kb.reload, "Ctrl+Shift+R"));
+    t.insert("save", &kb.save);
+    t.insert("save_as", &kb.save_as);
+    t.insert("reload", &kb.reload);
 
     // Undo/Redo
-    t.insert("undo", &Some(KeyBinding::Single("Ctrl+Z".into())));
-    t.insert(
-        "redo",
-        &Some(KeyBinding::Multiple(vec![
-            "Ctrl+Y".into(),
-            "Ctrl+Shift+Z".into(),
-        ])),
-    );
+    t.insert("undo", &kb.undo);
+    t.insert("redo", &kb.redo);
 
     // Search & Replace
-    t.insert("search", &Some(KeyBinding::Single("Ctrl+F".into())));
-    t.insert("search_next", &or_default(&kb.search_next, "F3"));
-    t.insert("search_prev", &or_default(&kb.search_prev, "Shift+F3"));
-    t.insert("replace", &or_default(&kb.replace, "Ctrl+H"));
-    t.insert(
-        "replace_current",
-        &or_default(&kb.replace_current, "Ctrl+R"),
-    );
-    t.insert("replace_all", &or_default(&kb.replace_all, "Ctrl+Alt+R"));
+    t.insert("search", &kb.search);
+    t.insert("search_next", &kb.search_next);
+    t.insert("search_prev", &kb.search_prev);
+    t.insert("replace", &kb.replace);
+    t.insert("replace_current", &kb.replace_current);
+    t.insert("replace_all", &kb.replace_all);
 
     // Selection
-    t.insert("select_all", &Some(KeyBinding::Single("Ctrl+A".into())));
+    t.insert("select_all", &kb.select_all);
 
     // Clipboard
-    t.insert(
-        "copy",
-        &Some(KeyBinding::Multiple(vec![
-            "Ctrl+C".into(),
-            "Ctrl+Insert".into(),
-            "Ctrl+Shift+C".into(),
-        ])),
-    );
-    t.insert(
-        "cut",
-        &Some(KeyBinding::Multiple(vec![
-            "Ctrl+X".into(),
-            "Shift+Delete".into(),
-        ])),
-    );
-    t.insert(
-        "paste",
-        &Some(KeyBinding::Multiple(vec![
-            "Ctrl+V".into(),
-            "Shift+Insert".into(),
-            "Ctrl+Shift+V".into(),
-        ])),
-    );
+    t.insert("copy", &kb.copy);
+    t.insert("cut", &kb.cut);
+    t.insert("paste", &kb.paste);
 
     // Advanced editing
-    t.insert("duplicate_line", &or_default(&kb.duplicate_line, "Ctrl+D"));
-    t.insert("toggle_comment", &or_default(&kb.toggle_comment, "Ctrl+/"));
+    t.insert("duplicate_line", &kb.duplicate_line);
+    t.insert("toggle_comment", &kb.toggle_comment);
 
     // LSP
-    t.insert(
-        "trigger_completion",
-        &or_default(&kb.trigger_completion, "Ctrl+."),
-    );
-    t.insert("show_hover", &or_default(&kb.show_hover, "Ctrl+K"));
-    t.insert("goto_definition", &or_default(&kb.goto_definition, "F12"));
-    t.insert(
-        "find_references",
-        &or_defaults(&kb.find_references, &["Shift+F12", "F24"]),
-    );
-    t.insert("rename_symbol", &or_default(&kb.rename_symbol, "F4"));
+    t.insert("trigger_completion", &kb.trigger_completion);
+    t.insert("show_hover", &kb.show_hover);
+    t.insert("goto_definition", &kb.goto_definition);
+    t.insert("find_references", &kb.find_references);
+    t.insert("rename_symbol", &kb.rename_symbol);
 
     t
 }

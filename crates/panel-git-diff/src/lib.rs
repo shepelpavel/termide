@@ -14,7 +14,7 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthStr;
 
-use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up, Config, KeyBinding};
+use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up, Config};
 use termide_core::{
     HotkeyTable, Panel, PanelEvent, RenderContext, SessionPanel, ThemeColors, WidthPreference,
 };
@@ -157,29 +157,20 @@ pub struct GitDiffPanel {
     hotkeys: HotkeyTable,
     /// Whether this panel shows a stash diff (uses `git stash show -p`)
     is_stash: bool,
+    /// Stash message (for title display instead of hash)
+    stash_message: Option<String>,
 }
 
-/// Build HotkeyTable for the git diff panel.
-fn build_git_diff_hotkey_table() -> HotkeyTable {
+/// Build HotkeyTable for the git diff panel from config.
+fn build_git_diff_hotkey_table(config: &Config) -> HotkeyTable {
     let mut t = HotkeyTable::new();
+    let kb = &config.git_diff.keybindings;
 
-    t.insert(
-        "toggle_collapse",
-        &Some(KeyBinding::Multiple(vec!["Enter".into(), "Space".into()])),
-    );
-    t.insert(
-        "edit",
-        &Some(KeyBinding::Multiple(vec!["F4".into(), "E".into()])),
-    );
-    t.insert(
-        "refresh",
-        &Some(KeyBinding::Multiple(vec!["F5".into(), "Ctrl+R".into()])),
-    );
-    t.insert("scroll_half_up", &Some(KeyBinding::Single("Ctrl+U".into())));
-    t.insert(
-        "scroll_half_down",
-        &Some(KeyBinding::Single("Ctrl+D".into())),
-    );
+    t.insert("toggle_collapse", &kb.toggle_collapse);
+    t.insert("edit", &kb.edit);
+    t.insert("refresh", &kb.refresh);
+    t.insert("scroll_half_up", &kb.scroll_half_up);
+    t.insert("scroll_half_down", &kb.scroll_half_down);
     t
 }
 
@@ -219,6 +210,7 @@ impl GitDiffPanel {
             vim_mode: false,
             hotkeys: HotkeyTable::default(),
             is_stash: false,
+            stash_message: None,
         };
         panel.refresh();
         panel
@@ -244,6 +236,7 @@ impl GitDiffPanel {
             vim_mode: false,
             hotkeys: HotkeyTable::default(),
             is_stash: false,
+            stash_message: None,
         };
         panel.refresh();
         panel
@@ -252,7 +245,7 @@ impl GitDiffPanel {
     /// Create a new Git Diff panel for a stash entry.
     ///
     /// Uses `git stash show -p` instead of `git show` to get proper diff output.
-    pub fn new_for_stash(repo_path: PathBuf, stash_ref: String) -> Self {
+    pub fn new_for_stash(repo_path: PathBuf, stash_ref: String, message: String) -> Self {
         let branch = git::get_current_branch(&repo_path);
         let mut panel = Self {
             repo_path,
@@ -271,6 +264,7 @@ impl GitDiffPanel {
             vim_mode: false,
             hotkeys: HotkeyTable::default(),
             is_stash: true,
+            stash_message: Some(message),
         };
         panel.refresh();
         panel
@@ -297,6 +291,7 @@ impl GitDiffPanel {
             vim_mode: false,
             hotkeys: HotkeyTable::default(),
             is_stash: false,
+            stash_message: None,
         };
         panel.refresh();
         panel
@@ -973,7 +968,10 @@ impl Panel for GitDiffPanel {
             format!("{} files", self.diffs.len())
         };
 
-        if let Some(ref hash) = self.commit_hash {
+        if let Some(ref msg) = self.stash_message {
+            // Stash diff: show message instead of hash
+            format!("Diff: {} — {}", msg, files)
+        } else if let Some(ref hash) = self.commit_hash {
             // Show short hash (first 7 characters)
             let short_hash = if hash.len() > 7 { &hash[..7] } else { hash };
             t.git_diff_title_commit_fmt(&repo_name, branch, short_hash, &files)
@@ -985,7 +983,7 @@ impl Panel for GitDiffPanel {
     fn prepare_render(&mut self, theme: &Theme, config: std::sync::Arc<Config>) {
         self.cached_theme = ThemeColors::from(theme);
         self.vim_mode = config.general.vim_mode;
-        self.hotkeys = build_git_diff_hotkey_table();
+        self.hotkeys = build_git_diff_hotkey_table(&config);
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
