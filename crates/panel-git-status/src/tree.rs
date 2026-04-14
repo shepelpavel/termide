@@ -222,46 +222,57 @@ pub fn compute_tree_prefixes(tree: &[TreeNode], visible: &[usize]) -> Vec<String
     prefixes
 }
 
-/// Get the aggregate "worst" status for files under a directory.
-/// Priority: D > M > A/R > ? (untracked)
+/// Get the aggregate status for files under a directory.
+/// Counts files per status and picks the majority. Ties broken by: M > D > A/R > ?
 pub fn aggregate_dir_status(tree: &[TreeNode], dir_index: usize) -> (char, bool) {
     let dir_depth = tree[dir_index].depth;
-    let mut has_modified = false;
-    let mut has_deleted = false;
-    let mut has_added = false;
-    let mut has_untracked = false;
+    let mut deleted = 0u32;
+    let mut modified = 0u32;
+    let mut added = 0u32;
+    let mut untracked = 0u32;
 
     for node in &tree[dir_index + 1..] {
         if node.depth <= dir_depth {
             break;
         }
         if let TreeNodeKind::File {
-            status, untracked, ..
+            status,
+            untracked: ut,
+            ..
         } = node.kind
         {
-            if untracked {
-                has_untracked = true;
+            if ut {
+                untracked += 1;
             } else {
                 match status {
-                    'D' => has_deleted = true,
-                    'M' => has_modified = true,
-                    'A' | 'R' => has_added = true,
+                    'D' => deleted += 1,
+                    'M' => modified += 1,
+                    'A' | 'R' => added += 1,
                     _ => {}
                 }
             }
         }
     }
 
-    if has_deleted {
+    // All deleted — show deleted; else majority wins, ties: M > D > A > ?
+    if deleted > 0 && modified == 0 && added == 0 && untracked == 0 {
         ('D', false)
-    } else if has_modified {
-        ('M', false)
-    } else if has_added {
-        ('A', false)
-    } else if has_untracked {
-        ('?', true)
     } else {
-        (' ', false)
+        let (best_count, best_status, best_ut) = [
+            (modified, 'M', false),
+            (deleted, 'D', false),
+            (added, 'A', false),
+            (untracked, '?', true),
+        ]
+        .into_iter()
+        .max_by_key(|(c, _, _)| *c)
+        .unwrap();
+
+        if best_count > 0 {
+            (best_status, best_ut)
+        } else {
+            (' ', false)
+        }
     }
 }
 
