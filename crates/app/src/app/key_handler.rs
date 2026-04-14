@@ -201,11 +201,18 @@ impl App {
             (vec![], None, None, false)
         };
 
+        // Check if panel already handled Escape by emitting ClosePanel
+        let panel_handled_escape = escape_close
+            && events
+                .iter()
+                .any(|e| matches!(e, termide_core::PanelEvent::ClosePanel));
+
         // Process panel events (new event-based architecture)
         self.process_panel_events(events)?;
 
         // Escape close: show confirmation before closing panel
-        if escape_close {
+        // Skip if panel already handled Escape by emitting ClosePanel
+        if escape_close && !panel_handled_escape {
             self.handle_escape_close_request()?;
         }
 
