@@ -1403,9 +1403,10 @@ impl Panel for GitStatusPanel {
 
                     self.current_section = Section::Buttons;
                     // Calculate which button was clicked, accounting for wrapping
+                    // Note: last_area is already content area (borders handled by ui-render)
                     let buttons = self.get_visible_buttons();
-                    let content_x = self.last_area.x + 1;
-                    let content_width = self.last_area.width.saturating_sub(2);
+                    let content_x = self.last_area.x;
+                    let content_width = self.last_area.width;
                     let mut btn_x = content_x;
                     let mut btn_y = self.buttons_y;
                     for (i, button) in buttons.iter().enumerate() {

@@ -901,10 +901,45 @@ impl App {
             SubmenuNavAction::Left | SubmenuNavAction::Right => {
                 self.state.ui.stash_submenu.close();
             }
-            SubmenuNavAction::Rename
-            | SubmenuNavAction::Edit
-            | SubmenuNavAction::Delete
-            | SubmenuNavAction::None => {}
+            SubmenuNavAction::Delete => {
+                self.delete_selected_stash()?;
+            }
+            SubmenuNavAction::Rename | SubmenuNavAction::Edit | SubmenuNavAction::None => {}
+        }
+        Ok(())
+    }
+
+    /// Delete the currently selected stash entry (with confirmation).
+    fn delete_selected_stash(&mut self) -> Result<()> {
+        let selected = self.state.ui.stash_submenu.selected;
+        let items = termide_ui_render::get_stash_items(
+            &self.state.stash_entries,
+            self.state.stash_has_changes,
+        );
+        let item = match items.get(selected) {
+            Some(i) if !i.is_separator && i.key != termide_ui_render::STASH_NEW => i,
+            _ => return Ok(()),
+        };
+        if let Some(entry) = self
+            .state
+            .stash_entries
+            .iter()
+            .find(|e| e.ref_str == item.key)
+        {
+            let repo_path = match &self.state.stash_repo_path {
+                Some(p) => p.clone(),
+                None => return Ok(()),
+            };
+            let t = termide_i18n::t();
+            let modal = termide_modal::ConfirmModal::new(t.stash_drop(), &entry.message);
+            self.state.ui.stash_submenu.close();
+            self.state.set_pending_action(
+                termide_state::PendingAction::GitStashDrop {
+                    repo_path,
+                    index: entry.index,
+                },
+                termide_modal::ActiveModal::Confirm(Box::new(modal)),
+            );
         }
         Ok(())
     }

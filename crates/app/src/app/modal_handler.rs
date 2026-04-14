@@ -777,8 +777,14 @@ impl App {
                 }
             },
             "drop" => {
-                let msg = format!("Drop stash@{{{}}}?", index);
-                let modal = termide_modal::ConfirmModal::new("Drop Stash", &msg);
+                let message = self
+                    .state
+                    .stash_entries
+                    .get(index)
+                    .map(|e| e.message.as_str())
+                    .unwrap_or("?");
+                let t = termide_i18n::t();
+                let modal = termide_modal::ConfirmModal::new(t.stash_drop(), message);
                 self.state.set_pending_action(
                     termide_state::PendingAction::GitStashDrop { repo_path, index },
                     termide_modal::ActiveModal::Confirm(Box::new(modal)),
