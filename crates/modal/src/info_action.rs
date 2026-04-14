@@ -494,7 +494,7 @@ impl Modal for InfoActionModal {
                 ),
                 Span::styled(
                     format!(
-                        "  {}    {}    {} ",
+                        "   {}    {}    {}",
                         col_labels[0], col_labels[1], col_labels[2]
                     ),
                     Style::default()
