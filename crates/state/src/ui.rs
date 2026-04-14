@@ -135,6 +135,10 @@ pub struct UiState {
     pub current_bookmarks_group: Option<String>,
     /// Whether the current bookmarks group is from project-local .termide/
     pub current_bookmarks_group_is_project: bool,
+    /// Stash dropdown state (opened from git status panel button)
+    pub stash_submenu: SubmenuState,
+    /// Screen position of the stash button (for dropdown anchoring)
+    pub stash_button_area: Option<ratatui::layout::Rect>,
     /// Is git operation (push/pull) in progress
     pub git_operation_in_progress: bool,
     /// Spinner frame for animated loading indicators
@@ -157,6 +161,7 @@ impl UiState {
         self.bookmarks_nested.close();
         self.current_bookmarks_group = None;
         self.current_bookmarks_group_is_project = false;
+        self.stash_submenu.close();
     }
 }
 

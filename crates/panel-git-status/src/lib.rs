@@ -94,6 +94,8 @@ pub struct GitStatusPanel {
     stage_all_btn_area: Option<Rect>,
     /// Unstage all button area (for mouse click detection)
     unstage_all_btn_area: Option<Rect>,
+    /// Stash button area (for dropdown anchoring)
+    stash_button_area: Option<Rect>,
     /// Click tracker for double-click detection in files area
     click_tracker: IndexClickTracker,
     /// Modal request (for file properties)
@@ -185,6 +187,7 @@ impl GitStatusPanel {
             dropdown_scroll: 0,
             stage_all_btn_area: None,
             unstage_all_btn_area: None,
+            stash_button_area: None,
             click_tracker: IndexClickTracker::new(),
             modal_request: None,
             is_loading: false,

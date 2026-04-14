@@ -46,6 +46,11 @@ impl App {
             return self.handle_scripts_submenu_key(key);
         }
 
+        // If Stash submenu is open, handle its navigation
+        if self.state.ui.stash_submenu.open {
+            return self.handle_stash_submenu_key(key);
+        }
+
         // If Bookmarks submenu is open, handle its navigation
         if self.state.ui.bookmarks_submenu.open {
             return self.handle_bookmarks_submenu_key(key);

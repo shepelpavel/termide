@@ -312,6 +312,12 @@ pub struct AppState {
     pub cached_shells: Vec<termide_panel_terminal::shell_utils::ShellInfo>,
     /// Cached disk space for the active panel (updated on tick, used in status bar rendering).
     pub cached_disk_space: Option<termide_system_monitor::DiskSpaceInfo>,
+    /// Cached stash entries for the stash dropdown
+    pub stash_entries: Vec<termide_git::StashEntry>,
+    /// Repository path for stash dropdown operations
+    pub stash_repo_path: Option<std::path::PathBuf>,
+    /// Checkbox state from stash push InputModal (include untracked files)
+    pub stash_include_untracked: bool,
 }
 
 impl Default for AppState {
@@ -398,6 +404,9 @@ impl AppState {
             batch_id_counter: u64::MAX / 2,
             cached_shells: Vec::new(),
             cached_disk_space: None,
+            stash_entries: Vec::new(),
+            stash_repo_path: None,
+            stash_include_untracked: false,
         }
     }
 

@@ -185,6 +185,21 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
         }
     }
 
+    // Stash dropdown (anchored to button in git status panel)
+    if state.ui.stash_submenu.open {
+        if let Some(btn_area) = state.ui.stash_button_area {
+            let items = termide_ui_render::get_stash_items(&state.stash_entries);
+            let dropdown = termide_ui_render::Dropdown::new(
+                &items,
+                state.ui.stash_submenu.selected,
+                btn_area.x,
+                btn_area.bottom(),
+                theme,
+            );
+            dropdown.render(frame.buffer_mut());
+        }
+    }
+
     // Render Options submenu if open
     if state.ui.menu_open
         && state.ui.selected_menu_item == Some(OPTIONS_MENU_INDEX)

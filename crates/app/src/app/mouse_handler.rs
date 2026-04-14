@@ -151,6 +151,14 @@ impl App {
             return Ok(());
         }
 
+        // Handle Stash dropdown clicks when it's open
+        if self.state.ui.stash_submenu.open
+            && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
+        {
+            self.handle_stash_dropdown_click(mouse.column, mouse.row)?;
+            return Ok(());
+        }
+
         // Handle Bookmarks submenu clicks when it's open
         if self.state.ui.bookmarks_submenu.open
             && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
@@ -1224,6 +1232,22 @@ impl App {
 
     /// Handle click on Bookmarks submenu dropdown
     /// Returns true if click was handled
+    /// Handle click on stash dropdown or outside it (close).
+    fn handle_stash_dropdown_click(&mut self, x: u16, y: u16) -> Result<()> {
+        let items = termide_ui_render::get_stash_items(&self.state.stash_entries);
+        if let Some(btn_area) = self.state.ui.stash_button_area {
+            if let Some(index) = hit_dropdown_item(x, y, btn_area.x, btn_area.bottom(), &items) {
+                self.state.ui.stash_submenu.selected = index;
+                self.execute_stash_submenu_action()?;
+                return Ok(());
+            }
+        }
+        // Click outside → close dropdown
+        self.state.ui.stash_submenu.close();
+        self.state.needs_redraw = true;
+        Ok(())
+    }
+
     fn handle_bookmarks_submenu_click(&mut self, x: u16, y: u16) -> Result<bool> {
         let bookmarks_items =
             get_bookmarks_items(&self.state.bookmarks, self.state.project_bookmarks.as_ref());

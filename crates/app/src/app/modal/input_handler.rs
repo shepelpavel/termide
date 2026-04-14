@@ -180,7 +180,9 @@ impl App {
             Some(s) => s.trim().to_string(),
             None => return Ok(()),
         };
-        match termide_git::stash_push(&repo_path, &message) {
+        let include_untracked = self.state.stash_include_untracked;
+        self.state.stash_include_untracked = false; // reset
+        match termide_git::stash_push(&repo_path, &message, include_untracked) {
             Ok(()) => {
                 self.state.set_info("Stash created".to_string());
                 self.send_git_update(&repo_path);

@@ -36,7 +36,6 @@ use termide_panel_diagnostics::DiagnosticsPanel;
 use termide_panel_editor::Editor;
 use termide_panel_file_manager::FileManager;
 use termide_panel_git_log::GitLogPanel;
-use termide_panel_git_stash::GitStashPanel;
 use termide_panel_git_status::GitStatusPanel;
 use termide_panel_misc::JournalPanel;
 use termide_panel_outline::OutlinePanel;
@@ -138,9 +137,6 @@ impl PanelExt for dyn Panel {
         }
         if let Some(git_log) = self.as_git_log_mut() {
             return git_log.take_modal_request();
-        }
-        if let Some(git_stash) = (self as &mut dyn Any).downcast_mut::<GitStashPanel>() {
-            return git_stash.take_modal_request();
         }
         if let Some(journal) = (self as &mut dyn Any).downcast_mut::<JournalPanel>() {
             return journal.editor_mut().take_modal_request();

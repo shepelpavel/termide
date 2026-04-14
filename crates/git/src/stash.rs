@@ -78,16 +78,17 @@ fn parse_stash_line(line: &str) -> Option<StashEntry> {
 }
 
 /// Create a new stash with an optional message.
-pub fn stash_push(repo: &Path, message: &str) -> Result<(), String> {
-    if message.is_empty() {
-        run_git_simple(repo, &["stash", "push"], "Failed to create stash")
-    } else {
-        run_git_simple(
-            repo,
-            &["stash", "push", "-m", message],
-            "Failed to create stash",
-        )
+/// If `include_untracked` is true, also stash untracked files (-u flag).
+pub fn stash_push(repo: &Path, message: &str, include_untracked: bool) -> Result<(), String> {
+    let mut args = vec!["stash", "push"];
+    if include_untracked {
+        args.push("-u");
     }
+    if !message.is_empty() {
+        args.push("-m");
+        args.push(message);
+    }
+    run_git_simple(repo, &args, "Failed to create stash")
 }
 
 /// Pop (apply + drop) the stash at the given index.
@@ -106,6 +107,97 @@ pub fn stash_apply(repo: &Path, index: usize) -> Result<(), String> {
 pub fn stash_drop(repo: &Path, index: usize) -> Result<(), String> {
     let ref_str = format!("stash@{{{}}}", index);
     run_git_simple(repo, &["stash", "drop", &ref_str], "Failed to drop stash")
+}
+
+/// Detailed information about a stash entry (for info modal).
+#[derive(Debug, Clone)]
+pub struct StashInfo {
+    /// Human-readable message
+    pub message: String,
+    /// Creation date formatted as "YYYY-MM-DD HH:MM"
+    pub date: String,
+    /// Number of files changed
+    pub files_changed: usize,
+    /// Lines added
+    pub insertions: usize,
+    /// Lines removed
+    pub deletions: usize,
+    /// List of changed file paths
+    pub file_names: Vec<String>,
+}
+
+/// Get detailed info about a stash entry for the info modal.
+pub fn stash_info(repo: &Path, index: usize) -> Option<StashInfo> {
+    let ref_str = format!("stash@{{{}}}", index);
+
+    // Get date
+    let date_raw = git_command_stdout(repo, &["log", "-1", "--format=%ci", &ref_str])?;
+    let date = date_raw.trim().chars().take(16).collect::<String>(); // "YYYY-MM-DD HH:MM"
+
+    // Get message from stash list
+    let list_output = git_command_stdout(repo, &["stash", "list"])?;
+    let entry = list_output
+        .lines()
+        .find_map(parse_stash_line)
+        .filter(|e| e.index == index);
+    let message = entry.map(|e| e.message).unwrap_or_default();
+
+    // Get file names
+    let names_output =
+        git_command_stdout(repo, &["stash", "show", "--name-only", &ref_str]).unwrap_or_default();
+    let file_names: Vec<String> = names_output
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| l.to_string())
+        .collect();
+
+    // Get diffstat (last line: "N files changed, M insertions(+), K deletions(-)")
+    let stat_output =
+        git_command_stdout(repo, &["stash", "show", "--stat", &ref_str]).unwrap_or_default();
+    let (files_changed, insertions, deletions) = stat_output
+        .lines()
+        .last()
+        .map(parse_diffstat_line)
+        .unwrap_or((file_names.len(), 0, 0));
+
+    Some(StashInfo {
+        message,
+        date,
+        files_changed,
+        insertions,
+        deletions,
+        file_names,
+    })
+}
+
+/// Parse diffstat summary line: "5 files changed, 32 insertions(+), 14 deletions(-)"
+fn parse_diffstat_line(line: &str) -> (usize, usize, usize) {
+    let mut files = 0;
+    let mut ins = 0;
+    let mut del = 0;
+    for part in line.split(',') {
+        let part = part.trim();
+        if part.contains("file") {
+            files = part
+                .split_whitespace()
+                .next()
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(0);
+        } else if part.contains("insertion") {
+            ins = part
+                .split_whitespace()
+                .next()
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(0);
+        } else if part.contains("deletion") {
+            del = part
+                .split_whitespace()
+                .next()
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(0);
+        }
+    }
+    (files, ins, del)
 }
 
 #[cfg(test)]

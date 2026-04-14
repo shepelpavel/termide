@@ -534,6 +534,21 @@ pub fn get_bookmarks_item_count(
     }
 }
 
+/// Key for "New stash..." item
+pub const STASH_NEW: &str = "__stash_new__";
+
+/// Generate dropdown items for stash list.
+pub fn get_stash_items(entries: &[termide_git::StashEntry]) -> Vec<DropdownItem> {
+    let mut items = vec![
+        DropdownItem::new("New stash...", STASH_NEW),
+        DropdownItem::separator(),
+    ];
+    for entry in entries {
+        items.push(DropdownItem::new(&entry.message, &entry.ref_str));
+    }
+    items
+}
+
 /// Get bookmark items for a specific group
 pub fn get_bookmarks_group_items(
     config: &termide_config::BookmarksConfig,

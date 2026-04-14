@@ -33,7 +33,9 @@ pub use operations::{
     unstage_all, unstage_file, unstage_files,
 };
 pub use repo_manager::RepoManager;
-pub use stash::{stash_apply, stash_drop, stash_list, stash_pop, stash_push, StashEntry};
+pub use stash::{
+    stash_apply, stash_drop, stash_info, stash_list, stash_pop, stash_push, StashEntry, StashInfo,
+};
 pub use utils::{truncate_left, truncate_path_left, truncate_right, truncate_to_width};
 
 // Re-export diff types

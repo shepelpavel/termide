@@ -3078,7 +3078,6 @@ dependencies = [
  "termide-panel-file-manager",
  "termide-panel-git-diff",
  "termide-panel-git-log",
- "termide-panel-git-stash",
  "termide-panel-git-status",
  "termide-panel-image",
  "termide-panel-misc",
@@ -3443,23 +3442,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "termide-panel-git-stash"
-version = "0.19.0"
-dependencies = [
- "crossterm 0.28.1",
- "ratatui",
- "termide-config",
- "termide-core",
- "termide-git",
- "termide-i18n",
- "termide-modal",
- "termide-session",
- "termide-state",
- "termide-theme",
- "unicode-width",
-]
-
-[[package]]
 name = "termide-panel-git-status"
 version = "0.19.0"
 dependencies = [
@@ -3607,6 +3589,7 @@ name = "termide-state"
 version = "0.19.0"
 dependencies = [
  "chrono",
+ "ratatui",
  "termide-config",
  "termide-file-ops",
  "termide-vfs",
@@ -3657,6 +3640,7 @@ dependencies = [
  "ratatui",
  "termide-config",
  "termide-core",
+ "termide-git",
  "termide-i18n",
  "termide-panel-editor",
  "termide-panel-file-manager",

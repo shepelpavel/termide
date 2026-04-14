@@ -245,8 +245,17 @@ impl App {
                 self.event_open_git_diff(repo_path, commit_hash, file_path)?;
             }
 
-            PanelEvent::OpenGitStash { repo_path } => {
-                self.event_open_git_stash(repo_path)?;
+            PanelEvent::OpenStashDropdown {
+                repo_path,
+                button_area,
+            } => {
+                // Load stash entries and open dropdown
+                let entries = termide_git::stash_list(&repo_path);
+                self.state.stash_entries = entries;
+                self.state.ui.stash_button_area = Some(button_area);
+                self.state.stash_repo_path = Some(repo_path);
+                self.state.ui.stash_submenu.open();
+                self.state.needs_redraw = true;
             }
 
             // === Operations panel ===
@@ -1160,19 +1169,6 @@ impl App {
         };
         self.add_panel(Box::new(panel));
         self.auto_save_session();
-
-        Ok(())
-    }
-
-    /// Handle OpenGitStash event - open git stash panel for repository (singleton)
-    fn event_open_git_stash(&mut self, repo_path: PathBuf) -> Result<()> {
-        log::debug!("Opening Git Stash panel for {:?}", repo_path);
-        self.close_help_panels();
-
-        if !self.find_and_focus_panel_by_name("git_stash") {
-            let panel = termide_panel_git_stash::GitStashPanel::new(repo_path);
-            self.add_panel(Box::new(panel));
-        }
 
         Ok(())
     }

@@ -544,7 +544,7 @@ impl GitStatusPanel {
 
     /// Render action buttons
     pub(crate) fn render_buttons(
-        &self,
+        &mut self,
         x: u16,
         y: u16,
         width: u16,
@@ -555,6 +555,7 @@ impl GitStatusPanel {
         let buttons = self.get_visible_buttons();
         let mut current_x = x;
         let mut current_y = y;
+        self.stash_button_area = None;
 
         for (i, button) in buttons.iter().enumerate() {
             let is_selected = self.current_section == Section::Buttons && i == self.selected_button;
@@ -574,6 +575,16 @@ impl GitStatusPanel {
             if current_x > x && current_x + lw > x + width {
                 current_y += 1;
                 current_x = x;
+            }
+
+            // Track stash button area for dropdown anchoring
+            if matches!(button, crate::types::Button::Stash(_)) {
+                self.stash_button_area = Some(Rect {
+                    x: current_x,
+                    y: current_y,
+                    width: lw,
+                    height: 1,
+                });
             }
 
             buf.set_string(current_x, current_y, &label, style);

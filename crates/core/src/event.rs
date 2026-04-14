@@ -483,8 +483,11 @@ pub enum PanelEvent {
     /// Open or focus the outline panel
     OpenOutlinePanel,
 
-    /// Open git stash panel for repository
-    OpenGitStash { repo_path: PathBuf },
+    /// Open stash dropdown at button position
+    OpenStashDropdown {
+        repo_path: PathBuf,
+        button_area: ratatui::layout::Rect,
+    },
 
     /// Open (or refresh) the references panel with LSP find-references results
     OpenReferencesPanel {

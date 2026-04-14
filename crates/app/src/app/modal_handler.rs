@@ -225,6 +225,11 @@ impl App {
                 }
 
                 self.sync_copy_symlink_flag();
+                // Read InputModal checkbox before closing (used by stash push)
+                if let Some(termide_modal::ActiveModal::Input(ref modal)) = self.state.active_modal
+                {
+                    self.state.stash_include_untracked = modal.is_checkbox_checked();
+                }
                 self.state.close_modal();
                 if let ModalResult::Confirmed(value) = result {
                     self.handle_modal_result(value)?;
@@ -284,6 +289,11 @@ impl App {
                 }
 
                 self.sync_copy_symlink_flag();
+                // Read InputModal checkbox before closing (used by stash push)
+                if let Some(termide_modal::ActiveModal::Input(ref modal)) = self.state.active_modal
+                {
+                    self.state.stash_include_untracked = modal.is_checkbox_checked();
+                }
                 self.state.close_modal();
                 if let ModalResult::Confirmed(value) = result {
                     self.handle_modal_result(value)?;
@@ -725,8 +735,8 @@ impl App {
         Ok(())
     }
 
-    /// Handle git stash action from SelectModal context menu.
-    /// Options: 0=Pop, 1=Apply, 2=Drop, 3=Diff
+    /// Handle git stash action from InfoActionModal.
+    /// Actions: "pop", "apply", "drop", "diff"
     fn handle_git_stash_action(
         &mut self,
         repo_path: std::path::PathBuf,
@@ -734,16 +744,17 @@ impl App {
         ref_str: String,
         value: Box<dyn std::any::Any>,
     ) -> Result<()> {
-        let Some(indices) = value.downcast_ref::<Vec<usize>>() else {
+        use termide_modal::InfoActionResult;
+        let Some(result) = value.downcast_ref::<InfoActionResult>() else {
             return Ok(());
         };
-        let Some(&selected) = indices.first() else {
-            return Ok(());
+        let action_id = match result {
+            InfoActionResult::Action(id) => id.as_str(),
+            _ => return Ok(()),
         };
 
-        match selected {
-            // Pop
-            0 => match termide_git::stash_pop(&repo_path, index) {
+        match action_id {
+            "pop" => match termide_git::stash_pop(&repo_path, index) {
                 Ok(()) => {
                     self.state.set_info(format!("Popped stash@{{{}}}", index));
                     self.send_git_update(&repo_path);
@@ -752,8 +763,7 @@ impl App {
                     self.show_error_modal(format!("Stash pop error: {}", e));
                 }
             },
-            // Apply
-            1 => match termide_git::stash_apply(&repo_path, index) {
+            "apply" => match termide_git::stash_apply(&repo_path, index) {
                 Ok(()) => {
                     self.state.set_info(format!("Applied stash@{{{}}}", index));
                     self.send_git_update(&repo_path);
@@ -762,8 +772,7 @@ impl App {
                     self.show_error_modal(format!("Stash apply error: {}", e));
                 }
             },
-            // Drop → chain to ConfirmModal
-            2 => {
+            "drop" => {
                 let msg = format!("Drop stash@{{{}}}?", index);
                 let modal = termide_modal::ConfirmModal::new("Drop Stash", &msg);
                 self.state.set_pending_action(
@@ -771,8 +780,7 @@ impl App {
                     termide_modal::ActiveModal::Confirm(Box::new(modal)),
                 );
             }
-            // Diff
-            3 => {
+            "diff" => {
                 use termide_panel_git_diff::GitDiffPanel;
                 let panel = GitDiffPanel::new_for_commit(repo_path, ref_str);
                 self.add_panel(Box::new(panel));

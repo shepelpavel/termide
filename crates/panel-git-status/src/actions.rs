@@ -376,8 +376,10 @@ impl GitStatusPanel {
             }
             Button::Stash(_) => {
                 if let Some(repo) = self.repo_manager.current() {
-                    vec![PanelEvent::OpenGitStash {
+                    let area = self.stash_button_area.unwrap_or_default();
+                    vec![PanelEvent::OpenStashDropdown {
                         repo_path: repo.to_path_buf(),
+                        button_area: area,
                     }]
                 } else {
                     vec![]

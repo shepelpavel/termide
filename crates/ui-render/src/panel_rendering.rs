@@ -137,7 +137,7 @@ fn panel_icon(name: &str) -> &'static str {
         "git_status" => "📊",
         "git_log" => "📜",
         "git_diff" => "🔀",
-        "git_stash" => "📦",
+        // git_stash panel removed; stash is now a dropdown from git status
         "image" => "🖼️",
         "diagnostics" => "⚠️",
         "outline" => "🗂️",

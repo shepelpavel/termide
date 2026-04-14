@@ -93,8 +93,8 @@ use termide_ui_render::{
     OPTIONS_SUBMENU_HELP, OPTIONS_SUBMENU_LANGUAGE, OPTIONS_SUBMENU_PREFERENCES,
     OPTIONS_SUBMENU_QUIT, OPTIONS_SUBMENU_THEMES, SESSIONS_SUBMENU_CHANGE_ROOT,
     SESSIONS_SUBMENU_NEW, SESSIONS_SUBMENU_SWITCH, TOOLS_SUBMENU_DIAGNOSTICS, TOOLS_SUBMENU_EDITOR,
-    TOOLS_SUBMENU_FILES, TOOLS_SUBMENU_GIT_LOG, TOOLS_SUBMENU_GIT_STASH, TOOLS_SUBMENU_GIT_STATUS,
-    TOOLS_SUBMENU_JOURNAL, TOOLS_SUBMENU_OPERATIONS, TOOLS_SUBMENU_OUTLINE, TOOLS_SUBMENU_TERMINAL,
+    TOOLS_SUBMENU_FILES, TOOLS_SUBMENU_GIT_LOG, TOOLS_SUBMENU_GIT_STATUS, TOOLS_SUBMENU_JOURNAL,
+    TOOLS_SUBMENU_OPERATIONS, TOOLS_SUBMENU_OUTLINE, TOOLS_SUBMENU_TERMINAL,
 };
 
 impl App {
@@ -847,10 +847,6 @@ impl App {
                 self.state.close_menu();
                 self.handle_open_git_log()?;
             }
-            TOOLS_SUBMENU_GIT_STASH => {
-                self.state.close_menu();
-                self.handle_open_git_stash()?;
-            }
             TOOLS_SUBMENU_JOURNAL => {
                 self.state.close_menu();
                 self.handle_new_journal()?;
@@ -870,6 +866,127 @@ impl App {
             _ => {}
         }
         Ok(())
+    }
+
+    /// Handle keyboard event in stash dropdown submenu
+    pub(super) fn handle_stash_submenu_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> Result<()> {
+        // Item count: "New stash..." + separator + N stash entries
+        let stash_count = self.state.stash_entries.len();
+        let item_count = 2 + stash_count; // index 0 = "New stash...", 1 = separator, 2+ = entries
+
+        match navigate_submenu(
+            &key,
+            &mut self.state.ui.stash_submenu,
+            item_count,
+            &[1], // separator at index 1
+        ) {
+            SubmenuNavAction::Close => {
+                self.state.ui.stash_submenu.close();
+            }
+            SubmenuNavAction::Execute => {
+                self.execute_stash_submenu_action()?;
+            }
+            SubmenuNavAction::Left | SubmenuNavAction::Right => {
+                self.state.ui.stash_submenu.close();
+            }
+            SubmenuNavAction::Rename
+            | SubmenuNavAction::Edit
+            | SubmenuNavAction::Delete
+            | SubmenuNavAction::None => {}
+        }
+        Ok(())
+    }
+
+    /// Execute the currently selected stash submenu item.
+    pub(super) fn execute_stash_submenu_action(&mut self) -> Result<()> {
+        let selected = self.state.ui.stash_submenu.selected;
+        match selected {
+            // "New stash..." — open input modal
+            0 => {
+                let repo_path = match &self.state.stash_repo_path {
+                    Some(p) => p.clone(),
+                    None => {
+                        self.state.ui.stash_submenu.close();
+                        return Ok(());
+                    }
+                };
+                self.state.ui.stash_submenu.close();
+                let t = termide_i18n::t();
+                let modal = termide_modal::InputModal::new(t.stash_new(), t.stash_new())
+                    .with_checkbox(t.stash_include_untracked().to_string());
+                self.state.set_pending_action(
+                    PendingAction::GitStashPush { repo_path },
+                    ActiveModal::Input(Box::new(modal)),
+                );
+            }
+            // Separator — skip
+            1 => {}
+            // Stash entry — open info modal
+            _ => {
+                let stash_index = selected - 2;
+                self.open_stash_info_modal(stash_index);
+            }
+        }
+        Ok(())
+    }
+
+    /// Open the InfoActionModal for a specific stash entry
+    fn open_stash_info_modal(&mut self, stash_index: usize) {
+        let repo_path = match &self.state.stash_repo_path {
+            Some(p) => p.clone(),
+            None => return,
+        };
+
+        if let Some(info) = termide_git::stash_info(&repo_path, stash_index) {
+            let title = format!("Stash #{}", stash_index);
+
+            let changes = format!(
+                "{} files (+{} -{})",
+                info.files_changed, info.insertions, info.deletions
+            );
+
+            let mut lines = vec![
+                (String::new(), info.message.clone()),
+                (String::new(), String::new()), // empty line
+                ("Created".to_string(), info.date),
+                ("Changes".to_string(), changes),
+                (String::new(), String::new()), // empty line
+            ];
+
+            // Add file list (first 8 files)
+            let max_files = 8;
+            for (i, name) in info.file_names.iter().enumerate() {
+                if i >= max_files {
+                    let remaining = info.file_names.len() - max_files;
+                    lines.push((String::new(), format!("...+{} more", remaining)));
+                    break;
+                }
+                lines.push((String::new(), format!(" {}", name)));
+            }
+
+            use termide_modal::{ActionButton, InfoActionModal};
+            let buttons = vec![
+                ActionButton::new("Pop", "pop"),
+                ActionButton::new("Apply", "apply"),
+                ActionButton::new("Drop", "drop"),
+                ActionButton::new("Diff", "diff"),
+            ];
+
+            let modal = InfoActionModal::new(title, lines, buttons);
+
+            self.state.ui.stash_submenu.close();
+            self.state.set_pending_action(
+                termide_state::PendingAction::GitStashAction {
+                    repo_path,
+                    index: stash_index,
+                    ref_str: format!("stash@{{{}}}", stash_index),
+                },
+                termide_modal::ActiveModal::InfoAction(Box::new(modal)),
+            );
+        }
     }
 
     /// Notify outline panel that a file was opened/switched.
