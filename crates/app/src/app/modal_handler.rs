@@ -570,6 +570,23 @@ impl App {
                 PendingAction::GitStashDrop { repo_path, index } => {
                     self.handle_git_stash_drop(repo_path, index, value)?;
                 }
+                // Git stash rename: change message
+                PendingAction::GitStashRename { repo_path, index } => {
+                    if let Some(new_message) = value.downcast_ref::<String>() {
+                        let new_message = new_message.trim();
+                        if !new_message.is_empty() {
+                            match termide_git::stash_rename(&repo_path, index, new_message) {
+                                Ok(()) => {
+                                    self.state.set_info("Stash renamed".to_string());
+                                    self.send_git_update(&repo_path);
+                                }
+                                Err(e) => {
+                                    self.show_error_modal(format!("Stash rename error: {}", e));
+                                }
+                            }
+                        }
+                    }
+                }
                 // Git stash action: user chose from context menu (Pop/Apply/Drop/Diff)
                 PendingAction::GitStashAction {
                     repo_path,

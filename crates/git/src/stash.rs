@@ -109,6 +109,28 @@ pub fn stash_drop(repo: &Path, index: usize) -> Result<(), String> {
     run_git_simple(repo, &["stash", "drop", &ref_str], "Failed to drop stash")
 }
 
+/// Rename a stash entry (change its message).
+///
+/// Git has no native "rename stash" command. This works by:
+/// 1. Getting the commit hash of the stash
+/// 2. Dropping the old stash entry
+/// 3. Re-storing it with the new message via `git stash store`
+pub fn stash_rename(repo: &Path, index: usize, new_message: &str) -> Result<(), String> {
+    let ref_str = format!("stash@{{{}}}", index);
+    // Get the commit hash before dropping
+    let hash = git_command_stdout(repo, &["rev-parse", &ref_str])
+        .map(|s| s.trim().to_string())
+        .ok_or_else(|| format!("Failed to resolve {}", ref_str))?;
+    // Drop the old entry
+    run_git_simple(repo, &["stash", "drop", &ref_str], "Failed to drop stash")?;
+    // Re-store with new message
+    run_git_simple(
+        repo,
+        &["stash", "store", "-m", new_message, &hash],
+        "Failed to store renamed stash",
+    )
+}
+
 /// Get the full patch diff for a stash entry.
 ///
 /// Runs `git stash show -p stash@{N}` which produces standard unified diff

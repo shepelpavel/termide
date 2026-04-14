@@ -904,7 +904,49 @@ impl App {
             SubmenuNavAction::Delete => {
                 self.delete_selected_stash()?;
             }
-            SubmenuNavAction::Rename | SubmenuNavAction::Edit | SubmenuNavAction::None => {}
+            SubmenuNavAction::Rename => {
+                self.rename_selected_stash()?;
+            }
+            SubmenuNavAction::Edit | SubmenuNavAction::None => {}
+        }
+        Ok(())
+    }
+
+    /// Rename the currently selected stash entry (change message via InputModal).
+    fn rename_selected_stash(&mut self) -> Result<()> {
+        let selected = self.state.ui.stash_submenu.selected;
+        let items = termide_ui_render::get_stash_items(
+            &self.state.stash_entries,
+            self.state.stash_has_changes,
+        );
+        let item = match items.get(selected) {
+            Some(i) if !i.is_separator && i.key != termide_ui_render::STASH_NEW => i,
+            _ => return Ok(()),
+        };
+        if let Some(entry) = self
+            .state
+            .stash_entries
+            .iter()
+            .find(|e| e.ref_str == item.key)
+        {
+            let repo_path = match &self.state.stash_repo_path {
+                Some(p) => p.clone(),
+                None => return Ok(()),
+            };
+            let t = termide_i18n::t();
+            self.state.ui.stash_submenu.close();
+            let modal = termide_modal::InputModal::with_default(
+                t.help_desc_rename(),
+                t.help_desc_rename(),
+                &entry.message,
+            );
+            self.state.set_pending_action(
+                PendingAction::GitStashRename {
+                    repo_path,
+                    index: entry.index,
+                },
+                ActiveModal::Input(Box::new(modal)),
+            );
         }
         Ok(())
     }
