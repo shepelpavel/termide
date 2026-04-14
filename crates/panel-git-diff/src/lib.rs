@@ -155,6 +155,8 @@ pub struct GitDiffPanel {
     vim_mode: bool,
     /// Hotkey table for configurable keyboard shortcuts
     hotkeys: HotkeyTable,
+    /// Whether this panel shows a stash diff (uses `git stash show -p`)
+    is_stash: bool,
 }
 
 /// Build HotkeyTable for the git diff panel.
@@ -216,6 +218,7 @@ impl GitDiffPanel {
             status_message: None,
             vim_mode: false,
             hotkeys: HotkeyTable::default(),
+            is_stash: false,
         };
         panel.refresh();
         panel
@@ -240,6 +243,34 @@ impl GitDiffPanel {
             status_message: None,
             vim_mode: false,
             hotkeys: HotkeyTable::default(),
+            is_stash: false,
+        };
+        panel.refresh();
+        panel
+    }
+
+    /// Create a new Git Diff panel for a stash entry.
+    ///
+    /// Uses `git stash show -p` instead of `git show` to get proper diff output.
+    pub fn new_for_stash(repo_path: PathBuf, stash_ref: String) -> Self {
+        let branch = git::get_current_branch(&repo_path);
+        let mut panel = Self {
+            repo_path,
+            commit_hash: Some(stash_ref),
+            branch,
+            file_filter: None,
+            diffs: Vec::new(),
+            scroll: 0,
+            collapsed: HashSet::new(),
+            selected_file: 0,
+            cached_theme: ThemeColors::default(),
+            last_area: Rect::default(),
+            total_lines: 0,
+            visible_height: 0,
+            status_message: None,
+            vim_mode: false,
+            hotkeys: HotkeyTable::default(),
+            is_stash: true,
         };
         panel.refresh();
         panel
@@ -265,6 +296,7 @@ impl GitDiffPanel {
             status_message: None,
             vim_mode: false,
             hotkeys: HotkeyTable::default(),
+            is_stash: false,
         };
         panel.refresh();
         panel
@@ -309,9 +341,14 @@ impl GitDiffPanel {
         self.calculate_total_lines();
     }
 
-    /// Load diff for a specific commit
+    /// Load diff for a specific commit or stash
     fn load_commit_diff(&mut self, hash: &str) {
-        let Some(diff_output) = git::get_commit_diff(&self.repo_path, hash) else {
+        let diff_output = if self.is_stash {
+            git::stash_diff(&self.repo_path, hash)
+        } else {
+            git::get_commit_diff(&self.repo_path, hash)
+        };
+        let Some(diff_output) = diff_output else {
             return;
         };
 

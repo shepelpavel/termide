@@ -171,7 +171,6 @@ impl LayoutManagerSession for LayoutManager {
                         }
                         None => termide_panel_git_diff::GitDiffPanel::new(repo_path),
                     })),
-                    SessionPanel::GitStash { .. } => None, // stash panel removed; skip
                     SessionPanel::Outline => Some(Box::new(
                         termide_panel_outline::OutlinePanel::new(Theme::default()),
                     )),

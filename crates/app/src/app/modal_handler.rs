@@ -782,7 +782,7 @@ impl App {
             }
             "diff" => {
                 use termide_panel_git_diff::GitDiffPanel;
-                let panel = GitDiffPanel::new_for_commit(repo_path, ref_str);
+                let panel = GitDiffPanel::new_for_stash(repo_path, ref_str);
                 self.add_panel(Box::new(panel));
             }
             _ => {}

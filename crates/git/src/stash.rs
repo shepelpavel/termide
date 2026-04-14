@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use super::command::{git_command_stdout, run_git_simple};
+use super::command::{git_command_stdout, run_git_simple, run_git_with_stderr};
 
 /// A single stash entry from `git stash list`.
 #[derive(Debug, Clone)]
@@ -88,7 +88,7 @@ pub fn stash_push(repo: &Path, message: &str, include_untracked: bool) -> Result
         args.push("-m");
         args.push(message);
     }
-    run_git_simple(repo, &args, "Failed to create stash")
+    run_git_with_stderr(repo, &args, "stash push")
 }
 
 /// Pop (apply + drop) the stash at the given index.
@@ -107,6 +107,14 @@ pub fn stash_apply(repo: &Path, index: usize) -> Result<(), String> {
 pub fn stash_drop(repo: &Path, index: usize) -> Result<(), String> {
     let ref_str = format!("stash@{{{}}}", index);
     run_git_simple(repo, &["stash", "drop", &ref_str], "Failed to drop stash")
+}
+
+/// Get the full patch diff for a stash entry.
+///
+/// Runs `git stash show -p stash@{N}` which produces standard unified diff
+/// output (with `diff --git` headers), suitable for the diff panel parser.
+pub fn stash_diff(repo: &Path, stash_ref: &str) -> Option<String> {
+    git_command_stdout(repo, &["stash", "show", "-p", stash_ref])
 }
 
 /// Detailed information about a stash entry (for info modal).

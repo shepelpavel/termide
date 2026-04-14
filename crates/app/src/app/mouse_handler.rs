@@ -1234,9 +1234,27 @@ impl App {
     /// Returns true if click was handled
     /// Handle click on stash dropdown or outside it (close).
     fn handle_stash_dropdown_click(&mut self, x: u16, y: u16) -> Result<()> {
-        let items = termide_ui_render::get_stash_items(&self.state.stash_entries);
+        let items = termide_ui_render::get_stash_items(
+            &self.state.stash_entries,
+            self.state.stash_has_changes,
+        );
         if let Some(btn_area) = self.state.ui.stash_button_area {
-            if let Some(index) = hit_dropdown_item(x, y, btn_area.x, btn_area.bottom(), &items) {
+            // Calculate actual dropdown position (same clamp logic as Dropdown::render)
+            let dropdown_width = items
+                .iter()
+                .map(|i| i.label.chars().count())
+                .max()
+                .unwrap_or(0) as u16
+                + 6;
+            let dropdown_height = items.len().min(20) as u16 + 2;
+            let screen_w = self.state.terminal.width;
+            let screen_h = self.state.terminal.height;
+            let dropdown_x = btn_area.x.min(screen_w.saturating_sub(dropdown_width));
+            let dropdown_y = btn_area
+                .bottom()
+                .min(screen_h.saturating_sub(dropdown_height));
+
+            if let Some(index) = hit_dropdown_item(x, y, dropdown_x, dropdown_y, &items) {
                 self.state.ui.stash_submenu.selected = index;
                 self.execute_stash_submenu_action()?;
                 return Ok(());

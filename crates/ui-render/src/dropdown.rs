@@ -286,7 +286,6 @@ pub fn get_tools_items() -> Vec<DropdownItem> {
         DropdownItem::new(t.tools_editor(), "editor"),
         DropdownItem::new(t.tools_git_status(), "git_status"),
         DropdownItem::new(t.tools_git_log(), "git_log"),
-        DropdownItem::new(t.tools_git_stash(), "git_stash"),
         DropdownItem::new(t.tools_journal(), "journal"),
         DropdownItem::new(t.tools_diagnostics(), "diagnostics"),
         DropdownItem::new(t.tools_operations(), "operations"),
@@ -295,7 +294,7 @@ pub fn get_tools_items() -> Vec<DropdownItem> {
 }
 
 /// Number of items in Tools submenu
-pub const TOOLS_SUBMENU_ITEM_COUNT: usize = 10;
+pub const TOOLS_SUBMENU_ITEM_COUNT: usize = 9;
 
 /// Index of Tools submenu items
 pub const TOOLS_SUBMENU_TERMINAL: usize = 0;
@@ -303,11 +302,10 @@ pub const TOOLS_SUBMENU_FILES: usize = 1;
 pub const TOOLS_SUBMENU_EDITOR: usize = 2;
 pub const TOOLS_SUBMENU_GIT_STATUS: usize = 3;
 pub const TOOLS_SUBMENU_GIT_LOG: usize = 4;
-pub const TOOLS_SUBMENU_GIT_STASH: usize = 5;
-pub const TOOLS_SUBMENU_JOURNAL: usize = 6;
-pub const TOOLS_SUBMENU_DIAGNOSTICS: usize = 7;
-pub const TOOLS_SUBMENU_OPERATIONS: usize = 8;
-pub const TOOLS_SUBMENU_OUTLINE: usize = 9;
+pub const TOOLS_SUBMENU_JOURNAL: usize = 5;
+pub const TOOLS_SUBMENU_DIAGNOSTICS: usize = 6;
+pub const TOOLS_SUBMENU_OPERATIONS: usize = 7;
+pub const TOOLS_SUBMENU_OUTLINE: usize = 8;
 
 /// Get shell picker submenu items from discovered shells.
 ///
@@ -538,11 +536,21 @@ pub fn get_bookmarks_item_count(
 pub const STASH_NEW: &str = "__stash_new__";
 
 /// Generate dropdown items for stash list.
-pub fn get_stash_items(entries: &[termide_git::StashEntry]) -> Vec<DropdownItem> {
-    let mut items = vec![
-        DropdownItem::new("New stash...", STASH_NEW),
-        DropdownItem::separator(),
-    ];
+/// `has_changes` controls whether "New stash..." is shown.
+pub fn get_stash_items(
+    entries: &[termide_git::StashEntry],
+    has_changes: bool,
+) -> Vec<DropdownItem> {
+    let t = termide_i18n::t();
+    let mut items = Vec::new();
+
+    if has_changes {
+        items.push(DropdownItem::new(t.stash_new(), STASH_NEW));
+        if !entries.is_empty() {
+            items.push(DropdownItem::separator());
+        }
+    }
+
     for entry in entries {
         items.push(DropdownItem::new(&entry.message, &entry.ref_str));
     }

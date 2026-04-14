@@ -316,6 +316,8 @@ pub struct AppState {
     pub stash_entries: Vec<termide_git::StashEntry>,
     /// Repository path for stash dropdown operations
     pub stash_repo_path: Option<std::path::PathBuf>,
+    /// Whether the repo has local changes (for stash "New" item visibility)
+    pub stash_has_changes: bool,
     /// Checkbox state from stash push InputModal (include untracked files)
     pub stash_include_untracked: bool,
 }
@@ -406,6 +408,7 @@ impl AppState {
             cached_disk_space: None,
             stash_entries: Vec::new(),
             stash_repo_path: None,
+            stash_has_changes: false,
             stash_include_untracked: false,
         }
     }

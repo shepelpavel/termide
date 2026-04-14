@@ -306,8 +306,11 @@ impl GitStatusPanel {
             buttons.push(Button::Commit);
         }
 
-        // Stash — always visible (shows count)
-        buttons.push(Button::Stash(self.stash_count));
+        // Stash — visible only if there are stashes or local changes
+        let has_local_changes = !self.unstaged_files.is_empty() || !self.staged_files.is_empty();
+        if self.stash_count > 0 || has_local_changes {
+            buttons.push(Button::Stash(self.stash_count));
+        }
 
         buttons
     }
@@ -375,11 +378,15 @@ impl GitStatusPanel {
                 vec![PanelEvent::CancelGitOperation]
             }
             Button::Stash(_) => {
-                if let Some(repo) = self.repo_manager.current() {
-                    let area = self.stash_button_area.unwrap_or_default();
+                if let (Some(repo), Some(area)) =
+                    (self.repo_manager.current(), self.stash_button_area)
+                {
+                    let has_changes =
+                        !self.unstaged_files.is_empty() || !self.staged_files.is_empty();
                     vec![PanelEvent::OpenStashDropdown {
                         repo_path: repo.to_path_buf(),
                         button_area: area,
+                        has_changes,
                     }]
                 } else {
                     vec![]

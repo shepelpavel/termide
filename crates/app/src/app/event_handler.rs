@@ -248,12 +248,14 @@ impl App {
             PanelEvent::OpenStashDropdown {
                 repo_path,
                 button_area,
+                has_changes,
             } => {
                 // Load stash entries and open dropdown
                 let entries = termide_git::stash_list(&repo_path);
                 self.state.stash_entries = entries;
                 self.state.ui.stash_button_area = Some(button_area);
                 self.state.stash_repo_path = Some(repo_path);
+                self.state.stash_has_changes = has_changes;
                 self.state.ui.stash_submenu.open();
                 self.state.needs_redraw = true;
             }

@@ -85,12 +85,6 @@ pub enum SessionPanel {
         #[serde(skip_serializing_if = "Option::is_none")]
         commit_hash: Option<String>,
     },
-    /// Git stash panel
-    #[serde(rename = "git_stash")]
-    GitStash {
-        /// Repository path
-        repo_path: PathBuf,
-    },
     /// Outline panel (symbol navigator)
     #[serde(rename = "outline")]
     Outline,

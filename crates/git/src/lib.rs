@@ -34,7 +34,8 @@ pub use operations::{
 };
 pub use repo_manager::RepoManager;
 pub use stash::{
-    stash_apply, stash_drop, stash_info, stash_list, stash_pop, stash_push, StashEntry, StashInfo,
+    stash_apply, stash_diff, stash_drop, stash_info, stash_list, stash_pop, stash_push, StashEntry,
+    StashInfo,
 };
 pub use utils::{truncate_left, truncate_path_left, truncate_right, truncate_to_width};
 

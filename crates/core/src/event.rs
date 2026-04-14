@@ -487,6 +487,7 @@ pub enum PanelEvent {
     OpenStashDropdown {
         repo_path: PathBuf,
         button_area: ratatui::layout::Rect,
+        has_changes: bool,
     },
 
     /// Open (or refresh) the references panel with LSP find-references results

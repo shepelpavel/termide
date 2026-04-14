@@ -267,9 +267,17 @@ pub trait Translation: Send + Sync {
     fn tools_editor(&self) -> &str;
     fn tools_git_status(&self) -> &str;
     fn tools_git_log(&self) -> &str;
-    fn tools_git_stash(&self) -> &str;
     fn stash_new(&self) -> &str;
     fn stash_include_untracked(&self) -> &str;
+    fn stash_created(&self) -> &str;
+    fn stash_changes(&self) -> &str;
+    fn stash_files(&self) -> &str;
+    fn stash_more(&self) -> &str;
+    fn stash_pop(&self) -> &str;
+    fn stash_apply(&self) -> &str;
+    fn stash_drop(&self) -> &str;
+    fn stash_diff(&self) -> &str;
+    fn git_stash_button(&self) -> &str;
     fn tools_journal(&self) -> &str;
     fn tools_diagnostics(&self) -> &str;
     fn tools_operations(&self) -> &str;

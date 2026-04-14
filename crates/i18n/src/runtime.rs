@@ -831,16 +831,48 @@ impl Translation for RuntimeTranslation {
         self.get_string("tools_git_log")
     }
 
-    fn tools_git_stash(&self) -> &str {
-        self.get_string("tools_git_stash")
-    }
-
     fn stash_new(&self) -> &str {
         self.get_string("stash_new")
     }
 
     fn stash_include_untracked(&self) -> &str {
         self.get_string("stash_include_untracked")
+    }
+
+    fn stash_created(&self) -> &str {
+        self.get_string("stash_created")
+    }
+
+    fn stash_changes(&self) -> &str {
+        self.get_string("stash_changes")
+    }
+
+    fn stash_files(&self) -> &str {
+        self.get_string("stash_files")
+    }
+
+    fn stash_more(&self) -> &str {
+        self.get_string("stash_more")
+    }
+
+    fn stash_pop(&self) -> &str {
+        self.get_string("stash_pop")
+    }
+
+    fn stash_apply(&self) -> &str {
+        self.get_string("stash_apply")
+    }
+
+    fn stash_drop(&self) -> &str {
+        self.get_string("stash_drop")
+    }
+
+    fn stash_diff(&self) -> &str {
+        self.get_string("stash_diff")
+    }
+
+    fn git_stash_button(&self) -> &str {
+        self.get_string("git_stash_button")
     }
 
     fn tools_journal(&self) -> &str {

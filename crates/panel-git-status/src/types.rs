@@ -96,7 +96,7 @@ impl Button {
                 format!("{} {}", spinner, t.git_pulling())
             }
             Button::Init => t.git_action_init().to_string(),
-            Button::Stash(n) => format!("Stash ({})", n),
+            Button::Stash(n) => format!("{} ({})", t.git_stash_button(), n),
         }
     }
 }

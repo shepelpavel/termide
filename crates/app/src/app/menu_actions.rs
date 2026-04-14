@@ -873,15 +873,24 @@ impl App {
         &mut self,
         key: crossterm::event::KeyEvent,
     ) -> Result<()> {
-        // Item count: "New stash..." + separator + N stash entries
-        let stash_count = self.state.stash_entries.len();
-        let item_count = 2 + stash_count; // index 0 = "New stash...", 1 = separator, 2+ = entries
+        // Item count depends on has_changes (controls "New stash..." visibility)
+        let items = termide_ui_render::get_stash_items(
+            &self.state.stash_entries,
+            self.state.stash_has_changes,
+        );
+        let item_count = items.len();
+        let separator_indices: Vec<usize> = items
+            .iter()
+            .enumerate()
+            .filter(|(_, i)| i.is_separator)
+            .map(|(idx, _)| idx)
+            .collect();
 
         match navigate_submenu(
             &key,
             &mut self.state.ui.stash_submenu,
             item_count,
-            &[1], // separator at index 1
+            &separator_indices,
         ) {
             SubmenuNavAction::Close => {
                 self.state.ui.stash_submenu.close();
@@ -903,30 +912,40 @@ impl App {
     /// Execute the currently selected stash submenu item.
     pub(super) fn execute_stash_submenu_action(&mut self) -> Result<()> {
         let selected = self.state.ui.stash_submenu.selected;
-        match selected {
+        let items = termide_ui_render::get_stash_items(
+            &self.state.stash_entries,
+            self.state.stash_has_changes,
+        );
+        let item = match items.get(selected) {
+            Some(i) if !i.is_separator => i,
+            _ => return Ok(()),
+        };
+
+        if item.key == termide_ui_render::STASH_NEW {
             // "New stash..." — open input modal
-            0 => {
-                let repo_path = match &self.state.stash_repo_path {
-                    Some(p) => p.clone(),
-                    None => {
-                        self.state.ui.stash_submenu.close();
-                        return Ok(());
-                    }
-                };
-                self.state.ui.stash_submenu.close();
-                let t = termide_i18n::t();
-                let modal = termide_modal::InputModal::new(t.stash_new(), t.stash_new())
-                    .with_checkbox(t.stash_include_untracked().to_string());
-                self.state.set_pending_action(
-                    PendingAction::GitStashPush { repo_path },
-                    ActiveModal::Input(Box::new(modal)),
-                );
-            }
-            // Separator — skip
-            1 => {}
-            // Stash entry — open info modal
-            _ => {
-                let stash_index = selected - 2;
+            let repo_path = match &self.state.stash_repo_path {
+                Some(p) => p.clone(),
+                None => {
+                    self.state.ui.stash_submenu.close();
+                    return Ok(());
+                }
+            };
+            self.state.ui.stash_submenu.close();
+            let t = termide_i18n::t();
+            let modal = termide_modal::InputModal::new(t.stash_new(), "")
+                .with_checkbox(t.stash_include_untracked().to_string());
+            self.state.set_pending_action(
+                PendingAction::GitStashPush { repo_path },
+                ActiveModal::Input(Box::new(modal)),
+            );
+        } else {
+            // Stash entry — find by ref_str and open info modal
+            if let Some(stash_index) = self
+                .state
+                .stash_entries
+                .iter()
+                .position(|e| e.ref_str == item.key)
+            {
                 self.open_stash_info_modal(stash_index);
             }
         }
@@ -941,19 +960,21 @@ impl App {
         };
 
         if let Some(info) = termide_git::stash_info(&repo_path, stash_index) {
-            let title = format!("Stash #{}", stash_index);
+            let t = termide_i18n::t();
+            let title = &info.message;
 
             let changes = format!(
-                "{} files (+{} -{})",
-                info.files_changed, info.insertions, info.deletions
+                "{} {} (+{} -{})",
+                info.files_changed,
+                t.stash_files(),
+                info.insertions,
+                info.deletions
             );
 
             let mut lines = vec![
-                (String::new(), info.message.clone()),
-                (String::new(), String::new()), // empty line
-                ("Created".to_string(), info.date),
-                ("Changes".to_string(), changes),
-                (String::new(), String::new()), // empty line
+                (t.stash_created().to_string(), info.date),
+                (t.stash_changes().to_string(), changes),
+                (String::new(), String::new()),
             ];
 
             // Add file list (first 8 files)
@@ -961,7 +982,10 @@ impl App {
             for (i, name) in info.file_names.iter().enumerate() {
                 if i >= max_files {
                     let remaining = info.file_names.len() - max_files;
-                    lines.push((String::new(), format!("...+{} more", remaining)));
+                    lines.push((
+                        String::new(),
+                        format!("...+{} {}", remaining, t.stash_more()),
+                    ));
                     break;
                 }
                 lines.push((String::new(), format!(" {}", name)));
@@ -969,13 +993,14 @@ impl App {
 
             use termide_modal::{ActionButton, InfoActionModal};
             let buttons = vec![
-                ActionButton::new("Pop", "pop"),
-                ActionButton::new("Apply", "apply"),
-                ActionButton::new("Drop", "drop"),
-                ActionButton::new("Diff", "diff"),
+                ActionButton::new(t.stash_apply(), "apply"),
+                ActionButton::new(t.stash_pop(), "pop"),
+                ActionButton::new(t.stash_drop(), "drop"),
+                ActionButton::new(t.stash_diff(), "diff"),
+                ActionButton::new(t.ui_close(), "close"),
             ];
 
-            let modal = InfoActionModal::new(title, lines, buttons);
+            let modal = InfoActionModal::new(title, lines, buttons).with_selected_button(4);
 
             self.state.ui.stash_submenu.close();
             self.state.set_pending_action(
