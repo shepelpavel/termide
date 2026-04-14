@@ -480,6 +480,13 @@ impl App {
         };
 
         if let Some((index, anchor_x)) = indicator {
+            // Toggle: if this indicator is already open, close it
+            if self.state.ui.menu_open && self.state.ui.selected_menu_item == Some(index) {
+                self.state.close_indicator_modal();
+                self.state.close_menu();
+                return Ok(());
+            }
+
             // Open menu state so Left/Right navigation works
             self.state.ui.menu_open = true;
             self.state.ui.selected_menu_item = Some(index);
