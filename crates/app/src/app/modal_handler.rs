@@ -493,6 +493,10 @@ impl App {
                 } => {
                     self.handle_git_revert_file(value, &file_path, &repo_path, is_staged)?;
                 }
+                // Git revert all changes action (with confirmation)
+                PendingAction::GitRevertAll { repo_path } => {
+                    self.handle_git_revert_all(value, &repo_path)?;
+                }
                 // Switch active panel's working directory
                 PendingAction::SwitchDirectory => {
                     self.handle_switch_directory(value)?;
@@ -782,7 +786,13 @@ impl App {
             }
             "diff" => {
                 use termide_panel_git_diff::GitDiffPanel;
-                let panel = GitDiffPanel::new_for_stash(repo_path, ref_str);
+                let message = self
+                    .state
+                    .stash_entries
+                    .get(index)
+                    .map(|e| e.message.clone())
+                    .unwrap_or_default();
+                let panel = GitDiffPanel::new_for_stash(repo_path, ref_str, message);
                 self.add_panel(Box::new(panel));
             }
             _ => {}
@@ -1509,6 +1519,33 @@ impl App {
                 } else {
                     self.state.set_info("File reverted".to_string());
                     // Trigger git update event to refresh panels
+                    self.send_git_update(repo_path);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Handle git revert ALL changes action (after confirmation)
+    fn handle_git_revert_all(
+        &mut self,
+        value: Box<dyn std::any::Any>,
+        repo_path: &std::path::Path,
+    ) -> Result<()> {
+        if let Some(&confirmed) = value.downcast_ref::<bool>() {
+            if confirmed {
+                // Unstage everything first
+                if let Err(e) = termide_git::unstage_all(repo_path) {
+                    self.show_error_modal(format!("Unstage error: {}", e));
+                    return Ok(());
+                }
+                // Revert all unstaged files (those that were originally modified, not untracked)
+                // git checkout -- . reverts tracked files; clean -fd removes untracked
+                if let Err(e) = termide_git::revert_all(repo_path) {
+                    self.show_error_modal(format!("Revert error: {}", e));
+                } else {
+                    let t = termide_i18n::t();
+                    self.state.set_info(t.git_refreshed().to_string());
                     self.send_git_update(repo_path);
                 }
             }

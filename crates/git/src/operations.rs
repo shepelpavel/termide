@@ -111,6 +111,16 @@ pub fn revert_file(repo: &Path, file: &Path) -> Result<(), String> {
     )
 }
 
+/// Revert all local changes (restore tracked files + clean untracked)
+#[must_use = "revert result must be checked"]
+pub fn revert_all(repo: &Path) -> Result<(), String> {
+    // Restore all tracked files to HEAD state
+    run_git_simple(repo, &["checkout", "--", "."], "Failed to revert changes")?;
+    // Remove untracked files and directories
+    run_git_simple(repo, &["clean", "-fd"], "Failed to clean untracked files")?;
+    Ok(())
+}
+
 /// Push to remote
 #[must_use = "push result must be checked"]
 pub fn push(repo: &Path) -> Result<(), String> {

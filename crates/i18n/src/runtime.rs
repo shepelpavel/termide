@@ -1546,6 +1546,18 @@ impl Translation for RuntimeTranslation {
         self.get_string("git_unstage_all_btn")
     }
 
+    fn git_revert_all_btn(&self) -> &str {
+        self.get_string("git_revert_all_btn")
+    }
+
+    fn git_log_btn(&self) -> &str {
+        self.get_string("git_log_btn")
+    }
+
+    fn git_revert_all_confirm(&self) -> &str {
+        self.get_string("git_revert_all_confirm")
+    }
+
     fn git_checkout_not_impl(&self) -> &str {
         self.get_string("git_checkout_not_impl")
     }

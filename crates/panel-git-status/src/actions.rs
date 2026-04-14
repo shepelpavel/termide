@@ -55,6 +55,29 @@ impl GitStatusPanel {
         vec![]
     }
 
+    /// Initiate revert ALL changes with confirmation modal
+    pub(crate) fn initiate_revert_all(&mut self) -> Vec<PanelEvent> {
+        let t = termide_i18n::t();
+
+        let Some(repo_path) = self.repo_manager.current().map(|p| p.to_path_buf()) else {
+            return vec![];
+        };
+
+        if self.unstaged_files.is_empty() && self.staged_files.is_empty() {
+            return vec![];
+        }
+
+        let modal =
+            termide_modal::ConfirmModal::new(t.git_action_revert(), t.git_revert_all_confirm());
+
+        self.modal_request = Some((
+            PendingAction::GitRevertAll { repo_path },
+            ActiveModal::Confirm(Box::new(modal)),
+        ));
+
+        vec![]
+    }
+
     /// Open selected file in editor (F3/F4 shortcut)
     pub(crate) fn open_file(&mut self, _force_edit: bool) -> Vec<PanelEvent> {
         // Get selected file path (staged or unstaged)
@@ -286,6 +309,29 @@ impl GitStatusPanel {
             }
         }
 
+        // Stage all — if there are unstaged files
+        if !self.unstaged_files.is_empty() {
+            buttons.push(Button::StageAll);
+        }
+
+        // Unstage all — if there are staged files
+        if !self.staged_files.is_empty() {
+            buttons.push(Button::UnstageAll);
+        }
+
+        // Revert all — if there are any local changes
+        if !self.unstaged_files.is_empty() || !self.staged_files.is_empty() {
+            buttons.push(Button::RevertAll);
+        }
+
+        // Log — always show when repo exists
+        buttons.push(Button::Log);
+
+        // Diff - show if there are any changes (unstaged or staged)
+        if !self.unstaged_files.is_empty() || !self.staged_files.is_empty() {
+            buttons.push(Button::Diff);
+        }
+
         // Pull - only if behind > 0
         if self.behind > 0 {
             buttons.push(Button::Pull);
@@ -294,11 +340,6 @@ impl GitStatusPanel {
         // Push - only if ahead > 0
         if self.ahead > 0 {
             buttons.push(Button::Push);
-        }
-
-        // Diff - show if there are any changes (unstaged or staged)
-        if !self.unstaged_files.is_empty() || !self.staged_files.is_empty() {
-            buttons.push(Button::Diff);
         }
 
         // Commit - only if there are staged files
@@ -323,6 +364,24 @@ impl GitStatusPanel {
         }
         let button = buttons[self.selected_button];
         match button {
+            Button::StageAll => {
+                self.do_stage_all();
+                vec![]
+            }
+            Button::UnstageAll => {
+                self.do_unstage_all();
+                vec![]
+            }
+            Button::RevertAll => self.initiate_revert_all(),
+            Button::Log => {
+                if let Some(repo) = self.repo_manager.current() {
+                    vec![PanelEvent::OpenGitLog {
+                        repo_path: repo.to_path_buf(),
+                    }]
+                } else {
+                    vec![]
+                }
+            }
             Button::Diff => {
                 if let Some(repo) = self.repo_manager.current() {
                     vec![PanelEvent::OpenGitDiff {

@@ -25,7 +25,7 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthStr;
 
-use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up, Config, KeyBinding};
+use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up, Config};
 use termide_core::{
     CommandResult, HotkeyTable, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel,
     ThemeColors, WidthPreference,
@@ -90,10 +90,6 @@ pub struct GitStatusPanel {
     branch_dropdown_area: Option<Rect>,
     /// Scroll offset in dropdown
     dropdown_scroll: usize,
-    /// Stage all button area (for mouse click detection)
-    stage_all_btn_area: Option<Rect>,
-    /// Unstage all button area (for mouse click detection)
-    unstage_all_btn_area: Option<Rect>,
     /// Stash button area (for dropdown anchoring)
     stash_button_area: Option<Rect>,
     /// Click tracker for double-click detection in files area
@@ -129,19 +125,17 @@ pub struct GitStatusPanel {
 }
 
 /// Build HotkeyTable for the git status panel.
-fn build_git_status_hotkey_table() -> HotkeyTable {
+fn build_git_status_hotkey_table(config: &Config) -> HotkeyTable {
     let mut t = HotkeyTable::new();
+    let kb = &config.git_status.keybindings;
 
-    t.insert("stage", &Some(KeyBinding::Single("S".into())));
-    t.insert("unstage", &Some(KeyBinding::Single("U".into())));
-    t.insert("view", &Some(KeyBinding::Single("F3".into())));
-    t.insert("edit", &Some(KeyBinding::Single("F4".into())));
-    t.insert(
-        "info",
-        &Some(KeyBinding::Multiple(vec!["Space".into(), "F12".into()])),
-    );
-    t.insert("revert", &Some(KeyBinding::Single("Backspace".into())));
-    t.insert("refresh", &Some(KeyBinding::Single("Ctrl+R".into())));
+    t.insert("stage", &kb.stage);
+    t.insert("unstage", &kb.unstage);
+    t.insert("view", &kb.view);
+    t.insert("edit", &kb.edit);
+    t.insert("info", &kb.info);
+    t.insert("revert", &kb.revert);
+    t.insert("refresh", &kb.refresh);
     t
 }
 
@@ -185,8 +179,6 @@ impl GitStatusPanel {
             repo_dropdown_area: None,
             branch_dropdown_area: None,
             dropdown_scroll: 0,
-            stage_all_btn_area: None,
-            unstage_all_btn_area: None,
             stash_button_area: None,
             click_tracker: IndexClickTracker::new(),
             modal_request: None,
@@ -684,13 +676,11 @@ impl GitStatusPanel {
         match self.current_section {
             Section::Files => {
                 match self.get_selection() {
-                    Some(Selection::UnstagedHeader) => self.do_stage_all(),
-                    Some(Selection::StagedHeader) => self.do_unstage_all(),
                     Some(Selection::UnstagedFile(_)) => self.do_stage(),
                     Some(Selection::StagedFile(_)) => self.do_unstage(),
                     Some(Selection::UnstagedDir(idx)) => self.toggle_dir_expand(true, idx),
                     Some(Selection::StagedDir(idx)) => self.toggle_dir_expand(false, idx),
-                    None => {}
+                    _ => {}
                 }
                 vec![]
             }
@@ -890,7 +880,7 @@ impl Panel for GitStatusPanel {
     fn prepare_render(&mut self, theme: &Theme, config: std::sync::Arc<Config>) {
         self.cached_theme = ThemeColors::from(theme);
         self.vim_mode = config.general.vim_mode;
-        self.hotkeys = build_git_status_hotkey_table();
+        self.hotkeys = build_git_status_hotkey_table(&config);
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
@@ -1311,22 +1301,6 @@ impl Panel for GitStatusPanel {
                             self.branch_dropdown_open = false;
                             return vec![];
                         }
-                    }
-                }
-
-                // Check if click is on Stage all button
-                if let Some(btn_area) = self.stage_all_btn_area {
-                    if self.is_in_rect(col, row, btn_area) {
-                        self.do_stage_all();
-                        return vec![];
-                    }
-                }
-
-                // Check if click is on Unstage all button
-                if let Some(btn_area) = self.unstage_all_btn_area {
-                    if self.is_in_rect(col, row, btn_area) {
-                        self.do_unstage_all();
-                        return vec![];
                     }
                 }
 

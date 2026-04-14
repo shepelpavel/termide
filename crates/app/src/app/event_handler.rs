@@ -245,6 +245,10 @@ impl App {
                 self.event_open_git_diff(repo_path, commit_hash, file_path)?;
             }
 
+            PanelEvent::OpenGitLog { repo_path: _ } => {
+                self.handle_open_git_log()?;
+            }
+
             PanelEvent::OpenStashDropdown {
                 repo_path,
                 button_area,

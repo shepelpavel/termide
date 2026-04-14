@@ -304,7 +304,7 @@ impl GitStatusPanel {
     }
 
     /// Render section header with optional button selection highlighting
-    /// Render the unstaged files section header, updating `stage_all_btn_area`.
+    /// Render the unstaged files section header.
     fn render_unstaged_header(
         &mut self,
         is_selected: bool,
@@ -320,17 +320,10 @@ impl GitStatusPanel {
             t.git_unstaged_header(),
             self.unstaged_files.len()
         );
-        let btn_str = format!("[{}]", t.git_stage_all_btn());
-        let btn = if !self.unstaged_files.is_empty() {
-            Some(btn_str.as_str())
-        } else {
-            None
-        };
-        self.stage_all_btn_area =
-            self.render_section_header_simple(&title, btn, is_selected, x, y, width, buf, theme);
+        self.render_section_header(&title, is_selected, x, y, width, buf, theme);
     }
 
-    /// Render the staged files section header, updating `unstage_all_btn_area`.
+    /// Render the staged files section header.
     fn render_staged_header(
         &mut self,
         is_selected: bool,
@@ -342,79 +335,32 @@ impl GitStatusPanel {
     ) {
         let t = termide_i18n::t();
         let title = format!("{} ({})", t.git_staged_header(), self.staged_files.len());
-        let btn_str = format!("[{}]", t.git_unstage_all_btn());
-        let btn = if !self.staged_files.is_empty() {
-            Some(btn_str.as_str())
-        } else {
-            None
-        };
-        self.unstage_all_btn_area =
-            self.render_section_header_simple(&title, btn, is_selected, x, y, width, buf, theme);
+        self.render_section_header(&title, is_selected, x, y, width, buf, theme);
     }
 
-    pub(crate) fn render_section_header_simple(
+    /// Render a section header as a horizontal line with embedded title.
+    fn render_section_header(
         &self,
         title: &str,
-        action_btn: Option<&str>,
-        is_selected: bool,
+        _is_selected: bool,
         x: u16,
         y: u16,
         width: u16,
         buf: &mut Buffer,
         theme: &ThemeColors,
-    ) -> Option<Rect> {
+    ) {
         let header_style = Style::default().fg(theme.disabled);
 
-        // Draw line with embedded title
         let title_with_space = format!(" {} ", title);
         let title_width = title_with_space.width();
 
-        // Left part of line
         buf.set_string(x, y, "─", header_style);
-
-        // Title
         buf.set_string(x + 1, y, &title_with_space, header_style);
 
-        // Rest of line (or action button)
         let after_title = x + 1 + title_width as u16;
         let remaining = width.saturating_sub(1 + title_width as u16);
-
-        if let Some(btn_text) = action_btn {
-            let btn_width = btn_text.width() as u16;
-            if remaining > btn_width + 2 {
-                // Line before button
-                let line_width = remaining - btn_width - 1;
-                for dx in 0..line_width {
-                    buf.set_string(after_title + dx, y, "─", header_style);
-                }
-                // Button - inverted style when selected
-                let btn_x = after_title + line_width;
-                let btn_style = if is_selected {
-                    Style::default()
-                        .fg(theme.bg)
-                        .bg(theme.fg)
-                        .add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default().fg(theme.fg)
-                };
-                buf.set_string(btn_x, y, btn_text, btn_style);
-                Some(Rect {
-                    x: btn_x,
-                    y,
-                    width: btn_width,
-                    height: 1,
-                })
-            } else {
-                for dx in 0..remaining {
-                    buf.set_string(after_title + dx, y, "─", header_style);
-                }
-                None
-            }
-        } else {
-            for dx in 0..remaining {
-                buf.set_string(after_title + dx, y, "─", header_style);
-            }
-            None
+        for dx in 0..remaining {
+            buf.set_string(after_title + dx, y, "─", header_style);
         }
     }
 

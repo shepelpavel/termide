@@ -63,6 +63,14 @@ pub enum Selection {
 /// Button in the Git Status panel
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Button {
+    /// Stage all unstaged files
+    StageAll,
+    /// Unstage all staged files
+    UnstageAll,
+    /// Revert all local changes (with confirmation)
+    RevertAll,
+    /// Open Git Log panel
+    Log,
     /// Show all diffs in Git Diff panel
     Diff,
     Commit,
@@ -85,6 +93,10 @@ impl Button {
         let spinner = termide_config::constants::SPINNER_FRAMES
             [spinner_frame % termide_config::constants::SPINNER_FRAMES.len()];
         match self {
+            Button::StageAll => t.git_stage_all_btn().to_string(),
+            Button::UnstageAll => t.git_unstage_all_btn().to_string(),
+            Button::RevertAll => t.git_revert_all_btn().to_string(),
+            Button::Log => t.git_log_btn().to_string(),
             Button::Diff => t.git_action_diff().to_string(),
             Button::Commit => t.git_action_commit().to_string(),
             Button::Pull => t.git_action_pull().to_string(),

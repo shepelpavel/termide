@@ -123,6 +123,11 @@ pub enum PendingAction {
         /// Whether the file is staged
         is_staged: bool,
     },
+    /// Git revert all changes action (with confirmation)
+    GitRevertAll {
+        /// Repository root path
+        repo_path: PathBuf,
+    },
     /// Switch active panel's working directory
     SwitchDirectory,
     /// Add a bookmark
