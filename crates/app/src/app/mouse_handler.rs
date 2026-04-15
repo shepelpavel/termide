@@ -46,14 +46,6 @@ fn hit_dropdown_item(
 impl App {
     /// Handle mouse event
     pub(super) fn handle_mouse_event(&mut self, mouse: crossterm::event::MouseEvent) -> Result<()> {
-        log::trace!(
-            "Mouse event: kind={:?}, col={}, row={}, modifiers={:?}",
-            mouse.kind,
-            mouse.column,
-            mouse.row,
-            mouse.modifiers
-        );
-
         // Handle divider drag first (highest priority for smooth resize)
         if self.state.ui.drag.is_dragging() {
             match mouse.kind {
@@ -309,7 +301,6 @@ impl App {
 
             if (1..=3).contains(&relative_x) {
                 // Click on [X] button - close panel with confirmation if needed
-                log::debug!("Panel close button [X] clicked");
                 // First, activate the clicked panel
                 if let Some(group) = self.layout_manager.panel_groups.get_mut(group_idx) {
                     group.set_expanded(panel_idx);
@@ -1500,13 +1491,6 @@ impl App {
         mouse: crossterm::event::MouseEvent,
         delta: i32,
     ) -> Result<()> {
-        log::trace!(
-            "Scroll event: delta={}, col={}, row={}",
-            delta,
-            mouse.column,
-            mouse.row
-        );
-
         // Track scroll timing for throttling heavy operations in Event::Tick
         self.state.last_mouse_scroll = Some(std::time::Instant::now());
 

@@ -248,8 +248,7 @@ impl LspState {
                     self.server_loading = true; // Server is starting, will be set to false when ready
                     log::info!("LSP enabled for {} ({:?})", lang, file_path);
                 }
-                Err(e) => {
-                    log::debug!("LSP not available for {}: {}", lang, e);
+                Err(_e) => {
                     self.enabled = false;
                     self.server_loading = false;
                 }

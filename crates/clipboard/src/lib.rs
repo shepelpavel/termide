@@ -64,7 +64,6 @@ pub fn copy(text: &str) -> Result<(), String> {
     }
 
     // Fall back to OSC 52 for SSH/headless sessions
-    log::debug!("arboard clipboard unavailable, falling back to OSC 52");
     osc52_copy(text)
 }
 
@@ -90,7 +89,7 @@ fn copy_arboard(text: &str) -> Result<(), String> {
             .text(text.to_string())
         {
             #[cfg(debug_assertions)]
-            eprintln!("Warning: Failed to set PRIMARY selection: {}", e);
+            log::warn!("Failed to set PRIMARY selection: {}", e);
             let _ = e; // Suppress unused warning in release
         }
     }

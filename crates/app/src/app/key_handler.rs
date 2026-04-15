@@ -19,8 +19,6 @@ impl App {
     pub(super) fn handle_key_event(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
         // Raw key — no translation here.
         // HotkeyTable.matches() handles Cyrillic normalization internally.
-        log::trace!("Key code={:?} modifiers={:?}", key.code, key.modifiers);
-
         // Clear status message on any key press
         if self.state.ui.status_message.is_some() {
             self.state.clear_status();

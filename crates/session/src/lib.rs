@@ -360,8 +360,8 @@ fn walk_and_cleanup(
                             if modified < cutoff_time && !has_non_empty_unsaved_buffers(&path) {
                                 // Remove entire session directory
                                 if let Err(e) = fs::remove_dir_all(&path) {
-                                    eprintln!(
-                                        "Warning: Failed to remove old session {}: {}",
+                                    log::warn!(
+                                        "Failed to remove old session {}: {}",
                                         path.display(),
                                         e
                                     );

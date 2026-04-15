@@ -24,7 +24,6 @@ impl App {
             match selected {
                 0 => {
                     // Save and close
-                    log::info!("Selected: Save and close editor");
                     // Capture editor file path before mutable borrow for save
                     let editor_file_path = self
                         .layout_manager
@@ -47,7 +46,6 @@ impl App {
                                     }
                                     Ok(Some((temp_path, remote_path, vfs_manager))) => {
                                         // Remote file - start async upload (no modal)
-                                        log::info!("Starting remote file upload before closing");
 
                                         // Set uploading flag to show spinner in editor header
                                         if let Some(panel) = self.layout_manager.active_panel_mut()
@@ -70,7 +68,6 @@ impl App {
                                         // Start upload via OperationManager (no modal)
                                         match self.state.start_operation_now(request, vfs_manager) {
                                             Ok(operation_id) => {
-                                                log::info!("Started save-before-close upload");
                                                 self.state.track_operation(
                                                     operation_id,
                                                     crate::state::OperationType::CopyUpload,
@@ -107,7 +104,6 @@ impl App {
                                     }
                                     Ok(None) => {
                                         // Local file - saved synchronously
-                                        log::info!("File saved before closing");
                                     }
                                 }
 
@@ -142,12 +138,10 @@ impl App {
                 }
                 1 => {
                     // Close without saving
-                    log::info!("Selected: Close without saving");
                     self.close_panel_at_index();
                 }
                 _ => {
                     // Cancel - do nothing
-                    log::info!("Selected: Cancel closing");
                 }
             }
         }
@@ -171,7 +165,6 @@ impl App {
             match selected {
                 0 => {
                     // Overwrite disk with current content
-                    log::info!("Selected: Overwrite disk with current content");
                     if let Some(panel) = self.layout_manager.active_panel_mut() {
                         if let Some(editor) = panel.as_editor_mut() {
                             let t = i18n::t();
@@ -191,12 +184,10 @@ impl App {
                 }
                 1 => {
                     // Keep disk version (just close)
-                    log::info!("Selected: Keep disk version, close editor");
                     self.close_panel_at_index();
                 }
                 2 => {
                     // Reload into editor (don't close)
-                    log::info!("Selected: Reload file into editor");
                     if let Some(panel) = self.layout_manager.active_panel_mut() {
                         if let Some(editor) = panel.as_editor_mut() {
                             let t = i18n::t();
@@ -212,7 +203,6 @@ impl App {
                 }
                 _ => {
                     // Cancel - do nothing
-                    log::info!("Selected: Cancel closing");
                 }
             }
         }
@@ -228,7 +218,6 @@ impl App {
             match selected {
                 0 => {
                     // Overwrite disk with my changes
-                    log::info!("Selected: Overwrite disk with local changes");
                     if let Some(panel) = self.layout_manager.active_panel_mut() {
                         if let Some(editor) = panel.as_editor_mut() {
                             let t = i18n::t();
@@ -248,7 +237,6 @@ impl App {
                 }
                 1 => {
                     // Reload from disk (discard local changes)
-                    log::info!("Selected: Reload from disk, discard local changes");
                     if let Some(panel) = self.layout_manager.active_panel_mut() {
                         if let Some(editor) = panel.as_editor_mut() {
                             let t = i18n::t();
@@ -263,7 +251,6 @@ impl App {
                 }
                 _ => {
                     // Cancel - do nothing
-                    log::info!("Selected: Cancel closing");
                 }
             }
         }
@@ -299,10 +286,6 @@ impl App {
                 match selected {
                     1 => {
                         // Delete only the interrupted file
-                        log::info!(
-                            "Cancel cleanup: delete partial file {}",
-                            partial_path.display()
-                        );
                         if partial_path.exists() {
                             if let Err(e) = std::fs::remove_file(&partial_path) {
                                 self.show_error_modal(format!("Failed to delete: {}", e));
@@ -314,7 +297,6 @@ impl App {
                     2 => {
                         // Delete entire destination directory
                         if let Some(dest_dir) = all_dest_paths.first() {
-                            log::info!("Cancel cleanup: delete all {}", dest_dir.display());
                             if dest_dir.exists() {
                                 if let Err(e) = std::fs::remove_dir_all(dest_dir) {
                                     self.show_error_modal(format!("Failed to delete: {}", e));
@@ -326,7 +308,6 @@ impl App {
                     }
                     _ => {
                         // Keep all (0 or any other)
-                        log::info!("Cancel cleanup: keep all");
                     }
                 }
             } else {
@@ -336,7 +317,6 @@ impl App {
                 match (selected, has_multiple) {
                     (0, _) => {
                         // Delete partial file only
-                        log::info!("Cancel cleanup: delete partial {}", partial_path.display());
                         if partial_path.exists() {
                             if let Err(e) = std::fs::remove_file(&partial_path) {
                                 self.show_error_modal(format!("Failed to delete: {}", e));
@@ -347,10 +327,6 @@ impl App {
                     }
                     (1, true) => {
                         // Delete all copied files
-                        log::info!(
-                            "Cancel cleanup: delete all {} items",
-                            all_dest_paths.len() + 1
-                        );
                         let mut deleted = 0;
                         let mut errors = 0;
 
@@ -390,7 +366,6 @@ impl App {
                     }
                     _ => {
                         // Keep everything
-                        log::info!("Cancel cleanup: keep everything");
                     }
                 }
             }

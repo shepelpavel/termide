@@ -135,7 +135,6 @@ impl App {
             }
 
             PanelEvent::Quit => {
-                log::debug!("Quit event received");
                 self.handle_quit_request()?;
             }
 
@@ -320,13 +319,6 @@ impl App {
     /// Handle OpenFile event - open file in editor (reuse existing tab if already open)
     fn event_open_file(&mut self, file_path: PathBuf) -> Result<()> {
         self.close_help_panels();
-        log::debug!(
-            "Opening file via event: {}",
-            file_path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("?")
-        );
 
         // Check if the file is already open — focus it instead of creating a duplicate
         if self.focus_editor_by_path(&file_path) {
@@ -340,13 +332,6 @@ impl App {
     /// Handle ViewFile event - open file in read-only editor mode
     fn event_view_file(&mut self, file_path: PathBuf) -> Result<()> {
         self.close_help_panels();
-        log::debug!(
-            "Viewing file via event: {}",
-            file_path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("?")
-        );
         let _ = self.open_editor_for_file_readonly(file_path);
         Ok(())
     }
@@ -359,12 +344,6 @@ impl App {
             .and_then(|n| n.to_str())
             .unwrap_or("?");
         let t = i18n::t();
-        log::debug!(
-            "Opening file at {}:{} via event: {}",
-            line + 1,
-            column,
-            filename
-        );
 
         // First check if the file is already open in an editor
         let mut found_existing = false;
@@ -373,12 +352,6 @@ impl App {
                 if editor.file_path() == Some(&file_path) {
                     // File is already open - just move cursor to position
                     editor.goto_position(line, column);
-                    log::info!(
-                        "Jumped to {}:{} in already-open file '{}'",
-                        line + 1,
-                        column,
-                        filename
-                    );
                     found_existing = true;
                     break;
                 }
@@ -405,7 +378,6 @@ impl App {
                 self.add_panel(Box::new(editor_panel));
                 self.notify_outline_file_opened();
                 self.auto_save_session();
-                log::info!("File '{}' opened at {}:{}", filename, line + 1, column);
                 self.state.set_info(t.editor_file_opened(filename));
             }
             Err(e) => {
@@ -438,7 +410,6 @@ impl App {
                 let _ = terminal.send_command(&command);
                 self.add_panel(Box::new(terminal));
                 self.auto_save_session();
-                log::info!("Executing '{}' in terminal", filename);
             }
             Err(e) => {
                 log::error!("Failed to create terminal for '{}': {}", filename, e);
@@ -456,7 +427,6 @@ impl App {
                 let _ = terminal.send_command(&command);
                 self.add_panel(Box::new(terminal));
                 self.auto_save_session();
-                log::info!("Running '{}' in terminal", command);
             }
             Err(e) => {
                 log::error!("Failed to create terminal for command '{}': {}", command, e);
@@ -494,7 +464,6 @@ impl App {
                 if let Some(image_panel) = panel.as_any_mut().downcast_mut::<ImagePanel>() {
                     image_panel.set_image(file_path);
                     self.state.needs_redraw = true;
-                    log::info!("Updating preview to '{}'", filename);
                     return Ok(());
                 }
             }
@@ -505,21 +474,15 @@ impl App {
                 Ok(panel) => {
                     self.add_panel_without_focus(Box::new(panel));
                     self.auto_save_session();
-                    log::info!("Previewing '{}' with native graphics", filename);
                     return Ok(());
                 }
                 Err(e) => {
-                    log::debug!(
-                        "Native graphics failed for '{}': {}, falling back to xdg-open",
-                        filename,
-                        e
-                    );
+                    let _ = e; // Native graphics unavailable, fall through to xdg-open
                 }
             }
         }
 
         // Fallback to system default viewer (xdg-open)
-        log::info!("Opening '{}' with system viewer", filename);
         if let Err(e) = open::that(&file_path) {
             log::error!("Failed to open '{}': {}", filename, e);
             self.show_error_modal(format!("Failed to open {}: {}", filename, e));
@@ -538,7 +501,6 @@ impl App {
 
         // Show status message
         self.state.set_info(t.status_opening_external(&filename));
-        log::info!("Opening '{}' with system viewer", filename);
 
         if let Err(e) = open::that(&file_path) {
             log::error!("Failed to open '{}': {}", filename, e);
@@ -588,8 +550,6 @@ impl App {
             return Ok(());
         };
 
-        log::debug!("Opening remote file: {}", url);
-
         // Create temp directory for remote files
         let temp_dir = std::env::temp_dir().join("termide-remote-edit");
         if let Err(e) = std::fs::create_dir_all(&temp_dir) {
@@ -634,12 +594,6 @@ impl App {
 
                 // Open operations panel to show progress
                 self.open_operations_panel()?;
-
-                log::info!(
-                    "Started downloading remote file '{}' (op {})",
-                    filename,
-                    operation_id
-                );
             }
             Err(e) => {
                 let error_msg = format!("Failed to start download: {}", e);
@@ -658,7 +612,6 @@ impl App {
                 // Convert from 1-based (user-facing) to 0-based (internal)
                 let line_0based = line.saturating_sub(1);
                 editor.set_cursor_line(line_0based);
-                log::debug!("Moved to line {}", line);
             }
         }
     }
@@ -960,15 +913,11 @@ impl App {
         match direction {
             termide_core::SplitDirection::Horizontal => {
                 // Horizontal split: create new column (unstack if multiple panels in group)
-                if let Err(e) = self.layout_manager.toggle_panel_stacking(terminal_width) {
-                    log::debug!("Split failed: {}", e);
-                }
+                let _ = self.layout_manager.toggle_panel_stacking(terminal_width);
             }
             termide_core::SplitDirection::Vertical => {
                 // Vertical split: stack in same column (merge if single panel)
-                if let Err(e) = self.layout_manager.toggle_panel_stacking(terminal_width) {
-                    log::debug!("Stack failed: {}", e);
-                }
+                let _ = self.layout_manager.toggle_panel_stacking(terminal_width);
             }
         }
     }
@@ -990,15 +939,14 @@ impl App {
         }
 
         // Then, apply the focus change
-        if let Some((group_idx, panel_idx, title)) = found {
+        if let Some((group_idx, panel_idx, _title)) = found {
             if let Some(group) = self.layout_manager.panel_groups.get_mut(group_idx) {
                 group.set_expanded(panel_idx);
             }
             self.layout_manager.focus = group_idx;
             self.notify_outline_file_opened();
-            log::debug!("Focused panel: {}", title);
         } else {
-            log::debug!("Panel not found: {}", name);
+            let _ = name;
         }
     }
 
@@ -1015,7 +963,6 @@ impl App {
 
         // Prevent multiple concurrent operations
         if self.state.ui.git_operation_in_progress {
-            log::debug!("Git operation already in progress, ignoring");
             return Ok(());
         }
 
@@ -1044,7 +991,6 @@ impl App {
 
         // Get PID before moving child to thread
         let pid = child.id();
-        log::info!("Running git {} in {:?} (PID: {})", cmd, repo_path, pid);
 
         // Set operation state
         self.state.ui.git_operation_in_progress = true;
@@ -1097,8 +1043,6 @@ impl App {
     /// Handle CancelGitOperation event - kill running git process
     pub(super) fn event_cancel_git_operation(&mut self) {
         if let Some(handle) = self.state.git_operation_handle.take() {
-            log::info!("Cancelling git {} (PID: {})", handle.operation, handle.pid);
-
             // Kill process by PID
             #[cfg(unix)]
             {
@@ -1149,12 +1093,6 @@ impl App {
     ) -> Result<()> {
         use termide_panel_git_diff::GitDiffPanel;
 
-        log::debug!(
-            "Opening Git Diff panel for {:?} (commit: {:?}, file: {:?})",
-            repo_path,
-            commit_hash,
-            file_path
-        );
         self.close_help_panels();
 
         // Check if a matching GitDiffPanel is already open
@@ -1285,10 +1223,8 @@ impl App {
         if let Some(manager) = self.state.operation_manager_mut() {
             if is_paused {
                 manager.resume(real_id);
-                log::debug!("Resumed operation {}", real_id);
             } else {
                 manager.pause(real_id);
-                log::debug!("Paused operation {}", real_id);
             }
         }
 
@@ -1359,7 +1295,6 @@ impl App {
 
         if let Some(manager) = self.state.operation_manager_mut() {
             manager.cancel(real_id);
-            log::debug!("Cancelled operation {}", real_id);
         }
         self.state.needs_redraw = true;
     }

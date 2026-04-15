@@ -111,6 +111,7 @@ chrono = "0.4"
 clap = { version = "4", features = ["derive"] }
 crossterm = "0.28"
 dirs = "6.0"
+log = "0.4"
 notify = { version = "6.1", default-features = false, features = ["macos_kqueue"] }
 notify-debouncer-mini = "0.4"
 portable-pty = "0.8"

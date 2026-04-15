@@ -85,9 +85,10 @@ impl LayoutManagerSession for LayoutManager {
                             match FileManager::new_with_vfs_url(&path_or_url, vfs_manager) {
                                 Ok(fm) => Some(Box::new(fm)),
                                 Err(e) => {
-                                    eprintln!(
+                                    log::warn!(
                                         "Failed to restore remote FileManager at '{}': {}",
-                                        path_or_url, e
+                                        path_or_url,
+                                        e
                                     );
                                     None
                                 }
@@ -116,8 +117,8 @@ impl LayoutManagerSession for LayoutManager {
                                     } else {
                                         let mut editor = Editor::with_config(editor_config.clone());
                                         if let Err(e) = editor.insert_text(&content) {
-                                            eprintln!(
-                                                "Warning: Failed to restore unsaved buffer content: {}",
+                                            log::warn!(
+                                                "Failed to restore unsaved buffer content: {}",
                                                 e
                                             );
                                             None
@@ -129,9 +130,10 @@ impl LayoutManagerSession for LayoutManager {
                                     }
                                 }
                                 Err(e) => {
-                                    eprintln!(
-                                        "Warning: Failed to load unsaved buffer {}: {}",
-                                        buffer_file, e
+                                    log::warn!(
+                                        "Failed to load unsaved buffer {}: {}",
+                                        buffer_file,
+                                        e
                                     );
                                     None
                                 }

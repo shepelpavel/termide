@@ -22,7 +22,7 @@ impl App {
         for event in events {
             match event {
                 OperationEvent::Started(id) => {
-                    log::info!("Operation {} started", id);
+                    let _ = id;
                     self.state.needs_redraw = true;
                 }
                 OperationEvent::Progress(id, progress) => {
@@ -136,7 +136,6 @@ impl App {
 
                     match result {
                         OperationResult::Success | OperationResult::SuccessWithPath(_) => {
-                            log::info!("Operation {} completed successfully", id);
                             should_refresh_file_managers = true;
 
                             // Handle remote delete for move operations (delete source after download)
@@ -191,10 +190,6 @@ impl App {
                                                 .file_name()
                                                 .and_then(|n| n.to_str())
                                                 .unwrap_or("remote file");
-                                            log::info!(
-                                                "Remote file '{}' opened in editor",
-                                                filename
-                                            );
                                             self.state
                                                 .set_info(format!("File {} opened", filename));
                                         }
@@ -365,13 +360,6 @@ impl App {
                             failed,
                             ..
                         } => {
-                            log::info!(
-                                "Operation {} partially completed: {} done, {} skipped, {} failed",
-                                id,
-                                completed,
-                                skipped,
-                                failed
-                            );
                             should_refresh_file_managers = true;
 
                             // Continue batch operation if pending
@@ -493,8 +481,6 @@ impl App {
                             self.state.untrack_operation(id);
                         }
                         OperationResult::Cancelled => {
-                            log::info!("Operation {} cancelled", id);
-
                             // Clear pending remote delete (don't delete source if download cancelled)
                             self.state.pending_remote_delete = None;
 
@@ -566,8 +552,7 @@ impl App {
                         }
                     }
                 }
-                OperationEvent::Paused(id) => {
-                    log::info!("Operation {} paused", id);
+                OperationEvent::Paused(_id) => {
                     // Sync pause state with modal
                     if let Some(crate::state::ActiveModal::Progress(ref mut modal)) =
                         self.state.active_modal
@@ -576,8 +561,7 @@ impl App {
                         self.state.needs_redraw = true;
                     }
                 }
-                OperationEvent::Resumed(id) => {
-                    log::info!("Operation {} resumed", id);
+                OperationEvent::Resumed(_id) => {
                     // Sync resume state with modal
                     if let Some(crate::state::ActiveModal::Progress(ref mut modal)) =
                         self.state.active_modal
@@ -587,13 +571,6 @@ impl App {
                     }
                 }
                 OperationEvent::ConflictDetected(id, conflict_info) => {
-                    log::info!(
-                        "Operation {} conflict: {} -> {}",
-                        id,
-                        conflict_info.source.display(),
-                        conflict_info.destination.display()
-                    );
-
                     // Convert OperationPath to PathBuf for ConflictModal
                     let source_path = match &conflict_info.source {
                         OperationPath::Local(p) => p.clone(),

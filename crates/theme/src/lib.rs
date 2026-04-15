@@ -384,9 +384,10 @@ fn load_theme_from_toml(content: &str, name: &'static str) -> Theme {
     match loader::load_theme_from_str(content, name) {
         Ok(theme) => theme,
         Err(e) => {
-            eprintln!(
+            log::warn!(
                 "Failed to parse built-in theme '{}': {}. Using fallback theme.",
-                name, e
+                name,
+                e
             );
             get_hardcoded_fallback_theme(name)
         }

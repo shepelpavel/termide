@@ -480,7 +480,6 @@ trait Panel {}
 "#;
         let mut parser = Parser::new();
         let symbols = extract_symbols_treesitter(source, "rust", &mut parser);
-        eprintln!("Rust symbols: {:#?}", symbols);
         assert!(!symbols.is_empty(), "Should find Rust symbols");
     }
 
@@ -489,7 +488,6 @@ trait Panel {}
         let source = "# Hello\n\n## World\n\nSome text\n\n### Sub heading\n";
         let mut parser = Parser::new();
         let symbols = extract_symbols_treesitter(source, "markdown", &mut parser);
-        eprintln!("Markdown symbols: {:#?}", symbols);
         assert_eq!(symbols.len(), 3);
         assert_eq!(symbols[0].kind, SymbolKind::Heading1);
         assert_eq!(symbols[0].depth, 0);
@@ -515,6 +513,6 @@ trait Panel {}
         let mut parser = Parser::new();
         parser.set_language(&language).unwrap();
         let tree = parser.parse(source, None).unwrap();
-        eprintln!("Markdown tree: {}", tree.root_node().to_sexp());
+        let _ = tree;
     }
 }

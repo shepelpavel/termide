@@ -96,9 +96,7 @@ pub fn discover_shells() -> Vec<ShellInfo> {
                             .chunks_exact(2)
                             .map(|c| u16::from_le_bytes([c[0], c[1]]))
                             .collect();
-                        String::from_utf16(&u16s).map_err(|e| {
-                            log::debug!("WSL output: UTF-16 decode failed: {e}");
-                        })
+                        String::from_utf16(&u16s).unwrap_or_else(|_| String::new())
                     })
                     .unwrap_or_default();
 

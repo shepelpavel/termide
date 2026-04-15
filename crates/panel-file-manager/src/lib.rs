@@ -1042,7 +1042,6 @@ impl FileManager {
 
         // For remote paths, don't clear entries - keep showing current content while loading
         if self.vfs.is_remote() {
-            log::debug!("load_directory_inner: Starting async list for remote path (keeping current entries)");
             self.vfs.invalidate_cache();
             self.vfs.start_list_dir();
             return Ok(());
@@ -1654,12 +1653,6 @@ impl Panel for FileManager {
                 path_or_url: reconstructed,
             })
         } else {
-            log::debug!(
-                "Session save: Saving path '{}' (is_remote={})",
-                path_or_url,
-                self.is_remote()
-            );
-
             Some(SessionPanel::FileManager { path_or_url })
         }
     }

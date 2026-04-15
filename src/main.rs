@@ -190,7 +190,7 @@ fn main() -> Result<()> {
 
     // Print error if there was one
     if let Err(err) = result {
-        eprintln!("Error: {:?}", err);
+        log::error!("Error: {:?}", err);
     }
 
     Ok(())

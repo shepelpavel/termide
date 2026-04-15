@@ -575,11 +575,6 @@ impl Editor {
         let mut cache = GitDiffCache::new(path.clone());
         match cache.update() {
             Ok(()) => {
-                log::debug!(
-                    "Editor: GitDiffCache initialized for {:?}, has {} statuses",
-                    path,
-                    cache.line_status_count()
-                );
                 git.diff_cache = Some(cache);
             }
             Err(e) => {
@@ -2039,7 +2034,7 @@ impl Panel for Editor {
 
             // Save content to session directory
             if let Err(e) = termide_session::save_unsaved_buffer(session_dir, &filename, &content) {
-                eprintln!("Warning: Failed to save unsaved buffer: {}", e);
+                log::warn!("Failed to save unsaved buffer: {}", e);
                 return None;
             }
 

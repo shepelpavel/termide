@@ -50,9 +50,8 @@ fn sftp_mkdir_recursive(sftp: &Sftp, path: &Path) -> VfsResult<()> {
 
         // Try to create directory - ignore "already exists" errors
         match sftp.mkdir(&current, 0o755) {
-            Ok(()) => {
-                log::debug!("Created remote directory: {}", current.display());
-            }
+            Ok(()) => {}
+
             Err(e) => {
                 // SFTP error code 4 (SSH_FX_FAILURE) usually means directory exists
                 // SFTP error code 11 (SSH_FX_DIR_NOT_EMPTY) also means it exists
@@ -60,7 +59,7 @@ fn sftp_mkdir_recursive(sftp: &Sftp, path: &Path) -> VfsResult<()> {
                 match sftp.stat(&current) {
                     Ok(stat) => {
                         if stat.is_dir() {
-                            log::trace!("Remote directory already exists: {}", current.display());
+                            // Directory already exists — nothing to do
                         } else {
                             return Err(VfsError::Sftp(format!(
                                 "Path '{}' exists but is not a directory",
@@ -280,24 +279,9 @@ impl SftpProvider {
                 })?;
             }
             AuthMethod::Auto => {
-                // Log SSH_AUTH_SOCK for debugging
-                let ssh_auth_sock = std::env::var("SSH_AUTH_SOCK").ok();
-                log::debug!("SFTP Auto auth: SSH_AUTH_SOCK = {:?}", ssh_auth_sock);
-
                 // Load SSH config for host-specific settings
                 let ssh_config = SshConfig::from_default_path();
                 let host_config = ssh_config.as_ref().map(|c| c.get_host_config(host));
-
-                if let Some(ref cfg) = host_config {
-                    log::debug!(
-                        "SFTP: SSH config for '{}': identity_files={:?}, identities_only={}",
-                        host,
-                        cfg.identity_files,
-                        cfg.identities_only
-                    );
-                } else {
-                    log::debug!("SFTP: No SSH config found for '{}'", host);
-                }
 
                 // Try SSH agent first (unless IdentitiesOnly is set)
                 let identities_only = host_config
@@ -307,51 +291,16 @@ impl SftpProvider {
 
                 if !identities_only {
                     // Try to get detailed info from the agent
-                    match session.agent() {
-                        Ok(mut agent) => {
-                            if let Err(e) = agent.connect() {
-                                log::debug!("SFTP: Agent connect failed: {}", e);
-                            } else if let Err(e) = agent.list_identities() {
-                                log::debug!("SFTP: Agent list_identities failed: {}", e);
-                            } else {
-                                // Log all identities in the agent
-                                let mut identity_count = 0;
-                                let identities = agent.identities().unwrap_or_default();
-                                for identity in identities.iter() {
-                                    identity_count += 1;
-                                    log::debug!(
-                                        "SFTP: Agent identity {}: comment='{}'",
-                                        identity_count,
-                                        identity.comment()
-                                    );
-                                    // Try this specific identity
-                                    match agent.userauth(username, identity) {
-                                        Ok(()) => {
-                                            log::debug!(
-                                                "SFTP: Agent auth succeeded with identity '{}'",
-                                                identity.comment()
-                                            );
-                                            return Ok(());
-                                        }
-                                        Err(e) => {
-                                            log::debug!(
-                                                "SFTP: Agent identity '{}' rejected: {}",
-                                                identity.comment(),
-                                                e
-                                            );
-                                        }
-                                    }
+                    if let Ok(mut agent) = session.agent() {
+                        if agent.connect().is_ok() && agent.list_identities().is_ok() {
+                            let identities = agent.identities().unwrap_or_default();
+                            for identity in identities.iter() {
+                                if agent.userauth(username, identity).is_ok() {
+                                    return Ok(());
                                 }
-                                log::debug!(
-                                    "SFTP: Agent has {} identities, none worked",
-                                    identity_count
-                                );
                             }
-                            let _ = agent.disconnect();
                         }
-                        Err(e) => {
-                            log::debug!("SFTP: Failed to create agent: {}", e);
-                        }
+                        let _ = agent.disconnect();
                     }
                 }
 
@@ -386,15 +335,9 @@ impl SftpProvider {
 
                 for key_file in &key_files {
                     if key_file.exists() {
-                        log::debug!("SFTP: Trying key file {:?}", key_file);
-                        match session.userauth_pubkey_file(username, None, key_file, None) {
-                            Ok(()) => {
-                                log::debug!("SFTP: Key file auth succeeded with {:?}", key_file);
-                                return Ok(());
-                            }
-                            Err(e) => {
-                                log::debug!("SFTP: Key file {:?} failed: {}", key_file, e);
-                            }
+                        if let Ok(()) = session.userauth_pubkey_file(username, None, key_file, None)
+                        {
+                            return Ok(());
                         }
                     }
                 }
@@ -777,15 +720,10 @@ impl SftpProvider {
         }
 
         // Create remote directory (brief lock)
-        log::debug!(
-            "Creating remote directory structure for: {}",
-            remote_path.display()
-        );
         {
             let sftp_guard = lock_sftp(sftp)?;
             sftp_mkdir_recursive(&sftp_guard, remote_path)?;
         }
-        log::debug!("Remote directory verified: {}", remote_path.display());
 
         // List local directory
         let entries: Vec<_> = std::fs::read_dir(local_path)
@@ -844,12 +782,6 @@ impl SftpProvider {
 
                 // Open local file for reading
                 let mut local_file = std::fs::File::open(entry.path()).map_err(VfsError::Io)?;
-
-                log::debug!(
-                    "Creating remote file: {} (parent: {})",
-                    remote_entry.display(),
-                    remote_path.display()
-                );
 
                 let mut buffer = vec![0u8; CHUNK_SIZE];
                 let mut current_file_bytes = 0u64;

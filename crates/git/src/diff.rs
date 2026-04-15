@@ -42,7 +42,6 @@ fn load_original_from_head_sync(file_path: &std::path::Path) -> Option<String> {
         .arg("--show-toplevel")
         .current_dir(file_path.parent().unwrap_or(std::path::Path::new("/")))
         .output()
-        .map_err(|e| log::debug!("git rev-parse failed for {:?}: {}", file_path, e))
         .ok()?;
 
     if !git_root_output.status.success() {
@@ -50,7 +49,6 @@ fn load_original_from_head_sync(file_path: &std::path::Path) -> Option<String> {
     }
 
     let git_root = String::from_utf8(git_root_output.stdout)
-        .map_err(|e| log::debug!("git root path is not valid UTF-8: {}", e))
         .ok()?
         .trim()
         .to_string();
@@ -65,7 +63,6 @@ fn load_original_from_head_sync(file_path: &std::path::Path) -> Option<String> {
         .arg(format!("HEAD:{}", relative_path.display()))
         .current_dir(&git_root)
         .output()
-        .map_err(|e| log::debug!("git show failed for {:?}: {}", relative_path, e))
         .ok()?;
 
     if !output.status.success() {
@@ -84,9 +81,7 @@ fn load_original_from_head_sync(file_path: &std::path::Path) -> Option<String> {
         return Some(String::new());
     }
 
-    String::from_utf8(output.stdout)
-        .map_err(|e| log::debug!("git show output is not valid UTF-8: {}", e))
-        .ok()
+    String::from_utf8(output.stdout).ok()
 }
 
 /// Git diff status for a line in a file
@@ -207,11 +202,6 @@ impl GitDiffCache {
 
     /// Load original content from HEAD
     pub fn load_original_from_head(&mut self) -> Result<()> {
-        log::debug!(
-            "GitDiffCache::load_original_from_head for {:?}",
-            self.file_path
-        );
-
         // Get the directory containing the file to run git commands from
         let file_dir = self
             .file_path
@@ -227,7 +217,6 @@ impl GitDiffCache {
             .context("Failed to get git root")?;
 
         if !git_root_output.status.success() {
-            log::debug!("  git rev-parse failed - not a git repo");
             self.original_content = None;
             return Ok(());
         }
@@ -237,18 +226,15 @@ impl GitDiffCache {
             .trim()
             .to_string();
         let git_root_path = std::path::Path::new(&git_root);
-        log::debug!("  git root: {:?}", git_root_path);
 
         // Get relative path from git root
         let relative_path = match self.file_path.strip_prefix(git_root_path) {
             Ok(p) => p,
-            Err(e) => {
-                log::debug!("  file not in git repo: {}", e);
+            Err(_) => {
                 self.original_content = None;
                 return Ok(());
             }
         };
-        log::debug!("  relative path: {:?}", relative_path);
 
         // Get file content from HEAD
         let output = Command::new("git")
@@ -268,12 +254,10 @@ impl GitDiffCache {
                 .map(|s| s.success())
                 .unwrap_or(false);
             if ignored {
-                log::debug!("  file is gitignored - skipping diff");
                 self.original_content = None;
                 return Ok(());
             }
             // Truly new file (untracked, not ignored)
-            log::debug!("  git show failed - file is new (untracked)");
             self.original_content = Some(String::new());
             return Ok(());
         }
@@ -281,7 +265,6 @@ impl GitDiffCache {
         let content =
             String::from_utf8(output.stdout).context("Failed to parse git show output as UTF-8")?;
 
-        log::debug!("  loaded {} bytes from HEAD", content.len());
         self.original_content = Some(content);
         Ok(())
     }
@@ -325,8 +308,6 @@ impl GitDiffCache {
 
     /// Update git diff by comparing file on disk with HEAD
     pub fn update(&mut self) -> Result<()> {
-        log::debug!("GitDiffCache::update for {:?}", self.file_path);
-
         // Load original content from HEAD
         self.load_original_from_head()?;
 
@@ -334,7 +315,6 @@ impl GitDiffCache {
         let original = match self.original_content.as_deref() {
             Some(content) => content,
             None => {
-                log::debug!("  not in git repo - clearing statuses");
                 self.line_statuses.clear();
                 self.deleted_after_lines.clear();
                 return Ok(());
@@ -344,30 +324,17 @@ impl GitDiffCache {
         // Read current file content from disk
         let current_content = match std::fs::read_to_string(&self.file_path) {
             Ok(content) => content,
-            Err(e) => {
+            Err(_) => {
                 // File might not exist or can't be read
-                log::debug!("  failed to read current file: {}", e);
                 self.line_statuses.clear();
                 self.deleted_after_lines.clear();
                 return Ok(());
             }
         };
 
-        log::debug!(
-            "  comparing {} bytes original vs {} bytes current",
-            original.len(),
-            current_content.len()
-        );
-
         // Use TextDiff for consistency with update_from_buffer()
         let diff = TextDiff::from_lines(original, &current_content);
         let result = compute_line_statuses_from_textdiff(&diff);
-
-        log::debug!(
-            "  found {} changed lines, {} deletion markers",
-            result.statuses.len(),
-            result.deleted_after.len()
-        );
 
         self.line_statuses = result.statuses;
         self.deleted_after_lines = result.deleted_after;

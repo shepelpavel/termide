@@ -92,14 +92,6 @@ impl LspServer {
         workspace_root: PathBuf,
         diagnostics_tx: mpsc::Sender<PublishDiagnosticsParams>,
     ) -> Result<Self> {
-        log::info!(
-            "Starting LSP server: {} {:?} in {:?}",
-            config.command,
-            config.args,
-            workspace_root
-        );
-        log::info!("LSP: Starting {} for {:?}", config.command, workspace_root);
-
         let mut process = Command::new(&config.command)
             .args(&config.args)
             .current_dir(&workspace_root)
@@ -258,8 +250,6 @@ impl LspServer {
                 }
             };
 
-            log::trace!("LSP recv: {}", content_str);
-
             match serde_json::from_str::<JsonRpcMessage>(&content_str) {
                 Ok(JsonRpcMessage::Response(response)) => {
                     Self::handle_response(&pending, &capabilities, response);
@@ -274,7 +264,6 @@ impl LspServer {
                 }
                 Ok(JsonRpcMessage::Request(request)) => {
                     // Server-initiated requests - respond with success
-                    log::debug!("Received server request: {}", request.method);
                     Self::handle_server_request(&writer_tx, request);
                 }
                 Err(e) => {
@@ -316,8 +305,6 @@ impl LspServer {
                 {
                     *capabilities.lock().unwrap_or_else(|e| e.into_inner()) =
                         Some(init_result.capabilities);
-                    log::info!("LSP server initialized, waiting for indexing");
-                    log::info!("LSP: Initialized, starting indexing...");
                 }
                 let _ = tx.send(result);
             } else if let Some(error) = response.error {
@@ -328,8 +315,6 @@ impl LspServer {
             if let Ok(init_result) = serde_json::from_value::<InitializeResult>(result) {
                 *capabilities.lock().unwrap_or_else(|e| e.into_inner()) =
                     Some(init_result.capabilities);
-                log::info!("LSP server initialized, waiting for indexing");
-                log::info!("LSP: Initialized, starting indexing...");
             }
         }
     }
@@ -350,20 +335,14 @@ impl LspServer {
                 }
             }
             "$/progress" => {
-                log::debug!("Received $/progress notification");
                 if let Some(params) = notification.params {
                     Self::handle_progress(status, active_progress, params);
                 }
             }
             "window/logMessage" | "window/showMessage" => {
                 // Log server messages
-                if let Some(params) = notification.params {
-                    log::debug!("LSP {}: {:?}", notification.method, params);
-                }
             }
-            _ => {
-                log::trace!("Unhandled notification: {}", notification.method);
-            }
+            _ => {}
         }
     }
 
@@ -382,19 +361,15 @@ impl LspServer {
             };
 
             match progress.value {
-                ProgressParamsValue::WorkDone(WorkDoneProgress::Begin(begin)) => {
+                ProgressParamsValue::WorkDone(WorkDoneProgress::Begin(_begin)) => {
                     active_progress
                         .lock()
                         .unwrap_or_else(|e| e.into_inner())
                         .insert(token);
                     *status.lock().unwrap_or_else(|e| e.into_inner()) = ServerStatus::Indexing;
-                    log::info!("LSP: {}", begin.title);
                 }
-                ProgressParamsValue::WorkDone(WorkDoneProgress::Report(report)) => {
+                ProgressParamsValue::WorkDone(WorkDoneProgress::Report(_report)) => {
                     // Optional: could show percentage if available
-                    if let Some(msg) = report.message {
-                        log::debug!("LSP progress: {}", msg);
-                    }
                 }
                 ProgressParamsValue::WorkDone(WorkDoneProgress::End(_)) => {
                     let mut progress = active_progress.lock().unwrap_or_else(|e| e.into_inner());
@@ -402,7 +377,6 @@ impl LspServer {
                     if progress.is_empty() {
                         drop(progress); // Release before acquiring status lock
                         *status.lock().unwrap_or_else(|e| e.into_inner()) = ServerStatus::Running;
-                        log::info!("LSP: Ready");
                     }
                 }
             }
@@ -421,7 +395,6 @@ impl LspServer {
 
         if let Ok(msg) = encode_message(&response) {
             let _ = writer_tx.send(msg);
-            log::debug!("Responded to server request: {}", request.method);
         }
     }
 
@@ -512,7 +485,6 @@ impl LspServer {
 
         // Send the request
         let msg = encode_message(&request)?;
-        log::trace!("LSP send: {}", msg);
         self.writer_tx.send(msg)?;
 
         Ok(result_rx)
@@ -522,7 +494,6 @@ impl LspServer {
     fn send_notification(&self, method: &str, params: impl serde::Serialize) {
         let notification = JsonRpcNotification::new(method, serde_json::to_value(params).ok());
         if let Ok(msg) = encode_message(&notification) {
-            log::trace!("LSP send notification: {}", method);
             let _ = self.writer_tx.send(msg);
         }
     }

@@ -46,11 +46,6 @@ impl App {
                         fm.create_file(name.clone())
                     };
                     if result.is_ok() {
-                        log::info!(
-                            "{} created: {}",
-                            if is_directory { "Directory" } else { "File" },
-                            name
-                        );
                         let _ = fm.load_directory();
                     }
                     Some(result)
@@ -119,7 +114,6 @@ impl App {
 
                     match editor.save_file_as(file_path.clone()) {
                         Ok(_) => {
-                            log::info!("File saved as: {}", display_path);
                             self.state.set_info(t.status_file_saved(&display_path));
                             #[cfg(unix)]
                             {
@@ -153,8 +147,6 @@ impl App {
                     perms.set_mode(new_mode);
                     if let Err(e) = std::fs::set_permissions(path, perms) {
                         log::warn!("Failed to set executable permission: {}", e);
-                    } else {
-                        log::info!("Set executable permission on: {}", path.display());
                     }
                 }
             }

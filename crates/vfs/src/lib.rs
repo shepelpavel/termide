@@ -155,11 +155,6 @@ impl VfsManager {
     pub fn connect_sftp(&self, path: &VfsPath, options: ConnectOptions) -> VfsOperation<()> {
         use crate::sftp::SftpProvider;
 
-        log::info!(
-            "VfsManager::connect_sftp() called for {}",
-            path.log_safe_key()
-        );
-
         if !matches!(path.protocol, VfsProtocol::Sftp) {
             return VfsOperation::error(VfsError::InvalidPath("Expected SFTP path".to_string()));
         }
@@ -181,36 +176,26 @@ impl VfsManager {
 
         let (tx, rx) = std::sync::mpsc::channel();
 
-        log::info!("VfsManager::connect_sftp(): Spawning connection thread");
         std::thread::spawn(move || {
-            log::info!("VfsManager thread STARTED");
             let mut provider = SftpProvider::new(&host, port, username.as_deref());
 
-            log::info!("VfsManager thread: Calling provider.connect().recv()...",);
             let result = provider.connect(options).recv();
-            log::info!("VfsManager thread: recv() returned");
 
-            // Diagnostic logging to trace error flow
-            match &result {
-                Ok(()) => {
-                    log::info!("VfsManager: Connection succeeded, forwarding to main thread",)
-                }
-                Err(e) => log::error!(
+            if let Err(e) = &result {
+                log::error!(
                     "VfsManager: Connection failed: {}, forwarding to main thread",
                     e
-                ),
+                );
             }
 
             if result.is_ok() {
                 if let Ok(mut providers) = providers.write() {
                     providers.insert(key.clone(), Box::new(provider));
-                    log::debug!("VfsManager: Provider stored for key '{}'", key);
                 }
             }
 
-            match tx.send(result) {
-                Ok(()) => log::info!("VfsManager: Result successfully sent to channel",),
-                Err(e) => log::error!("VfsManager: Failed to send result to channel: {:?}", e),
+            if let Err(e) = tx.send(result) {
+                log::error!("VfsManager: Failed to send result to channel: {:?}", e);
             }
         });
 
@@ -223,12 +208,6 @@ impl VfsManager {
         use crate::ftp::FtpProvider;
 
         let use_tls = matches!(path.protocol, VfsProtocol::Ftps);
-
-        log::info!(
-            "VfsManager::connect_ftp() called for {} (TLS: {})",
-            path.log_safe_key(),
-            use_tls
-        );
 
         if !matches!(path.protocol, VfsProtocol::Ftp | VfsProtocol::Ftps) {
             return VfsOperation::error(VfsError::InvalidPath(
@@ -258,21 +237,18 @@ impl VfsManager {
 
             let result = provider.connect(options).recv();
 
-            match &result {
-                Ok(()) => log::info!("VfsManager: FTP connection succeeded"),
-                Err(e) => log::error!("VfsManager: FTP connection failed: {}", e),
+            if let Err(e) = &result {
+                log::error!("VfsManager: FTP connection failed: {}", e);
             }
 
             if result.is_ok() {
                 if let Ok(mut providers) = providers.write() {
                     providers.insert(key.clone(), Box::new(provider));
-                    log::debug!("VfsManager: FTP provider stored for key '{}'", key);
                 }
             }
 
-            match tx.send(result) {
-                Ok(()) => log::info!("VfsManager: FTP result sent to channel"),
-                Err(e) => log::error!("VfsManager: Failed to send FTP result: {:?}", e),
+            if let Err(e) = tx.send(result) {
+                log::error!("VfsManager: Failed to send FTP result: {:?}", e);
             }
         });
 
@@ -283,11 +259,6 @@ impl VfsManager {
     #[cfg(feature = "smb")]
     pub fn connect_smb(&self, path: &VfsPath, options: ConnectOptions) -> VfsOperation<()> {
         use crate::smb::SmbProvider;
-
-        log::info!(
-            "VfsManager::connect_smb() called for {}",
-            path.log_safe_key()
-        );
 
         if !matches!(path.protocol, VfsProtocol::Smb) {
             return VfsOperation::error(VfsError::InvalidPath("Expected SMB path".to_string()));
@@ -327,21 +298,18 @@ impl VfsManager {
 
             let result = provider.connect(options).recv();
 
-            match &result {
-                Ok(()) => log::info!("VfsManager: SMB connection succeeded"),
-                Err(e) => log::error!("VfsManager: SMB connection failed: {}", e),
+            if let Err(e) = &result {
+                log::error!("VfsManager: SMB connection failed: {}", e);
             }
 
             if result.is_ok() {
                 if let Ok(mut providers) = providers.write() {
                     providers.insert(key.clone(), Box::new(provider));
-                    log::debug!("VfsManager: SMB provider stored for key '{}'", key);
                 }
             }
 
-            match tx.send(result) {
-                Ok(()) => log::info!("VfsManager: SMB result sent to channel"),
-                Err(e) => log::error!("VfsManager: Failed to send SMB result: {:?}", e),
+            if let Err(e) = tx.send(result) {
+                log::error!("VfsManager: Failed to send SMB result: {:?}", e);
             }
         });
 
@@ -454,18 +422,10 @@ impl VfsManager {
         let key = path.connection_key();
         if let Ok(providers) = self.remote_providers.read() {
             if let Some(provider) = providers.get(&key) {
-                log::debug!(
-                    "VfsManager: Using connected provider for {}",
-                    path.log_safe_key()
-                );
                 return provider.list_dir(path);
             }
         }
 
-        log::debug!(
-            "VfsManager: No connected provider for {}",
-            path.log_safe_key()
-        );
         VfsOperation::error(VfsError::NotConnected)
     }
 

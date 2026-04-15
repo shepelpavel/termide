@@ -254,7 +254,6 @@ impl VfsState {
 
     /// Start a connection to a remote path.
     fn start_connect(&mut self, path: VfsPath) -> VfsResult<()> {
-        log::debug!("VfsState: Starting connection to {}", path.to_url_string());
         // Start async connection based on protocol
         let operation = match path.protocol {
             VfsProtocol::Sftp => {
@@ -291,10 +290,6 @@ impl VfsState {
     pub fn start_list_dir(&mut self) {
         // For remote paths, check if connected and start connection if needed
         if self.current_path.is_remote() && !self.manager.is_connected(&self.current_path) {
-            log::debug!(
-                "VfsState: Not connected to {}, starting connection",
-                self.current_path.to_url_string()
-            );
             self.connection_status = Some(format!(
                 "Connecting to {}...",
                 self.current_path.host.as_deref().unwrap_or("remote")
@@ -324,7 +319,6 @@ impl VfsState {
             PendingVfsOperation::ListDir(op) => {
                 match op.try_recv() {
                     Some(Ok(entries)) => {
-                        log::debug!("VfsState: ListDir completed with {} entries", entries.len());
                         // Clear connection status to stop spinner
                         self.connection_status = None;
                         // Operation completed
@@ -355,7 +349,6 @@ impl VfsState {
             PendingVfsOperation::Connect(op) => {
                 match op.try_recv() {
                     Some(Ok(())) => {
-                        log::debug!("VfsState: Connection succeeded");
                         // Connection succeeded, start listing
                         self.connection_status = Some("Connected".to_string());
                         self.clear_connection_tracking();
@@ -363,16 +356,9 @@ impl VfsState {
                         // If current path is root ("/") or empty, navigate to home directory
                         let path_str = self.current_path.path.to_string_lossy();
                         let is_root = path_str == "/" || path_str.is_empty();
-                        log::debug!("VfsState: Path is '{}', is_root={}", path_str, is_root);
                         if is_root {
                             if let Some(home) = self.manager.get_home_dir(&self.current_path) {
-                                log::debug!(
-                                    "VfsState: Navigating to home directory: {}",
-                                    home.to_url_string()
-                                );
                                 self.current_path = home;
-                            } else {
-                                log::debug!("VfsState: get_home_dir returned None");
                             }
                         }
 
@@ -572,10 +558,6 @@ impl Drop for VfsState {
         if self.current_path.is_remote() {
             let key = self.current_path.connection_key();
             self.manager.disconnect(&key);
-            log::debug!(
-                "VfsState dropped: disconnected from {}",
-                self.current_path.log_safe_key()
-            );
         }
     }
 }

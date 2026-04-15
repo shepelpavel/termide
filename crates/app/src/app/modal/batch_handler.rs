@@ -552,14 +552,6 @@ impl App {
         is_multi_source: bool,
         vfs_manager: &std::sync::Arc<termide_vfs::VfsManager>,
     ) -> (VfsPath, bool) {
-        log::debug!(
-            "resolve_remote_dest: dest={}, source_name={}, url={}, multi={}",
-            remote_dest.to_url_string(),
-            source_name,
-            remote_url,
-            is_multi_source,
-        );
-
         // Multiple sources or trailing slash — always directory
         if is_multi_source || remote_url.ends_with('/') {
             let final_path = remote_dest.join(source_name);
@@ -567,11 +559,6 @@ impl App {
                 log::error!("resolve_remote_dest: VFS channel error: {}", e);
                 false
             });
-            log::debug!(
-                "resolve_remote_dest: trailing slash/multi → final={}, exists={}",
-                final_path.to_url_string(),
-                exists,
-            );
             return (final_path, exists);
         }
 
@@ -584,21 +571,14 @@ impl App {
                     log::error!("resolve_remote_dest: VFS channel error: {}", e);
                     false
                 });
-                log::debug!(
-                    "resolve_remote_dest: dest is dir → final={}, exists={}",
-                    final_path.to_url_string(),
-                    exists,
-                );
                 (final_path, exists)
             }
             Ok(_) => {
                 // Dest exists and is a file — conflict (overwrite)
-                log::debug!("resolve_remote_dest: dest is file → conflict");
                 (remote_dest.clone(), true)
             }
-            Err(e) => {
+            Err(_e) => {
                 // Dest doesn't exist — use as-is (rename)
-                log::debug!("resolve_remote_dest: dest not found ({}) → rename", e);
                 (remote_dest.clone(), false)
             }
         }
@@ -988,7 +968,6 @@ impl App {
                 }
                 ConflictResolution::Cancel => {
                     // Cancel the entire batch operation
-                    log::info!("Batch operation cancelled by user");
                 }
             }
         }
@@ -1247,7 +1226,6 @@ impl App {
                 }
                 ConflictMode::SkipAll => {
                     // Skip file
-                    log::info!("'{}' пропущен (файл существует)", item_name);
                     operation.increment_skipped();
                     operation.advance();
                     // Store and return to allow UI update

@@ -26,7 +26,6 @@ impl App {
         &mut self,
         shell_path: Option<&str>,
     ) -> Result<()> {
-        log::debug!("Opening new Terminal panel with shell: {:?}", shell_path);
         self.close_help_panels();
         // Get working directory from current active panel
         let working_dir = self
@@ -62,7 +61,6 @@ impl App {
 
     /// Create new file manager
     pub(super) fn handle_new_file_manager(&mut self) -> Result<()> {
-        log::debug!("Opening new FileManager panel");
         self.close_help_panels();
 
         // Check if active panel is a remote FileManager and clone it
@@ -93,7 +91,6 @@ impl App {
 
     /// Create new editor
     pub(super) fn handle_new_editor(&mut self) -> Result<()> {
-        log::debug!("Opening new Editor panel");
         self.close_help_panels();
 
         // Get working directory from current active panel (e.g., FileManager)
@@ -115,12 +112,10 @@ impl App {
     pub(super) fn handle_new_journal(&mut self) -> Result<()> {
         // Check if Journal panel already exists and focus it
         if self.focus_existing_journal_panel() {
-            log::debug!("Switching focus to existing Journal panel");
             return Ok(());
         }
 
         // No existing Journal panel found, create new one
-        log::debug!("Opening new Journal panel");
         self.close_help_panels();
         let journal_panel = Journal::new(self.state.theme);
         self.add_panel(Box::new(journal_panel));
@@ -149,7 +144,6 @@ impl App {
 
     /// Open or switch to help panel
     pub(super) fn handle_new_help(&mut self) -> Result<()> {
-        log::debug!("Opening Help panel");
         let help = Help::new(&self.state.config);
         self.add_panel(Box::new(help));
         self.auto_save_session();
@@ -160,7 +154,6 @@ impl App {
     pub(super) fn handle_manage_scripts(&mut self) -> Result<()> {
         use termide_config::get_data_dir;
 
-        log::debug!("Opening scripts folder in File Manager");
         self.close_help_panels();
 
         // Get the scripts directory path
@@ -216,11 +209,6 @@ impl App {
         locations: Vec<ReferenceLocation>,
         symbol_name: Option<String>,
     ) -> Result<()> {
-        log::debug!(
-            "Opening References panel with {} locations",
-            locations.len()
-        );
-
         // Find existing panel (immutable check)
         let panel_exists = self
             .layout_manager
@@ -248,7 +236,6 @@ impl App {
 
     /// Open or focus the Outline panel (singleton).
     pub(super) fn handle_open_outline(&mut self) -> Result<()> {
-        log::debug!("Opening Outline panel");
         self.close_help_panels();
 
         if !self.find_and_focus_panel_by_name("outline") {
@@ -263,7 +250,6 @@ impl App {
 
     /// Open Diagnostics panel
     pub(super) fn handle_open_diagnostics(&mut self) -> Result<()> {
-        log::debug!("Opening Diagnostics panel");
         self.close_help_panels();
 
         if !self.find_and_focus_panel_by_name("diagnostics") {
@@ -283,7 +269,6 @@ impl App {
 
     /// Open Git Status panel
     pub(super) fn handle_open_git_status(&mut self) -> Result<()> {
-        log::debug!("Opening Git Status panel");
         self.close_help_panels();
 
         if !self.find_and_focus_panel_by_name("git_status") {
@@ -297,7 +282,6 @@ impl App {
 
     /// Open Git Log panel (singleton)
     pub(super) fn handle_open_git_log(&mut self) -> Result<()> {
-        log::debug!("Opening Git Log panel");
         self.close_help_panels();
 
         if !self.find_and_focus_panel_by_name("git_log") {

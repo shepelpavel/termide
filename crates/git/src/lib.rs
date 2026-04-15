@@ -189,14 +189,6 @@ pub fn get_git_status(dir: &Path) -> Option<GitStatusCache> {
         }
     };
 
-    log::debug!(
-        "build_git_status_cache: dir={:?}, repo_root={:?}, relative_path={:?} (is_empty={})",
-        dir,
-        repo_root,
-        relative_path,
-        relative_path.as_os_str().is_empty()
-    );
-
     // Single git status command - parse both status and ignored files
     // Use -c core.quotepath=false to show non-ASCII characters properly
     let mut status_map = HashMap::new();
@@ -253,16 +245,6 @@ pub fn get_git_status(dir: &Path) -> Option<GitStatusCache> {
             ancestors
         })
         .collect();
-
-    log::debug!(
-        "build_git_status_cache: status_map entries={}, deleted files:",
-        status_map.len()
-    );
-    for (path, status) in &status_map {
-        if *status == GitStatus::Deleted {
-            log::debug!("  {:?}", path);
-        }
-    }
 
     Some(GitStatusCache {
         status_map,
@@ -423,22 +405,11 @@ impl GitStatusCache {
             }
 
             let parent = path.parent();
-            let parent_str = parent
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_default();
-
             let parent_match = match parent {
                 Some(p) if p.as_os_str().is_empty() => self.relative_path.as_os_str().is_empty(),
                 Some(p) => p == self.relative_path,
                 None => self.relative_path.as_os_str().is_empty(),
             };
-
-            log::info!(
-                "  deleted: path={:?}, parent={:?}, match={}",
-                path,
-                parent_str,
-                parent_match
-            );
 
             if parent_match {
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
@@ -447,7 +418,6 @@ impl GitStatusCache {
             }
         }
 
-        log::info!("  returning: {:?}", result);
         result
     }
 

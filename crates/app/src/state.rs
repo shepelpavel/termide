@@ -348,7 +348,7 @@ impl AppState {
     /// Create new application state, loading config from file
     pub fn new() -> Self {
         let config = Config::load().unwrap_or_else(|e| {
-            eprintln!("Warning: Could not load config: {}. Using defaults.", e);
+            log::warn!("Could not load config: {}. Using defaults.", e);
             Config::default()
         });
         let theme = Theme::get_by_name(&config.general.theme);
@@ -794,24 +794,18 @@ impl AppState {
     /// Pause the active operation.
     pub fn pause_active_operation(&mut self) {
         if let Some(id) = self.active_operation_id {
-            log::debug!("Pausing operation {}", id);
             if let Some(manager) = self.operation_manager_mut() {
                 manager.pause(id);
             }
-        } else {
-            log::debug!("No active operation to pause");
         }
     }
 
     /// Resume the active operation.
     pub fn resume_active_operation(&mut self) {
         if let Some(id) = self.active_operation_id {
-            log::debug!("Resuming operation {}", id);
             if let Some(manager) = self.operation_manager_mut() {
                 manager.resume(id);
             }
-        } else {
-            log::debug!("No active operation to resume");
         }
     }
 

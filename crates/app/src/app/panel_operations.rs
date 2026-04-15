@@ -12,7 +12,6 @@ use termide_i18n as i18n;
 impl App {
     /// Handle panel close request with confirmation if needed
     pub(crate) fn handle_close_panel_request(&mut self) -> Result<()> {
-        log::debug!("Panel close requested");
         // Check if confirmation is required before closing active panel
         if let Some(panel) = self.layout_manager.active_panel_mut() {
             if let Some(_message) = panel.needs_close_confirmation() {
@@ -124,7 +123,6 @@ impl App {
 
     /// Close all Operations panels (called when no active operations remain)
     pub(super) fn close_operations_panel(&mut self) {
-        log::debug!("Closing Operations panel(s)");
         let mut groups_to_remove = Vec::new();
 
         for group_idx in (0..self.layout_manager.panel_groups.len()).rev() {
@@ -171,7 +169,6 @@ impl App {
 
     /// Close all Help panels (called before opening new panel)
     pub(super) fn close_help_panels(&mut self) {
-        log::debug!("Closing Help panel(s)");
         let mut groups_to_remove = Vec::new();
 
         for group_idx in (0..self.layout_manager.panel_groups.len()).rev() {
