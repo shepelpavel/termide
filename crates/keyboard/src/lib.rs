@@ -153,6 +153,10 @@ pub fn normalize_for_matching(key: &KeyEvent) -> KeyEvent {
     if key.code == KeyCode::Char('\x1f') {
         return KeyEvent::new(KeyCode::Char('/'), key.modifiers | KeyModifiers::CONTROL);
     }
+    // Normalize Ctrl+7 → Ctrl+/ — VTE terminals (GNOME Terminal) send Ctrl+/ as Ctrl+7
+    if key.code == KeyCode::Char('7') && key.modifiers.contains(KeyModifiers::CONTROL) {
+        return KeyEvent::new(KeyCode::Char('/'), key.modifiers);
+    }
     // Cyrillic → Latin for any char key (with or without modifiers)
     if let KeyCode::Char(ch) = key.code {
         let translated = cyrillic_to_latin(ch);

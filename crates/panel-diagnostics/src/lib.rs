@@ -520,6 +520,21 @@ impl Panel for DiagnosticsPanel {
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
+        // Ctrl+C: copy selected diagnostic to clipboard
+        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
+            if let Some(entry) = self.selected_entry() {
+                let text = format!(
+                    "{}:{}:{}: {}",
+                    entry.file_path.display(),
+                    entry.line + 1,
+                    entry.column + 1,
+                    entry.message
+                );
+                let _ = termide_clipboard::copy(&text);
+            }
+            return vec![];
+        }
+
         // Vim-aware navigation (j/k/g/G when vim_mode is enabled)
         if is_move_up(&key, self.vim_mode) {
             self.select_prev();

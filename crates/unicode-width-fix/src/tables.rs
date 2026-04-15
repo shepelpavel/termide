@@ -795,11 +795,19 @@ fn in_range(table: &[(u32, u32)], cp: u32) -> bool {
 /// Returns raw width: -1 for control, 0 for zero-width, 1 for normal, 2 for wide.
 #[inline]
 fn char_width_raw(c: char) -> i8 {
-    // U+09BE BENGALI VOWEL SIGN AA and U+09D7 BENGALI AU LENGTH MARK have
-    // Grapheme_Extend=Yes in Unicode, so the table returns 0. But glibc wcwidth()
-    // returns 1 for both (they are Mc / Spacing Marks that advance the cursor).
-    // Override to match wcwidth() and avoid cursor desync in crossterm rendering.
-    if matches!(c, '\u{09BE}' | '\u{09D7}') {
+    // Bengali spacing marks: glibc wcwidth() returns 1 but Unicode Grapheme_Extend
+    // marks them as zero-width. Override to match glibc and avoid cursor desync.
+    if matches!(
+        c,
+        '\u{09BE}'
+            | '\u{09BF}'
+            | '\u{09C0}'
+            | '\u{09C7}'
+            | '\u{09C8}'
+            | '\u{09CB}'
+            | '\u{09CC}'
+            | '\u{09D7}'
+    ) {
         return 1;
     }
     let cp = c as u32;
@@ -823,7 +831,17 @@ fn char_width_raw(c: char) -> i8 {
 #[inline]
 fn char_width_raw_cjk(c: char) -> i8 {
     // Same Bengali override as non-CJK.
-    if matches!(c, '\u{09BE}' | '\u{09D7}') {
+    if matches!(
+        c,
+        '\u{09BE}'
+            | '\u{09BF}'
+            | '\u{09C0}'
+            | '\u{09C7}'
+            | '\u{09C8}'
+            | '\u{09CB}'
+            | '\u{09CC}'
+            | '\u{09D7}'
+    ) {
         return 1;
     }
     let cp = c as u32;

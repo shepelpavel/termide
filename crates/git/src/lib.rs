@@ -416,12 +416,6 @@ impl GitStatusCache {
     }
 
     pub fn get_deleted_files(&self) -> Vec<String> {
-        log::info!(
-            "get_deleted_files: relative_path={:?} (is_empty={})",
-            self.relative_path,
-            self.relative_path.as_os_str().is_empty()
-        );
-
         let mut result = Vec::new();
         for (path, status) in &self.status_map {
             if *status != GitStatus::Deleted {

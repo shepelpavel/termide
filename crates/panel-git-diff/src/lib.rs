@@ -173,6 +173,7 @@ fn build_git_diff_hotkey_table(config: &Config) -> HotkeyTable {
     t.insert("refresh", &kb.refresh);
     t.insert("scroll_half_up", &kb.scroll_half_up);
     t.insert("scroll_half_down", &kb.scroll_half_down);
+    t.insert("clipboard_copy", &kb.clipboard_copy);
     t
 }
 
@@ -1022,6 +1023,14 @@ impl Panel for GitDiffPanel {
         }
         if self.hotkeys.matches("scroll_half_down", &key) {
             self.scroll_down(self.visible_height / 2);
+            return vec![];
+        }
+        if self.hotkeys.matches("clipboard_copy", &key) {
+            if let Some(diff) = self.diffs.get(self.selected_file) {
+                let path = diff.path.clone();
+                let _ = termide_clipboard::copy(&path);
+                self.status_message = Some(format!("Copied: {}", path));
+            }
             return vec![];
         }
 

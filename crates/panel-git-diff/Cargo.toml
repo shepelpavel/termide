@@ -14,6 +14,7 @@ unicode-width.workspace = true
 regex.workspace = true
 
 # Workspace crates
+termide-clipboard = { path = "../clipboard" }
 termide-config = { path = "../config" }
 termide-core = { path = "../core" }
 termide-git = { path = "../git" }

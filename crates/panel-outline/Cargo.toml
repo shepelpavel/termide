@@ -30,6 +30,7 @@ tree-sitter-css = "0.23"
 tree-sitter-bash = "0.23"
 tree-sitter-md = "0.3"
 
+termide-clipboard = { path = "../clipboard" }
 termide-config = { path = "../config" }
 termide-core = { path = "../core" }
 termide-highlight = { path = "../highlight" }

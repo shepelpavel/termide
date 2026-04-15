@@ -353,6 +353,8 @@ pub struct GitDiffKeybindings {
     pub scroll_half_up: Option<KeyBinding>,
     /// Scroll half page down
     pub scroll_half_down: Option<KeyBinding>,
+    /// Copy selected file path to clipboard
+    pub clipboard_copy: Option<KeyBinding>,
 }
 
 impl GitDiffKeybindings {
@@ -377,6 +379,7 @@ impl GitDiffKeybindings {
         }
         set_default!(scroll_half_up, "Ctrl+U");
         set_default!(scroll_half_down, "Ctrl+D");
+        set_default!(clipboard_copy, "Ctrl+C");
     }
 }
 
@@ -389,6 +392,8 @@ pub struct GitLogKeybindings {
     pub view_diff: Option<KeyBinding>,
     /// Checkout commit/branch
     pub checkout: Option<KeyBinding>,
+    /// Copy selected commit hash to clipboard
+    pub clipboard_copy: Option<KeyBinding>,
 }
 
 impl GitLogKeybindings {
@@ -405,6 +410,7 @@ impl GitLogKeybindings {
         set_default!(info, "Space");
         set_default!(view_diff, "D");
         set_default!(checkout, "C");
+        set_default!(clipboard_copy, "Ctrl+C");
     }
 }
 

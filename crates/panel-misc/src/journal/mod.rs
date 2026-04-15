@@ -150,13 +150,13 @@ impl Panel for JournalPanel {
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
-        let _ = self.editor.handle_key(key);
+        let events = self.editor.handle_key(key);
 
         // Auto-scroll when cursor is on the last content line (skip trailing empty line)
         let last_line = self.editor.buffer().line_count().saturating_sub(2);
         self.auto_scroll = self.editor.cursor_line() >= last_line;
 
-        vec![]
+        events
     }
 
     fn tick(&mut self) -> Vec<PanelEvent> {
