@@ -102,14 +102,15 @@ pub struct ScriptOperationHandle {
     pub pid: Option<u32>,
 }
 
-/// Kill a process and all its children by PID (cross-platform).
-/// On Unix, the script must have been started with `setsid()` so that
-/// `-pid` targets only the script's session, not the parent (termide).
+/// Kill a background script process by PID (cross-platform).
+/// On Unix, uses negative PID to kill the entire process session.
+/// Requires the child to have been started with `setsid()` via `pre_exec`
+/// (done in `script_command()`) so that `-pid` targets only the child's session.
 pub fn kill_process_tree(pid: u32) {
     #[cfg(unix)]
     {
         // Kill the entire session (negative PID) with SIGKILL.
-        // Safe because shell_command() calls setsid() before exec.
+        // Works because script_command() calls setsid() in pre_exec.
         unsafe {
             libc::kill(-(pid as i32), libc::SIGKILL);
         }

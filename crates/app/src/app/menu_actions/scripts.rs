@@ -1,12 +1,7 @@
 //! Scripts menu actions — scripts dropdown, execution, and script utilities.
 
 use anyhow::Result;
-use std::collections::HashMap;
 use std::path::PathBuf;
-#[cfg(unix)]
-use std::sync::Mutex;
-#[cfg(unix)]
-use std::time::{Duration, Instant};
 
 use super::super::App;
 
@@ -375,8 +370,7 @@ impl App {
         } else if script.is_background {
             // Background spawn — tracked in Operations panel
             log::info!("Running background script '{}' in {:?}", script.name, cwd);
-            match shell_command(&script.path, &cwd)
-                .current_dir(&cwd)
+            match script_command(&script.path, &cwd)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
                 .stdin(std::process::Stdio::null())
@@ -452,8 +446,7 @@ impl App {
 
         log::info!("Running report script '{}' in {:?}", script.name, cwd);
 
-        let child = shell_command(&script.path, cwd)
-            .current_dir(cwd)
+        let child = script_command(&script.path, cwd)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn();
@@ -572,105 +565,140 @@ fn shell_quote(path: &std::path::Path) -> String {
     format!("\"{}\"", s.replace('"', "\\\""))
 }
 
-/// Per-directory environment cache (for direnv integration).
-#[cfg(unix)]
-type EnvCache = HashMap<PathBuf, (HashMap<String, String>, Instant)>;
+/// Build a Command for executing a script with project-specific environment.
+///
+/// Uses `direnv export json` to get the project environment (NixOS flake devShell, etc.).
+/// Falls back to direct execution inheriting termide's own environment.
+fn script_command(script_path: &std::path::Path, cwd: &std::path::Path) -> std::process::Command {
+    let mut cmd = std::process::Command::new(script_path);
+    cmd.current_dir(cwd);
 
-#[cfg(unix)]
-static DIR_ENV_CACHE: Mutex<Option<EnvCache>> = Mutex::new(None);
-
-#[cfg(unix)]
-const ENV_CACHE_TTL: Duration = Duration::from_secs(60);
-
-#[cfg(unix)]
-fn has_direnv() -> bool {
-    use std::sync::OnceLock;
-    static AVAILABLE: OnceLock<bool> = OnceLock::new();
-    *AVAILABLE.get_or_init(|| {
-        std::process::Command::new("direnv")
-            .arg("--version")
-            .output()
-            .is_ok()
-    })
-}
-
-/// Get project-specific environment variables via direnv.
-#[cfg(unix)]
-fn get_project_env(cwd: &std::path::Path) -> Option<HashMap<String, String>> {
-    if !has_direnv() {
-        return None;
-    }
-
-    let mut cache = DIR_ENV_CACHE.lock().unwrap();
-    let cache = cache.get_or_insert_with(HashMap::new);
-
-    // Check cache
-    if let Some((env, ts)) = cache.get(cwd) {
-        if ts.elapsed() < ENV_CACHE_TTL {
-            return Some(env.clone());
+    // Start in a new session so kill_process_tree() can kill the entire group
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::setsid();
+                Ok(())
+            });
         }
     }
 
-    let output = std::process::Command::new("direnv")
-        .args(["export", "bash"])
-        .current_dir(cwd)
-        .output()
-        .ok()?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    if !output.status.success() || stdout.trim().is_empty() {
-        return None;
-    }
-
-    let mut env_map = HashMap::new();
-    // Parse `export KEY="VALUE"` lines
-    for line in stdout.lines() {
-        if let Some(rest) = line.strip_prefix("export ") {
-            if let Some((key, value)) = rest.split_once('=') {
-                let (key, value) = (key.trim(), value.trim());
-                let value = value.trim_matches('"');
-                env_map.insert(key.to_string(), value.to_string());
+    // Try to load project environment via direnv
+    if let Some(env) = get_direnv_json(cwd) {
+        for (key, value) in &env {
+            match value {
+                Some(v) => {
+                    cmd.env(key, v);
+                }
+                None => {
+                    cmd.env_remove(key);
+                }
             }
         }
     }
 
-    let cache_mut = cache.get_mut(cwd);
-    if let Some((_, ts)) = cache_mut {
-        *ts = Instant::now();
-    } else {
-        cache.insert(cwd.to_path_buf(), (env_map.clone(), Instant::now()));
-    }
-
-    Some(env_map)
+    cmd
 }
 
-/// Build a shell Command for executing a script, with direnv support.
+/// Get project environment via `direnv export json`.
+///
+/// Returns a map of KEY → Some(value) for set vars, KEY → None for unset vars.
+/// Uses caching with 60s TTL to avoid repeated subprocess calls.
 #[cfg(unix)]
-fn shell_command(script_path: &std::path::Path, cwd: &std::path::Path) -> std::process::Command {
-    if let Some(env) = get_project_env(cwd) {
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
-        let mut cmd = std::process::Command::new(&shell);
-        cmd.arg("-c");
-        cmd.arg(shell_quote(script_path));
-        cmd.current_dir(cwd);
-        for (k, v) in env {
-            cmd.env(&k, &v);
-        }
-        cmd
-    } else {
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
-        let mut cmd = std::process::Command::new(&shell);
-        cmd.arg("-c");
-        cmd.arg(shell_quote(script_path));
-        cmd.current_dir(cwd);
-        cmd
+fn get_direnv_json(
+    cwd: &std::path::Path,
+) -> Option<std::collections::HashMap<String, Option<String>>> {
+    use std::sync::Mutex;
+
+    // Check if direnv is available
+    static DIRENV_AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    let available = *DIRENV_AVAILABLE.get_or_init(|| {
+        std::process::Command::new("direnv")
+            .arg("--version")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok()
+    });
+    if !available {
+        return None;
     }
+
+    // Cache with TTL
+    type Cache = std::collections::HashMap<
+        std::path::PathBuf,
+        (
+            std::collections::HashMap<String, Option<String>>,
+            std::time::Instant,
+        ),
+    >;
+    static CACHE: Mutex<Option<Cache>> = Mutex::new(None);
+    const TTL: std::time::Duration = std::time::Duration::from_secs(60);
+
+    let mut cache = CACHE.lock().unwrap();
+    let cache = cache.get_or_insert_with(std::collections::HashMap::new);
+
+    if let Some((env, ts)) = cache.get(cwd) {
+        if ts.elapsed() < TTL {
+            return Some(env.clone());
+        }
+    }
+
+    // Run direnv export json
+    let output = std::process::Command::new("direnv")
+        .args(["export", "json"])
+        .current_dir(cwd)
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if stdout.trim().is_empty() {
+        return None;
+    }
+
+    // Parse JSON: { "KEY": "value", "KEY2": null }
+    // Minimal JSON parser — no serde dependency needed
+    let mut env = std::collections::HashMap::new();
+    // Simple line-by-line parse of direnv JSON output
+    for line in stdout.lines() {
+        let line = line.trim().trim_end_matches(',');
+        if line.starts_with('{') || line.starts_with('}') {
+            continue;
+        }
+        // "KEY": "VALUE" or "KEY": null
+        if let Some((key_part, val_part)) = line.split_once(':') {
+            let key = key_part.trim().trim_matches('"').to_string();
+            let val = val_part.trim();
+            if val == "null" {
+                env.insert(key, None);
+            } else {
+                // Remove surrounding quotes, handle escaped chars
+                let v = val.trim_matches('"');
+                // Unescape JSON string basics
+                let v = v
+                    .replace("\\\"", "\"")
+                    .replace("\\\\", "\\")
+                    .replace("\\n", "\n")
+                    .replace("\\t", "\t");
+                env.insert(key, Some(v));
+            }
+        }
+    }
+
+    cache.insert(cwd.to_path_buf(), (env.clone(), std::time::Instant::now()));
+    Some(env)
 }
 
 #[cfg(not(unix))]
-fn shell_command(script_path: &std::path::Path, cwd: &std::path::Path) -> std::process::Command {
-    let mut cmd = std::process::Command::new("cmd");
-    cmd.args(["/C", &script_path.to_string_lossy()]);
-    cmd.current_dir(cwd);
-    cmd
+fn get_direnv_json(
+    _cwd: &std::path::Path,
+) -> Option<std::collections::HashMap<String, Option<String>>> {
+    None
 }

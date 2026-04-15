@@ -128,6 +128,9 @@ impl Panel for JournalPanel {
         self.cached_theme = *theme;
         self.cached_config = (*config).clone();
         self.highlight_cache.set_theme(*theme);
+        // Propagate config to inner editor so its hotkey table is built
+        // (needed for Ctrl+C copy, Ctrl+F search, etc.)
+        self.editor.prepare_render(theme, config);
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, _ctx: &RenderContext) {
