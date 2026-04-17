@@ -192,6 +192,29 @@ pub trait Translation: Send + Sync {
     // Git Log help descriptions (static keys)
     fn help_desc_view_commit_diff(&self) -> &str;
 
+    // Additional help descriptions (missing entries audit)
+    fn help_desc_new_session(&self) -> &str;
+    fn help_desc_save(&self) -> &str;
+    fn help_desc_undo(&self) -> &str;
+    fn help_desc_redo(&self) -> &str;
+    fn help_desc_search(&self) -> &str;
+    fn help_desc_search_content(&self) -> &str;
+    fn help_desc_select_all(&self) -> &str;
+    fn help_desc_refresh(&self) -> &str;
+    fn help_desc_go_parent(&self) -> &str;
+    fn help_desc_go_home_dir(&self) -> &str;
+    fn help_desc_switch_directory(&self) -> &str;
+    fn help_desc_go_to_path(&self) -> &str;
+    fn help_desc_edit_copy(&self) -> &str;
+    fn help_desc_edit_cut(&self) -> &str;
+    fn help_desc_edit_paste(&self) -> &str;
+    fn help_desc_view_diff(&self) -> &str;
+    fn help_desc_revert(&self) -> &str;
+    fn help_desc_checkout(&self) -> &str;
+    fn help_desc_copy_hash(&self) -> &str;
+    fn help_desc_scroll_half_down(&self) -> &str;
+    fn help_desc_stage_unstage(&self) -> &str;
+
     // File operation status
     fn status_file_created(&self, name: &str) -> String;
     fn status_dir_created(&self, name: &str) -> String;

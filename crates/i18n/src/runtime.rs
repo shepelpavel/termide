@@ -574,6 +574,71 @@ impl Translation for RuntimeTranslation {
         self.get_string("help_desc_view_commit_diff")
     }
 
+    // Additional help descriptions (missing entries audit)
+    fn help_desc_new_session(&self) -> &str {
+        self.get_string("help_desc_new_session")
+    }
+    fn help_desc_save(&self) -> &str {
+        self.get_string("help_desc_save")
+    }
+    fn help_desc_undo(&self) -> &str {
+        self.get_string("help_desc_undo")
+    }
+    fn help_desc_redo(&self) -> &str {
+        self.get_string("help_desc_redo")
+    }
+    fn help_desc_search(&self) -> &str {
+        self.get_string("help_desc_search")
+    }
+    fn help_desc_search_content(&self) -> &str {
+        self.get_string("help_desc_search_content")
+    }
+    fn help_desc_select_all(&self) -> &str {
+        self.get_string("help_desc_select_all")
+    }
+    fn help_desc_refresh(&self) -> &str {
+        self.get_string("help_desc_refresh")
+    }
+    fn help_desc_go_parent(&self) -> &str {
+        self.get_string("help_desc_go_parent")
+    }
+    fn help_desc_go_home_dir(&self) -> &str {
+        self.get_string("help_desc_go_home_dir")
+    }
+    fn help_desc_switch_directory(&self) -> &str {
+        self.get_string("help_desc_switch_directory")
+    }
+    fn help_desc_go_to_path(&self) -> &str {
+        self.get_string("help_desc_go_to_path")
+    }
+    fn help_desc_edit_copy(&self) -> &str {
+        self.get_string("help_desc_edit_copy")
+    }
+    fn help_desc_edit_cut(&self) -> &str {
+        self.get_string("help_desc_edit_cut")
+    }
+    fn help_desc_edit_paste(&self) -> &str {
+        self.get_string("help_desc_edit_paste")
+    }
+    fn help_desc_view_diff(&self) -> &str {
+        self.get_string("help_desc_view_diff")
+    }
+    fn help_desc_revert(&self) -> &str {
+        self.get_string("help_desc_revert")
+    }
+    fn help_desc_checkout(&self) -> &str {
+        self.get_string("help_desc_checkout")
+    }
+    fn help_desc_copy_hash(&self) -> &str {
+        self.get_string("help_desc_copy_hash")
+    }
+    fn help_desc_scroll_half_down(&self) -> &str {
+        self.get_string("help_desc_scroll_half_down")
+    }
+    fn help_desc_stage_unstage(&self) -> &str {
+        self.get_string("help_desc_stage_unstage")
+    }
+
     fn status_file_created(&self, name: &str) -> String {
         self.format("status_file_created", &[("name", name)])
     }
