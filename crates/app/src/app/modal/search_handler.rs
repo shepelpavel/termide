@@ -1,0 +1,309 @@
+//! Search / replace modal result handlers and the shared result-routing enum.
+
+use anyhow::Result;
+
+use crate::app::App;
+use crate::state::ActiveModal;
+use termide_modal::{
+    ModalResult, ReplaceAction, ReplaceModalResult, SearchAction, SearchModalResult,
+};
+
+/// Result of processing search/replace modal.
+///
+/// Kept module-local: only `handle_search_replace_modal` cares about this,
+/// and the extracted handlers collaborate via their own private helpers.
+pub(super) enum SearchReplaceResult {
+    /// Keep modal open (navigation action).
+    KeepOpen,
+    /// Close modal.
+    Close,
+    /// Modal cancelled — close and clear search.
+    Cancelled,
+    /// Not a search/replace modal.
+    NotApplicable,
+}
+
+impl App {
+    /// Handle search result
+    pub(in crate::app) fn handle_search(&mut self, value: Box<dyn std::any::Any>) -> Result<()> {
+        if let Some(query) = value.downcast_ref::<String>() {
+            // Start search in active panel (case insensitive by default)
+            if let Some(searchable) = self.active_searchable_mut() {
+                searchable.start_search(query.clone(), false);
+            }
+        }
+        Ok(())
+    }
+
+    /// Handle replace action from ReplaceModal
+    pub(in crate::app) fn handle_replace_action(
+        &mut self,
+        replace_result: &ReplaceModalResult,
+    ) -> Result<()> {
+        // Get active editor
+        if let Some(editor) = self.active_searchable_editor_mut() {
+            match replace_result.action {
+                ReplaceAction::Search => {
+                    // Perform new search/replace (or update existing)
+                    editor.start_replace(
+                        replace_result.find_query.clone(),
+                        replace_result.replace_with.clone(),
+                        false,
+                    );
+                }
+                ReplaceAction::Next => {
+                    // Update only replace_with value without rebuilding search
+                    editor.update_replace_with(replace_result.replace_with.clone());
+                    // Navigate to next match
+                    editor.search_next();
+                }
+                ReplaceAction::Previous => {
+                    // Update only replace_with value without rebuilding search
+                    editor.update_replace_with(replace_result.replace_with.clone());
+                    // Navigate to previous match
+                    editor.search_prev();
+                }
+                ReplaceAction::Replace => {
+                    // Update only replace_with value without rebuilding search
+                    // This preserves the current_match index for sequential replacement
+                    editor.update_replace_with(replace_result.replace_with.clone());
+                    // Replace current match and position cursor on next match
+                    editor.replace_current()?;
+                    // Don't call search_next() - replace_current() already positions cursor correctly
+                }
+                ReplaceAction::ReplaceAll => {
+                    // Update search state with latest values from modal before replacing all
+                    editor.start_replace(
+                        replace_result.find_query.clone(),
+                        replace_result.replace_with.clone(),
+                        false,
+                    );
+                    // Replace all matches (now uses updated replace_with)
+                    editor.replace_all()?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Handle search action from SearchModal
+    pub(in crate::app) fn handle_search_action(
+        &mut self,
+        search_result: &SearchModalResult,
+    ) -> Result<()> {
+        use termide_core::SearchMode;
+
+        match search_result.mode {
+            SearchMode::Text => {
+                // Get active searchable panel (Editor, Journal, or Terminal)
+                if let Some(searchable) = self.active_searchable_mut() {
+                    match search_result.action {
+                        SearchAction::Search => {
+                            searchable.start_search(search_result.query.clone(), false);
+                        }
+                        SearchAction::Next => {
+                            searchable.search_next();
+                        }
+                        SearchAction::Previous => {
+                            searchable.search_prev();
+                        }
+                        SearchAction::CloseWithSelection => {
+                            // Selection is already set by editor methods
+                        }
+                    }
+                }
+            }
+            SearchMode::FileGlob => {
+                if let Some(fm) = self.active_file_manager_mut() {
+                    match search_result.action {
+                        SearchAction::Search => {
+                            fm.start_file_search(&search_result.query);
+                        }
+                        SearchAction::Next => {
+                            fm.search_next();
+                        }
+                        SearchAction::Previous => {
+                            fm.search_prev();
+                        }
+                        SearchAction::CloseWithSelection => {
+                            fm.close_search_with_selection();
+                        }
+                    }
+                }
+            }
+            SearchMode::Content => {
+                let mut open_event = None;
+                if let Some(fm) = self.active_file_manager_mut() {
+                    let content_query = search_result.content_query.as_deref().unwrap_or("");
+                    match search_result.action {
+                        SearchAction::Search => {
+                            fm.start_content_search(&search_result.query, content_query);
+                        }
+                        SearchAction::Next => {
+                            fm.search_next();
+                        }
+                        SearchAction::Previous => {
+                            fm.search_prev();
+                        }
+                        SearchAction::CloseWithSelection => {
+                            open_event = fm.close_search_with_selection();
+                        }
+                    }
+                }
+                if let Some(event) = open_event {
+                    self.process_single_event(event)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Process search modal result and determine what to do
+    pub(super) fn process_search_modal_result(
+        &mut self,
+        result: &ModalResult<Box<dyn std::any::Any>>,
+    ) -> SearchReplaceResult {
+        use termide_core::SearchMode;
+
+        if let ModalResult::Confirmed(value) = result {
+            if let Some(search_result) = value.downcast_ref::<SearchModalResult>() {
+                // Handle search action based on mode
+                if self.handle_search_action(search_result).is_err() {
+                    return SearchReplaceResult::Close;
+                }
+
+                // Check if we should close modal
+                if matches!(search_result.action, SearchAction::CloseWithSelection) {
+                    return SearchReplaceResult::Close;
+                }
+
+                // Get match info based on mode
+                let match_info = match search_result.mode {
+                    SearchMode::Text => self
+                        .active_searchable_mut()
+                        .and_then(|s| s.get_search_match_info()),
+                    SearchMode::FileGlob | SearchMode::Content => self
+                        .active_file_manager_mut()
+                        .and_then(|fm| fm.get_file_search_match_info()),
+                };
+
+                // Update match info in modal
+                if let Some(ActiveModal::Search(search_modal)) = &mut self.state.active_modal {
+                    if let Some((current, total)) = match_info {
+                        search_modal.set_match_info(current, total);
+                    } else {
+                        search_modal.clear_match_info();
+                    }
+                }
+
+                return SearchReplaceResult::KeepOpen;
+            }
+        } else if matches!(result, ModalResult::Cancelled) {
+            return SearchReplaceResult::Cancelled;
+        }
+        SearchReplaceResult::NotApplicable
+    }
+
+    /// Process replace modal result and determine what to do
+    pub(super) fn process_replace_modal_result(
+        &mut self,
+        result: &ModalResult<Box<dyn std::any::Any>>,
+    ) -> SearchReplaceResult {
+        if let ModalResult::Confirmed(value) = result {
+            if let Some(replace_result) = value.downcast_ref::<ReplaceModalResult>() {
+                // Handle replace action in editor
+                if self.handle_replace_action(replace_result).is_err() {
+                    return SearchReplaceResult::Close;
+                }
+
+                // Get match info from active editor
+                let match_info = self
+                    .active_searchable_editor_mut()
+                    .and_then(|editor| editor.get_search_match_info());
+
+                // Check if we should close modal
+                if matches!(replace_result.action, ReplaceAction::ReplaceAll) {
+                    return SearchReplaceResult::Close;
+                }
+
+                // Update match info in modal for other actions
+                if let Some((current, total)) = match_info {
+                    if let Some(ActiveModal::Replace(replace_modal)) = &mut self.state.active_modal
+                    {
+                        replace_modal.set_match_info(current, total);
+                    }
+                }
+
+                return SearchReplaceResult::KeepOpen;
+            }
+        } else if matches!(result, ModalResult::Cancelled) {
+            return SearchReplaceResult::Cancelled;
+        }
+        SearchReplaceResult::NotApplicable
+    }
+
+    /// Handle search/replace modal result and return whether to continue processing
+    pub(in crate::app) fn handle_search_replace_modal(
+        &mut self,
+        is_search: bool,
+        is_replace: bool,
+        result: &ModalResult<Box<dyn std::any::Any>>,
+    ) -> Option<()> {
+        if is_search {
+            match self.process_search_modal_result(result) {
+                SearchReplaceResult::KeepOpen => return Some(()),
+                SearchReplaceResult::Close => {
+                    self.state.close_modal();
+                    return Some(());
+                }
+                SearchReplaceResult::Cancelled => {
+                    // Determine mode before closing modal
+                    let mode = if let Some(ActiveModal::Search(ref m)) = self.state.active_modal {
+                        Some(m.mode())
+                    } else {
+                        None
+                    };
+                    self.state.close_modal();
+                    match mode {
+                        Some(termide_core::SearchMode::Text) => {
+                            if let Some(searchable) = self.active_searchable_mut() {
+                                searchable.close_search();
+                            }
+                        }
+                        Some(
+                            termide_core::SearchMode::FileGlob | termide_core::SearchMode::Content,
+                        ) => {
+                            if let Some(fm) = self.active_file_manager_mut() {
+                                fm.close_file_search();
+                            }
+                        }
+                        None => {}
+                    }
+                    return Some(());
+                }
+                SearchReplaceResult::NotApplicable => {}
+            }
+        }
+
+        if is_replace {
+            match self.process_replace_modal_result(result) {
+                SearchReplaceResult::KeepOpen => return Some(()),
+                SearchReplaceResult::Close => {
+                    self.state.close_modal();
+                    return Some(());
+                }
+                SearchReplaceResult::Cancelled => {
+                    self.state.close_modal();
+                    // Replace is editor-only, use editor downcast
+                    if let Some(editor) = self.active_searchable_editor_mut() {
+                        editor.close_search();
+                    }
+                    return Some(());
+                }
+                SearchReplaceResult::NotApplicable => {}
+            }
+        }
+
+        None // Continue with normal modal handling
+    }
+}
