@@ -8,7 +8,8 @@ use ratatui::{
     text::{Line, Span},
 };
 use termide_config::{
-    Config, EditorKeybindings, GlobalKeybindings, KeyBinding, TerminalKeybindings,
+    Config, EditorKeybindings, FileManagerKeybindings, GitDiffKeybindings, GitLogKeybindings,
+    GitStatusKeybindings, GlobalKeybindings, KeyBinding, TerminalKeybindings,
 };
 use termide_i18n;
 use termide_theme::Theme;
@@ -41,11 +42,15 @@ impl HelpGenerator {
             Self::generate_global_section(&config.general.keybindings, t),
             Self::generate_panel_section(&config.general.keybindings, t),
             Self::generate_navigation_section(t),
-            Self::generate_file_manager_section(config, t),
+            Self::generate_file_manager_section(&config.file_manager.keybindings, t),
             Self::generate_editor_section(&config.editor.keybindings, t),
-            Self::generate_git_status_section(t),
-            Self::generate_git_diff_section(t),
-            Self::generate_git_log_section(config, t),
+            Self::generate_git_status_section(&config.git_status.keybindings, t),
+            Self::generate_git_diff_section(&config.git_diff.keybindings, t),
+            Self::generate_git_log_section(
+                &config.git_log.keybindings,
+                &config.file_manager.keybindings,
+                t,
+            ),
             Self::generate_terminal_section(&config.terminal.keybindings, t),
         ]
     }
@@ -92,6 +97,10 @@ impl HelpGenerator {
             HelpEntry {
                 keys: Self::format_keys(&kb.new_journal),
                 description: t.help_desc_new_journal().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.new_session),
+                description: t.help_desc_new_session().to_string(),
             },
             HelpEntry {
                 keys: Self::format_keys(&kb.open_preferences),
@@ -205,53 +214,105 @@ impl HelpGenerator {
 
     /// Generate file manager keybindings section.
     fn generate_file_manager_section(
-        config: &Config,
+        kb: &FileManagerKeybindings,
         t: &dyn termide_i18n::Translation,
     ) -> HelpSection {
         let entries = vec![
             HelpEntry {
-                keys: "C".to_string(),
-                description: t.help_desc_copy().to_string(),
-            },
-            HelpEntry {
-                keys: "M".to_string(),
-                description: t.help_desc_move().to_string(),
-            },
-            HelpEntry {
-                keys: "R".to_string(),
-                description: t.help_desc_rename().to_string(),
-            },
-            HelpEntry {
-                keys: "V".to_string(),
-                description: t.help_desc_view_file().to_string(),
-            },
-            HelpEntry {
-                keys: "E".to_string(),
+                keys: "Enter".to_string(),
                 description: t.help_desc_edit_file().to_string(),
             },
             HelpEntry {
-                keys: "F".to_string(),
+                keys: Self::format_keys(&kb.view),
+                description: t.help_desc_view_file().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.edit),
+                description: t.help_desc_edit_file().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.rename),
+                description: t.help_desc_rename().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.copy),
+                description: t.help_desc_copy().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.move_item),
+                description: t.help_desc_move().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.create_file),
                 description: t.help_desc_create_file().to_string(),
             },
             HelpEntry {
-                keys: "D".to_string(),
+                keys: Self::format_keys(&kb.create_dir),
                 description: t.help_desc_create_dir().to_string(),
             },
             HelpEntry {
-                keys: "Space".to_string(),
+                keys: Self::format_keys(&kb.delete),
+                description: t.help_desc_delete_generic().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.info),
                 description: t.help_desc_show_hover().to_string(),
             },
             HelpEntry {
-                keys: "Insert".to_string(),
+                keys: Self::format_keys(&kb.search),
+                description: t.help_desc_search().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.search_content),
+                description: t.help_desc_search_content().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.go_parent),
+                description: t.help_desc_go_parent().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.go_home),
+                description: t.help_desc_go_home_dir().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.go_to_path),
+                description: t.help_desc_go_to_path().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.switch_directory),
+                description: t.help_desc_switch_directory().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.toggle_selection),
                 description: t.help_desc_select().to_string(),
             },
             HelpEntry {
-                keys: ".".to_string(),
+                keys: Self::format_keys(&kb.select_all),
+                description: t.help_desc_select_all().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.toggle_hidden),
                 description: t.help_desc_toggle_hidden().to_string(),
             },
             HelpEntry {
-                keys: Self::format_keys(&config.file_manager.keybindings.open_external),
+                keys: Self::format_keys(&kb.open_external),
                 description: t.help_desc_open_external().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.refresh),
+                description: t.help_desc_refresh().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.clipboard_copy),
+                description: t.help_desc_edit_copy().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.clipboard_cut),
+                description: t.help_desc_edit_cut().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.clipboard_paste),
+                description: t.help_desc_edit_paste().to_string(),
             },
         ];
 
@@ -268,6 +329,10 @@ impl HelpGenerator {
     ) -> HelpSection {
         let entries = vec![
             HelpEntry {
+                keys: Self::format_keys(&kb.save),
+                description: t.help_desc_save().to_string(),
+            },
+            HelpEntry {
                 keys: Self::format_keys(&kb.save_as),
                 description: t.help_desc_save_as().to_string(),
             },
@@ -276,12 +341,16 @@ impl HelpGenerator {
                 description: t.help_desc_reload().to_string(),
             },
             HelpEntry {
-                keys: Self::format_keys(&kb.duplicate_line),
-                description: t.help_desc_duplicate_line().to_string(),
+                keys: Self::format_keys(&kb.undo),
+                description: t.help_desc_undo().to_string(),
             },
             HelpEntry {
-                keys: Self::format_keys(&kb.toggle_comment),
-                description: t.help_desc_toggle_comment().to_string(),
+                keys: Self::format_keys(&kb.redo),
+                description: t.help_desc_redo().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.search),
+                description: t.help_desc_search().to_string(),
             },
             HelpEntry {
                 keys: Self::format_keys(&kb.search_next),
@@ -302,6 +371,30 @@ impl HelpGenerator {
             HelpEntry {
                 keys: Self::format_keys(&kb.replace_all),
                 description: t.help_desc_replace_all().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.duplicate_line),
+                description: t.help_desc_duplicate_line().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.toggle_comment),
+                description: t.help_desc_toggle_comment().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.select_all),
+                description: t.help_desc_select_all().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.copy),
+                description: t.help_desc_edit_copy().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.cut),
+                description: t.help_desc_edit_cut().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.paste),
+                description: t.help_desc_edit_paste().to_string(),
             },
             HelpEntry {
                 keys: Self::format_keys(&kb.trigger_completion),
@@ -340,24 +433,124 @@ impl HelpGenerator {
     }
 
     /// Generate git status keybindings section.
-    fn generate_git_status_section(t: &dyn termide_i18n::Translation) -> HelpSection {
+    fn generate_git_status_section(
+        kb: &GitStatusKeybindings,
+        t: &dyn termide_i18n::Translation,
+    ) -> HelpSection {
         let entries = vec![
             HelpEntry {
-                keys: "S / Insert".to_string(),
+                keys: "Enter".to_string(),
+                description: t.help_desc_stage_unstage().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.stage),
                 description: t.help_desc_stage_file().to_string(),
             },
             HelpEntry {
-                keys: "U / Delete".to_string(),
+                keys: Self::format_keys(&kb.unstage),
                 description: t.help_desc_unstage_file().to_string(),
             },
             HelpEntry {
-                keys: "Space".to_string(),
+                keys: Self::format_keys(&kb.view),
+                description: t.help_desc_view_diff().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.edit),
+                description: t.help_desc_edit_file().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.revert),
+                description: t.help_desc_revert().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.info),
                 description: t.help_desc_show_hover().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.refresh),
+                description: t.help_desc_refresh().to_string(),
             },
         ];
 
         HelpSection {
             header: t.help_section_git_status().to_string(),
+            entries,
+        }
+    }
+
+    /// Generate Git Diff section.
+    fn generate_git_diff_section(
+        kb: &GitDiffKeybindings,
+        t: &dyn termide_i18n::Translation,
+    ) -> HelpSection {
+        let entries = vec![
+            HelpEntry {
+                keys: Self::format_keys(&kb.toggle_collapse),
+                description: t.help_desc_toggle_collapse().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.edit),
+                description: t.help_desc_open_file_editor().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.scroll_half_up),
+                description: t.help_desc_scroll_half_up().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.scroll_half_down),
+                description: t.help_desc_scroll_half_down().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.refresh),
+                description: t.help_desc_refresh().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.clipboard_copy),
+                description: t.help_desc_copy_hash().to_string(),
+            },
+        ];
+
+        HelpSection {
+            header: t.help_section_git_diff().to_string(),
+            entries,
+        }
+    }
+
+    /// Generate Git Log section.
+    fn generate_git_log_section(
+        kb: &GitLogKeybindings,
+        fm_kb: &FileManagerKeybindings,
+        t: &dyn termide_i18n::Translation,
+    ) -> HelpSection {
+        let entries = vec![
+            HelpEntry {
+                keys: "Enter".to_string(),
+                description: t.help_desc_view_commit_diff().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.view_diff),
+                description: t.help_desc_view_commit_diff().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.info),
+                description: t.help_desc_show_hover().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.checkout),
+                description: t.help_desc_checkout().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.clipboard_copy),
+                description: t.help_desc_copy_hash().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&fm_kb.open_external),
+                description: t.help_desc_open_external().to_string(),
+            },
+        ];
+
+        HelpSection {
+            header: t.help_section_git_log().to_string(),
             entries,
         }
     }
@@ -375,6 +568,14 @@ impl HelpGenerator {
             HelpEntry {
                 keys: Self::format_keys(&kb.paste),
                 description: t.help_desc_terminal_paste().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.search),
+                description: t.help_desc_search().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.switch_directory),
+                description: t.help_desc_switch_directory().to_string(),
             },
             HelpEntry {
                 keys: Self::format_keys(&kb.scroll_up),
@@ -427,52 +628,6 @@ impl HelpGenerator {
 
         HelpSection {
             header: t.help_section_navigation().to_string(),
-            entries,
-        }
-    }
-
-    /// Generate Git Diff section (static keys).
-    fn generate_git_diff_section(t: &dyn termide_i18n::Translation) -> HelpSection {
-        let entries = vec![
-            HelpEntry {
-                keys: "Enter / Space".to_string(),
-                description: t.help_desc_toggle_collapse().to_string(),
-            },
-            HelpEntry {
-                keys: "e".to_string(),
-                description: t.help_desc_open_file_editor().to_string(),
-            },
-            HelpEntry {
-                keys: "Ctrl+U / Ctrl+D".to_string(),
-                description: t.help_desc_scroll_half_up().to_string(),
-            },
-        ];
-
-        HelpSection {
-            header: t.help_section_git_diff().to_string(),
-            entries,
-        }
-    }
-
-    /// Generate Git Log section.
-    fn generate_git_log_section(config: &Config, t: &dyn termide_i18n::Translation) -> HelpSection {
-        let entries = vec![
-            HelpEntry {
-                keys: "Enter / d".to_string(),
-                description: t.help_desc_view_commit_diff().to_string(),
-            },
-            HelpEntry {
-                keys: "Space".to_string(),
-                description: t.help_desc_show_hover().to_string(),
-            },
-            HelpEntry {
-                keys: Self::format_keys(&config.file_manager.keybindings.open_external),
-                description: t.help_desc_open_external().to_string(),
-            },
-        ];
-
-        HelpSection {
-            header: t.help_section_git_log().to_string(),
             entries,
         }
     }
