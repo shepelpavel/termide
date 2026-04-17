@@ -1,31 +1,46 @@
 use super::{loader, Translation};
 use std::collections::HashMap;
 
-/// Runtime translation implementation that loads from TOML files
+/// Runtime translation implementation that loads from TOML files.
+///
+/// For non-English languages, also loads the English dictionary as a fallback
+/// so that missing keys degrade to English rather than rendering as empty.
 pub struct RuntimeTranslation {
     strings: HashMap<String, String>,
     formats: HashMap<String, String>,
     plurals: HashMap<String, loader::PluralRules>,
+    fallback_strings: HashMap<String, String>,
+    fallback_formats: HashMap<String, String>,
 }
 
 impl RuntimeTranslation {
     pub fn new(lang: &str) -> anyhow::Result<Self> {
         let data = loader::load_language(lang)?;
+        let (fallback_strings, fallback_formats) = if lang == "en" {
+            (HashMap::new(), HashMap::new())
+        } else {
+            let en = loader::load_language("en")?;
+            (en.strings, en.formats)
+        };
         Ok(Self {
             strings: data.strings,
             formats: data.formats,
             plurals: data.plurals,
+            fallback_strings,
+            fallback_formats,
         })
     }
 
     fn get_string(&self, key: &str) -> &str {
-        self.strings
-            .get(key)
-            .map(|s| s.as_str())
-            .unwrap_or_else(|| {
-                log::warn!("Missing translation key: {}", key);
-                ""
-            })
+        if let Some(s) = self.strings.get(key) {
+            return s.as_str();
+        }
+        if let Some(s) = self.fallback_strings.get(key) {
+            log::warn!("Missing translation key: {} (using English fallback)", key);
+            return s.as_str();
+        }
+        log::warn!("Missing translation key: {}", key);
+        ""
     }
 
     fn format(&self, key: &str, args: &[(&str, &str)]) -> String {
@@ -33,6 +48,13 @@ impl RuntimeTranslation {
             .formats
             .get(key)
             .map(|s| s.as_str())
+            .or_else(|| {
+                let v = self.fallback_formats.get(key).map(|s| s.as_str());
+                if v.is_some() {
+                    log::warn!("Missing format key: {} (using English fallback)", key);
+                }
+                v
+            })
             .unwrap_or_else(|| {
                 log::warn!("Missing format key: {}", key);
                 ""
@@ -188,14 +210,6 @@ impl Translation for RuntimeTranslation {
         )
     }
 
-    fn file_search_title(&self) -> &str {
-        self.get_string("file_search_title")
-    }
-
-    fn content_search_title(&self) -> &str {
-        self.get_string("content_search_title")
-    }
-
     fn fm_goto_title(&self) -> &str {
         self.get_string("fm_goto_title")
     }
@@ -272,10 +286,6 @@ impl Translation for RuntimeTranslation {
         self.get_string("help_desc_new_terminal")
     }
 
-    fn help_desc_parent_dir(&self) -> &str {
-        self.get_string("help_desc_parent_dir")
-    }
-
     fn help_desc_home(&self) -> &str {
         self.get_string("help_desc_home")
     }
@@ -304,16 +314,8 @@ impl Translation for RuntimeTranslation {
         self.get_string("help_desc_move")
     }
 
-    fn help_desc_delete(&self) -> &str {
-        self.get_string("help_desc_delete")
-    }
-
     fn help_desc_rename(&self) -> &str {
         self.get_string("help_desc_rename")
-    }
-
-    fn help_desc_save(&self) -> &str {
-        self.get_string("help_desc_save")
     }
 
     fn help_section_panels(&self) -> &str {
@@ -461,18 +463,6 @@ impl Translation for RuntimeTranslation {
         self.get_string("help_desc_trigger_completion")
     }
 
-    fn help_desc_accept_completion(&self) -> &str {
-        self.get_string("help_desc_accept_completion")
-    }
-
-    fn help_desc_cancel_completion(&self) -> &str {
-        self.get_string("help_desc_cancel_completion")
-    }
-
-    fn help_desc_navigate_completion(&self) -> &str {
-        self.get_string("help_desc_navigate_completion")
-    }
-
     fn help_desc_show_hover(&self) -> &str {
         self.get_string("help_desc_show_hover")
     }
@@ -517,14 +507,6 @@ impl Translation for RuntimeTranslation {
         self.get_string("help_desc_edit_file")
     }
 
-    fn help_desc_search_content(&self) -> &str {
-        self.get_string("help_desc_search_content")
-    }
-
-    fn help_desc_go_home(&self) -> &str {
-        self.get_string("help_desc_go_home")
-    }
-
     fn help_desc_toggle_hidden(&self) -> &str {
         self.get_string("help_desc_toggle_hidden")
     }
@@ -539,14 +521,6 @@ impl Translation for RuntimeTranslation {
 
     fn help_desc_unstage_file(&self) -> &str {
         self.get_string("help_desc_unstage_file")
-    }
-
-    fn help_desc_next_section(&self) -> &str {
-        self.get_string("help_desc_next_section")
-    }
-
-    fn help_desc_prev_section(&self) -> &str {
-        self.get_string("help_desc_prev_section")
     }
 
     fn help_desc_terminal_copy(&self) -> &str {
@@ -584,10 +558,6 @@ impl Translation for RuntimeTranslation {
 
     fn help_desc_scroll_half_up(&self) -> &str {
         self.get_string("help_desc_scroll_half_up")
-    }
-
-    fn help_desc_scroll_half_down(&self) -> &str {
-        self.get_string("help_desc_scroll_half_down")
     }
 
     // Git Diff help descriptions (static keys)
@@ -767,24 +737,12 @@ impl Translation for RuntimeTranslation {
         self.get_string("menu_quit")
     }
 
-    fn menu_navigate_hint(&self) -> &str {
-        self.get_string("menu_navigate_hint")
-    }
-
-    fn menu_open_hint_label(&self) -> &str {
-        self.get_string("menu_open_hint_label")
-    }
-
     fn menu_bookmarks(&self) -> &str {
         self.get_string("menu_bookmarks")
     }
 
     fn bookmarks_add_bookmark(&self) -> &str {
         self.get_string("bookmarks_add_bookmark")
-    }
-
-    fn bookmarks_manage(&self) -> &str {
-        self.get_string("bookmarks_manage")
     }
 
     fn bookmarks_no_bookmarks(&self) -> &str {
@@ -895,10 +853,6 @@ impl Translation for RuntimeTranslation {
         self.get_string("options_help")
     }
 
-    fn options_manage_scripts(&self) -> &str {
-        self.get_string("options_manage_scripts")
-    }
-
     fn git_action_diff(&self) -> &str {
         self.get_string("git_action_diff")
     }
@@ -909,10 +863,6 @@ impl Translation for RuntimeTranslation {
 
     fn git_action_close(&self) -> &str {
         self.get_string("git_action_close")
-    }
-
-    fn git_action_git_status(&self) -> &str {
-        self.get_string("git_action_git_status")
     }
 
     fn git_action_init(&self) -> &str {
@@ -1050,10 +1000,139 @@ impl Translation for RuntimeTranslation {
         self.format("language_changed", &[("name", name)])
     }
 
-    fn sessions_title(&self) -> &str {
-        self.get_string("sessions_title")
+    // Settings modal — tabs
+    fn settings_tab_general(&self) -> &str {
+        self.get_string("settings_tab_general")
+    }
+    fn settings_tab_editor(&self) -> &str {
+        self.get_string("settings_tab_editor")
+    }
+    fn settings_tab_file_manager(&self) -> &str {
+        self.get_string("settings_tab_file_manager")
+    }
+    fn settings_tab_terminal(&self) -> &str {
+        self.get_string("settings_tab_terminal")
+    }
+    fn settings_tab_lsp(&self) -> &str {
+        self.get_string("settings_tab_lsp")
+    }
+    fn settings_tab_logging(&self) -> &str {
+        self.get_string("settings_tab_logging")
+    }
+    fn settings_tab_vfs(&self) -> &str {
+        self.get_string("settings_tab_vfs")
+    }
+    fn settings_tab_keybindings(&self) -> &str {
+        self.get_string("settings_tab_keybindings")
     }
 
+    // Settings modal — buttons
+    fn settings_btn_apply(&self) -> &str {
+        self.get_string("settings_btn_apply")
+    }
+    fn settings_btn_reset(&self) -> &str {
+        self.get_string("settings_btn_reset")
+    }
+    fn settings_btn_cancel(&self) -> &str {
+        self.get_string("settings_btn_cancel")
+    }
+
+    // Settings modal — General fields
+    fn settings_general_vim_mode(&self) -> &str {
+        self.get_string("settings_general_vim_mode")
+    }
+    fn settings_general_theme(&self) -> &str {
+        self.get_string("settings_general_theme")
+    }
+    fn settings_general_language(&self) -> &str {
+        self.get_string("settings_general_language")
+    }
+    fn settings_general_icon_mode(&self) -> &str {
+        self.get_string("settings_general_icon_mode")
+    }
+    fn settings_general_auto_stack_threshold(&self) -> &str {
+        self.get_string("settings_general_auto_stack_threshold")
+    }
+    fn settings_general_min_panel_width(&self) -> &str {
+        self.get_string("settings_general_min_panel_width")
+    }
+    fn settings_general_session_retention(&self) -> &str {
+        self.get_string("settings_general_session_retention")
+    }
+    fn settings_general_bell(&self) -> &str {
+        self.get_string("settings_general_bell")
+    }
+    fn settings_general_resource_interval(&self) -> &str {
+        self.get_string("settings_general_resource_interval")
+    }
+
+    // Settings modal — Editor fields
+    fn settings_editor_tab_size(&self) -> &str {
+        self.get_string("settings_editor_tab_size")
+    }
+    fn settings_editor_word_wrap(&self) -> &str {
+        self.get_string("settings_editor_word_wrap")
+    }
+    fn settings_editor_auto_indent(&self) -> &str {
+        self.get_string("settings_editor_auto_indent")
+    }
+    fn settings_editor_auto_close_brackets(&self) -> &str {
+        self.get_string("settings_editor_auto_close_brackets")
+    }
+    fn settings_editor_show_git_diff(&self) -> &str {
+        self.get_string("settings_editor_show_git_diff")
+    }
+    fn settings_editor_show_blame(&self) -> &str {
+        self.get_string("settings_editor_show_blame")
+    }
+    fn settings_editor_large_file_threshold(&self) -> &str {
+        self.get_string("settings_editor_large_file_threshold")
+    }
+
+    // Settings modal — File Manager fields
+    fn settings_fm_extended_view_width(&self) -> &str {
+        self.get_string("settings_fm_extended_view_width")
+    }
+    fn settings_fm_content_search_max_size(&self) -> &str {
+        self.get_string("settings_fm_content_search_max_size")
+    }
+
+    // Settings modal — Terminal fields
+    fn settings_terminal_default_shell(&self) -> &str {
+        self.get_string("settings_terminal_default_shell")
+    }
+
+    // Settings modal — LSP fields
+    fn settings_lsp_enabled(&self) -> &str {
+        self.get_string("settings_lsp_enabled")
+    }
+    fn settings_lsp_auto_completion(&self) -> &str {
+        self.get_string("settings_lsp_auto_completion")
+    }
+    fn settings_lsp_completion_delay(&self) -> &str {
+        self.get_string("settings_lsp_completion_delay")
+    }
+    fn settings_lsp_hover_delay(&self) -> &str {
+        self.get_string("settings_lsp_hover_delay")
+    }
+    fn settings_lsp_add_server(&self) -> &str {
+        self.get_string("settings_lsp_add_server")
+    }
+
+    // Settings modal — Logging fields
+    fn settings_logging_file_path(&self) -> &str {
+        self.get_string("settings_logging_file_path")
+    }
+    fn settings_logging_min_level(&self) -> &str {
+        self.get_string("settings_logging_min_level")
+    }
+
+    // Settings modal — VFS fields
+    fn settings_vfs_connection_timeout(&self) -> &str {
+        self.get_string("settings_vfs_connection_timeout")
+    }
+
+    // Settings modal — Keybindings hints
     fn sessions_current(&self) -> &str {
         self.get_string("sessions_current")
     }
@@ -1104,6 +1183,22 @@ impl Translation for RuntimeTranslation {
 
     fn directory_switcher_process_running(&self) -> &str {
         self.get_string("directory_switcher_process_running")
+    }
+
+    fn settings_kb_hint_bindings(&self) -> &str {
+        self.get_string("settings_kb_hint_bindings")
+    }
+
+    fn settings_kb_hint_capturing(&self) -> &str {
+        self.get_string("settings_kb_hint_capturing")
+    }
+
+    fn settings_kb_press_key(&self) -> &str {
+        self.get_string("settings_kb_press_key")
+    }
+
+    fn sessions_title(&self) -> &str {
+        self.get_string("sessions_title")
     }
 
     fn time_just_now(&self) -> &str {
@@ -1682,10 +1777,6 @@ impl Translation for RuntimeTranslation {
         self.get_string("outline_no_symbols")
     }
 
-    fn outline_title_count_fmt(&self, count: usize) -> String {
-        self.format("outline_title_count_fmt", &[("count", &count.to_string())])
-    }
-
     fn diagnostics_title(&self) -> &str {
         self.get_string("diagnostics_title")
     }
@@ -1759,40 +1850,12 @@ impl Translation for RuntimeTranslation {
         self.get_string("resource_disk_total")
     }
 
-    fn resource_processes(&self) -> &str {
-        self.get_string("resource_processes")
-    }
-
     fn resource_count(&self) -> &str {
         self.get_string("resource_count")
     }
 
     fn resource_net_title(&self) -> &str {
         self.get_string("resource_net_title")
-    }
-
-    fn vfs_connecting(&self) -> &str {
-        self.get_string("vfs_connecting")
-    }
-
-    fn vfs_connection_failed(&self) -> &str {
-        self.get_string("vfs_connection_failed")
-    }
-
-    fn vfs_ftp_connected(&self) -> &str {
-        self.get_string("vfs_ftp_connected")
-    }
-
-    fn vfs_password_prompt(&self) -> &str {
-        self.get_string("vfs_password_prompt")
-    }
-
-    fn vfs_smb_connected(&self) -> &str {
-        self.get_string("vfs_smb_connected")
-    }
-
-    fn vfs_username_prompt(&self) -> &str {
-        self.get_string("vfs_username_prompt")
     }
 
     // Calendar

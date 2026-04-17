@@ -96,22 +96,27 @@ impl App {
     pub(in crate::app) fn execute_tools_submenu_action(&mut self) -> Result<()> {
         match self.state.ui.tools_submenu.selected {
             TOOLS_SUBMENU_TERMINAL => {
-                self.state.open_tools_nested_submenu(0);
-                let default_idx = self
-                    .state
-                    .config
-                    .terminal
-                    .default_shell
-                    .as_ref()
-                    .and_then(|default| {
-                        self.state
-                            .cache
-                            .shells
-                            .iter()
-                            .position(|s| s.path == *default)
-                    })
-                    .unwrap_or(0);
-                self.state.ui.tools_nested.selected = default_idx;
+                // Toggle: if the shell-picker nested submenu is already open, close it.
+                if self.state.ui.tools_nested.open {
+                    self.state.close_tools_nested_submenu();
+                } else {
+                    self.state.open_tools_nested_submenu(0);
+                    let default_idx = self
+                        .state
+                        .config
+                        .terminal
+                        .default_shell
+                        .as_ref()
+                        .and_then(|default| {
+                            self.state
+                                .cache
+                                .shells
+                                .iter()
+                                .position(|s| s.path == *default)
+                        })
+                        .unwrap_or(0);
+                    self.state.ui.tools_nested.selected = default_idx;
+                }
             }
             TOOLS_SUBMENU_FILES => {
                 self.state.close_menu();

@@ -150,37 +150,6 @@ impl App {
         Ok(())
     }
 
-    /// Open scripts folder in file manager
-    pub(super) fn handle_manage_scripts(&mut self) -> Result<()> {
-        use termide_config::get_data_dir;
-
-        self.close_help_panels();
-
-        // Get the scripts directory path
-        let scripts_dir = match get_data_dir() {
-            Ok(data_dir) => {
-                let scripts_path = data_dir.join("scripts");
-                // Create the directory if it doesn't exist
-                if !scripts_path.exists() {
-                    if let Err(e) = std::fs::create_dir_all(&scripts_path) {
-                        log::warn!("Failed to create scripts directory: {}", e);
-                    }
-                }
-                scripts_path
-            }
-            Err(e) => {
-                log::warn!("Failed to get data dir: {}", e);
-                self.show_error_modal(format!("Failed to get scripts directory: {}", e));
-                return Ok(());
-            }
-        };
-
-        let fm_panel = FileManager::new_with_path(scripts_dir);
-        self.add_panel(Box::new(fm_panel));
-        self.auto_save_session();
-        Ok(())
-    }
-
     /// Open config file in editor
     pub(super) fn open_config_in_editor(&mut self) -> Result<()> {
         use termide_config::Config;
@@ -198,6 +167,19 @@ impl App {
 
         let _ = self.open_editor_for_file(config_path);
         Ok(())
+    }
+
+    /// Open Settings modal with tabbed interface
+    pub(super) fn open_settings_modal(&mut self) {
+        use termide_config::Config;
+        use termide_modal::{ActiveModal, SettingsModal};
+
+        let config = Config::load().unwrap_or_default();
+        let modal = SettingsModal::new(config);
+        self.state.set_pending_action(
+            crate::state::PendingAction::Settings,
+            ActiveModal::Settings(Box::new(modal)),
+        );
     }
 
     /// Open or refresh the References panel with LSP find-references results.

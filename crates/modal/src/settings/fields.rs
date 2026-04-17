@@ -1,0 +1,364 @@
+//! Field descriptors and per-field helpers for the settings modal.
+//!
+//! This module holds the pure data side of settings — which fields exist in
+//! each tab, how to read/write them on a `Config`, and the type markers used
+//! by the renderer. It deliberately contains no UI state or rendering logic.
+
+use termide_config::Config;
+use termide_i18n as i18n;
+use termide_theme::Theme;
+
+use super::SettingsTab;
+
+/// Type of a settings field for rendering and editing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum FieldType {
+    /// Boolean toggle — [✓] / [✗]
+    Bool,
+    /// Unsigned integer (u16, u32, u64, usize)
+    Number,
+    /// Enum cycling through a fixed list of variants
+    Enum,
+    /// Optional string — shows "(auto)" placeholder when None
+    OptionalText,
+}
+
+/// Descriptor for a single settings field.
+#[derive(Clone, Copy)]
+pub(super) struct FieldDescriptor {
+    pub label: &'static str,
+    pub field_type: FieldType,
+}
+
+/// A single renderable row in the content area.
+#[derive(Debug, Clone, Copy)]
+pub(super) enum ContentRow {
+    /// Non-selectable group header.
+    Header(&'static str),
+    /// Non-selectable blank row used as a spacer between groups.
+    Spacer,
+    /// A scalar field (index into `fields_for_tab`).
+    Field(usize),
+    /// LSP: "+ Add server" action row.
+    LspAddServer,
+    /// LSP: existing server (index into `lsp_server_keys`).
+    LspServer(usize),
+}
+
+impl ContentRow {
+    pub(super) fn is_selectable(&self) -> bool {
+        !matches!(self, ContentRow::Header(_) | ContentRow::Spacer)
+    }
+}
+
+/// Returns the field descriptors for a given tab.
+pub(super) fn fields_for_tab(tab: SettingsTab) -> Vec<FieldDescriptor> {
+    let t = i18n::t();
+    match tab {
+        SettingsTab::General => vec![
+            FieldDescriptor {
+                label: t.settings_general_vim_mode(),
+                field_type: FieldType::Bool,
+            },
+            FieldDescriptor {
+                label: t.settings_general_theme(),
+                field_type: FieldType::Enum,
+            },
+            FieldDescriptor {
+                label: t.settings_general_language(),
+                field_type: FieldType::Enum,
+            },
+            FieldDescriptor {
+                label: t.settings_general_icon_mode(),
+                field_type: FieldType::Enum,
+            },
+            FieldDescriptor {
+                label: t.settings_general_auto_stack_threshold(),
+                field_type: FieldType::Number,
+            },
+            FieldDescriptor {
+                label: t.settings_general_min_panel_width(),
+                field_type: FieldType::Number,
+            },
+            FieldDescriptor {
+                label: t.settings_general_session_retention(),
+                field_type: FieldType::Number,
+            },
+            FieldDescriptor {
+                label: t.settings_general_bell(),
+                field_type: FieldType::Bool,
+            },
+            FieldDescriptor {
+                label: t.settings_general_resource_interval(),
+                field_type: FieldType::Number,
+            },
+        ],
+        SettingsTab::Editor => vec![
+            FieldDescriptor {
+                label: t.settings_editor_tab_size(),
+                field_type: FieldType::Number,
+            },
+            FieldDescriptor {
+                label: t.settings_editor_word_wrap(),
+                field_type: FieldType::Bool,
+            },
+            FieldDescriptor {
+                label: t.settings_editor_auto_indent(),
+                field_type: FieldType::Bool,
+            },
+            FieldDescriptor {
+                label: t.settings_editor_auto_close_brackets(),
+                field_type: FieldType::Bool,
+            },
+            FieldDescriptor {
+                label: t.settings_editor_show_git_diff(),
+                field_type: FieldType::Bool,
+            },
+            FieldDescriptor {
+                label: t.settings_editor_show_blame(),
+                field_type: FieldType::Bool,
+            },
+            FieldDescriptor {
+                label: t.settings_editor_large_file_threshold(),
+                field_type: FieldType::Number,
+            },
+        ],
+        SettingsTab::FileManager => vec![
+            FieldDescriptor {
+                label: t.settings_fm_extended_view_width(),
+                field_type: FieldType::Number,
+            },
+            FieldDescriptor {
+                label: t.settings_fm_content_search_max_size(),
+                field_type: FieldType::Number,
+            },
+        ],
+        SettingsTab::Terminal => vec![FieldDescriptor {
+            label: t.settings_terminal_default_shell(),
+            field_type: FieldType::OptionalText,
+        }],
+        SettingsTab::Lsp => vec![
+            FieldDescriptor {
+                label: t.settings_lsp_enabled(),
+                field_type: FieldType::Bool,
+            },
+            FieldDescriptor {
+                label: t.settings_lsp_auto_completion(),
+                field_type: FieldType::Bool,
+            },
+            FieldDescriptor {
+                label: t.settings_lsp_completion_delay(),
+                field_type: FieldType::Number,
+            },
+            FieldDescriptor {
+                label: t.settings_lsp_hover_delay(),
+                field_type: FieldType::Number,
+            },
+        ],
+        SettingsTab::Logging => vec![
+            FieldDescriptor {
+                label: t.settings_logging_file_path(),
+                field_type: FieldType::OptionalText,
+            },
+            FieldDescriptor {
+                label: t.settings_logging_min_level(),
+                field_type: FieldType::Enum,
+            },
+        ],
+        SettingsTab::Vfs => vec![FieldDescriptor {
+            label: t.settings_vfs_connection_timeout(),
+            field_type: FieldType::Number,
+        }],
+        SettingsTab::Keybindings => vec![],
+    }
+}
+
+/// Returns the current string value of a field.
+pub(super) fn get_field_value(config: &Config, tab: SettingsTab, index: usize) -> String {
+    match tab {
+        SettingsTab::General => match index {
+            0 => bool_str(config.general.vim_mode),
+            1 => config.general.theme.clone(),
+            2 => i18n::get_language_name(&config.general.language)
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| config.general.language.clone()),
+            3 => format!("{:?}", config.general.icon_mode).to_lowercase(),
+            4 => config.general.auto_stack_threshold.to_string(),
+            5 => config.general.min_panel_width.to_string(),
+            6 => config.general.session_retention_days.to_string(),
+            7 => bool_str(config.general.bell_on_operation_complete),
+            8 => config.general.resource_monitor_interval.to_string(),
+            _ => String::new(),
+        },
+        SettingsTab::Editor => match index {
+            0 => config.editor.tab_size.to_string(),
+            1 => bool_str(config.editor.word_wrap),
+            2 => bool_str(config.editor.auto_indent),
+            3 => bool_str(config.editor.auto_close_brackets),
+            4 => bool_str(config.editor.show_git_diff),
+            5 => bool_str(config.editor.show_blame),
+            6 => config.editor.large_file_threshold_mb.to_string(),
+            _ => String::new(),
+        },
+        SettingsTab::FileManager => match index {
+            0 => config.file_manager.extended_view_width.to_string(),
+            1 => config
+                .file_manager
+                .content_search_max_file_size_mb
+                .to_string(),
+            _ => String::new(),
+        },
+        SettingsTab::Terminal => match index {
+            0 => config
+                .terminal
+                .default_shell
+                .clone()
+                .unwrap_or_else(|| "(auto)".to_string()),
+            _ => String::new(),
+        },
+        SettingsTab::Lsp => match index {
+            0 => bool_str(config.lsp.enabled),
+            1 => bool_str(config.lsp.auto_completion),
+            2 => config.lsp.completion_delay_ms.to_string(),
+            3 => config.lsp.hover_delay_ms.to_string(),
+            _ => String::new(),
+        },
+        SettingsTab::Logging => match index {
+            0 => config
+                .logging
+                .file_path
+                .clone()
+                .unwrap_or_else(|| "(none)".to_string()),
+            1 => config.logging.min_level.clone(),
+            _ => String::new(),
+        },
+        SettingsTab::Vfs => match index {
+            0 => config.vfs.connection_timeout_secs.to_string(),
+            _ => String::new(),
+        },
+        SettingsTab::Keybindings => String::new(),
+    }
+}
+
+fn bool_str(v: bool) -> String {
+    if v {
+        "true".to_string()
+    } else {
+        "false".to_string()
+    }
+}
+
+/// Toggle a bool field.
+pub(super) fn toggle_field(config: &mut Config, tab: SettingsTab, index: usize) {
+    match tab {
+        SettingsTab::General => match index {
+            0 => config.general.vim_mode = !config.general.vim_mode,
+            7 => {
+                config.general.bell_on_operation_complete =
+                    !config.general.bell_on_operation_complete
+            }
+            _ => {}
+        },
+        SettingsTab::Editor => match index {
+            1 => config.editor.word_wrap = !config.editor.word_wrap,
+            2 => config.editor.auto_indent = !config.editor.auto_indent,
+            3 => config.editor.auto_close_brackets = !config.editor.auto_close_brackets,
+            4 => config.editor.show_git_diff = !config.editor.show_git_diff,
+            5 => config.editor.show_blame = !config.editor.show_blame,
+            _ => {}
+        },
+        SettingsTab::Lsp => match index {
+            0 => config.lsp.enabled = !config.lsp.enabled,
+            1 => config.lsp.auto_completion = !config.lsp.auto_completion,
+            _ => {}
+        },
+        _ => {}
+    }
+}
+
+/// Cycle an enum field to the next variant.
+pub(super) fn cycle_enum_forward(config: &mut Config, tab: SettingsTab, index: usize) {
+    match tab {
+        SettingsTab::General => match index {
+            1 => {
+                let names = Theme::all_theme_names();
+                if let Some(pos) = names.iter().position(|n| n == &config.general.theme) {
+                    config.general.theme = names[(pos + 1) % names.len()].clone();
+                }
+            }
+            2 => {
+                let langs = i18n::get_language_list();
+                if let Some(pos) = langs
+                    .iter()
+                    .position(|(c, _)| *c == config.general.language)
+                {
+                    let next = (pos + 1) % langs.len();
+                    config.general.language = langs[next].0.to_string();
+                }
+            }
+            3 => {
+                config.general.icon_mode = match config.general.icon_mode {
+                    termide_config::IconMode::Auto => termide_config::IconMode::Emoji,
+                    termide_config::IconMode::Emoji => termide_config::IconMode::Unicode,
+                    termide_config::IconMode::Unicode => termide_config::IconMode::Auto,
+                }
+            }
+            _ => {}
+        },
+        SettingsTab::Logging => {
+            if index == 1 {
+                config.logging.min_level = match config.logging.min_level.as_str() {
+                    "debug" => "info".to_string(),
+                    "info" => "warn".to_string(),
+                    "warn" => "error".to_string(),
+                    _ => "debug".to_string(),
+                };
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Cycle an enum field to the previous variant.
+pub(super) fn cycle_enum_backward(config: &mut Config, tab: SettingsTab, index: usize) {
+    match tab {
+        SettingsTab::General => match index {
+            1 => {
+                let names = Theme::all_theme_names();
+                if let Some(pos) = names.iter().position(|n| n == &config.general.theme) {
+                    let prev = if pos == 0 { names.len() - 1 } else { pos - 1 };
+                    config.general.theme = names[prev].clone();
+                }
+            }
+            2 => {
+                let langs = i18n::get_language_list();
+                if let Some(pos) = langs
+                    .iter()
+                    .position(|(c, _)| *c == config.general.language)
+                {
+                    let prev = if pos == 0 { langs.len() - 1 } else { pos - 1 };
+                    config.general.language = langs[prev].0.to_string();
+                }
+            }
+            3 => {
+                config.general.icon_mode = match config.general.icon_mode {
+                    termide_config::IconMode::Auto => termide_config::IconMode::Unicode,
+                    termide_config::IconMode::Emoji => termide_config::IconMode::Auto,
+                    termide_config::IconMode::Unicode => termide_config::IconMode::Emoji,
+                }
+            }
+            _ => {}
+        },
+        SettingsTab::Logging => {
+            if index == 1 {
+                config.logging.min_level = match config.logging.min_level.as_str() {
+                    "debug" => "error".to_string(),
+                    "info" => "debug".to_string(),
+                    "warn" => "info".to_string(),
+                    _ => "warn".to_string(),
+                };
+            }
+        }
+        _ => {}
+    }
+}

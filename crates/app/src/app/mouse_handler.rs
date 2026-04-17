@@ -542,6 +542,14 @@ impl App {
                 .saturating_sub(disk_text.len() as u16);
             if x >= disk_start {
                 use termide_ui_render::INDICATOR_DISK_INDEX;
+                // Toggle: if this indicator is already open, close it
+                if self.state.ui.menu_open
+                    && self.state.ui.selected_menu_item == Some(INDICATOR_DISK_INDEX)
+                {
+                    self.state.close_indicator_modal();
+                    self.state.close_menu();
+                    return Ok(());
+                }
                 // Open as menu-integrated indicator
                 self.state.ui.menu_open = true;
                 self.state.ui.selected_menu_item = Some(INDICATOR_DISK_INDEX);
@@ -1078,9 +1086,9 @@ impl App {
                         }
                     }
                     2 => {
-                        // Manage scripts
+                        // Settings
                         self.state.close_menu();
-                        self.handle_manage_scripts()?;
+                        self.open_settings_modal();
                     }
                     3 => {
                         // Help

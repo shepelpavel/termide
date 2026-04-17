@@ -670,6 +670,35 @@ impl App {
                     }
                     self.reopen_bookmarks_menu(group, is_project, selected);
                 }
+                PendingAction::Settings => {
+                    use termide_modal::SettingsResult;
+                    if let Some(result) = value.downcast_ref::<SettingsResult>() {
+                        match result {
+                            SettingsResult::Apply(config) => {
+                                if let Err(e) = config.save() {
+                                    log::error!("Failed to save settings: {}", e);
+                                    self.show_error_modal(format!(
+                                        "Failed to save settings: {}",
+                                        e
+                                    ));
+                                } else {
+                                    // Refresh theme and language
+                                    let theme_name = config.general.theme.clone();
+                                    self.apply_theme(&theme_name)?;
+                                    let lang_code = config.general.language.clone();
+                                    let languages = termide_i18n::get_language_list();
+                                    if let Some((_, name)) =
+                                        languages.iter().find(|(c, _)| c == &lang_code)
+                                    {
+                                        self.apply_language(&lang_code, name)?;
+                                    }
+                                    self.state.set_info("Settings saved".to_string());
+                                }
+                            }
+                            SettingsResult::Cancel => {}
+                        }
+                    }
+                }
             }
         }
         Ok(())

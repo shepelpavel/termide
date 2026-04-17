@@ -11,6 +11,8 @@ use ratatui::{
 };
 
 use crate::base::render_modal_block;
+use termide_core::ThemeColors;
+use termide_ui::scrollbar::ScrollBar;
 use unicode_width::UnicodeWidthStr;
 
 use termide_config::constants::{
@@ -54,10 +56,14 @@ pub struct InfoModal {
     lines: Vec<(String, ModalValue)>, // (key, value) pairs for table
     spinner_frame: usize,             // Frame counter for spinner animation
     last_button_area: Option<Rect>,   // For mouse handling
+    last_content_area: Option<Rect>,  // For mouse-wheel scroll hit-test
     min_width: Option<u16>,           // Optional minimum width to prevent jitter
     anchor: Option<(u16, u16)>,       // Optional anchor position (x, y) instead of centering
     anchor_bottom: bool,              // true = anchor specifies bottom edge, not top
     show_button: bool,                // Whether to show the OK button
+    scroll_offset: usize,             // First visible content line (after wrapping)
+    cached_total_lines: usize,        // Cached total content lines after last render
+    cached_visible: usize,            // Cached visible content-area height after last render
 }
 
 impl InfoModal {
@@ -72,10 +78,14 @@ impl InfoModal {
             lines,
             spinner_frame: 0,
             last_button_area: None,
+            last_content_area: None,
             min_width: None,
             anchor: None,
             anchor_bottom: false,
             show_button: true,
+            scroll_offset: 0,
+            cached_total_lines: 0,
+            cached_visible: 0,
         }
     }
 
@@ -86,10 +96,14 @@ impl InfoModal {
             lines,
             spinner_frame: 0,
             last_button_area: None,
+            last_content_area: None,
             min_width: None,
             anchor: None,
             anchor_bottom: false,
             show_button: true,
+            scroll_offset: 0,
+            cached_total_lines: 0,
+            cached_visible: 0,
         }
     }
 
@@ -304,10 +318,16 @@ impl Modal for InfoModal {
             .saturating_sub(2) // ": "
             .max(MODAL_MIN_VALUE_WIDTH as u16) as usize;
 
-        // Calculate total lines needed (with wrapping)
         let t = i18n::t();
-        let mut total_data_lines: usize = 0;
-        for (_, value) in &self.lines {
+        let key_style = Style::default()
+            .fg(theme.accented_fg)
+            .add_modifier(Modifier::BOLD);
+
+        // Build a flat list of all rendered lines first (with wrapping applied).
+        // Scrolling operates on this list; no truncation is performed.
+        let mut all_lines: Vec<Line<'_>> = Vec::new();
+        for (key, value) in &self.lines {
+            let padding = " ".repeat(max_key_len - key.width());
             match value {
                 ModalValue::Text(text) => {
                     let display_value = if text.contains(t.file_info_calculating()) {
@@ -315,28 +335,70 @@ impl Modal for InfoModal {
                     } else {
                         text.clone()
                     };
-                    let wrapped = Self::wrap_text(&display_value, available_value_width);
-                    total_data_lines += wrapped.len();
+                    let wrapped_values = Self::wrap_text(&display_value, available_value_width);
+                    if wrapped_values.is_empty() {
+                        continue;
+                    }
+                    let separator = if key.is_empty() { "  " } else { ": " };
+                    all_lines.push(Line::from(vec![
+                        Span::styled(format!("  {}{}", key, padding), key_style),
+                        Span::raw(separator),
+                        Span::styled(wrapped_values[0].clone(), Style::default().fg(theme.fg)),
+                    ]));
+                    let indent = " ".repeat(max_key_len + 4);
+                    for wrapped_line in wrapped_values.iter().skip(1) {
+                        all_lines.push(Line::from(vec![Span::styled(
+                            format!("{}{}", indent, wrapped_line),
+                            Style::default().fg(theme.fg),
+                        )]));
+                    }
                 }
-                ModalValue::Segments(_) => {
-                    total_data_lines += 1; // Segments are always one line
+                ModalValue::Segments(segments) => {
+                    let separator = "  ";
+                    let mut spans = vec![
+                        Span::styled(format!("  {}{}", key, padding), key_style),
+                        Span::raw(separator),
+                    ];
+                    for segment in segments {
+                        let color = match segment.style {
+                            SegmentStyle::Default => theme.fg,
+                            SegmentStyle::Success => theme.success,
+                            SegmentStyle::Error => theme.error,
+                            SegmentStyle::Warning => theme.warning,
+                            SegmentStyle::Disabled => theme.disabled,
+                        };
+                        spans.push(Span::styled(
+                            segment.text.clone(),
+                            Style::default().fg(color),
+                        ));
+                    }
+                    all_lines.push(Line::from(spans));
                 }
             }
         }
 
-        // Truncate if content exceeds available screen height
-        let max_data_lines = area.height.saturating_sub(7) as usize; // reserve for borders, spacing, button
-        let (total_data_lines, truncated) = if total_data_lines > max_data_lines {
-            (max_data_lines, true)
-        } else {
-            (total_data_lines, false)
-        };
+        let total_lines = all_lines.len();
 
-        // Calculate required height based on wrapped content:
-        // 1 (top border) + 1 (empty line) + N (wrapped data lines) +
+        // Cap the content area height at the available screen height.
+        // reserve for borders, spacing, button: same 7 rows as before.
+        let max_data_lines = area.height.saturating_sub(7) as usize;
+        let visible = total_lines.min(max_data_lines.max(1));
+
+        // Clamp scroll offset so it can never exceed the amount of content hidden.
+        let max_scroll = total_lines.saturating_sub(visible);
+        if self.scroll_offset > max_scroll {
+            self.scroll_offset = max_scroll;
+        }
+
+        // Cache for keyboard / mouse handlers (they don't know the render area).
+        self.cached_total_lines = total_lines;
+        self.cached_visible = visible;
+
+        // Calculate required height based on visible window:
+        // 1 (top border) + 1 (empty line) + N (visible data lines) +
         // 1 (empty line) + optional 1 (button) + 1 (bottom border)
         let button_height = if self.show_button { 1u16 } else { 0 };
-        let modal_height = (total_data_lines as u16) + 4 + button_height;
+        let modal_height = (visible as u16) + 4 + button_height;
 
         // Position: anchored or centered
         let modal_area = if let Some((ax, ay)) = self.anchor {
@@ -362,9 +424,9 @@ impl Modal for InfoModal {
 
         // Split into: empty line, data, empty line, optional button
         let mut constraints = vec![
-            Constraint::Length(1),                       // Empty line at top
-            Constraint::Length(total_data_lines as u16), // Data (wrapped)
-            Constraint::Length(1),                       // Empty line
+            Constraint::Length(1),              // Empty line at top
+            Constraint::Length(visible as u16), // Visible data window
+            Constraint::Length(1),              // Empty line
         ];
         if self.show_button {
             constraints.push(Constraint::Length(1)); // Button
@@ -374,100 +436,33 @@ impl Modal for InfoModal {
             .constraints(constraints)
             .split(inner);
 
-        // How many data lines we can actually render (leave 1 for truncation indicator)
-        let renderable_lines = if truncated {
-            total_data_lines.saturating_sub(1)
-        } else {
-            total_data_lines
-        };
+        // Slice the visible window from the full content.
+        let visible_slice: Vec<Line<'_>> = all_lines
+            .into_iter()
+            .skip(self.scroll_offset)
+            .take(visible)
+            .collect();
 
-        let key_style = Style::default()
-            .fg(theme.accented_fg)
-            .add_modifier(Modifier::BOLD);
-
-        // Render tabular data with left alignment and text wrapping
-        let mut text_lines: Vec<Line<'_>> = Vec::new();
-        let mut lines_remaining = renderable_lines;
-
-        'outer: for (key, value) in &self.lines {
-            if lines_remaining == 0 {
-                break;
-            }
-            let padding = " ".repeat(max_key_len - key.width());
-
-            match value {
-                ModalValue::Text(text) => {
-                    // If value contains calculating text, show spinner
-                    let display_value = if text.contains(t.file_info_calculating()) {
-                        format!("{} {}", self.get_spinner_char(), text)
-                    } else {
-                        text.clone()
-                    };
-
-                    // Wrap the value to fit available width
-                    let wrapped_values = Self::wrap_text(&display_value, available_value_width);
-
-                    // First line with key
-                    if !wrapped_values.is_empty() {
-                        let separator = if key.is_empty() { "  " } else { ": " };
-                        let spans = vec![
-                            Span::styled(format!("  {}{}", key, padding), key_style),
-                            Span::raw(separator),
-                            Span::styled(wrapped_values[0].clone(), Style::default().fg(theme.fg)),
-                        ];
-                        text_lines.push(Line::from(spans));
-                        lines_remaining -= 1;
-
-                        // Additional lines with indent (continuation of value)
-                        let indent = " ".repeat(max_key_len + 4); // "  " + key_len + "  " or ": "
-                        for wrapped_line in wrapped_values.iter().skip(1) {
-                            if lines_remaining == 0 {
-                                break 'outer;
-                            }
-                            text_lines.push(Line::from(vec![Span::styled(
-                                format!("{}{}", indent, wrapped_line),
-                                Style::default().fg(theme.fg),
-                            )]));
-                            lines_remaining -= 1;
-                        }
-                    }
-                }
-                ModalValue::Segments(segments) => {
-                    let separator = "  ";
-                    let mut spans = vec![
-                        Span::styled(format!("  {}{}", key, padding), key_style),
-                        Span::raw(separator),
-                    ];
-                    for segment in segments {
-                        let color = match segment.style {
-                            SegmentStyle::Default => theme.fg,
-                            SegmentStyle::Success => theme.success,
-                            SegmentStyle::Error => theme.error,
-                            SegmentStyle::Warning => theme.warning,
-                            SegmentStyle::Disabled => theme.disabled,
-                        };
-                        spans.push(Span::styled(
-                            segment.text.clone(),
-                            Style::default().fg(color),
-                        ));
-                    }
-                    text_lines.push(Line::from(spans));
-                    lines_remaining -= 1;
-                }
-            }
-        }
-
-        // Add truncation indicator if needed
-        if truncated {
-            let indent = " ".repeat(max_key_len + 4);
-            text_lines.push(Line::from(vec![Span::styled(
-                format!("{}...", indent),
-                Style::default().fg(theme.disabled),
-            )]));
-        }
-
-        let data = Paragraph::new(text_lines).alignment(Alignment::Left);
+        let data = Paragraph::new(visible_slice).alignment(Alignment::Left);
         data.render(chunks[1], buf);
+
+        // Scrollbar on the right border (same pattern as panels & dropdown).
+        if ScrollBar::needs_scrollbar(visible, total_lines) {
+            let theme_colors = ThemeColors::from(theme);
+            ScrollBar::render(
+                buf,
+                modal_area.x + modal_area.width - 1,
+                chunks[1].y,
+                chunks[1].height,
+                self.scroll_offset,
+                visible,
+                total_lines,
+                &theme_colors,
+                true,
+            );
+        }
+
+        self.last_content_area = Some(chunks[1]);
 
         // Render Close button (conditionally)
         if self.show_button {
@@ -490,10 +485,36 @@ impl Modal for InfoModal {
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<Option<ModalResult<Self::Result>>> {
-        // Close only on Escape or Enter
+        let max_scroll = self.cached_total_lines.saturating_sub(self.cached_visible);
+        let page = self.cached_visible.max(1);
+
         match key.code {
             KeyCode::Esc => Ok(Some(ModalResult::Cancelled)),
             KeyCode::Enter => Ok(Some(ModalResult::Confirmed(()))),
+            KeyCode::Up | KeyCode::Char('k') => {
+                self.scroll_offset = self.scroll_offset.saturating_sub(1);
+                Ok(None)
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                self.scroll_offset = (self.scroll_offset + 1).min(max_scroll);
+                Ok(None)
+            }
+            KeyCode::PageUp => {
+                self.scroll_offset = self.scroll_offset.saturating_sub(page);
+                Ok(None)
+            }
+            KeyCode::PageDown => {
+                self.scroll_offset = (self.scroll_offset + page).min(max_scroll);
+                Ok(None)
+            }
+            KeyCode::Home => {
+                self.scroll_offset = 0;
+                Ok(None)
+            }
+            KeyCode::End => {
+                self.scroll_offset = max_scroll;
+                Ok(None)
+            }
             _ => Ok(None),
         }
     }
@@ -504,6 +525,21 @@ impl Modal for InfoModal {
         _modal_area: Rect,
     ) -> Result<Option<ModalResult<Self::Result>>> {
         use crossterm::event::MouseEventKind;
+
+        let max_scroll = self.cached_total_lines.saturating_sub(self.cached_visible);
+
+        // Mouse wheel scrolling over the content area (or anywhere inside the modal).
+        match mouse.kind {
+            MouseEventKind::ScrollUp => {
+                self.scroll_offset = self.scroll_offset.saturating_sub(3);
+                return Ok(None);
+            }
+            MouseEventKind::ScrollDown => {
+                self.scroll_offset = (self.scroll_offset + 3).min(max_scroll);
+                return Ok(None);
+            }
+            _ => {}
+        }
 
         // Only handle left button press
         if mouse.kind != MouseEventKind::Down(crossterm::event::MouseButton::Left) {

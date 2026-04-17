@@ -175,9 +175,16 @@ impl App {
                 return Ok(());
             }
             if item.has_submenu {
-                // Group — open nested submenu
-                self.state
-                    .open_bookmarks_nested_submenu(item.key.clone(), item.is_project);
+                // Toggle: if this nested submenu is already open for this group, close it.
+                if self.state.ui.bookmarks_nested.open
+                    && self.state.ui.current_bookmarks_group.as_deref() == Some(item.key.as_str())
+                {
+                    self.state.close_bookmarks_nested_submenu();
+                } else {
+                    // Group — open nested submenu
+                    self.state
+                        .open_bookmarks_nested_submenu(item.key.clone(), item.is_project);
+                }
             } else {
                 // Direct bookmark — open it
                 let path = item.key.clone();

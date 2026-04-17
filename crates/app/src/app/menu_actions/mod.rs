@@ -302,7 +302,7 @@ impl App {
             }
             OPTIONS_SUBMENU_PREFERENCES => {
                 self.state.close_menu();
-                self.open_config_in_editor()?;
+                self.open_settings_modal();
             }
             OPTIONS_SUBMENU_HELP => {
                 self.state.close_menu();

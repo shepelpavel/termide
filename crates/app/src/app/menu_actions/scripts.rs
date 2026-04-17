@@ -105,7 +105,14 @@ impl App {
 
         // Match by name — groups (open nested submenu)
         if registry.groups.iter().any(|g| g.name == *key) {
-            self.state.open_scripts_nested_submenu(key.clone());
+            // Toggle: if this nested submenu is already open for this group, close it.
+            if self.state.ui.scripts_nested.open
+                && self.state.ui.current_scripts_group.as_deref() == Some(key.as_str())
+            {
+                self.state.close_scripts_nested_submenu();
+            } else {
+                self.state.open_scripts_nested_submenu(key.clone());
+            }
         }
 
         Ok(())

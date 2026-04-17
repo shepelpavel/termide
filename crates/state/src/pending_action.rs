@@ -221,4 +221,6 @@ pub enum PendingAction {
         /// Selected index to restore on return
         selected: usize,
     },
+    /// Apply settings from the Settings modal
+    Settings,
 }

@@ -42,6 +42,7 @@ pub mod script_create;
 pub mod search;
 pub mod select;
 pub mod sessions;
+pub mod settings;
 
 pub use bookmark_add::{BookmarkAddModal, BookmarkAddResult};
 pub use calendar::CalendarModal;
@@ -66,6 +67,7 @@ pub use script_create::{sanitize_filename, ScriptCreateModal, ScriptCreateResult
 pub use search::{SearchAction, SearchModal, SearchModalResult};
 pub use select::SelectModal;
 pub use sessions::{SessionAction, SessionItem, SessionsModal};
+pub use settings::{SettingsModal, SettingsResult};
 
 /// Active modal window enum.
 ///
@@ -114,6 +116,8 @@ pub enum ActiveModal {
     CommandPalette(Box<CommandPaletteModal>),
     /// Script create modal
     ScriptCreate(Box<ScriptCreateModal>),
+    /// Settings modal with tabbed interface
+    Settings(Box<SettingsModal>),
 }
 
 /// Helper to convert a typed ModalResult into a type-erased ModalResult<Box<dyn Any>>.
@@ -151,6 +155,7 @@ macro_rules! dispatch_modal {
             ActiveModal::Progress(m) => m.$method($($arg),*),
             ActiveModal::CommandPalette(m) => m.$method($($arg),*),
             ActiveModal::ScriptCreate(m) => m.$method($($arg),*),
+            ActiveModal::Settings(m) => m.$method($($arg),*),
         }
     };
 }
@@ -180,6 +185,7 @@ macro_rules! dispatch_modal_erased {
             ActiveModal::Progress(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::CommandPalette(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::ScriptCreate(m) => m.$method($($arg),*)?.map(erase_modal_result),
+            ActiveModal::Settings(m) => m.$method($($arg),*)?.map(erase_modal_result),
         }
     };
 }

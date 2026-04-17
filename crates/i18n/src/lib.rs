@@ -83,8 +83,6 @@ pub trait Translation: Send + Sync {
     fn editor_deletion_marker(&self, count: usize) -> String;
 
     // File manager
-    fn file_search_title(&self) -> &str;
-    fn content_search_title(&self) -> &str;
     fn fm_goto_title(&self) -> &str;
     fn fm_goto_prompt(&self) -> &str;
     fn connection_cancelled_title(&self) -> &str;
@@ -112,7 +110,6 @@ pub trait Translation: Send + Sync {
     fn help_desc_escape_close(&self) -> &str;
     fn help_desc_select(&self) -> &str;
     fn help_desc_new_terminal(&self) -> &str;
-    fn help_desc_parent_dir(&self) -> &str;
     fn help_desc_home(&self) -> &str;
     fn help_desc_end(&self) -> &str;
     fn help_desc_page_scroll(&self) -> &str;
@@ -120,9 +117,7 @@ pub trait Translation: Send + Sync {
     fn help_desc_create_dir(&self) -> &str;
     fn help_desc_copy(&self) -> &str;
     fn help_desc_move(&self) -> &str;
-    fn help_desc_delete(&self) -> &str;
     fn help_desc_rename(&self) -> &str;
-    fn help_desc_save(&self) -> &str;
     // Help section headers
     fn help_section_panels(&self) -> &str;
     fn help_section_git_status(&self) -> &str;
@@ -163,9 +158,6 @@ pub trait Translation: Send + Sync {
     fn help_desc_replace_all(&self) -> &str;
     // LSP help descriptions
     fn help_desc_trigger_completion(&self) -> &str;
-    fn help_desc_accept_completion(&self) -> &str;
-    fn help_desc_cancel_completion(&self) -> &str;
-    fn help_desc_navigate_completion(&self) -> &str;
     fn help_desc_show_hover(&self) -> &str;
     fn help_desc_goto_definition(&self) -> &str;
     fn help_desc_find_references(&self) -> &str;
@@ -174,8 +166,6 @@ pub trait Translation: Send + Sync {
     fn help_desc_paragraph_nav(&self) -> &str;
     fn help_desc_view_file(&self) -> &str;
     fn help_desc_edit_file(&self) -> &str;
-    fn help_desc_search_content(&self) -> &str;
-    fn help_desc_go_home(&self) -> &str;
     fn help_desc_toggle_hidden(&self) -> &str;
     fn help_desc_open_external(&self) -> &str;
     fn help_desc_delete_generic(&self) -> &str;
@@ -183,8 +173,6 @@ pub trait Translation: Send + Sync {
     fn help_desc_command_palette(&self) -> &str;
     fn help_desc_stage_file(&self) -> &str;
     fn help_desc_unstage_file(&self) -> &str;
-    fn help_desc_next_section(&self) -> &str;
-    fn help_desc_prev_section(&self) -> &str;
     fn help_desc_terminal_copy(&self) -> &str;
     fn help_desc_terminal_paste(&self) -> &str;
     fn help_desc_scroll_up(&self) -> &str;
@@ -196,7 +184,6 @@ pub trait Translation: Send + Sync {
     fn help_desc_move_up(&self) -> &str;
     fn help_desc_move_down(&self) -> &str;
     fn help_desc_scroll_half_up(&self) -> &str;
-    fn help_desc_scroll_half_down(&self) -> &str;
 
     // Git Diff help descriptions (static keys)
     fn help_desc_toggle_collapse(&self) -> &str;
@@ -248,13 +235,10 @@ pub trait Translation: Send + Sync {
     fn menu_scripts_add(&self) -> &str;
     fn menu_options(&self) -> &str;
     fn menu_quit(&self) -> &str;
-    fn menu_navigate_hint(&self) -> &str;
-    fn menu_open_hint_label(&self) -> &str;
     fn menu_bookmarks(&self) -> &str;
 
     // Bookmarks submenu
     fn bookmarks_add_bookmark(&self) -> &str;
-    fn bookmarks_manage(&self) -> &str;
     fn bookmarks_no_bookmarks(&self) -> &str;
     fn bookmarks_add_title(&self) -> &str;
     fn bookmarks_add_path(&self) -> &str;
@@ -285,13 +269,11 @@ pub trait Translation: Send + Sync {
 
     // Options submenu
     fn options_help(&self) -> &str;
-    fn options_manage_scripts(&self) -> &str;
 
     // Git action buttons
     fn git_action_diff(&self) -> &str;
     fn git_action_revert(&self) -> &str;
     fn git_action_close(&self) -> &str;
-    fn git_action_git_status(&self) -> &str;
     fn git_action_init(&self) -> &str;
     fn git_init_success(&self, path: &str) -> String;
     fn git_action_commit(&self) -> &str;
@@ -335,6 +317,67 @@ pub trait Translation: Send + Sync {
     fn preferences_edit(&self) -> &str;
     fn theme_changed(&self, name: &str) -> String;
     fn language_changed(&self, name: &str) -> String;
+
+    // Settings modal — tabs
+    fn settings_tab_general(&self) -> &str;
+    fn settings_tab_editor(&self) -> &str;
+    fn settings_tab_file_manager(&self) -> &str;
+    fn settings_tab_terminal(&self) -> &str;
+    fn settings_tab_lsp(&self) -> &str;
+    fn settings_tab_logging(&self) -> &str;
+    fn settings_tab_vfs(&self) -> &str;
+    fn settings_tab_keybindings(&self) -> &str;
+
+    // Settings modal — buttons
+    fn settings_btn_apply(&self) -> &str;
+    fn settings_btn_reset(&self) -> &str;
+    fn settings_btn_cancel(&self) -> &str;
+
+    // Settings modal — General fields
+    fn settings_general_vim_mode(&self) -> &str;
+    fn settings_general_theme(&self) -> &str;
+    fn settings_general_language(&self) -> &str;
+    fn settings_general_icon_mode(&self) -> &str;
+    fn settings_general_auto_stack_threshold(&self) -> &str;
+    fn settings_general_min_panel_width(&self) -> &str;
+    fn settings_general_session_retention(&self) -> &str;
+    fn settings_general_bell(&self) -> &str;
+    fn settings_general_resource_interval(&self) -> &str;
+
+    // Settings modal — Editor fields
+    fn settings_editor_tab_size(&self) -> &str;
+    fn settings_editor_word_wrap(&self) -> &str;
+    fn settings_editor_auto_indent(&self) -> &str;
+    fn settings_editor_auto_close_brackets(&self) -> &str;
+    fn settings_editor_show_git_diff(&self) -> &str;
+    fn settings_editor_show_blame(&self) -> &str;
+    fn settings_editor_large_file_threshold(&self) -> &str;
+
+    // Settings modal — File Manager fields
+    fn settings_fm_extended_view_width(&self) -> &str;
+    fn settings_fm_content_search_max_size(&self) -> &str;
+
+    // Settings modal — Terminal fields
+    fn settings_terminal_default_shell(&self) -> &str;
+
+    // Settings modal — LSP fields
+    fn settings_lsp_enabled(&self) -> &str;
+    fn settings_lsp_auto_completion(&self) -> &str;
+    fn settings_lsp_completion_delay(&self) -> &str;
+    fn settings_lsp_hover_delay(&self) -> &str;
+    fn settings_lsp_add_server(&self) -> &str;
+
+    // Settings modal — Logging fields
+    fn settings_logging_file_path(&self) -> &str;
+    fn settings_logging_min_level(&self) -> &str;
+
+    // Settings modal — VFS fields
+    fn settings_vfs_connection_timeout(&self) -> &str;
+
+    // Settings modal — Keybindings hints
+    fn settings_kb_hint_bindings(&self) -> &str;
+    fn settings_kb_hint_capturing(&self) -> &str;
+    fn settings_kb_press_key(&self) -> &str;
 
     // Sessions
     fn sessions_title(&self) -> &str;
@@ -515,7 +558,6 @@ pub trait Translation: Send + Sync {
     // Outline panel strings
     fn outline_title(&self) -> &str;
     fn outline_no_symbols(&self) -> &str;
-    fn outline_title_count_fmt(&self, count: usize) -> String;
 
     // Diagnostics panel strings
     fn diagnostics_title(&self) -> &str;
@@ -540,7 +582,6 @@ pub trait Translation: Send + Sync {
     fn resource_disk_free(&self) -> &str;
     fn resource_disk_used(&self) -> &str;
     fn resource_disk_total(&self) -> &str;
-    fn resource_processes(&self) -> &str;
     fn resource_count(&self) -> &str;
     fn resource_net_title(&self) -> &str;
 
@@ -566,12 +607,6 @@ pub trait Translation: Send + Sync {
     fn calendar_december(&self) -> &str;
 
     // VFS remote connections
-    fn vfs_connecting(&self) -> &str;
-    fn vfs_connection_failed(&self) -> &str;
-    fn vfs_ftp_connected(&self) -> &str;
-    fn vfs_password_prompt(&self) -> &str;
-    fn vfs_smb_connected(&self) -> &str;
-    fn vfs_username_prompt(&self) -> &str;
 }
 
 /// Initialize translation system.

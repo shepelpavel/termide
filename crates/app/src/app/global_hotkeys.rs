@@ -106,7 +106,7 @@ impl App {
             return Ok(true);
         }
         if table.matches("open_preferences", key) {
-            self.open_config_in_editor()?;
+            self.open_settings_modal();
             return Ok(true);
         }
         if table.matches("open_sessions", key) {
