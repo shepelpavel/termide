@@ -16,6 +16,15 @@ use termide_theme::Theme;
 
 use crate::{base::button_style, Modal, ModalResult};
 
+/// Truncate `s` to at most `max_chars` Unicode scalar values, safe for UTF-8 slicing.
+fn truncate_str(s: &str, max_chars: usize) -> &str {
+    if let Some((idx, _)) = s.char_indices().nth(max_chars) {
+        &s[..idx]
+    } else {
+        s
+    }
+}
+
 mod fields;
 mod kb;
 
@@ -842,11 +851,7 @@ impl SettingsModal {
                         Style::default().fg(theme.fg)
                     };
 
-                    let label_text = if desc.label.len() > label_width {
-                        &desc.label[..label_width]
-                    } else {
-                        desc.label
-                    };
+                    let label_text = truncate_str(desc.label, label_width);
                     buf.set_string(area.x + 2, y, label_text, label_style);
 
                     let value = if self.editing && is_focused {
@@ -1578,7 +1583,8 @@ impl SettingsModal {
                 Style::default().fg(theme.fg)
             };
             let display_name = if name.len() > label_width {
-                format!("{}…", &name[..label_width - 1])
+                let truncated = truncate_str(name, label_width - 1);
+                format!("{truncated}…")
             } else {
                 name.to_string()
             };
