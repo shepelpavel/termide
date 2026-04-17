@@ -617,6 +617,31 @@ impl AppState {
         self.active_modal.is_some()
     }
 
+    /// Check if the main menu is open.
+    #[inline]
+    pub fn is_menu_open(&self) -> bool {
+        self.ui.menu_open
+    }
+
+    /// Check if a resource-indicator modal (Disk/CPU/RAM/Network) is currently open.
+    #[inline]
+    pub fn is_resource_modal_open(&self) -> bool {
+        self.resource_modal_kind.is_some()
+            && matches!(self.active_modal, Some(ActiveModal::Info(_)))
+    }
+
+    /// Check if a pending action is queued.
+    #[inline]
+    pub fn has_pending_action(&self) -> bool {
+        self.pending_action.is_some()
+    }
+
+    /// Get immutable reference to the active modal.
+    #[inline]
+    pub fn active_modal(&self) -> Option<&ActiveModal> {
+        self.active_modal.as_ref()
+    }
+
     /// Get mutable reference to active modal window
     pub fn get_active_modal_mut(&mut self) -> Option<&mut ActiveModal> {
         self.active_modal.as_mut()

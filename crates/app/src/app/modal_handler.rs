@@ -12,9 +12,8 @@ impl App {
     /// Handle keyboard event in modal window
     pub(super) fn handle_modal_key(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
         // Indicator modals opened from menu: intercept Left/Right/Esc for menu navigation
-        if self.state.ui.menu_open {
-            let is_resource = self.state.resource_modal_kind.is_some()
-                && matches!(self.state.active_modal, Some(ActiveModal::Info(_)));
+        if self.state.is_menu_open() {
+            let is_resource = self.state.is_resource_modal_open();
             let is_calendar = matches!(self.state.active_modal, Some(ActiveModal::Calendar(_)));
 
             if is_resource || is_calendar {
