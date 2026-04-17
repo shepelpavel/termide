@@ -279,11 +279,21 @@ while !state.should_quit {
 
 处理交互式模态对话框：
 
-**模态框类型：**
-- **输入** - 文本输入（文件名、目录名等）
-- **确认** - 是/否确认
-- **选择** - 从选项中选择
-- **批量** - 多项操作（复制、移动、删除）
+**模态框类型**（crate `termide-modal`）：
+- **Input** — 文本输入（文件名、目录名等）
+- **Confirm** — 是/否确认
+- **Select** / **EditableSelect** — 从选项中选择（可编辑）
+- **Choice** — 水平选择按钮
+- **Info** — 信息显示，**支持内容滚动**（脚本报告、系统信息）；右侧边框带滚动条，支持 `↑↓/PageUp/PageDown/Home/End` 及鼠标滚轮
+- **InfoAction** — 带附加操作按钮的信息窗口
+- **Settings** — 采用 **侧边栏布局** 的全屏配置模态。拆分为 `crates/modal/src/settings/` 下的若干子模块：
+  - `settings.rs` — `SettingsModal` 结构、渲染、键盘/鼠标处理
+  - `settings/fields.rs` — 声明性字段数据（`FieldType`、`FieldDescriptor`、`ContentRow`，以及辅助函数 `fields_for_tab`、`get_field_value`、`toggle_field`、`cycle_enum_*`）
+  - `settings/kb.rs` — 键绑定表和宏（`kb_get!`/`kb_set!`、`KB_SECTIONS`、`kb_binding_names`、`get/set_kb_value`、`format_key_event`）
+- **Progress** — 长时间操作的进度条
+- **Commit** / **Conflict** / **RenamePattern** / **Search** / **Replace** / **TreeSearch** / **Sessions** / **DirectoryPicker** / **SaveAs** / **BookmarkAdd** / **Calendar** / **CommandPalette** / **ScriptCreate** — 针对具体场景的专用对话框
+
+共用工具集中在 `crates/modal/src/base.rs`（`render_modal_block`、`render_modal_frame`、`button_style`、`CursorNavigation` trait）。
 
 **输入捕获：**
 模态框打开时，键盘输入首先传递给模态框。Escape 关闭模态框。

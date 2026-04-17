@@ -20,11 +20,46 @@ The application uses interactive modal windows for various operations:
 
 **Modal Features:**
 - `[X]` close button in modal title bar (clickable with mouse)
-- Keyboard navigation with Tab/Shift+Tab
+- Keyboard navigation with Tab/Shift+Tab (between modal fields / buttons)
 - Mouse support for all buttons
 - Escape key to close modal
 - Live preview for search/replace operations
 - State preservation (last entered text saved)
+
+### Settings Modal
+
+Opened with `Alt+P` or menu **Options → Edit preferences**. The previous horizontal-tab layout has been replaced by a **sidebar layout**:
+
+**Three zones:**
+- **Left sidebar** (18 columns wide) — section list, navigated with Up/Down
+- **Content area** — fields of the selected section, organised under `── Group ──` subheaders and separated by blank spacers
+- **Bottom buttons** — `Apply & Save`, `Reset`, `Cancel`
+
+**Sidebar sections:**
+- General, Editor, File Manager, Terminal, LSP, Logging, VFS — plain leaves
+- **Keybindings** — expandable group (▶/▼) with 7 sub-sections (Global, Editor, FileManager, GitStatus, GitDiff, GitLog, Terminal)
+
+**Navigation:**
+
+| Shortcut | Action |
+|----------|--------|
+| `Up` / `Down` | Move within the current zone (sections / fields / buttons) |
+| `Tab` / `Shift+Tab` | Cycle focus zones (Sidebar ↔ Content ↔ Buttons) |
+| `Left` / `Right` | Do **not** change the zone: used for editing values (cycle enum, toggle bool) and for collapsing the Keybindings group in the sidebar |
+| `Enter` / `Space` | Activate: in sidebar — enter the section; in content — toggle bool/enum or start editing number/text; on a group header — toggle expand |
+| `Escape` | Close the modal (Cancel) |
+| Mouse wheel | Scroll sidebar / content |
+
+**Fields and indicators:**
+- **Bool** — `[✓]` (on) or `[✗]` (off), toggled with `Enter`/`Space` or `Left`/`Right`
+- **Enum** — `< value >`, cycled with `Left`/`Right`
+- **Number** / **OptionalText** — `Enter` enters inline edit mode
+- **LSP → Servers** — server list items are prefixed with a bullet `•`; there is also a `+ Add Server` row
+
+**Keybindings — key capture:**  
+Navigate bindings with `Up/Down`, press `Enter` to enter Capturing mode (the next keypress becomes the new binding), `Delete`/`Backspace` clears a binding.
+
+The active section highlight in the sidebar is cleared when focus leaves it — the current section name is shown in the content-area header, so a dual highlight would just be misleading.
 
 ## Menu Bar
 
@@ -47,8 +82,8 @@ Menu activation/deactivation and each item can be accessed by mouse click or [ke
   - Diagnostics — LSP diagnostics panel
   - Operations — background operations panel
   - Outline — structural code navigation panel
-- `Scripts` — user-defined scripts (with group submenus)
-- `Bookmarks` — saved locations (directories, files, SSH, SFTP)
+- `Scripts` — user-defined scripts (with group submenus). Clicking a group header expands the submenu; clicking the same header again collapses it (toggle).
+- `Bookmarks` — saved locations (directories, files, SSH, SFTP). Group behaviour is the same toggle as in Scripts.
 - `Options` — settings submenu:
   - Themes — theme selection with live preview
   - Language — UI language with live preview
@@ -58,10 +93,18 @@ Menu activation/deactivation and each item can be accessed by mouse click or [ke
   - Help — open help panel
   - Quit — exit application
 
-**System Resource Indicators:**
-- `CPU` - CPU usage percentage with color coding (green < 50%, yellow 50-75%, red > 75%)
-- `RAM` - RAM usage in GB/MB format with color coding based on usage level
-- `↓/↑` - Network download/upload speed
+**System Resource Indicators** (all clickable — open a details modal):
+
+| Indicator | Description | Click opens |
+|-----------|-------------|-------------|
+| `CPU XX%` | CPU usage | Top-10 processes by CPU |
+| `RAM X/YGB` | Memory usage | Top-10 processes by RAM |
+| `↓…/↑…` | Network speed (↓ download, ↑ upload) | Top-10 processes by network activity |
+| `DEVICE used/totalGB` (in status bar) | Disk usage | Top-10 processes by disk + filesystem partitions |
+
+Clicking the same indicator again closes the window it opened (toggle); the same behaviour applies to the disk indicator in the status bar.
+
+Color coding: green < 50%, yellow 50–75%, red > 75%.
 
 ## Panels Area
 

@@ -1,5 +1,7 @@
 # Custom Scripts
 
+> **Note:** this document covers the **custom scripts system**. For keyboard shortcuts and UI actions, see [ui.md](ui.md#keyboard-navigation-and-panel-management).
+
 The Scripts system allows you to add custom scripts to TermIDE's menu bar. Scripts are executed in a new terminal panel, making it easy to run build commands, deployment scripts, or any automation tasks directly from TermIDE.
 
 ## Getting Started
@@ -103,6 +105,19 @@ Report scripts:
 - Capture stdout and stderr
 - Display output in an informational modal when completed
 - Show success (✓) or failure (✗) indicator in modal title
+- Support **scrolling** when the output exceeds the window height
+
+**Navigation inside the report window:**
+
+| Shortcut | Action |
+|----------|--------|
+| `↑` / `↓` | Scroll one line |
+| `PageUp` / `PageDown` | Scroll by the visible window height |
+| `Home` / `End` | Jump to start / end |
+| Mouse wheel | Smooth scroll (±3 lines) |
+| `Enter` / `Escape` | Close the window |
+
+A **position indicator** (`▌` on a `│` track) is drawn on the right border whenever content exceeds the visible area.
 
 **Example use cases:**
 - Quick status checks (`git status`, `docker ps`)

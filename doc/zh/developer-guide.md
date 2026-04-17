@@ -187,6 +187,25 @@ pub trait Panel {
 - 模态框状态
 - UI 状态（菜单、子菜单、拖拽）
 
+### 6. 国际化 (`crates/i18n/`)
+
+支持 15 种语言（en、ru、de、es、fr、pt、ja、ko、zh、bn、hi、id、th、tr、vi）；词典为 `crates/i18n/i18n/*.toml` 中的 TOML 文件。`Translation` trait 及其实现 `RuntimeTranslation` 提供类型安全的字符串访问。
+
+**英文回退机制。** 如果当前语言缺少某个键，`RuntimeTranslation` 会自动返回英文值并在日志中输出警告：
+
+```
+WARN Missing translation key: my_key (using English fallback)
+```
+
+这能避免当翻译不完整时 UI 显示空字符串。对于非英文语言，英文词典总是与主词典一同加载。
+
+**添加新键：**
+1. 在 `Translation` trait (`crates/i18n/src/lib.rs`) 中添加方法。
+2. 在 `RuntimeTranslation` (`crates/i18n/src/runtime.rs`) 中实现——通常是 `self.get_string("key")`，或对于带占位符的格式使用 `self.format("key", &[...])`。
+3. 在 15 个 `*.toml` 文件中添加条目（缺失的会使用回退，但建议直接翻译）。
+
+**删除键：** 从 trait 中移除方法、从 runtime 中移除实现、从所有 15 个词典中删除条目。可通过比较 `en.toml` 与其它语言的键来验证同步。
+
 ## 编码规范
 
 ### 代码风格

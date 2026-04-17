@@ -279,11 +279,21 @@ Handles mouse input:
 
 Handles interactive modal dialogs:
 
-**Modal Types:**
-- **Input** - Text input (file name, directory name, etc.)
-- **Confirm** - Yes/No confirmation
-- **Select** - Choose from options
-- **Batch** - Multi-item operations (copy, move, delete)
+**Modal Types** (crate `termide-modal`):
+- **Input** — text input (file name, directory name, etc.)
+- **Confirm** — Yes/No confirmation
+- **Select** / **EditableSelect** — choose from options (with optional editing)
+- **Choice** — horizontal choice buttons
+- **Info** — informational display with **scrollable content** (script reports, system info); scrollbar on the right border, `↑↓/PageUp/PageDown/Home/End` and mouse-wheel
+- **InfoAction** — info window with extra action buttons
+- **Settings** — full-screen configuration modal with **sidebar layout**. Split into submodules under `crates/modal/src/settings/`:
+  - `settings.rs` — `SettingsModal` struct, rendering, key/mouse handling
+  - `settings/fields.rs` — declarative field data (`FieldType`, `FieldDescriptor`, `ContentRow`, helpers `fields_for_tab`, `get_field_value`, `toggle_field`, `cycle_enum_*`)
+  - `settings/kb.rs` — keybinding tables and macros (`kb_get!`/`kb_set!`, `KB_SECTIONS`, `kb_binding_names`, `get/set_kb_value`, `format_key_event`)
+- **Progress** — progress bar for long-running operations
+- **Commit** / **Conflict** / **RenamePattern** / **Search** / **Replace** / **TreeSearch** / **Sessions** / **DirectoryPicker** / **SaveAs** / **BookmarkAdd** / **Calendar** / **CommandPalette** / **ScriptCreate** — specialised dialogs for individual operations
+
+Shared helpers live in `crates/modal/src/base.rs` (`render_modal_block`, `render_modal_frame`, `button_style`, the `CursorNavigation` trait).
 
 **Input Capture:**
 When modal is open, keyboard input goes to modal first. Escape closes modal.

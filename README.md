@@ -37,11 +37,12 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 - **External Apps** - Open files with system default applications (Shift+Enter)
 - **38 Built-in Themes** - Dark, light, retro, and cinematic themes (Dracula, Nord, Monokai, Solarized, Matrix, Pip-Boy, Blue Sky, Pinky Pie, etc.)
 - **Custom Themes** - Create your own themes in TOML format
-- **15 UI Languages** - Bengali, Chinese, English, French, German, Hindi, Indonesian, Japanese, Korean, Portuguese, Russian, Spanish, Thai, Turkish, Vietnamese
+- **15 UI Languages** - Bengali, Chinese, English, French, German, Hindi, Indonesian, Japanese, Korean, Portuguese, Russian, Spanish, Thai, Turkish, Vietnamese (missing keys transparently fall back to English)
 - **Session Management** - Auto-save and restore panel layouts
-- **System Monitor** - Real-time CPU, RAM, network I/O in menu bar and disk usage in status bar; click any indicator to open a detail modal (top processes by CPU/RAM, top processes by network connections with listening ports)
+- **System Monitor** - Real-time CPU, RAM, network I/O in menu bar and disk usage in status bar; click any indicator to open a detail modal (top processes by CPU/RAM, top processes by network connections with listening ports); repeated click on the same indicator closes the modal (toggle)
 - **Search & Replace** - Live preview, match counter, regex support
-- **Custom Scripts** - Run user-defined scripts from the Scripts menu (supports `.bg.` for background, `.report.` for modal output)
+- **Custom Scripts** - Run user-defined scripts from the Scripts menu (supports `.bg.` for background, `.report.` for scrollable modal output with success/failure indicator)
+- **Settings Modal** - Full-screen configuration (`Alt+P`) with sidebar layout, grouped fields (Appearance / Input / Layout / Performance / …), and in-place keybinding capture for 7 keybinding scopes
 - **Cross-platform** - Linux (x86_64, ARM64), macOS (Intel, Apple Silicon), Windows (native via ConPTY, WSL)
 - **Full Mouse Support** - Click navigation, scroll, double-click actions
 - **Keyboard Layouts** - Cyrillic support with automatic hotkey translation
@@ -278,7 +279,7 @@ For detailed documentation, see:
 - `Alt+O` - Outline
 - `Alt+I` - Diagnostics
 - `Alt+C` - Git Log
-- `Alt+P` - Open config
+- `Alt+P` - Open Settings modal (preferences)
 
 **File Manager:**
 - `Ctrl+/` - Open directory switcher
@@ -450,9 +451,9 @@ You can add custom scripts to the Scripts menu by placing executable files in:
 
 **Features:**
 - Scripts appear in the Scripts menu (menu bar)
-- Subdirectories create nested submenus
+- Subdirectories create nested submenus (clicking a group toggles expand/collapse)
 - Add `.bg.` to filename for background execution (e.g., `deploy.bg.sh`)
-- Add `.report.` to filename for background with modal output (e.g., `check.report.sh`)
+- Add `.report.` to filename for background with modal output (e.g., `check.report.sh`). Report modal is scrollable (Up/Down, PageUp/PageDown, Home/End, mouse wheel) and shows ✓/✗ in the title
 - Display name is the part before the first dot
 
 **Example:**

@@ -186,6 +186,25 @@ Split into modules: `batch.rs`, `layout.rs`, `operations.rs`, `pending_action.rs
 - Modal state
 - UI state (menu, submenus, drag)
 
+### 6. Internationalisation (`crates/i18n/`)
+
+15 locales are supported (en, ru, de, es, fr, pt, ja, ko, zh, bn, hi, id, th, tr, vi); dictionaries are TOML files under `crates/i18n/i18n/*.toml`. The `Translation` trait and its `RuntimeTranslation` implementation expose type-safe access to strings.
+
+**English fallback.** If a key is missing from the current locale, `RuntimeTranslation` transparently falls back to the English value and logs a warning:
+
+```
+WARN Missing translation key: my_key (using English fallback)
+```
+
+This keeps the UI from rendering empty strings when translations lag behind. For non-English locales the English dictionary is always loaded alongside the primary one.
+
+**Adding a key:**
+1. Add the method to the `Translation` trait (`crates/i18n/src/lib.rs`).
+2. Add the implementation to `RuntimeTranslation` (`crates/i18n/src/runtime.rs`) — usually `self.get_string("key")` or `self.format("key", &[...])` for placeholder-bearing formats.
+3. Add an entry to every one of the 15 `*.toml` files (missing entries will use the fallback, but it's preferable to translate up front).
+
+**Removing a key:** remove the trait method, the runtime implementation, and the strings from all 15 dictionaries. Synchronisation is verified by comparing keys in `en.toml` against the other locales.
+
 ## Coding Conventions
 
 ### Style

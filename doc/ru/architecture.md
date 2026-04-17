@@ -279,11 +279,21 @@ while !state.should_quit {
 
 Обрабатывает интерактивные модальные диалоги:
 
-**Типы модальных окон:**
-- **Input** - Ввод текста (имя файла, имя директории и т.д.)
-- **Confirm** - Подтверждение Да/Нет
-- **Select** - Выбор из вариантов
-- **Batch** - Операции с несколькими элементами (копирование, перемещение, удаление)
+**Типы модальных окон** (крейт `termide-modal`):
+- **Input** — ввод текста (имя файла, имя директории и т.д.)
+- **Confirm** — подтверждение Да/Нет
+- **Select** / **EditableSelect** — выбор из вариантов (с возможным редактированием)
+- **Choice** — горизонтальные кнопки выбора
+- **Info** — отображение информации с **прокручиваемым содержимым** (отчёты скриптов, системная информация); скроллбар на правой рамке, клавиши `↑↓/PageUp/PageDown/Home/End` и колесо мыши
+- **InfoAction** — info-окно с дополнительными кнопками действий
+- **Settings** — полноэкранный модал конфигурации с **sidebar-layout**. Разбит на подмодули в `crates/modal/src/settings/`:
+  - `settings.rs` — структура `SettingsModal`, рендер, обработка клавиш/мыши
+  - `settings/fields.rs` — декларативные данные полей (`FieldType`, `FieldDescriptor`, `ContentRow`, функции `fields_for_tab`, `get_field_value`, `toggle_field`, `cycle_enum_*`)
+  - `settings/kb.rs` — макросы и таблицы keybindings (`kb_get!`/`kb_set!`, `KB_SECTIONS`, `kb_binding_names`, `get/set_kb_value`, `format_key_event`)
+- **Progress** — progress-bar для длительных операций
+- **Commit** / **Conflict** / **RenamePattern** / **Search** / **Replace** / **TreeSearch** / **Sessions** / **DirectoryPicker** / **SaveAs** / **BookmarkAdd** / **Calendar** / **CommandPalette** / **ScriptCreate** — специализированные диалоги для отдельных операций
+
+Общие утилиты вынесены в `crates/modal/src/base.rs` (`render_modal_block`, `render_modal_frame`, `button_style`, `CursorNavigation` trait).
 
 **Захват ввода:**
 Когда модальное окно открыто, ввод с клавиатуры сначала идёт в модальное окно. Escape закрывает модальное окно.
