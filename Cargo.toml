@@ -183,7 +183,6 @@ termide-ui = { path = "crates/ui" }
 termide-ui-render = { path = "crates/ui-render" }
 termide-watcher = { path = "crates/watcher" }
 termide-app-core = { path = "crates/app-core" }
-termide-app-event = { path = "crates/app-event" }
 termide-app-modal = { path = "crates/app-modal" }
 termide-app-panel = { path = "crates/app-panel" }
 termide-app-watcher = { path = "crates/app-watcher" }

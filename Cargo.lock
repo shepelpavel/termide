@@ -2984,7 +2984,6 @@ dependencies = [
  "tempfile",
  "termide-app",
  "termide-app-core",
- "termide-app-event",
  "termide-app-modal",
  "termide-app-panel",
  "termide-app-session",
@@ -3057,7 +3056,6 @@ dependencies = [
  "ratatui",
  "tempfile",
  "termide-app-core",
- "termide-app-event",
  "termide-app-modal",
  "termide-app-panel",
  "termide-app-session",
@@ -3105,10 +3103,6 @@ dependencies = [
  "termide-modal",
  "termide-state",
 ]
-
-[[package]]
-name = "termide-app-event"
-version = "0.19.0"
 
 [[package]]
 name = "termide-app-modal"

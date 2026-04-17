@@ -44,7 +44,6 @@ pub use state::AppState;
 
 // Re-export all app-* crates for convenience
 pub use termide_app_core;
-// termide_app_event is empty (legacy crate), not re-exported
 pub use termide_app_modal;
 pub use termide_app_panel;
 pub use termide_app_session;
