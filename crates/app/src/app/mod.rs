@@ -35,6 +35,7 @@ mod local_ops;
 mod menu_actions;
 mod modal;
 mod modal_handler;
+mod mouse;
 mod mouse_handler;
 mod operation_manager_handler;
 mod panel_factory;

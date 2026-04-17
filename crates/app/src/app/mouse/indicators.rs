@@ -1,0 +1,404 @@
+//! Resource-indicator modals: CPU/RAM/Network/Disk builders and opener.
+//!
+//! All pure data assembly — no event handling. `handle_mouse_event` and
+//! `handle_status_bar_click` in the parent module invoke these after a click
+//! lands on the corresponding indicator.
+
+use crate::app::App;
+use crate::state::ActiveModal;
+use termide_i18n as i18n;
+use termide_modal as modal;
+use termide_ui_render::{get_resource_indicator_ranges, MenuRenderParams};
+
+impl App {
+    pub(in crate::app) fn get_indicator_ranges(
+        &self,
+    ) -> (
+        std::ops::Range<u16>,
+        std::ops::Range<u16>,
+        std::ops::Range<u16>,
+        std::ops::Range<u16>,
+    ) {
+        let (ram_value, ram_unit) = self.state.system_monitor.format_ram();
+        let params = MenuRenderParams {
+            theme: self.state.theme,
+            selected_menu_item: self.state.ui.selected_menu_item,
+            menu_open: self.state.ui.menu_open,
+            cpu_usage: self.state.system_monitor.cpu_usage(),
+            ram_percent: self.state.system_monitor.ram_usage_percent(),
+            ram_value,
+            ram_unit,
+            net_down_rate: self.state.system_monitor.net_download_rate(),
+            net_up_rate: self.state.system_monitor.net_upload_rate(),
+        };
+        get_resource_indicator_ranges(self.state.terminal.width, &params)
+    }
+
+    /// Get disk space info from the active panel (if available).
+    pub(in crate::app) fn get_active_panel_disk_space(
+        &self,
+    ) -> Option<termide_system_monitor::DiskSpaceInfo> {
+        use std::any::Any;
+        let panel = self.layout_manager.active_panel()?;
+        let panel_any = &**panel as &dyn Any;
+        if let Some(fm) = panel_any.downcast_ref::<termide_panel_file_manager::FileManager>() {
+            return fm.get_disk_space_info();
+        }
+        if let Some(editor) = panel_any.downcast_ref::<termide_panel_editor::Editor>() {
+            return editor.get_disk_space_info();
+        }
+        if let Some(git) = panel_any.downcast_ref::<termide_panel_git_status::GitStatusPanel>() {
+            return git.get_disk_space_info();
+        }
+        if let Some(terminal) = panel_any.downcast_ref::<termide_panel_terminal::Terminal>() {
+            return terminal.get_terminal_info().disk_space;
+        }
+        None
+    }
+
+    /// Open CPU, RAM or Network processes modal.
+    pub(in crate::app) fn open_resource_modal_at(
+        &mut self,
+        kind: crate::state::ResourceModalKind,
+        anchor: Option<(u16, u16)>,
+    ) {
+        use crate::state::ResourceModalKind;
+
+        let t = i18n::t();
+        let (title, lines) = match kind {
+            ResourceModalKind::Cpu => {
+                let title = t.resource_cpu_top_title().to_owned();
+                let lines = self.build_process_lines(kind);
+                (title, lines)
+            }
+            ResourceModalKind::Ram => {
+                let title = t.resource_ram_top_title().to_owned();
+                let lines = self.build_process_lines(kind);
+                (title, lines)
+            }
+            ResourceModalKind::Network => {
+                let title = t.resource_net_title().to_owned();
+                let lines = self.build_network_modal_lines();
+                (title, lines)
+            }
+            ResourceModalKind::Disk => {
+                let title = t.resource_disk_title().to_owned();
+                let lines = self.build_disk_modal_lines();
+                (title, lines)
+            }
+        };
+        let mut modal = modal::InfoModal::new_rich(title, lines).with_min_width(57);
+        if let Some((x, y)) = anchor {
+            modal = modal.with_anchor(x, y).without_button();
+        }
+        self.state.active_modal = Some(ActiveModal::Info(Box::new(modal)));
+        self.state.resource_modal_kind = Some(kind);
+        self.state.last_resource_modal_refresh = Some(std::time::Instant::now());
+        self.state.needs_redraw = true;
+    }
+
+    /// Build process lines for CPU or RAM modal (header + data rows).
+    ///
+    /// Column order is always: Application | CPU | RAM (for both modals).
+    pub(in crate::app) fn build_process_lines(
+        &self,
+        kind: crate::state::ResourceModalKind,
+    ) -> Vec<(String, termide_modal::info::ModalValue)> {
+        use crate::state::ResourceModalKind;
+        use termide_modal::info::{ModalValue, SegmentStyle, StyledSegment};
+        use termide_system_monitor::format_bytes;
+        use termide_ui_render::resource_color;
+        use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+
+        // Fixed name column width so CPU/RAM columns never shift
+        const NAME_COL: usize = 24;
+
+        /// Pad or truncate `s` to exactly `width` display columns.
+        fn fit_name(s: &str, width: usize) -> String {
+            let w = s.width();
+            if w <= width {
+                // Pad with spaces
+                let mut out = s.to_string();
+                for _ in 0..(width - w) {
+                    out.push(' ');
+                }
+                out
+            } else {
+                // Truncate and add "…"
+                let mut out = String::new();
+                let mut cur = 0;
+                for ch in s.chars() {
+                    let cw = UnicodeWidthChar::width(ch).unwrap_or(0);
+                    if cur + cw > width - 1 {
+                        break;
+                    }
+                    out.push(ch);
+                    cur += cw;
+                }
+                out.push('…');
+                cur += 1;
+                for _ in 0..(width - cur) {
+                    out.push(' ');
+                }
+                out
+            }
+        }
+
+        let t = i18n::t();
+        let processes = match kind {
+            ResourceModalKind::Cpu => self.state.system_monitor.top_cpu_processes(10),
+            ResourceModalKind::Ram => self.state.system_monitor.top_memory_processes(10),
+            // Only Cpu and Ram modals have process lists;
+            // Network/Disk kinds should never reach this code path.
+            ResourceModalKind::Network | ResourceModalKind::Disk => {
+                unreachable!("build_process_lines called with {:?} kind", kind)
+            }
+        };
+        let total_mem = self.state.system_monitor.stats().memory_total;
+
+        // Header row — empty key, all columns in segments
+        // Columns: count(6) + CPU(7) + RAM(10) = 23 chars in segments
+        let mut lines: Vec<(String, ModalValue)> = vec![(
+            fit_name("", NAME_COL),
+            ModalValue::Segments(vec![
+                StyledSegment {
+                    text: format!("{:>6}", t.resource_count()),
+                    style: SegmentStyle::Default,
+                },
+                StyledSegment {
+                    text: format!("{:>7}", "CPU"),
+                    style: SegmentStyle::Default,
+                },
+                StyledSegment {
+                    text: format!("  {:>8}", "RAM"),
+                    style: SegmentStyle::Default,
+                },
+            ]),
+        )];
+
+        // Data rows
+        for p in &processes {
+            // CPU color based on per-process percentage
+            let cpu_pct = p.cpu_percent.round() as u8;
+            let cpu_color = match resource_color(cpu_pct, self.state.theme) {
+                c if c == self.state.theme.error => SegmentStyle::Error,
+                c if c == self.state.theme.warning => SegmentStyle::Warning,
+                _ => SegmentStyle::Success,
+            };
+
+            // RAM color based on share of total memory
+            let mem_pct = if total_mem > 0 {
+                ((p.memory_bytes as f64 / total_mem as f64) * 100.0) as u8
+            } else {
+                0
+            };
+            let ram_color = match resource_color(mem_pct, self.state.theme) {
+                c if c == self.state.theme.error => SegmentStyle::Error,
+                c if c == self.state.theme.warning => SegmentStyle::Warning,
+                _ => SegmentStyle::Success,
+            };
+
+            let count_text = format!("{:>6}", p.count);
+
+            let segments = vec![
+                StyledSegment {
+                    text: count_text,
+                    style: SegmentStyle::Default,
+                },
+                StyledSegment {
+                    text: format!(" {:>5.1}%", p.cpu_percent),
+                    style: cpu_color,
+                },
+                StyledSegment {
+                    text: format!("  {:>8}", format_bytes(p.memory_bytes)),
+                    style: ram_color,
+                },
+            ];
+            lines.push((fit_name(&p.name, NAME_COL), ModalValue::Segments(segments)));
+        }
+
+        lines
+    }
+
+    /// Build disk space modal lines (header + data rows).
+    pub(in crate::app) fn build_disk_modal_lines(
+        &self,
+    ) -> Vec<(String, termide_modal::info::ModalValue)> {
+        use termide_modal::info::{ModalValue, SegmentStyle, StyledSegment};
+        use termide_system_monitor::{format_bytes, get_all_disk_space_info};
+        use termide_ui_render::resource_color;
+
+        let t = i18n::t();
+        let disks = get_all_disk_space_info();
+
+        // Header row: free | used | total
+        let mut lines: Vec<(String, ModalValue)> = vec![(
+            String::new(),
+            ModalValue::Segments(vec![
+                StyledSegment {
+                    text: format!("{:>14}", t.resource_disk_free()),
+                    style: SegmentStyle::Default,
+                },
+                StyledSegment {
+                    text: format!("{:>14}", t.resource_disk_used()),
+                    style: SegmentStyle::Default,
+                },
+                StyledSegment {
+                    text: format!("{:>10}", t.resource_disk_total()),
+                    style: SegmentStyle::Default,
+                },
+            ]),
+        )];
+
+        // Data rows
+        for d in &disks {
+            let name = d.device_name().unwrap_or_else(|| "???".to_string());
+            let usage = d.usage_percent();
+            let avail_pct = 100_u8.saturating_sub(usage);
+            let used_color = match resource_color(usage, self.state.theme) {
+                c if c == self.state.theme.error => SegmentStyle::Error,
+                c if c == self.state.theme.warning => SegmentStyle::Warning,
+                _ => SegmentStyle::Success,
+            };
+            let segments = vec![
+                StyledSegment {
+                    text: format!("{:>4}% {:>8}", avail_pct, format_bytes(d.available)),
+                    style: SegmentStyle::Default,
+                },
+                StyledSegment {
+                    text: format!("{:>4}% {:>8}", usage, format_bytes(d.used())),
+                    style: used_color,
+                },
+                StyledSegment {
+                    text: format!("  {:>8}", format_bytes(d.total)),
+                    style: SegmentStyle::Default,
+                },
+            ];
+            lines.push((name, ModalValue::Segments(segments)));
+        }
+
+        lines
+    }
+
+    /// Build network activity modal lines (header + data rows + speed footer).
+    ///
+    /// Columns: Application | Ports | Conn
+    pub(in crate::app) fn build_network_modal_lines(
+        &self,
+    ) -> Vec<(String, termide_modal::info::ModalValue)> {
+        use termide_modal::info::{ModalValue, SegmentStyle, StyledSegment};
+
+        use unicode_width::UnicodeWidthStr;
+
+        const NAME_COL: usize = 20;
+        const PORTS_COL: usize = 14;
+
+        fn fit_name(s: &str, width: usize) -> String {
+            let w = s.width();
+            if w <= width {
+                let mut out = s.to_string();
+                for _ in 0..(width - w) {
+                    out.push(' ');
+                }
+                out
+            } else {
+                let mut out = String::new();
+                let mut cur = 0;
+                for ch in s.chars() {
+                    let cw = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+                    if cur + cw > width - 1 {
+                        break;
+                    }
+                    out.push(ch);
+                    cur += cw;
+                }
+                out.push('…');
+                cur += 1;
+                for _ in 0..(width - cur) {
+                    out.push(' ');
+                }
+                out
+            }
+        }
+
+        fn fit_ports(ports: &[u16], width: usize) -> String {
+            if ports.is_empty() {
+                let mut s = "—".to_string();
+                s.push_str(&" ".repeat(width - 1));
+                return s;
+            }
+            let full: String = ports
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            if full.width() <= width {
+                let pad = width - full.width();
+                format!("{}{}", full, " ".repeat(pad))
+            } else {
+                // Truncate with …
+                let mut out = String::new();
+                let mut cur = 0;
+                for ch in full.chars() {
+                    let cw = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+                    if cur + cw > width - 1 {
+                        break;
+                    }
+                    out.push(ch);
+                    cur += cw;
+                }
+                out.push('…');
+                for _ in 0..(width - cur - 1) {
+                    out.push(' ');
+                }
+                out
+            }
+        }
+
+        let processes = self.state.system_monitor.top_network_processes(10);
+
+        // Header row
+        let mut lines: Vec<(String, ModalValue)> = vec![(
+            fit_name("", NAME_COL),
+            ModalValue::Segments(vec![
+                StyledSegment {
+                    text: format!("{:<width$}", "Ports", width = PORTS_COL),
+                    style: SegmentStyle::Default,
+                },
+                StyledSegment {
+                    text: format!("{:>5}", "Conn"),
+                    style: SegmentStyle::Default,
+                },
+            ]),
+        )];
+
+        // Data rows
+        for p in &processes {
+            let ports_text = fit_ports(&p.listening_ports, PORTS_COL);
+            let ports_style = if p.listening_ports.is_empty() {
+                SegmentStyle::Disabled
+            } else {
+                SegmentStyle::Success
+            };
+            let conn_text = format!("{:>5}", p.connections);
+            let conn_style = if p.connections == 0 {
+                SegmentStyle::Disabled
+            } else {
+                SegmentStyle::Default
+            };
+            let segments = vec![
+                StyledSegment {
+                    text: ports_text,
+                    style: ports_style,
+                },
+                StyledSegment {
+                    text: conn_text,
+                    style: conn_style,
+                },
+            ];
+            lines.push((fit_name(&p.name, NAME_COL), ModalValue::Segments(segments)));
+        }
+
+        lines
+    }
+}
