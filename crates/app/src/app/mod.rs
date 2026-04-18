@@ -12,7 +12,10 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use crossterm::event::MouseEventKind;
-use termide_app_core::{LayoutController, PanelProvider};
+use termide_app_core::{
+    ActiveModal as CoreActiveModal, LayoutController, ModalManager, PanelProvider,
+    PendingAction as CorePendingAction, StateManager, UiState,
+};
 use termide_core::event::{Event, EventHandler};
 use termide_layout::{LayoutManager, PanelGroup};
 
@@ -831,6 +834,59 @@ impl PanelProvider for App {
 
     fn iter_panels_mut(&mut self) -> Box<dyn Iterator<Item = &mut Box<dyn Panel>> + '_> {
         Box::new(self.layout_manager.iter_all_panels_mut())
+    }
+}
+
+impl StateManager for App {
+    fn ui(&self) -> &UiState {
+        &self.state.ui
+    }
+
+    fn ui_mut(&mut self) -> &mut UiState {
+        &mut self.state.ui
+    }
+
+    fn set_info(&mut self, msg: String) {
+        self.state.set_info(msg);
+    }
+
+    fn set_error(&mut self, msg: String) {
+        self.state.set_error(msg);
+    }
+
+    fn clear_status(&mut self) {
+        self.state.clear_status();
+    }
+
+    fn needs_redraw(&self) -> bool {
+        self.state.needs_redraw
+    }
+
+    fn set_redraw(&mut self, value: bool) {
+        self.state.needs_redraw = value;
+    }
+}
+
+impl ModalManager for App {
+    fn active_modal(&self) -> Option<&CoreActiveModal> {
+        self.state.active_modal.as_ref()
+    }
+
+    fn active_modal_mut(&mut self) -> Option<&mut CoreActiveModal> {
+        self.state.active_modal.as_mut()
+    }
+
+    fn open_modal(&mut self, modal: CoreActiveModal, action: Option<CorePendingAction>) {
+        self.state.active_modal = Some(modal);
+        self.state.pending_action = action;
+    }
+
+    fn close_modal(&mut self) {
+        self.state.close_modal();
+    }
+
+    fn take_pending_action(&mut self) -> Option<CorePendingAction> {
+        self.state.pending_action.take()
     }
 }
 

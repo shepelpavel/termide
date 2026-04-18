@@ -144,12 +144,12 @@ impl App {
 
         match self.state.start_operation_now(request, vfs_manager) {
             Ok(op_id) => {
-                self.state.batch_sub_operation_id = Some(op_id);
+                self.state.batch.sub_operation_id = Some(op_id);
 
                 // If no batch tracking card exists, create one and open the panel.
                 // Use start_batch_tracking() to get a synthetic ID so that
                 // untrack_operation(real_id) on sub-op completion won't remove it.
-                if self.state.batch_tracking_id.is_none() {
+                if self.state.batch.tracking_id.is_none() {
                     let batch_id = self.state.start_batch_tracking(
                         op_type,
                         source_display,
@@ -407,7 +407,7 @@ impl App {
         let request = OperationRequest::upload(source.clone(), final_remote);
 
         // Store batch upload state for continuation
-        self.state.pending_batch_upload = Some(crate::state::PendingBatchUpload {
+        self.state.batch.pending_upload = Some(crate::state::PendingBatchUpload {
             all_sources: sources,
             current_index: 0,
             dest_base_url: remote_url.to_string(),
@@ -432,7 +432,7 @@ impl App {
             }
             Err(e) => {
                 log::error!("Failed to start upload operation: {}", e);
-                self.state.pending_batch_upload = None;
+                self.state.batch.pending_upload = None;
                 self.show_error_modal(format!("Upload failed: {}", e));
             }
         }
@@ -825,7 +825,7 @@ impl App {
                                     let r =
                                         OperationRequest::download(vfs_source.clone(), final_dest);
                                     if is_move {
-                                        self.state.pending_remote_delete =
+                                        self.state.batch.pending_delete =
                                             Some(PendingRemoteDelete {
                                                 vfs_source,
                                                 vfs_manager: vfs_manager.clone(),
@@ -1034,7 +1034,7 @@ impl App {
         let should_show_modal = operation.current_index == 0
             && (operation.total_count() > 1 || is_remote_operation || needs_progress)
             && !matches!(self.state.active_modal, Some(ActiveModal::Progress(_)))
-            && self.state.batch_tracking_id.is_none();
+            && self.state.batch.tracking_id.is_none();
 
         if should_show_modal {
             use crate::state::OperationType;
@@ -1203,7 +1203,7 @@ impl App {
         };
 
         // Update batch tracking file-level progress in Operations panel
-        if self.state.batch_tracking_id.is_some() {
+        if self.state.batch.tracking_id.is_some() {
             self.state
                 .update_batch_progress(operation.current_index, operation.total_count());
             self.state.needs_redraw = true;
@@ -1262,7 +1262,7 @@ impl App {
                 } else {
                     let r = OperationRequest::download(vfs_source.clone(), final_dest);
                     if is_move {
-                        self.state.pending_remote_delete = Some(PendingRemoteDelete {
+                        self.state.batch.pending_delete = Some(PendingRemoteDelete {
                             vfs_source,
                             vfs_manager: vfs_manager.clone(),
                         });
@@ -1459,7 +1459,7 @@ impl App {
                             } else {
                                 let r = OperationRequest::download(vfs_source.clone(), new_dest);
                                 if is_move {
-                                    self.state.pending_remote_delete = Some(PendingRemoteDelete {
+                                    self.state.batch.pending_delete = Some(PendingRemoteDelete {
                                         vfs_source,
                                         vfs_manager: vfs_manager.clone(),
                                     });

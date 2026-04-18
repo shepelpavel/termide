@@ -23,7 +23,7 @@ impl App {
         // 1. Progress modal has been rendered (legacy path)
         // 2. Operations panel batch tracking has been set up (new path)
         let has_progress_modal = matches!(&self.state.active_modal, Some(ActiveModal::Progress(_)));
-        let has_batch_tracking = self.state.batch_tracking_id.is_some();
+        let has_batch_tracking = self.state.batch.tracking_id.is_some();
 
         if has_progress_modal || has_batch_tracking {
             // Don't consume the pending batch if a user-interactive modal is open

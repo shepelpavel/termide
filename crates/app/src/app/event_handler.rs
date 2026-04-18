@@ -1214,8 +1214,8 @@ impl App {
             .unwrap_or(false);
 
         // Resolve batch tracking ID to actual OperationManager sub-operation ID
-        let real_id = if self.state.batch_tracking_id == Some(op_id) {
-            self.state.batch_sub_operation_id.unwrap_or(op_id)
+        let real_id = if self.state.batch.tracking_id == Some(op_id) {
+            self.state.batch.sub_operation_id.unwrap_or(op_id)
         } else {
             op_id
         };
@@ -1233,7 +1233,7 @@ impl App {
 
         // Also sync pause state into the pending BatchOperation so that
         // process_batch_operation() won't start the next sub-op while paused.
-        if self.state.batch_tracking_id == Some(op_id) {
+        if self.state.batch.tracking_id == Some(op_id) {
             if let Some(PendingAction::ContinueBatchOperation { ref mut operation }) =
                 self.state.pending_action
             {
@@ -1287,8 +1287,8 @@ impl App {
         }
 
         // Resolve batch tracking ID to actual OperationManager sub-operation ID
-        let real_id = if self.state.batch_tracking_id == Some(op_id) {
-            self.state.batch_sub_operation_id.unwrap_or(op_id)
+        let real_id = if self.state.batch.tracking_id == Some(op_id) {
+            self.state.batch.sub_operation_id.unwrap_or(op_id)
         } else {
             op_id
         };

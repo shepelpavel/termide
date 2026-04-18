@@ -162,6 +162,28 @@ impl std::fmt::Debug for PendingEditorDownload {
 ///
 /// When downloading from remote with is_move=true, we need to delete the source
 /// after the download succeeds. This stores the VFS info needed for that deletion.
+/// Grouped batch-operation state.
+///
+/// Bundles all fields that together describe a single in-flight batch of
+/// file operations managed by `OperationManager`. Before this struct, the
+/// four sub-fields were loose members of `AppState`, making it hard to see
+/// they move as a group and easy to forget to reset one on completion.
+#[derive(Debug, Default)]
+pub struct BatchOperationState {
+    /// Queued upload state for batch uploads via `OperationManager`.
+    pub pending_upload: Option<PendingBatchUpload>,
+    /// Queued remote delete (used by move operations — delete source after download).
+    pub pending_delete: Option<PendingRemoteDelete>,
+    /// Synthetic `OperationId` that represents the entire batch in the Operations panel.
+    /// Individual sub-operation ids of `OperationManager` are mapped onto this entry.
+    pub tracking_id: Option<termide_file_ops::OperationId>,
+    /// `OperationManager` id of the individual file operation currently running
+    /// inside the batch — used to bridge pause/cancel from the batch UI to the worker.
+    pub sub_operation_id: Option<termide_file_ops::OperationId>,
+    /// Counter for generating synthetic batch `OperationId`s.
+    pub id_counter: u64,
+}
+
 pub struct PendingRemoteDelete {
     /// VFS source path to delete
     pub vfs_source: termide_vfs::VfsPath,
@@ -258,10 +280,8 @@ pub struct AppState {
     pub bg_script_handles: Vec<(termide_file_ops::OperationId, mpsc::Receiver<()>, u32)>,
     /// Pending editor download via OperationManager (replaces download_operation for editor opens)
     pub pending_editor_download: Option<PendingEditorDownload>,
-    /// Pending batch upload state (for OperationManager-based uploads)
-    pub pending_batch_upload: Option<PendingBatchUpload>,
-    /// Pending remote delete for move operations (delete source after download)
-    pub pending_remote_delete: Option<PendingRemoteDelete>,
+    /// Grouped state for an in-flight batch operation (upload/delete/tracking).
+    pub batch: BatchOperationState,
     /// Close editor after current upload completes (for "save and close" flow).
     /// Stores the file path of the editor to close (to find the correct panel).
     pub close_editor_after_upload: Option<PathBuf>,
@@ -324,14 +344,7 @@ pub struct AppState {
     /// Active file operations tracked in Operations panel (keyed by OperationId).
     /// This provides UI state for displaying operation progress in the Operations panel.
     pub active_operations: HashMap<termide_file_ops::OperationId, ActiveOperation>,
-    /// Synthetic OperationId for current batch operation (to show in Operations panel).
-    /// Maps the real OperationManager operation IDs to this batch entry.
-    pub batch_tracking_id: Option<termide_file_ops::OperationId>,
-    /// OperationManager ID of the currently running sub-operation within a batch.
-    /// Used to bridge pause/cancel from the batch UI to the actual worker.
-    pub batch_sub_operation_id: Option<termide_file_ops::OperationId>,
-    /// Counter for generating synthetic batch operation IDs.
-    batch_id_counter: u64,
+    // Batch-operation fields moved to `batch: BatchOperationState` above.
     /// Cached shell list for the shell picker submenu (populated on open, cleared on close).
     pub stash: StashState,
     /// Cached menus, scripts registry, disk space.
@@ -386,8 +399,10 @@ impl AppState {
             script_operation_handles: Vec::new(),
             bg_script_handles: Vec::new(),
             pending_editor_download: None,
-            pending_batch_upload: None,
-            pending_remote_delete: None,
+            batch: BatchOperationState {
+                id_counter: u64::MAX / 2,
+                ..Default::default()
+            },
             close_editor_after_upload: None,
             skip_refresh_after_upload: false,
             watcher: None,
@@ -417,9 +432,6 @@ impl AppState {
             operations_panel_dirty: false,
             last_operations_elapsed_redraw: None,
             active_operations: HashMap::new(),
-            batch_tracking_id: None,
-            batch_sub_operation_id: None,
-            batch_id_counter: u64::MAX / 2,
             stash: StashState::default(),
             cache: CacheState::default(),
         }
@@ -906,36 +918,36 @@ impl AppState {
         total_bytes: u64,
     ) -> termide_file_ops::OperationId {
         // Generate synthetic ID (wraps around if exhausted, which is practically impossible)
-        self.batch_id_counter = self.batch_id_counter.wrapping_add(1);
-        let batch_id = termide_file_ops::OperationId::new(self.batch_id_counter);
+        self.batch.id_counter = self.batch.id_counter.wrapping_add(1);
+        let batch_id = termide_file_ops::OperationId::new(self.batch.id_counter);
 
         // Create tracked operation
         self.track_operation(batch_id, op_type, source, dest, total_files, total_bytes);
-        self.batch_tracking_id = Some(batch_id);
+        self.batch.tracking_id = Some(batch_id);
 
         batch_id
     }
 
     /// Generate a synthetic OperationId for non-OperationManager use (scripts, etc.).
     pub fn next_synthetic_operation_id(&mut self) -> termide_file_ops::OperationId {
-        self.batch_id_counter = self.batch_id_counter.wrapping_add(1);
-        termide_file_ops::OperationId::new(self.batch_id_counter)
+        self.batch.id_counter = self.batch.id_counter.wrapping_add(1);
+        termide_file_ops::OperationId::new(self.batch.id_counter)
     }
 
     /// Finish batch tracking - remove the batch operation from active_operations.
     pub fn finish_batch_tracking(&mut self) {
-        if let Some(batch_id) = self.batch_tracking_id.take() {
+        if let Some(batch_id) = self.batch.tracking_id.take() {
             if self.active_operations.remove(&batch_id).is_some() {
                 self.operations_panel_dirty = true;
             }
         }
-        self.batch_sub_operation_id = None;
+        self.batch.sub_operation_id = None;
     }
 
     /// Update batch tracked operation file-level progress.
     /// Only updates file counts; byte-level progress is managed by poll_operation_manager.
     pub fn update_batch_progress(&mut self, files_completed: usize, total_files: usize) {
-        if let Some(batch_id) = self.batch_tracking_id {
+        if let Some(batch_id) = self.batch.tracking_id {
             if let Some(op) = self.active_operations.get_mut(&batch_id) {
                 op.progress.files_completed = files_completed;
                 op.progress.total_files = total_files;
@@ -945,7 +957,7 @@ impl AppState {
 
     /// Set batch tracked operation pause state.
     pub fn set_batch_paused(&mut self, paused: bool) {
-        if let Some(batch_id) = self.batch_tracking_id {
+        if let Some(batch_id) = self.batch.tracking_id {
             if let Some(op) = self.active_operations.get_mut(&batch_id) {
                 op.is_paused = paused;
                 if paused {

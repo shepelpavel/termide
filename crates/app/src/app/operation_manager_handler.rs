@@ -27,15 +27,15 @@ impl App {
                 }
                 OperationEvent::Progress(id, progress) => {
                     // Resolve to batch tracking ID if this is a sub-operation
-                    let tracking_id = if self.state.batch_sub_operation_id == Some(id) {
-                        self.state.batch_tracking_id.unwrap_or(id)
+                    let tracking_id = if self.state.batch.sub_operation_id == Some(id) {
+                        self.state.batch.tracking_id.unwrap_or(id)
                     } else {
                         id
                     };
 
                     // Update active operation progress for operations panel
-                    let is_batch = self.state.batch_sub_operation_id == Some(id)
-                        && self.state.batch_tracking_id.is_some();
+                    let is_batch = self.state.batch.sub_operation_id == Some(id)
+                        && self.state.batch.tracking_id.is_some();
                     if let Some(op) = self.state.active_operations.get_mut(&tracking_id) {
                         if is_batch {
                             // For batch: add offset from previously completed sub-ops
@@ -139,7 +139,7 @@ impl App {
                             should_refresh_file_managers = true;
 
                             // Handle remote delete for move operations (delete source after download)
-                            if let Some(pending_delete) = self.state.pending_remote_delete.take() {
+                            if let Some(pending_delete) = self.state.batch.pending_delete.take() {
                                 // Start async delete operation (fire and forget)
                                 let delete_op = pending_delete
                                     .vfs_manager
@@ -216,7 +216,7 @@ impl App {
                             }
 
                             // Handle batch upload continuation
-                            if let Some(mut batch_upload) = self.state.pending_batch_upload.take() {
+                            if let Some(mut batch_upload) = self.state.batch.pending_upload.take() {
                                 // Delete local source if this was a move operation
                                 if batch_upload.is_move {
                                     if let Err(e) =
@@ -275,7 +275,7 @@ impl App {
                                         ) {
                                             Ok(_) => {
                                                 // Put back for next tick
-                                                self.state.pending_batch_upload =
+                                                self.state.batch.pending_upload =
                                                     Some(batch_upload);
                                             }
                                             Err(e) => {
@@ -309,7 +309,7 @@ impl App {
                             // Continue batch operation if pending
                             if has_batch {
                                 // Accumulate bytes from completed sub-op into offset
-                                if let Some(batch_id) = self.state.batch_tracking_id {
+                                if let Some(batch_id) = self.state.batch.tracking_id {
                                     if let Some(op) =
                                         self.state.active_operations.get_mut(&batch_id)
                                     {
@@ -365,7 +365,7 @@ impl App {
                             // Continue batch operation if pending
                             if has_batch {
                                 // Accumulate bytes from completed sub-op into offset
-                                if let Some(batch_id) = self.state.batch_tracking_id {
+                                if let Some(batch_id) = self.state.batch.tracking_id {
                                     if let Some(op) =
                                         self.state.active_operations.get_mut(&batch_id)
                                     {
@@ -419,7 +419,7 @@ impl App {
                             log::error!("Operation {} failed: {}", id, err);
 
                             // Clear pending remote delete (don't delete source if download failed)
-                            self.state.pending_remote_delete = None;
+                            self.state.batch.pending_delete = None;
 
                             // Clear pending editor download on failure
                             if let Some(pending) = self.state.pending_editor_download.take() {
@@ -446,14 +446,14 @@ impl App {
                             }
 
                             // Clear pending batch upload (don't continue if upload failed)
-                            if self.state.pending_batch_upload.take().is_some() {
+                            if self.state.batch.pending_upload.take().is_some() {
                                 self.state.close_modal();
                             }
 
                             // Continue batch operation if pending
                             if has_batch {
                                 // Accumulate bytes from completed sub-op into offset
-                                if let Some(batch_id) = self.state.batch_tracking_id {
+                                if let Some(batch_id) = self.state.batch.tracking_id {
                                     if let Some(op) =
                                         self.state.active_operations.get_mut(&batch_id)
                                     {
@@ -482,7 +482,7 @@ impl App {
                         }
                         OperationResult::Cancelled => {
                             // Clear pending remote delete (don't delete source if download cancelled)
-                            self.state.pending_remote_delete = None;
+                            self.state.batch.pending_delete = None;
 
                             // Clear pending editor download on cancel
                             if let Some(pending) = self.state.pending_editor_download.take() {
@@ -509,7 +509,7 @@ impl App {
                             }
 
                             // Clear pending batch upload (don't continue if upload cancelled)
-                            if self.state.pending_batch_upload.take().is_some() {
+                            if self.state.batch.pending_upload.take().is_some() {
                                 self.state.close_modal();
                                 self.state.set_info("Upload cancelled".to_string());
                             }
