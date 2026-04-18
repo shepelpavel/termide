@@ -9,9 +9,66 @@ use std::path::PathBuf;
 use super::super::App;
 use crate::state::{ActiveModal, PendingAction};
 use crate::PanelExt;
+use std::sync::Arc;
 use termide_i18n as i18n;
 
 impl App {
+    /// Start an async upload of the editor's temp file to the remote path via
+    /// `OperationManager`. If `close_after` is `Some(path)`, the editor panel
+    /// with that file path will close once the upload completes (handled in
+    /// the operation manager event loop).
+    ///
+    /// Sets the editor's "uploading" flag (spinner in header), tracks the
+    /// operation in the Operations panel, and shows an error modal on failure.
+    /// Returns `true` if the upload was queued successfully.
+    fn queue_remote_editor_upload(
+        &mut self,
+        temp_path: std::path::PathBuf,
+        remote_path: termide_vfs::VfsPath,
+        vfs_manager: Arc<termide_vfs::VfsManager>,
+        close_after: Option<std::path::PathBuf>,
+    ) -> bool {
+        // Set uploading flag on the active editor (spinner in header)
+        if let Some(panel) = self.layout_manager.active_panel_mut() {
+            if let Some(editor) = panel.as_editor_mut() {
+                editor.set_uploading(true);
+            }
+        }
+
+        let total_bytes = std::fs::metadata(&temp_path).map(|m| m.len()).unwrap_or(0);
+        let source_display = temp_path.display().to_string();
+        let request = termide_file_ops::OperationRequest::upload(temp_path, remote_path.clone());
+
+        match self.state.start_operation_now(request, vfs_manager) {
+            Ok(operation_id) => {
+                self.state.track_operation(
+                    operation_id,
+                    crate::state::OperationType::CopyUpload,
+                    source_display,
+                    remote_path.to_url_string(),
+                    1,
+                    total_bytes,
+                );
+                if close_after.is_some() {
+                    self.state.close_editor_after_upload = close_after;
+                }
+                // Skip file-manager refresh — file already exists at destination
+                self.state.skip_refresh_after_upload = true;
+                true
+            }
+            Err(e) => {
+                log::error!("Failed to start upload: {}", e);
+                self.show_error_modal(format!("Upload failed: {}", e));
+                if let Some(panel) = self.layout_manager.active_panel_mut() {
+                    if let Some(editor) = panel.as_editor_mut() {
+                        editor.set_uploading(false);
+                    }
+                }
+                false
+            }
+        }
+    }
+
     /// Handle editor closure with saving
     pub(in crate::app) fn handle_close_editor_with_save(
         &mut self,
@@ -45,61 +102,14 @@ impl App {
                                         return Ok(());
                                     }
                                     Ok(Some((temp_path, remote_path, vfs_manager))) => {
-                                        // Remote file - start async upload (no modal)
-
-                                        // Set uploading flag to show spinner in editor header
-                                        if let Some(panel) = self.layout_manager.active_panel_mut()
-                                        {
-                                            if let Some(editor) = panel.as_editor_mut() {
-                                                editor.set_uploading(true);
-                                            }
-                                        }
-
-                                        // Create upload request via OperationManager
-                                        let total_bytes = std::fs::metadata(&temp_path)
-                                            .map(|m| m.len())
-                                            .unwrap_or(0);
-                                        let source_display = temp_path.display().to_string();
-                                        let request = termide_file_ops::OperationRequest::upload(
+                                        // Remote file — queue async upload; panel closes in the
+                                        // operation-manager event loop when upload completes.
+                                        self.queue_remote_editor_upload(
                                             temp_path,
-                                            remote_path.clone(),
+                                            remote_path,
+                                            vfs_manager,
+                                            editor_file_path,
                                         );
-
-                                        // Start upload via OperationManager (no modal)
-                                        match self.state.start_operation_now(request, vfs_manager) {
-                                            Ok(operation_id) => {
-                                                self.state.track_operation(
-                                                    operation_id,
-                                                    crate::state::OperationType::CopyUpload,
-                                                    source_display,
-                                                    remote_path.to_url_string(),
-                                                    1,
-                                                    total_bytes,
-                                                );
-                                                // Store editor path so we close the right panel
-                                                self.state.close_editor_after_upload =
-                                                    editor_file_path;
-                                                // Skip file manager refresh - file already exists
-                                                self.state.skip_refresh_after_upload = true;
-                                            }
-                                            Err(e) => {
-                                                log::error!("Failed to start upload: {}", e);
-                                                self.show_error_modal(format!(
-                                                    "Upload failed: {}",
-                                                    e
-                                                ));
-                                                // Clear uploading flag
-                                                if let Some(panel) =
-                                                    self.layout_manager.active_panel_mut()
-                                                {
-                                                    if let Some(editor) = panel.as_editor_mut() {
-                                                        editor.set_uploading(false);
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        // Don't close panel yet - wait for upload to complete
                                         return Ok(());
                                     }
                                     Ok(None) => {
@@ -165,20 +175,40 @@ impl App {
             match selected {
                 0 => {
                     // Overwrite disk with current content
-                    if let Some(panel) = self.layout_manager.active_panel_mut() {
-                        if let Some(editor) = panel.as_editor_mut() {
-                            let t = i18n::t();
-                            match editor.force_save() {
-                                Err(e) => {
-                                    log::error!("Force save error: {}", e);
-                                    self.show_error_modal(t.status_error_save(&e.to_string()));
-                                    return Ok(());
-                                }
-                                Ok(_upload_op) => {
-                                    // TODO: Handle async upload operation for remote files
+                    let editor_file_path = self
+                        .layout_manager
+                        .active_panel()
+                        .and_then(|p| p.as_any().downcast_ref::<termide_panel_editor::Editor>())
+                        .and_then(|e| e.file_path().map(|p| p.to_path_buf()));
+                    let upload_info = {
+                        let mut result = None;
+                        if let Some(panel) = self.layout_manager.active_panel_mut() {
+                            if let Some(editor) = panel.as_editor_mut() {
+                                let t = i18n::t();
+                                match editor.force_save() {
+                                    Err(e) => {
+                                        log::error!("Force save error: {}", e);
+                                        self.show_error_modal(t.status_error_save(&e.to_string()));
+                                        return Ok(());
+                                    }
+                                    Ok(Some(info)) => {
+                                        result = Some(info);
+                                    }
+                                    Ok(None) => {}
                                 }
                             }
                         }
+                        result
+                    };
+                    if let Some((temp_path, remote_path, vfs_manager)) = upload_info {
+                        // Remote file — queue async upload; panel closes when upload completes.
+                        self.queue_remote_editor_upload(
+                            temp_path,
+                            remote_path,
+                            vfs_manager,
+                            editor_file_path,
+                        );
+                        return Ok(());
                     }
                     self.close_panel_at_index();
                 }
@@ -218,20 +248,40 @@ impl App {
             match selected {
                 0 => {
                     // Overwrite disk with my changes
-                    if let Some(panel) = self.layout_manager.active_panel_mut() {
-                        if let Some(editor) = panel.as_editor_mut() {
-                            let t = i18n::t();
-                            match editor.force_save() {
-                                Err(e) => {
-                                    log::error!("Force save error: {}", e);
-                                    self.show_error_modal(t.status_error_save(&e.to_string()));
-                                    return Ok(());
-                                }
-                                Ok(_upload_op) => {
-                                    // TODO: Handle async upload operation for remote files
+                    let editor_file_path = self
+                        .layout_manager
+                        .active_panel()
+                        .and_then(|p| p.as_any().downcast_ref::<termide_panel_editor::Editor>())
+                        .and_then(|e| e.file_path().map(|p| p.to_path_buf()));
+                    let upload_info = {
+                        let mut result = None;
+                        if let Some(panel) = self.layout_manager.active_panel_mut() {
+                            if let Some(editor) = panel.as_editor_mut() {
+                                let t = i18n::t();
+                                match editor.force_save() {
+                                    Err(e) => {
+                                        log::error!("Force save error: {}", e);
+                                        self.show_error_modal(t.status_error_save(&e.to_string()));
+                                        return Ok(());
+                                    }
+                                    Ok(Some(info)) => {
+                                        result = Some(info);
+                                    }
+                                    Ok(None) => {}
                                 }
                             }
                         }
+                        result
+                    };
+                    if let Some((temp_path, remote_path, vfs_manager)) = upload_info {
+                        // Remote file — queue async upload; panel closes when upload completes.
+                        self.queue_remote_editor_upload(
+                            temp_path,
+                            remote_path,
+                            vfs_manager,
+                            editor_file_path,
+                        );
+                        return Ok(());
                     }
                     self.close_panel_at_index();
                 }

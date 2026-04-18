@@ -1939,9 +1939,16 @@ impl Panel for Editor {
                 has_external_change: self.file_state.external_change_detected,
             },
             PanelCommand::Save => match self.save() {
-                Ok(_upload_op) => {
-                    // TODO: Handle async upload operation for remote files
-                    // For now, remote saves will show progress via VFS status messages
+                Ok(None) => CommandResult::SaveResult {
+                    success: true,
+                    error: None,
+                },
+                Ok(Some(_remote_info)) => {
+                    // PanelCommand::Save is only used for synchronous save probes
+                    // (tests, internal callers). App-driven remote saves bypass this
+                    // path and call `editor.save()` directly to retrieve the upload
+                    // tuple and queue it via `queue_remote_editor_upload`.
+                    // Report success so `SaveResult` remains a pure sync signal.
                     CommandResult::SaveResult {
                         success: true,
                         error: None,
