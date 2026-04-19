@@ -544,14 +544,14 @@ impl Panel for OutlinePanel {
             MouseEventKind::ScrollDown => {
                 self.select_next();
             }
-            MouseEventKind::Down(MouseButton::Left) => {
-                if mouse.row >= content_top && mouse.row < content_bottom {
-                    let click_offset = (mouse.row - content_top) as usize;
-                    let new_idx = self.scroll_offset + click_offset;
-                    if new_idx < self.symbols.len() {
-                        self.selected_index = new_idx;
-                        self.navigate_to_selected();
-                    }
+            MouseEventKind::Down(MouseButton::Left)
+                if mouse.row >= content_top && mouse.row < content_bottom =>
+            {
+                let click_offset = (mouse.row - content_top) as usize;
+                let new_idx = self.scroll_offset + click_offset;
+                if new_idx < self.symbols.len() {
+                    self.selected_index = new_idx;
+                    self.navigate_to_selected();
                 }
             }
             _ => {}

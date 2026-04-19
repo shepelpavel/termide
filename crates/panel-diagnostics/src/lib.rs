@@ -601,14 +601,14 @@ impl Panel for DiagnosticsPanel {
             MouseEventKind::ScrollDown => {
                 self.select_next();
             }
-            MouseEventKind::Down(MouseButton::Left) => {
-                if mouse.row >= content_top && mouse.row < area.bottom() {
-                    let click_offset = (mouse.row - content_top) as usize;
-                    let count = self.filtered_count();
-                    let new_idx = self.scroll_offset + click_offset;
-                    if new_idx < count {
-                        self.selected_index = new_idx;
-                    }
+            MouseEventKind::Down(MouseButton::Left)
+                if mouse.row >= content_top && mouse.row < area.bottom() =>
+            {
+                let click_offset = (mouse.row - content_top) as usize;
+                let count = self.filtered_count();
+                let new_idx = self.scroll_offset + click_offset;
+                if new_idx < count {
+                    self.selected_index = new_idx;
                 }
             }
             _ => {}
