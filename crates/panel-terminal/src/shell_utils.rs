@@ -87,8 +87,9 @@ pub fn discover_shells() -> Vec<ShellInfo> {
         {
             if output.status.success() {
                 // WSL output may be UTF-16LE on some Windows versions
-                let text = String::from_utf8(output.stdout)
-                    .or_else(|e| {
+                let text = match String::from_utf8(output.stdout) {
+                    Ok(s) => s,
+                    Err(e) => {
                         let bytes = e.into_bytes();
                         // Try UTF-16LE decoding; truncate trailing odd byte if present
                         let len = bytes.len() & !1;
@@ -96,9 +97,9 @@ pub fn discover_shells() -> Vec<ShellInfo> {
                             .chunks_exact(2)
                             .map(|c| u16::from_le_bytes([c[0], c[1]]))
                             .collect();
-                        String::from_utf16(&u16s).unwrap_or_else(|_| String::new())
-                    })
-                    .unwrap_or_default();
+                        String::from_utf16(&u16s).unwrap_or_default()
+                    }
+                };
 
                 for line in text.lines() {
                     let distro = line.trim().trim_start_matches('\u{feff}'); // strip BOM

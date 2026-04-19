@@ -31,3 +31,6 @@ termide.log
 /coverage/
 *.profdata
 *.profraw
+
+/.claude
+!/.claude/skills
