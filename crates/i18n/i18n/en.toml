@@ -415,6 +415,10 @@ calendar_september = "September"
 calendar_october = "October"
 calendar_november = "November"
 calendar_december = "December"
+lsp_rename_no_identifier = "No identifier at cursor"
+lsp_rename_unsaved_file = "Rename requires a saved file"
+lsp_rename_no_changes = "Rename: no changes produced"
+
 [formats]
 batch_result_errors_fmt = "errors: {count}"
 batch_result_skipped_fmt = "skipped: {count}"
@@ -482,6 +486,8 @@ git_init_failed_fmt = "Init failed: {error}"
 git_log_title_fmt = "Git Log: {repo} - {branch}"
 git_switched_to_fmt = "Switched to {branch}"
 image_error_fmt = "Failed to load image: {error}"
+
+lsp_rename_result_fmt = "Renamed in {count} file{plural}"
 
 [plurals]
 day = { one = "", other = "s" }

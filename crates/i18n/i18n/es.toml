@@ -397,6 +397,10 @@ settings_tab_vfs = "VFS"
 settings_terminal_default_shell = "Shell predeterminada"
 settings_vfs_connection_timeout = "Tiempo de espera de conexión (s)"
 
+lsp_rename_no_identifier = "No hay identificador bajo el cursor"
+lsp_rename_unsaved_file = "Renombrar requiere un archivo guardado"
+lsp_rename_no_changes = "Renombrar: no se produjeron cambios"
+
 [formats]
 language_changed = "Idioma cambiado a {name}"
 theme_changed = "Tema cambiado a {name}"
@@ -464,6 +468,8 @@ git_init_failed_fmt = "Inicialización fallida: {error}"
 git_log_title_fmt = "Git Historial: {repo} - {branch}"
 git_switched_to_fmt = "Cambiado a {branch}"
 image_error_fmt = "Error al cargar imagen: {error}"
+
+lsp_rename_result_fmt = "Renombrado en {count} archivo{plural}"
 
 [plurals]
 day = { one = "", other = "s" }

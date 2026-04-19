@@ -397,6 +397,10 @@ settings_tab_vfs = "VFS"
 settings_terminal_default_shell = "Shell mặc định"
 settings_vfs_connection_timeout = "Hết thời gian kết nối (giây)"
 
+lsp_rename_no_identifier = "Không có định danh tại con trỏ"
+lsp_rename_unsaved_file = "Đổi tên yêu cầu tệp đã lưu"
+lsp_rename_no_changes = "Đổi tên: không có thay đổi"
+
 [formats]
 batch_result_errors_fmt = "lỗi: {count}"
 batch_result_skipped_fmt = "bỏ qua: {count}"
@@ -464,6 +468,8 @@ git_init_failed_fmt = "Khởi tạo thất bại: {error}"
 git_log_title_fmt = "Nhật ký Git: {repo} - {branch}"
 git_switched_to_fmt = "Đã chuyển sang {branch}"
 image_error_fmt = "Tải hình ảnh thất bại: {error}"
+
+lsp_rename_result_fmt = "Đã đổi tên trong {count} tệp"
 
 [plurals]
 day = { one = "", other = "" }

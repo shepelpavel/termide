@@ -70,6 +70,9 @@ impl App {
         }
 
         // Pass key to active panel
+        // `pending_status` carries a (message, is_error) pair to be applied to AppState
+        // after the mutable panel borrow is released below.
+        let mut pending_status: Option<(String, bool)> = None;
         let (events, modal_request, config_update, escape_close) = if let Some(panel) =
             self.layout_manager.active_panel_mut()
         {
@@ -142,7 +145,14 @@ impl App {
                 // Handle rename-symbol request (F2)
                 if let Some((line, col)) = editor.take_rename_request() {
                     let word = editor.get_word_at_cursor();
-                    if let Some(path) = editor.file_path().map(|p| p.to_path_buf()) {
+                    let path_opt = editor.file_path().map(|p| p.to_path_buf());
+                    if word.is_empty() {
+                        let t = termide_i18n::t();
+                        pending_status = Some((t.lsp_rename_no_identifier().to_string(), false));
+                    } else if path_opt.is_none() {
+                        let t = termide_i18n::t();
+                        pending_status = Some((t.lsp_rename_unsaved_file().to_string(), true));
+                    } else if let Some(path) = path_opt {
                         events.push(termide_core::PanelEvent::ShowInput {
                             prompt: format!("Rename '{}':", word),
                             initial_value: word,
@@ -212,6 +222,15 @@ impl App {
         // Skip if panel already handled Escape by emitting ClosePanel
         if escape_close && !panel_handled_escape {
             self.handle_escape_close_request()?;
+        }
+
+        // Apply pending status message (e.g., from rename guard rails)
+        if let Some((msg, is_error)) = pending_status {
+            if is_error {
+                self.state.set_error(msg);
+            } else {
+                self.state.set_info(msg);
+            }
         }
 
         // Apply config update if present (legacy, still used by Editor)

@@ -397,6 +397,10 @@ settings_tab_vfs = "VFS"
 settings_terminal_default_shell = "डिफ़ॉल्ट शेल"
 settings_vfs_connection_timeout = "कनेक्शन टाइमआउट (से.)"
 
+lsp_rename_no_identifier = "कर्सर पर कोई पहचानकर्ता नहीं"
+lsp_rename_unsaved_file = "नाम बदलने के लिए सहेजी गई फ़ाइल आवश्यक है"
+lsp_rename_no_changes = "नाम बदलें: कोई परिवर्तन नहीं हुआ"
+
 [formats]
 language_changed = "भाषा {name} में बदली गई"
 theme_changed = "थीम {name} में बदली गई"
@@ -464,6 +468,8 @@ git_init_failed_fmt = "प्रारंभ विफल: {error}"
 git_log_title_fmt = "Git इतिहास: {repo} - {branch}"
 git_switched_to_fmt = "{branch} पर स्विच किया गया"
 image_error_fmt = "छवि लोड करने में विफल: {error}"
+
+lsp_rename_result_fmt = "{count} फ़ाइल{plural} में नाम बदला गया"
 
 [plurals]
 # Hindi has simple plural (same form for 1 and many in most cases)

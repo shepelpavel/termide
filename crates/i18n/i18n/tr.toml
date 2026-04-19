@@ -397,6 +397,10 @@ settings_tab_vfs = "VFS"
 settings_terminal_default_shell = "Varsayılan shell"
 settings_vfs_connection_timeout = "Bağlantı zaman aşımı (sn)"
 
+lsp_rename_no_identifier = "İmleç konumunda tanımlayıcı yok"
+lsp_rename_unsaved_file = "Yeniden adlandırma kaydedilmiş dosya gerektirir"
+lsp_rename_no_changes = "Yeniden adlandırma: değişiklik olmadı"
+
 [formats]
 batch_result_errors_fmt = "hata: {count}"
 batch_result_skipped_fmt = "atlandı: {count}"
@@ -464,6 +468,8 @@ git_init_failed_fmt = "Başlatma başarısız: {error}"
 git_log_title_fmt = "Git Günlüğü: {repo} - {branch}"
 git_switched_to_fmt = "{branch} dalına geçildi"
 image_error_fmt = "Görüntü yüklenemedi: {error}"
+
+lsp_rename_result_fmt = "{count} dosyada yeniden adlandırıldı"
 
 [plurals]
 day = { one = "", other = "" }

@@ -551,7 +551,7 @@ impl EditorKeybindings {
         set_default!(trigger_completion, "Ctrl+.");
         set_default!(show_hover, "Ctrl+K");
         set_default!(goto_definition, "F12");
-        set_default!(rename_symbol, "F4");
+        set_default!(rename_symbol, "F2");
         set_default_multiple!(find_references, "Shift+F12", "F24");
     }
 }

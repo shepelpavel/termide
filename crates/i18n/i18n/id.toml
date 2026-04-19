@@ -397,6 +397,10 @@ settings_tab_vfs = "VFS"
 settings_terminal_default_shell = "Shell bawaan"
 settings_vfs_connection_timeout = "Batas waktu koneksi (dtk)"
 
+lsp_rename_no_identifier = "Tidak ada pengenal di kursor"
+lsp_rename_unsaved_file = "Rename membutuhkan file tersimpan"
+lsp_rename_no_changes = "Rename: tidak ada perubahan"
+
 [formats]
 batch_result_errors_fmt = "kesalahan: {count}"
 batch_result_skipped_fmt = "dilewati: {count}"
@@ -464,6 +468,8 @@ git_init_failed_fmt = "Inisialisasi gagal: {error}"
 git_log_title_fmt = "Log Git: {repo} - {branch}"
 git_switched_to_fmt = "Beralih ke {branch}"
 image_error_fmt = "Gagal memuat gambar: {error}"
+
+lsp_rename_result_fmt = "Diubah nama di {count} file"
 
 [plurals]
 day = { one = "", other = "" }

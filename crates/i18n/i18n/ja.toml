@@ -397,6 +397,10 @@ settings_tab_vfs = "VFS"
 settings_terminal_default_shell = "既定のシェル"
 settings_vfs_connection_timeout = "接続タイムアウト (秒)"
 
+lsp_rename_no_identifier = "カーソル位置に識別子がありません"
+lsp_rename_unsaved_file = "リネームには保存されたファイルが必要です"
+lsp_rename_no_changes = "リネーム: 変更は発生しませんでした"
+
 [formats]
 batch_result_errors_fmt = "エラー: {count}"
 batch_result_skipped_fmt = "スキップ: {count}"
@@ -464,6 +468,8 @@ git_init_failed_fmt = "初期化に失敗: {error}"
 git_log_title_fmt = "Gitログ: {repo} - {branch}"
 git_switched_to_fmt = "{branch}に切り替えました"
 image_error_fmt = "画像の読み込みに失敗: {error}"
+
+lsp_rename_result_fmt = "{count}ファイルで名前を変更しました"
 
 [plurals]
 day = { one = "", other = "" }

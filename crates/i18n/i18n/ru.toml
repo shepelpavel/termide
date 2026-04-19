@@ -415,6 +415,10 @@ calendar_september = "Сентябрь"
 calendar_october = "Октябрь"
 calendar_november = "Ноябрь"
 calendar_december = "Декабрь"
+lsp_rename_no_identifier = "Нет идентификатора под курсором"
+lsp_rename_unsaved_file = "Переименование требует сохранённый файл"
+lsp_rename_no_changes = "Переименование: изменений не произведено"
+
 [formats]
 batch_result_errors_fmt = "ошибок: {count}"
 batch_result_skipped_fmt = "пропущено: {count}"
@@ -482,6 +486,8 @@ git_init_failed_fmt = "Ошибка инициализации: {error}"
 git_log_title_fmt = "Git Log: {repo} - {branch}"
 git_switched_to_fmt = "Переключено на {branch}"
 image_error_fmt = "Ошибка загрузки изображения: {error}"
+
+lsp_rename_result_fmt = "Переименовано в {count} файл{plural}"
 
 [plurals]
 # Russian pluralization: 1 день, 2-4 дня, 5+ дней

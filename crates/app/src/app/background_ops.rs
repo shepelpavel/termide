@@ -498,15 +498,14 @@ impl App {
 
         // Apply pending rename WorkspaceEdit (outside of panel borrow)
         if let Some(edit) = pending_rename_edit {
+            let t = termide_i18n::t();
             match self.apply_workspace_edit(edit) {
-                Ok(n) => {
-                    let msg = if n == 1 {
-                        "Renamed in 1 file".to_string()
-                    } else {
-                        format!("Renamed in {} files", n)
-                    };
-                    self.state.set_info(msg);
+                Ok(0) => {
+                    // Valid reply with no changes — typically means the LSP server
+                    // couldn't find references or rejected the rename silently.
+                    self.state.set_info(t.lsp_rename_no_changes().to_string());
                 }
+                Ok(n) => self.state.set_info(t.lsp_rename_result(n)),
                 Err(e) => {
                     log::error!("Rename failed: {}", e);
                     self.show_error_modal(format!("Rename failed: {}", e));

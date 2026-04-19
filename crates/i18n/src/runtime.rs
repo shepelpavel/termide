@@ -479,6 +479,26 @@ impl Translation for RuntimeTranslation {
         self.get_string("help_desc_rename_symbol")
     }
 
+    fn lsp_rename_no_identifier(&self) -> &str {
+        self.get_string("lsp_rename_no_identifier")
+    }
+
+    fn lsp_rename_unsaved_file(&self) -> &str {
+        self.get_string("lsp_rename_unsaved_file")
+    }
+
+    fn lsp_rename_no_changes(&self) -> &str {
+        self.get_string("lsp_rename_no_changes")
+    }
+
+    fn lsp_rename_result(&self, count: usize) -> String {
+        let plural = self.pluralize(count, "file");
+        self.format(
+            "lsp_rename_result_fmt",
+            &[("count", &count.to_string()), ("plural", plural)],
+        )
+    }
+
     fn help_desc_delete_generic(&self) -> &str {
         self.get_string("help_desc_delete_generic")
     }

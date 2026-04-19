@@ -397,6 +397,10 @@ settings_tab_vfs = "VFS"
 settings_terminal_default_shell = "默认 Shell"
 settings_vfs_connection_timeout = "连接超时 (秒)"
 
+lsp_rename_no_identifier = "光标位置无标识符"
+lsp_rename_unsaved_file = "重命名需要已保存的文件"
+lsp_rename_no_changes = "重命名:未产生更改"
+
 [formats]
 language_changed = "语言已更改为 {name}"
 theme_changed = "主题已更改为 {name}"
@@ -464,6 +468,8 @@ git_init_failed_fmt = "初始化失败: {error}"
 git_log_title_fmt = "Git日志: {repo} - {branch}"
 git_switched_to_fmt = "已切换到 {branch}"
 image_error_fmt = "图片加载失败: {error}"
+
+lsp_rename_result_fmt = "已在 {count} 个文件中重命名"
 
 [plurals]
 # Chinese doesn't have plural forms

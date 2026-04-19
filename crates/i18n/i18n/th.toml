@@ -397,6 +397,10 @@ settings_tab_vfs = "VFS"
 settings_terminal_default_shell = "เชลล์เริ่มต้น"
 settings_vfs_connection_timeout = "หมดเวลาการเชื่อมต่อ (วิ.)"
 
+lsp_rename_no_identifier = "ไม่มีตัวระบุที่ตำแหน่งเคอร์เซอร์"
+lsp_rename_unsaved_file = "การเปลี่ยนชื่อต้องใช้ไฟล์ที่บันทึกแล้ว"
+lsp_rename_no_changes = "เปลี่ยนชื่อ: ไม่มีการเปลี่ยนแปลง"
+
 [formats]
 language_changed = "เปลี่ยนภาษาเป็น {name}"
 theme_changed = "เปลี่ยนธีมเป็น {name}"
@@ -464,6 +468,8 @@ git_init_failed_fmt = "เริ่มต้นล้มเหลว: {error}"
 git_log_title_fmt = "Git ประวัติ: {repo} - {branch}"
 git_switched_to_fmt = "เปลี่ยนไปยัง {branch}"
 image_error_fmt = "โหลดรูปภาพไม่สำเร็จ: {error}"
+
+lsp_rename_result_fmt = "เปลี่ยนชื่อใน {count} ไฟล์"
 
 [plurals]
 # Thai doesn't have plural forms
