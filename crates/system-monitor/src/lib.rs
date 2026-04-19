@@ -340,12 +340,11 @@ pub struct DiskSpaceInfo {
 impl DiskSpaceInfo {
     /// Get disk usage percentage (0-100).
     pub fn usage_percent(&self) -> u8 {
-        if self.total > 0 {
-            let used = self.total.saturating_sub(self.available);
-            ((used * 100) / self.total).min(100) as u8
-        } else {
-            0
-        }
+        let used = self.total.saturating_sub(self.available);
+        (used * 100)
+            .checked_div(self.total)
+            .map(|v| v.min(100) as u8)
+            .unwrap_or(0)
     }
 
     /// Get used space in bytes.
@@ -419,11 +418,10 @@ impl DiskSpaceInfoExt for DiskSpaceInfo {
 
         // Calculate used space and percentage
         let used = self.total.saturating_sub(self.available);
-        let percent = if self.total > 0 {
-            ((used * 100) / self.total).min(100)
-        } else {
-            0
-        };
+        let percent = (used * 100)
+            .checked_div(self.total)
+            .map(|v| v.min(100))
+            .unwrap_or(0);
 
         // Convert to GB (rounded to nearest integer)
         let used_gb = (used as f64 / BYTES_PER_GB).round() as u64;
