@@ -126,9 +126,30 @@ The layout adapts to the terminal width, showing more panel groups on wider scre
 - journal — `Alt+L`
 
 **Features of closeable panels:**
-- Have `[X]` close button in panel title (clickable with mouse)
-- Can be closed with Escape, Alt+X, or Alt+Backspace
+- Have `[≡]` action button in panel title (click to open context menu with Close / Split / Merge / Move)
+- Can be closed with Escape, Alt+X, or F10
 - Can be resized with Alt+Plus/Minus
+- Can be dragged by the top border to another position (see Mouse Interaction below)
+
+**Panel action context menu:**
+
+Clicking the `[≡]` button on the panel header (or pressing `Alt+K` / `Shift+F10` on the active panel) opens a dropdown with:
+- **Move up / Move down** — reorder inside the current group (when the group has more than one panel)
+- **Move left / Move right** — move the panel to an adjacent group (when there is more than one group)
+- **Split / Merge** — split the panel out of its group into a new one (when stacked), or merge a solo panel into its neighbour
+- **Close** — close the panel (with confirmation when needed)
+
+Items are filtered by context: e.g. *Split/Merge* is hidden when there is only one panel in one group, *Move up/down* is hidden for solo panels.
+
+**Mouse Interaction:**
+- Click on the title area activates the panel; double-click on a file-manager title opens the directory picker.
+- **Drag a panel by its top border (title area)** to move it visually:
+  - Release over another panel's header → insert before that panel in its group.
+  - Release over another panel's body → insert after that panel.
+  - Release in the 2-cell gutter between two groups → create a new group at that position.
+  - Release past the rightmost group → append as a new last group.
+  - A ghost icon follows the cursor; the target drop zone is highlighted in the accent colour.
+  - Press `Escape` during a drag to cancel.
 
 ## Status Bar
 
@@ -184,9 +205,11 @@ The device name is automatically detected from the filesystem:
 | `Alt+Plus (=)`    | Increase active group width                |
 | `Alt+Minus (-)`   | Decrease active group width                |
 | `Alt+Backspace`   | Toggle panel stacking (merge/unstack)      |
+| `Alt+K`           | Open panel action menu (`[≡]` dropdown)    |
+| `Shift+F10`       | Open panel action menu (alternative)       |
 | `Alt+/`           | Open sessions menu                         |
 | `Alt+N`           | Create new session                         |
-| `Alt+K`           | Add bookmark                               |
+| `Alt+B`           | Add bookmark                               |
 | `Ctrl+P`          | Open command palette                       |
 | `Ctrl+Shift+P`    | Open command palette (alternative)         |
 | `Alt+1-9`         | Jump to panel by number                    |

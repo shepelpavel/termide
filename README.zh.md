@@ -249,6 +249,7 @@ cargo build --release
 - `Alt+1-9` - 按编号跳转到面板
 - `Alt+X` / `Alt+Delete` - 关闭面板
 - `Alt+Backspace` - 切换面板堆叠
+- `Alt+K` / `Shift+F10` - 打开面板操作菜单（`[≡]` 下拉：关闭 / 拆分 / 合并 / 移动）
 - `Alt+PgUp/PgDn` - 在组之间移动面板
 - `Alt+=/-` - 调整组宽度
 - `Alt+/` - 会话菜单

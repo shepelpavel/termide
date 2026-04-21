@@ -262,10 +262,11 @@ For detailed documentation, see:
 - `Alt+←/→` or `Alt+A/D` - Switch panel groups
 - `Alt+↑/↓` or `Alt+W/S` - Navigate panels in group
 - `Alt+1-9` / `Ctrl+Alt+1-9` - Jump to panel by number
-- `Alt+K` - Add bookmark
+- `Alt+B` - Add bookmark
 - `Ctrl+P` - Command palette
 - `Alt+X` / `Alt+Delete` - Close panel
 - `Alt+Backspace` - Toggle panel stacking
+- `Alt+K` / `Shift+F10` - Open panel action menu (`[≡]` dropdown: Close / Split / Merge / Move)
 - `Alt+PgUp/PgDn` - Move panel between groups
 - `Alt+=/-` - Resize group width
 - `Alt+/` - Sessions menu

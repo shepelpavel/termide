@@ -24,6 +24,15 @@ impl App {
             self.state.clear_status();
         }
 
+        // Cancel an in-progress panel drag on Esc before anything else
+        if self.state.ui.panel_drag.is_pending_or_active()
+            && key.code == crossterm::event::KeyCode::Esc
+        {
+            self.state.ui.panel_drag.cancel();
+            self.state.needs_redraw = true;
+            return Ok(());
+        }
+
         // If modal window is open, handle it
         if self.state.has_modal() {
             return self.handle_modal_key(key);

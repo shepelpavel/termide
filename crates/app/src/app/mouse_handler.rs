@@ -32,6 +32,21 @@ impl App {
             }
         }
 
+        // Handle panel drag (grab by top border) — drag & drop of whole panels
+        if self.state.ui.panel_drag.is_pending_or_active() {
+            match mouse.kind {
+                MouseEventKind::Drag(MouseButton::Left) => {
+                    self.handle_panel_drag_move(mouse.column, mouse.row)?;
+                    return Ok(());
+                }
+                MouseEventKind::Up(MouseButton::Left) => {
+                    self.handle_panel_drag_end(mouse.column, mouse.row)?;
+                    return Ok(());
+                }
+                _ => {}
+            }
+        }
+
         // Handle modal mouse events first if a modal is open
         if self.state.has_modal() {
             // Indicator modals (menu-integrated): click anywhere closes and falls through
@@ -318,6 +333,14 @@ impl App {
             let title_start = if group_size > 1 { 7 } else { 4 };
 
             if relative_x >= title_start {
+                // Record a pending panel drag. If the cursor moves past
+                // the threshold before Up we'll promote this to an active
+                // drag; otherwise the click behaviour below fires as-is.
+                self.state
+                    .ui
+                    .panel_drag
+                    .begin_pending(group_idx, panel_idx, click_x, click_y);
+
                 // Check if this panel was already active before click
                 let was_active = group_idx == self.layout_manager.focus
                     && self

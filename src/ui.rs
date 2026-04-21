@@ -333,8 +333,139 @@ pub fn render_layout_with_accordion(
     // Render status bar for active panel
     render_status_bar_for_active(frame, main_chunks[2], state, layout_manager);
 
+    // Render drag overlay (ghost + drop-zone highlight) on top of panels
+    render_drag_overlay(frame, state, layout_manager, main_chunks[1]);
+
     // Render dropdowns and modals
     render_dropdowns_and_modals(frame, state, layout_manager);
+}
+
+/// Render the panel drag overlay: a bright highlight for the drop zone and
+/// a ghost indicator under the cursor. Only runs when a drag is active.
+fn render_drag_overlay(
+    frame: &mut Frame,
+    state: &AppState,
+    layout_manager: &LayoutManager,
+    main_area: Rect,
+) {
+    if !state.ui.panel_drag.active {
+        return;
+    }
+    let Some(source) = state.ui.panel_drag.source else {
+        return;
+    };
+
+    let theme = state.theme;
+    let cursor_x = state.ui.panel_drag.cursor_x;
+    let cursor_y = state.ui.panel_drag.cursor_y;
+
+    let rects = termide_layout::calculate_panel_rects(&layout_manager.panel_groups, main_area);
+    let target = termide_layout::compute_drop_target(&rects, cursor_x, cursor_y);
+
+    let highlight_style = Style::default()
+        .fg(theme.accented_fg)
+        .bg(theme.bg)
+        .add_modifier(ratatui::style::Modifier::BOLD);
+
+    let buf = frame.buffer_mut();
+
+    match target {
+        Some(termide_layout::PanelDropTarget::IntoGroup {
+            group_idx,
+            at_position,
+        }) => {
+            if let Some((_, _, rect, _)) = rects.iter().find(|(gi, pi, _, _)| {
+                *gi == group_idx
+                    && *pi
+                        == at_position.min(
+                            layout_manager
+                                .panel_groups
+                                .get(group_idx)
+                                .map(|g| g.len().saturating_sub(1))
+                                .unwrap_or(0),
+                        )
+            }) {
+                for col in rect.x..rect.x + rect.width {
+                    if col >= buf.area.width {
+                        break;
+                    }
+                    if let Some(cell) = buf.cell_mut((col, rect.y)) {
+                        cell.set_symbol("━").set_style(highlight_style);
+                    }
+                }
+            }
+        }
+        Some(termide_layout::PanelDropTarget::NewGroup { insert_at }) => {
+            // Find x for the new group boundary.
+            let mut group_spans: Vec<(usize, u16, u16)> = Vec::new();
+            for (gi, _, rect, _) in &rects {
+                if let Some(entry) = group_spans.iter_mut().find(|(g, _, _)| *g == *gi) {
+                    entry.1 = entry.1.min(rect.x);
+                    entry.2 = entry.2.max(rect.x + rect.width);
+                } else {
+                    group_spans.push((*gi, rect.x, rect.x + rect.width));
+                }
+            }
+            group_spans.sort_by_key(|(gi, _, _)| *gi);
+
+            let line_x = if insert_at == 0 {
+                group_spans.first().map(|(_, left, _)| *left)
+            } else if insert_at >= group_spans.len() {
+                group_spans
+                    .last()
+                    .map(|(_, _, right)| right.saturating_sub(1))
+            } else {
+                // Between spans[insert_at - 1] and spans[insert_at]:
+                // pick the midpoint cell.
+                let left = group_spans[insert_at - 1].2;
+                let right = group_spans[insert_at].1;
+                Some(((left + right) / 2).saturating_sub(1))
+            };
+
+            if let Some(x) = line_x {
+                for row in main_area.y..main_area.y + main_area.height {
+                    if row >= buf.area.height {
+                        break;
+                    }
+                    if let Some(cell) = buf.cell_mut((x, row)) {
+                        cell.set_symbol("┃").set_style(highlight_style);
+                    }
+                }
+            }
+        }
+        None => {}
+    }
+
+    // Ghost icon under cursor: `[icon]` — 5 cells for emoji, 3 for ascii.
+    let name = layout_manager
+        .panel_groups
+        .get(source.group_idx)
+        .and_then(|g| g.panels().get(source.panel_idx))
+        .map(|p| p.name());
+    if let Some(name) = name {
+        let icon = termide_ui_render::panel_icon(name);
+        let ghost_label = if termide_core::use_emoji_icons() {
+            format!("[{}]", icon)
+        } else {
+            "[≡]".to_string()
+        };
+        let ghost_style = Style::default()
+            .fg(theme.accented_fg)
+            .bg(theme.selected_bg)
+            .add_modifier(ratatui::style::Modifier::BOLD);
+        let mut col = cursor_x.saturating_add(1);
+        let row = cursor_y;
+        for ch in ghost_label.chars() {
+            if col >= buf.area.width || row >= buf.area.height {
+                break;
+            }
+            if let Some(cell) = buf.cell_mut((col, row)) {
+                cell.set_symbol(&ch.to_string()).set_style(ghost_style);
+            }
+            col =
+                col.saturating_add(unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1) as u16);
+        }
+    }
 }
 
 /// Render main area with panel groups and accordion

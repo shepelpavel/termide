@@ -2,7 +2,7 @@
 //! rectangle calculation, and coalesced scroll forwarding to panels.
 
 use anyhow::Result;
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::layout::Rect;
 
 use crate::app::App;
 
@@ -109,79 +109,15 @@ impl App {
     /// Calculate panel rectangles for mouse hit testing.
     /// Returns `Vec<(group_idx, panel_idx, rect, is_expanded)>`.
     pub(in crate::app) fn calculate_panel_rects(&self) -> Vec<(usize, usize, Rect, bool)> {
-        let mut result = Vec::new();
-
         let width = self.state.terminal.width;
         let height = self.state.terminal.height;
-
-        // Main area: from row 1 to height-2 (excluding menu and status bar)
         let main_area = Rect {
             x: 0,
             y: 1,
             width,
             height: height.saturating_sub(2),
         };
-
-        // Calculate group areas
-        if !self.layout_manager.panel_groups.is_empty() {
-            let groups_area = main_area;
-
-            // Calculate horizontal constraints for groups (using widths)
-            // Groups can have fixed or auto widths.
-            let group_constraints: Vec<Constraint> = self
-                .layout_manager
-                .panel_groups
-                .iter()
-                .map(|g| {
-                    let width = g.width.unwrap_or(groups_area.width);
-                    Constraint::Length(width.max(20))
-                })
-                .collect();
-
-            let group_chunks = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints(group_constraints)
-                .split(groups_area);
-
-            // Process each group
-            for (group_idx, group) in self.layout_manager.panel_groups.iter().enumerate() {
-                if group.is_empty() || group_chunks[group_idx].height == 0 {
-                    continue;
-                }
-
-                let group_area = group_chunks[group_idx];
-                let expanded_idx = group.expanded_index();
-
-                // Build vertical constraints for panels in group
-                let vertical_constraints: Vec<Constraint> = (0..group.len())
-                    .map(|i| {
-                        if i == expanded_idx {
-                            Constraint::Min(0) // Expanded panel
-                        } else {
-                            Constraint::Length(1) // Collapsed panel (1 line)
-                        }
-                    })
-                    .collect();
-
-                let vertical_chunks = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints(vertical_constraints)
-                    .split(group_area);
-
-                // Add each panel's rect to results
-                for panel_idx in 0..group.len() {
-                    let is_expanded = panel_idx == expanded_idx;
-                    result.push((
-                        group_idx,
-                        panel_idx,
-                        vertical_chunks[panel_idx],
-                        is_expanded,
-                    ));
-                }
-            }
-        }
-
-        result
+        termide_layout::calculate_panel_rects(&self.layout_manager.panel_groups, main_area)
     }
 
     /// Handle coalesced scroll events (batched for performance).

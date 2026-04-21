@@ -1,11 +1,145 @@
 //! Layout manager for panel arrangement.
 
 use anyhow::{anyhow, Result};
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
 
 use termide_config::Config;
 use termide_core::{Panel, WidthPreference};
 
 use crate::PanelGroup;
+
+/// Compute per-panel rectangles inside `main_area` using the same Layout
+/// constraints as the renderer. Returns
+/// `Vec<(group_idx, panel_idx, rect, is_expanded)>` — the authoritative
+/// geometry used by mouse hit-testing and drag-overlay rendering.
+pub fn calculate_panel_rects(
+    panel_groups: &[PanelGroup],
+    main_area: Rect,
+) -> Vec<(usize, usize, Rect, bool)> {
+    let mut result = Vec::new();
+    if panel_groups.is_empty() {
+        return result;
+    }
+
+    let group_constraints: Vec<Constraint> = panel_groups
+        .iter()
+        .map(|g| {
+            let width = g.width.unwrap_or(main_area.width);
+            Constraint::Length(width.max(20))
+        })
+        .collect();
+
+    let group_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints(group_constraints)
+        .split(main_area);
+
+    for (group_idx, group) in panel_groups.iter().enumerate() {
+        if group.is_empty() || group_chunks[group_idx].height == 0 {
+            continue;
+        }
+        let group_area = group_chunks[group_idx];
+        let expanded_idx = group.expanded_index();
+
+        let vertical_constraints: Vec<Constraint> = (0..group.len())
+            .map(|i| {
+                if i == expanded_idx {
+                    Constraint::Min(0)
+                } else {
+                    Constraint::Length(1)
+                }
+            })
+            .collect();
+
+        let vertical_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(vertical_constraints)
+            .split(group_area);
+
+        for panel_idx in 0..group.len() {
+            let is_expanded = panel_idx == expanded_idx;
+            result.push((
+                group_idx,
+                panel_idx,
+                vertical_chunks[panel_idx],
+                is_expanded,
+            ));
+        }
+    }
+
+    result
+}
+
+/// Determine the drop target under the cursor given pre-calculated panel
+/// rects. Shared by the mouse handler and the drag overlay renderer.
+///
+/// Returns `None` if the cursor is outside the panel area (e.g. in the
+/// menu/status bar or over an empty main area).
+pub fn compute_drop_target(
+    rects: &[(usize, usize, Rect, bool)],
+    x: u16,
+    y: u16,
+) -> Option<PanelDropTarget> {
+    if rects.is_empty() {
+        return None;
+    }
+
+    // Collapse panel rects into group spans (left, right edges).
+    let mut group_spans: Vec<(usize, u16, u16)> = Vec::new();
+    for (gi, _, rect, _) in rects {
+        if let Some(entry) = group_spans.iter_mut().find(|(g, _, _)| *g == *gi) {
+            entry.1 = entry.1.min(rect.x);
+            entry.2 = entry.2.max(rect.x + rect.width);
+        } else {
+            group_spans.push((*gi, rect.x, rect.x + rect.width));
+        }
+    }
+    group_spans.sort_by_key(|(gi, _, _)| *gi);
+
+    const GUTTER: u16 = 2;
+    for i in 0..group_spans.len().saturating_sub(1) {
+        let right_edge = group_spans[i].2;
+        let next_left = group_spans[i + 1].1;
+        let zone_start = right_edge.saturating_sub(GUTTER);
+        let zone_end = next_left.saturating_add(GUTTER);
+        if x >= zone_start && x < zone_end {
+            return Some(PanelDropTarget::NewGroup {
+                insert_at: group_spans[i + 1].0,
+            });
+        }
+    }
+    if let Some((last_gi, _, right_edge)) = group_spans.last() {
+        if x >= *right_edge {
+            return Some(PanelDropTarget::NewGroup {
+                insert_at: *last_gi + 1,
+            });
+        }
+    }
+
+    for (gi, pi, rect, _) in rects {
+        if x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height {
+            let at_position = if y == rect.y { *pi } else { *pi + 1 };
+            return Some(PanelDropTarget::IntoGroup {
+                group_idx: *gi,
+                at_position,
+            });
+        }
+    }
+
+    None
+}
+
+/// Where a dragged panel should be dropped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PanelDropTarget {
+    /// Insert into an existing group at the given position (expanding to it).
+    IntoGroup {
+        group_idx: usize,
+        at_position: usize,
+    },
+    /// Create a new group at the given index.
+    NewGroup { insert_at: usize },
+}
 
 /// Panel layout manager with accordion support.
 pub struct LayoutManager {
@@ -414,6 +548,125 @@ impl LayoutManager {
             .ok_or_else(|| anyhow!("No active group"))?;
         let expanded_idx = group.expanded_index();
         group.move_panel_down(expanded_idx)
+    }
+
+    /// Move an arbitrary panel from `(from_gi, from_pi)` to the given drop
+    /// target. Handles source-group cleanup, target index shifting and
+    /// width redistribution.
+    ///
+    /// Returns `(final_group_idx, final_panel_idx)` where the panel ended
+    /// up, so the caller can update focus / expanded state.
+    pub fn move_panel_to(
+        &mut self,
+        from_gi: usize,
+        from_pi: usize,
+        target: PanelDropTarget,
+        available_width: u16,
+    ) -> Result<(usize, usize)> {
+        let source_group = self
+            .panel_groups
+            .get(from_gi)
+            .ok_or_else(|| anyhow!("Invalid source group index"))?;
+        if from_pi >= source_group.len() {
+            return Err(anyhow!("Invalid source panel index"));
+        }
+
+        // No-op: dropping a panel exactly where it already lives.
+        if let PanelDropTarget::IntoGroup {
+            group_idx,
+            at_position,
+        } = target
+        {
+            if group_idx == from_gi && source_group.len() == 1 {
+                return Ok((from_gi, from_pi));
+            }
+            if group_idx == from_gi && (at_position == from_pi || at_position == from_pi + 1) {
+                return Ok((from_gi, from_pi));
+            }
+        }
+        if let PanelDropTarget::NewGroup { insert_at } = target {
+            if source_group.len() == 1 && (insert_at == from_gi || insert_at == from_gi + 1) {
+                return Ok((from_gi, from_pi));
+            }
+        }
+
+        // Extract the panel from the source group.
+        let panel = self
+            .panel_groups
+            .get_mut(from_gi)
+            .and_then(|g| g.remove_panel(from_pi))
+            .ok_or_else(|| anyhow!("Failed to remove source panel"))?;
+
+        // If the source group is now empty, drop it and shift downstream
+        // indices so the target still points at the right slot.
+        let source_was_removed = self
+            .panel_groups
+            .get(from_gi)
+            .map(|g| g.is_empty())
+            .unwrap_or(false);
+
+        if source_was_removed {
+            self.panel_groups.remove(from_gi);
+        }
+
+        // Adjust the target indices for a removed source group.
+        let adjusted_target = if source_was_removed {
+            match target {
+                PanelDropTarget::IntoGroup {
+                    group_idx,
+                    at_position,
+                } => {
+                    let gi = if group_idx > from_gi {
+                        group_idx - 1
+                    } else {
+                        group_idx
+                    };
+                    PanelDropTarget::IntoGroup {
+                        group_idx: gi,
+                        at_position,
+                    }
+                }
+                PanelDropTarget::NewGroup { insert_at } => {
+                    let at = if insert_at > from_gi {
+                        insert_at - 1
+                    } else {
+                        insert_at
+                    };
+                    PanelDropTarget::NewGroup { insert_at: at }
+                }
+            }
+        } else {
+            target
+        };
+
+        // Perform the insertion.
+        let (final_gi, final_pi) = match adjusted_target {
+            PanelDropTarget::IntoGroup {
+                group_idx,
+                at_position,
+            } => {
+                let group = self
+                    .panel_groups
+                    .get_mut(group_idx)
+                    .ok_or_else(|| anyhow!("Invalid target group index"))?;
+                let pos = at_position.min(group.len());
+                group.insert_panel(pos, panel);
+                group.set_expanded(pos);
+                if source_was_removed {
+                    self.redistribute_widths_proportionally(available_width);
+                }
+                (group_idx, pos)
+            }
+            PanelDropTarget::NewGroup { insert_at } => {
+                let pos = insert_at.min(self.panel_groups.len());
+                self.panel_groups.insert(pos, PanelGroup::new(panel));
+                self.redistribute_widths_proportionally(available_width);
+                (pos, 0)
+            }
+        };
+
+        self.focus = final_gi;
+        Ok((final_gi, final_pi))
     }
 
     /// Get mutable reference to active panel.

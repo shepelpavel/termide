@@ -129,7 +129,7 @@ use termide_config::Config;
 use termide_core::{use_emoji_icons, Panel, PanelConfig, RenderContext, ThemeColors};
 
 /// Get emoji icon for a panel type.
-fn panel_icon(name: &str) -> &'static str {
+pub fn panel_icon(name: &str) -> &'static str {
     match name {
         "terminal" => "💻",
         "file_manager" => "📁",

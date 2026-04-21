@@ -10,14 +10,14 @@ TermIDE is a terminal-based IDE built with Rust using the `ratatui` TUI framewor
 ┌─────────────────────────────────────────────────────────┐
 │ Menu Bar     [CPU] [RAM] [Clock]                        │
 ├───────────────────┬─────────────────────────────────────┤
-│ ┌[X][📁] Files ─┐ │ ┌[X][📝] Editor: main.rs ─────────┐│
+│ ┌[≡][📁] Files ─┐ │ ┌[≡][📝] Editor: main.rs ─────────┐│
 │ │               │ │ │                                  ││
 │ │ src/          │ │ │  fn main() {                     ││
 │ │ tests/        │ │ │      // code here                ││
 │ │ Cargo.toml    │ │ │  }                               ││
 │ │               │ │ │                                  ││
 │ └───────────────┘ │ └──────────────────────────────────┘│
-│ ─[X][💻] Terminal │ ─[X][📋] Log ───────────────────────│
+│ ─[≡][💻] Terminal │ ─[≡][📋] Log ───────────────────────│
 ├───────────────────┴─────────────────────────────────────┤
 │ Status: file.rs:42  Ln 10, Col 5        Disk: 83%      │
 └─────────────────────────────────────────────────────────┘
@@ -263,8 +263,10 @@ Keyboard layout translation via `termide_keyboard::translate_hotkey()` allows ho
 Handles mouse input:
 
 **Panel Title Bar:**
-- Click `[X]` button → Close panel
-- Click panel icon button → Toggle expand/collapse
+- Click `[≡]` button → Open panel action context menu (Close / Split / Merge / Move)
+- Click `[▶]/[▼]` button → Toggle expand/collapse
+- Click title area → Activate panel (double-click on file manager → directory picker)
+- **Drag title area** → Panel drag-and-drop: ghost follows cursor, drop zone is highlighted; release over another panel's header inserts into that group, between groups creates a new one. `Escape` cancels.
 
 **Panel Content:**
 - Clicks forwarded to `panel.handle_mouse()`
@@ -337,20 +339,23 @@ fn render_layout_with_accordion(frame, layout_manager, state) {
 **Location:** `crates/ui-render/src/panel.rs`
 
 **Expanded Panel:**
-- Border with `[X][icon]` buttons and title (e.g. `[X][📁] Files`)
+- Border with `[≡][icon]` buttons and title (e.g. `[≡][📁] Files`)
 - Full content area
 - Scrollable if content exceeds area
 
 **Collapsed Panel:**
-- Title bar only: `─[X][📁] Files ─────`
+- Title bar only: `─[≡][📁] Files ─────`
 - Takes minimal vertical space (1 line)
 - Clicking expands
 
 **Icon Mode:**
 Panel titles show emoji icons based on panel type (📁 file manager, 💻 terminal, 📝 editor, etc.). Icon mode is configured via `icon_mode` in `[general]` settings:
-- `auto` (default) — emoji if terminal supports it, plain `[X]` otherwise
+- `auto` (default) — emoji if terminal supports it, plain `[≡]` otherwise
 - `emoji` — always show emoji icons
-- `unicode` — no icons, no arrows, just `[X]`
+- `unicode` — no icons, no arrows, just `[≡]`
+
+**Drag Overlay:**
+When a panel is being dragged by its top border, `render_drag_overlay()` (in `src/ui.rs`) runs after the main panel render and before dropdowns/modals. It highlights the drop target (header bar for `IntoGroup`, vertical divider for `NewGroup`) and draws a ghost icon under the cursor. Hit-testing reuses the `calculate_panel_rects` / `compute_drop_target` free functions from `termide_layout` so the mouse handler and the renderer agree on geometry.
 
 **Border Rendering:**
 Borders and buttons are drawn by `panel_rendering.rs`, then panel's `render()` method draws content in the inner area.

@@ -128,6 +128,82 @@ impl DragState {
     }
 }
 
+/// Source panel being dragged by its top border.
+#[derive(Debug, Clone, Copy)]
+pub struct PanelDragSource {
+    pub group_idx: usize,
+    pub panel_idx: usize,
+    pub start_x: u16,
+    pub start_y: u16,
+}
+
+/// State for panel drag-and-drop (grabbing a panel by its top border).
+///
+/// A drag is first tracked in a "pending" state (source is set, `active`
+/// is false): this is the grace period between Down and the first Drag
+/// event where we don't yet know whether the user intends to click or
+/// drag. After the cursor moves past a threshold, `active` becomes true
+/// and the overlay is rendered.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct PanelDragState {
+    pub source: Option<PanelDragSource>,
+    pub active: bool,
+    pub cursor_x: u16,
+    pub cursor_y: u16,
+}
+
+impl PanelDragState {
+    /// Movement in cells required to promote a pending drag to an active one.
+    pub const THRESHOLD: u16 = 3;
+
+    /// Record a potential drag start. Until the cursor moves past the
+    /// threshold, this is inert — clicks still fire normally.
+    pub fn begin_pending(&mut self, group_idx: usize, panel_idx: usize, x: u16, y: u16) {
+        self.source = Some(PanelDragSource {
+            group_idx,
+            panel_idx,
+            start_x: x,
+            start_y: y,
+        });
+        self.active = false;
+        self.cursor_x = x;
+        self.cursor_y = y;
+    }
+
+    /// Update cursor on Drag event. Returns true if the drag just became
+    /// active (threshold crossed on this call), so the caller can trigger
+    /// an initial redraw.
+    pub fn update_cursor(&mut self, x: u16, y: u16) -> bool {
+        self.cursor_x = x;
+        self.cursor_y = y;
+        if self.active {
+            return false;
+        }
+        let Some(src) = self.source else {
+            return false;
+        };
+        let dx = x.abs_diff(src.start_x);
+        let dy = y.abs_diff(src.start_y);
+        if dx + dy >= Self::THRESHOLD {
+            self.active = true;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Cancel any in-progress drag.
+    pub fn cancel(&mut self) {
+        self.source = None;
+        self.active = false;
+    }
+
+    /// Whether there is a pending-or-active drag.
+    pub fn is_pending_or_active(&self) -> bool {
+        self.source.is_some()
+    }
+}
+
 /// UI components state
 #[derive(Debug, Default)]
 pub struct UiState {
@@ -179,6 +255,8 @@ pub struct UiState {
     pub spinner_frame: usize,
     /// Panel action context menu state
     pub panel_action_menu: PanelActionMenuState,
+    /// Panel drag-and-drop state (grab a panel by its top border)
+    pub panel_drag: PanelDragState,
 }
 
 impl UiState {
@@ -199,6 +277,7 @@ impl UiState {
         self.current_bookmarks_group_is_project = false;
         self.stash_submenu.close();
         self.panel_action_menu.close();
+        self.panel_drag.cancel();
     }
 }
 

@@ -4,6 +4,7 @@
 //! specialised helpers (resource-indicator builders, submenu click handlers,
 //! divider drag) that each keep their own `impl App` block.
 
+mod drag;
 mod indicators;
 mod layout;
 pub(in crate::app) mod submenu;
