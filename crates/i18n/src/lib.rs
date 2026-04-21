@@ -138,6 +138,7 @@ pub trait Translation: Send + Sync {
     fn help_desc_toggle_stack(&self) -> &str;
     fn help_desc_swap_left(&self) -> &str;
     fn help_desc_swap_right(&self) -> &str;
+    fn help_desc_panel_action_menu(&self) -> &str;
     // Panel action context menu (short labels)
     fn panel_action_close(&self) -> &str;
     fn panel_action_split(&self) -> &str;

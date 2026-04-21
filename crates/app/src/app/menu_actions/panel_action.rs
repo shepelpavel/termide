@@ -11,6 +11,35 @@ use termide_ui_render::{
 use super::super::App;
 
 impl App {
+    /// Open the panel action menu for the currently active panel. Anchors the
+    /// dropdown to the panel's `[≡]` button (top-left of the header).
+    pub(in crate::app) fn open_panel_action_menu_for_active(&mut self) -> Result<()> {
+        let group_idx = self.layout_manager.focus;
+        let panel_idx = match self.layout_manager.panel_groups.get(group_idx) {
+            Some(group) if !group.is_empty() => group.expanded_index(),
+            _ => return Ok(()),
+        };
+
+        let anchor = self
+            .calculate_panel_rects()
+            .into_iter()
+            .find(|(gi, pi, _, _)| *gi == group_idx && *pi == panel_idx)
+            .map(|(_, _, rect, _)| (rect.x, rect.y));
+
+        let (anchor_x, anchor_y) = match anchor {
+            Some(xy) => xy,
+            None => return Ok(()),
+        };
+
+        self.state.ui.close_all_submenus();
+        self.state
+            .ui
+            .panel_action_menu
+            .open(group_idx, panel_idx, anchor_x, anchor_y);
+        self.state.needs_redraw = true;
+        Ok(())
+    }
+
     /// Build items for the currently-open panel action menu, using the
     /// targeted panel's group index to derive context-dependent filters.
     fn panel_action_menu_items(&self) -> Vec<DropdownItem> {

@@ -59,6 +59,7 @@ pub(super) fn build_global_hotkey_table(kb: &GlobalKeybindings) -> HotkeyTable {
     t.insert("move_last", &kb.move_last);
     t.insert("resize_smaller", &kb.resize_smaller);
     t.insert("resize_larger", &kb.resize_larger);
+    t.insert("panel_action_menu", &kb.panel_action_menu);
 
     // Application
     t.insert("quit", &kb.quit);
@@ -170,6 +171,10 @@ impl App {
         // Panel management
         if table.matches("close_panel", key) {
             self.handle_close_panel_request()?;
+            return Ok(true);
+        }
+        if table.matches("panel_action_menu", key) {
+            self.open_panel_action_menu_for_active()?;
             return Ok(true);
         }
         if table.matches("toggle_stack", key) {

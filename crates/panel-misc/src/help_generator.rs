@@ -157,6 +157,10 @@ impl HelpGenerator {
                 description: t.help_desc_close_panel().to_string(),
             },
             HelpEntry {
+                keys: Self::format_keys(&kb.panel_action_menu),
+                description: t.help_desc_panel_action_menu().to_string(),
+            },
+            HelpEntry {
                 keys: Self::format_keys(&kb.toggle_stack),
                 description: t.help_desc_toggle_stack().to_string(),
             },

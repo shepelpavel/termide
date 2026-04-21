@@ -386,6 +386,10 @@ impl Translation for RuntimeTranslation {
         self.get_string("help_desc_swap_right")
     }
 
+    fn help_desc_panel_action_menu(&self) -> &str {
+        self.get_string("help_desc_panel_action_menu")
+    }
+
     fn panel_action_close(&self) -> &str {
         self.get_string("panel_action_close")
     }

@@ -197,6 +197,8 @@ pub struct GlobalKeybindings {
     pub move_last: Option<KeyBinding>,
     pub resize_smaller: Option<KeyBinding>,
     pub resize_larger: Option<KeyBinding>,
+    /// Open the active panel's action context menu (the `[≡]` button dropdown).
+    pub panel_action_menu: Option<KeyBinding>,
 
     // Navigation
     pub prev_group: Option<KeyBinding>,
@@ -480,6 +482,7 @@ impl GlobalKeybindings {
         set_default_multiple!(open_help, "Alt+H", "F1");
         set_default_multiple!(close_panel, "Alt+X", "F10");
         set_default_multiple!(toggle_stack, "Alt+Backspace", "F11");
+        set_default_multiple!(panel_action_menu, "Alt+K", "Shift+F10");
 
         set_default_multiple!(prev_group, "Alt+Left", "Alt+A");
         set_default_multiple!(next_group, "Alt+Right", "Alt+D");
