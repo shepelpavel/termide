@@ -40,19 +40,11 @@ impl App {
         };
 
         let available_width = self.state.terminal.width;
-        match self.layout_manager.move_panel_to(
-            src.group_idx,
-            src.panel_idx,
-            target,
-            available_width,
-        ) {
-            Ok((_gi, _pi)) => {
-                self.auto_save_session();
-            }
-            Err(e) => {
-                self.show_error_modal(format!("Cannot move panel: {}", e));
-            }
-        }
+        let result = self
+            .layout_manager
+            .move_panel_to(src.group_idx, src.panel_idx, target, available_width)
+            .map(|_| ());
+        self.handle_layout_op("Cannot move panel", result);
         Ok(())
     }
 

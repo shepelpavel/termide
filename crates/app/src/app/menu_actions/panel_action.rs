@@ -177,10 +177,7 @@ impl App {
         };
 
         if let Some((label, result)) = layout_result {
-            match result {
-                Ok(()) => self.auto_save_session(),
-                Err(e) => self.show_error_modal(format!("{}: {}", label, e)),
-            }
+            self.handle_layout_op(label, result);
         }
         Ok(())
     }

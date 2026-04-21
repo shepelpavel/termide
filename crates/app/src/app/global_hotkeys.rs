@@ -280,6 +280,16 @@ impl App {
         }
     }
 
+    /// Handle the result of a layout-manager operation: on success save the
+    /// session, on failure surface the error in a modal prefixed with the
+    /// supplied label.
+    pub(in crate::app) fn handle_layout_op(&mut self, label: &str, result: Result<()>) {
+        match result {
+            Ok(()) => self.auto_save_session(),
+            Err(e) => self.show_error_modal(format!("{}: {}", label, e)),
+        }
+    }
+
     /// Close completion popup on active editor (if any) before focus change
     fn close_completion_popup_before_focus_change(&mut self) {
         if let Some(panel) = self.layout_manager.active_panel_mut() {
@@ -289,78 +299,63 @@ impl App {
         }
     }
 
-    /// Navigate to previous group with session save
-    fn navigate_to_prev_group(&mut self) {
+    /// Run a navigation op that changes focus, flanked by the standard
+    /// pre/post bookkeeping (close completion popup, notify outline, save
+    /// session).
+    fn with_navigation(&mut self, op: impl FnOnce(&mut termide_layout::LayoutManager)) {
         self.close_completion_popup_before_focus_change();
-        self.layout_manager.prev_group();
+        op(&mut self.layout_manager);
         self.notify_outline_file_opened();
         self.check_and_save_session();
+    }
+
+    /// Navigate to previous group with session save
+    fn navigate_to_prev_group(&mut self) {
+        self.with_navigation(|lm| lm.prev_group());
     }
 
     /// Navigate to next group with session save
     fn navigate_to_next_group(&mut self) {
-        self.close_completion_popup_before_focus_change();
-        self.layout_manager.next_group();
-        self.notify_outline_file_opened();
-        self.check_and_save_session();
+        self.with_navigation(|lm| lm.next_group());
     }
 
     /// Navigate to previous panel in group with session save
     fn navigate_to_prev_panel_in_group(&mut self) {
-        self.close_completion_popup_before_focus_change();
-        self.layout_manager.prev_panel_in_group();
-        self.notify_outline_file_opened();
-        self.check_and_save_session();
+        self.with_navigation(|lm| lm.prev_panel_in_group());
     }
 
     /// Navigate to next panel in group with session save
     fn navigate_to_next_panel_in_group(&mut self) {
-        self.close_completion_popup_before_focus_change();
-        self.layout_manager.next_panel_in_group();
-        self.notify_outline_file_opened();
-        self.check_and_save_session();
+        self.with_navigation(|lm| lm.next_panel_in_group());
     }
 
     /// Navigate to specific group by number (1-indexed)
     fn navigate_to_group(&mut self, group_num: usize) {
-        self.close_completion_popup_before_focus_change();
         // Convert from 1-indexed (user-facing) to 0-indexed (internal)
         let index = group_num.saturating_sub(1);
-        self.layout_manager.set_focus(index);
-        self.notify_outline_file_opened();
-        self.check_and_save_session();
+        self.with_navigation(|lm| lm.set_focus(index));
     }
 
     /// Toggle panel stacking mode
     fn toggle_panel_stacking(&mut self) {
         let terminal_width = self.state.terminal.width;
-        if let Err(e) = self.layout_manager.toggle_panel_stacking(terminal_width) {
-            self.show_error_modal(format!("Cannot toggle stacking: {}", e));
-        } else {
-            self.auto_save_session();
-        }
+        let result = self.layout_manager.toggle_panel_stacking(terminal_width);
+        self.handle_layout_op("Cannot toggle stacking", result);
     }
 
     /// Move panel to first group
     fn move_panel_to_first(&mut self) {
         let terminal_width = self.state.terminal.width;
-        if let Err(e) = self
+        let result = self
             .layout_manager
-            .move_panel_to_first_group(terminal_width)
-        {
-            self.show_error_modal(format!("Cannot move panel: {}", e));
-        } else {
-            self.auto_save_session();
-        }
+            .move_panel_to_first_group(terminal_width);
+        self.handle_layout_op("Cannot move panel", result);
     }
 
     /// Move panel to last group
     fn move_panel_to_last(&mut self) {
         let terminal_width = self.state.terminal.width;
-        if let Err(e) = self.layout_manager.move_panel_to_last_group(terminal_width) {
-            self.show_error_modal(format!("Cannot move panel: {}", e));
-        } else {
-            self.auto_save_session();
-        }
+        let result = self.layout_manager.move_panel_to_last_group(terminal_width);
+        self.handle_layout_op("Cannot move panel", result);
     }
 }
