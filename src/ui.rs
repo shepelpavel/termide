@@ -397,16 +397,7 @@ fn render_drag_overlay(
         }
         Some(termide_layout::PanelDropTarget::NewGroup { insert_at }) => {
             // Find x for the new group boundary.
-            let mut group_spans: Vec<(usize, u16, u16)> = Vec::new();
-            for (gi, _, rect, _) in &rects {
-                if let Some(entry) = group_spans.iter_mut().find(|(g, _, _)| *g == *gi) {
-                    entry.1 = entry.1.min(rect.x);
-                    entry.2 = entry.2.max(rect.x + rect.width);
-                } else {
-                    group_spans.push((*gi, rect.x, rect.x + rect.width));
-                }
-            }
-            group_spans.sort_by_key(|(gi, _, _)| *gi);
+            let group_spans = termide_layout::group_spans_from_rects(&rects);
 
             let line_x = if insert_at == 0 {
                 group_spans.first().map(|(_, left, _)| *left)

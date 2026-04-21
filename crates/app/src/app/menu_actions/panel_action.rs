@@ -148,46 +148,39 @@ impl App {
         self.state.needs_redraw = true;
 
         let terminal_width = self.state.terminal.width;
-        match key.as_str() {
+        let layout_result: Option<(&str, Result<()>)> = match key.as_str() {
             PANEL_ACTION_CLOSE => {
                 self.handle_close_panel_request()?;
+                None
             }
-            PANEL_ACTION_SPLIT => {
-                if let Err(e) = self.layout_manager.toggle_panel_stacking(terminal_width) {
-                    self.show_error_modal(format!("Cannot toggle stacking: {}", e));
-                } else {
-                    self.auto_save_session();
-                }
+            PANEL_ACTION_SPLIT => Some((
+                "Cannot toggle stacking",
+                self.layout_manager.toggle_panel_stacking(terminal_width),
+            )),
+            PANEL_ACTION_MOVE_LEFT => Some((
+                "Cannot move panel",
+                self.layout_manager.move_panel_to_prev_group(terminal_width),
+            )),
+            PANEL_ACTION_MOVE_RIGHT => Some((
+                "Cannot move panel",
+                self.layout_manager.move_panel_to_next_group(terminal_width),
+            )),
+            PANEL_ACTION_MOVE_UP => Some((
+                "Cannot move panel",
+                self.layout_manager.move_panel_up_in_group(),
+            )),
+            PANEL_ACTION_MOVE_DOWN => Some((
+                "Cannot move panel",
+                self.layout_manager.move_panel_down_in_group(),
+            )),
+            _ => None,
+        };
+
+        if let Some((label, result)) = layout_result {
+            match result {
+                Ok(()) => self.auto_save_session(),
+                Err(e) => self.show_error_modal(format!("{}: {}", label, e)),
             }
-            PANEL_ACTION_MOVE_LEFT => {
-                if let Err(e) = self.layout_manager.move_panel_to_prev_group(terminal_width) {
-                    self.show_error_modal(format!("Cannot move panel: {}", e));
-                } else {
-                    self.auto_save_session();
-                }
-            }
-            PANEL_ACTION_MOVE_RIGHT => {
-                if let Err(e) = self.layout_manager.move_panel_to_next_group(terminal_width) {
-                    self.show_error_modal(format!("Cannot move panel: {}", e));
-                } else {
-                    self.auto_save_session();
-                }
-            }
-            PANEL_ACTION_MOVE_UP => {
-                if let Err(e) = self.layout_manager.move_panel_up_in_group() {
-                    self.show_error_modal(format!("Cannot move panel: {}", e));
-                } else {
-                    self.auto_save_session();
-                }
-            }
-            PANEL_ACTION_MOVE_DOWN => {
-                if let Err(e) = self.layout_manager.move_panel_down_in_group() {
-                    self.show_error_modal(format!("Cannot move panel: {}", e));
-                } else {
-                    self.auto_save_session();
-                }
-            }
-            _ => {}
         }
         Ok(())
     }

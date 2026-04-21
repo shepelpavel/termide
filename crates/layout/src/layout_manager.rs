@@ -70,6 +70,22 @@ pub fn calculate_panel_rects(
     result
 }
 
+/// Collapse panel rects into group spans `(group_idx, left_edge, right_edge)`,
+/// sorted by `group_idx`. Shared between hit-testing and overlay rendering.
+pub fn group_spans_from_rects(rects: &[(usize, usize, Rect, bool)]) -> Vec<(usize, u16, u16)> {
+    let mut spans: Vec<(usize, u16, u16)> = Vec::new();
+    for (gi, _, rect, _) in rects {
+        if let Some(entry) = spans.iter_mut().find(|(g, _, _)| *g == *gi) {
+            entry.1 = entry.1.min(rect.x);
+            entry.2 = entry.2.max(rect.x + rect.width);
+        } else {
+            spans.push((*gi, rect.x, rect.x + rect.width));
+        }
+    }
+    spans.sort_by_key(|(gi, _, _)| *gi);
+    spans
+}
+
 /// Determine the drop target under the cursor given pre-calculated panel
 /// rects. Shared by the mouse handler and the drag overlay renderer.
 ///
@@ -84,17 +100,7 @@ pub fn compute_drop_target(
         return None;
     }
 
-    // Collapse panel rects into group spans (left, right edges).
-    let mut group_spans: Vec<(usize, u16, u16)> = Vec::new();
-    for (gi, _, rect, _) in rects {
-        if let Some(entry) = group_spans.iter_mut().find(|(g, _, _)| *g == *gi) {
-            entry.1 = entry.1.min(rect.x);
-            entry.2 = entry.2.max(rect.x + rect.width);
-        } else {
-            group_spans.push((*gi, rect.x, rect.x + rect.width));
-        }
-    }
-    group_spans.sort_by_key(|(gi, _, _)| *gi);
+    let group_spans = group_spans_from_rects(rects);
 
     const GUTTER: u16 = 2;
     for i in 0..group_spans.len().saturating_sub(1) {
