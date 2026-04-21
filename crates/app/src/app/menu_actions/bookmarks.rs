@@ -552,7 +552,11 @@ impl App {
             }
             BookmarkType::ViewerFile | BookmarkType::HttpLink => {
                 // Open with external viewer
-                let _ = std::process::Command::new("xdg-open").arg(path).spawn();
+                let _ = std::process::Command::new("xdg-open")
+                    .arg(path)
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn();
             }
             BookmarkType::SftpPath
             | BookmarkType::FtpPath
