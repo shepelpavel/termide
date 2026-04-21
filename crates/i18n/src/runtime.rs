@@ -386,6 +386,34 @@ impl Translation for RuntimeTranslation {
         self.get_string("help_desc_swap_right")
     }
 
+    fn panel_action_close(&self) -> &str {
+        self.get_string("panel_action_close")
+    }
+
+    fn panel_action_split(&self) -> &str {
+        self.get_string("panel_action_split")
+    }
+
+    fn panel_action_merge(&self) -> &str {
+        self.get_string("panel_action_merge")
+    }
+
+    fn panel_action_move_left(&self) -> &str {
+        self.get_string("panel_action_move_left")
+    }
+
+    fn panel_action_move_right(&self) -> &str {
+        self.get_string("panel_action_move_right")
+    }
+
+    fn panel_action_move_up(&self) -> &str {
+        self.get_string("panel_action_move_up")
+    }
+
+    fn panel_action_move_down(&self) -> &str {
+        self.get_string("panel_action_move_down")
+    }
+
     fn help_desc_move_first(&self) -> &str {
         self.get_string("help_desc_move_first")
     }

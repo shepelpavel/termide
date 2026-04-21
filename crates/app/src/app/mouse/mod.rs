@@ -6,4 +6,4 @@
 
 mod indicators;
 mod layout;
-mod submenu;
+pub(in crate::app) mod submenu;

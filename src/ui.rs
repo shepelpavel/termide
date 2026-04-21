@@ -24,7 +24,11 @@ use termide_ui_render::{
 use termide_ui_render::{StatusBar, StatusBarParams};
 
 /// Render dropdown submenus and modal windows
-fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
+fn render_dropdowns_and_modals(
+    frame: &mut Frame,
+    state: &mut AppState,
+    layout_manager: &LayoutManager,
+) {
     let theme = state.theme;
 
     // Render Sessions submenu if open
@@ -207,6 +211,29 @@ fn render_dropdowns_and_modals(frame: &mut Frame, state: &mut AppState) {
         }
     }
 
+    // Panel action context menu (anchored to [≡] button on panel header)
+    if state.ui.panel_action_menu.open {
+        let group_count = layout_manager.panel_groups.len();
+        let group_idx = state.ui.panel_action_menu.group_idx;
+        let current_group_len = layout_manager
+            .panel_groups
+            .get(group_idx)
+            .map(|g| g.len())
+            .unwrap_or(0);
+        let items = termide_ui_render::get_panel_action_menu_items(group_count, current_group_len);
+        if !items.is_empty() {
+            let (x, y) = termide_ui_render::panel_action_dropdown_position(
+                &items,
+                state.ui.panel_action_menu.anchor_x,
+                state.ui.panel_action_menu.anchor_y,
+                state.terminal.width,
+                state.terminal.height,
+            );
+            let dropdown = Dropdown::new(&items, state.ui.panel_action_menu.selected, x, y, theme);
+            dropdown.render(frame.buffer_mut());
+        }
+    }
+
     // Render Options submenu if open
     if state.ui.menu_open
         && state.ui.selected_menu_item == Some(OPTIONS_MENU_INDEX)
@@ -307,7 +334,7 @@ pub fn render_layout_with_accordion(
     render_status_bar_for_active(frame, main_chunks[2], state, layout_manager);
 
     // Render dropdowns and modals
-    render_dropdowns_and_modals(frame, state);
+    render_dropdowns_and_modals(frame, state, layout_manager);
 }
 
 /// Render main area with panel groups and accordion

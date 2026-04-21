@@ -13,10 +13,12 @@ pub mod theme_dropdown;
 
 pub use dropdown::{
     get_bookmarks_group_items, get_bookmarks_item_count, get_bookmarks_items, get_options_items,
-    get_scripts_group_items, get_scripts_items, get_sessions_items, get_shell_items,
-    get_stash_items, get_tools_items, Dropdown, DropdownItem, BOOKMARK_ADD_CURRENT,
-    OPTIONS_SUBMENU_HELP, OPTIONS_SUBMENU_ITEM_COUNT, OPTIONS_SUBMENU_LANGUAGE,
-    OPTIONS_SUBMENU_PREFERENCES, OPTIONS_SUBMENU_QUIT, OPTIONS_SUBMENU_THEMES, SCRIPT_ADD_NEW,
+    get_panel_action_menu_items, get_scripts_group_items, get_scripts_items, get_sessions_items,
+    get_shell_items, get_stash_items, get_tools_items, panel_action_dropdown_position, Dropdown,
+    DropdownItem, BOOKMARK_ADD_CURRENT, OPTIONS_SUBMENU_HELP, OPTIONS_SUBMENU_ITEM_COUNT,
+    OPTIONS_SUBMENU_LANGUAGE, OPTIONS_SUBMENU_PREFERENCES, OPTIONS_SUBMENU_QUIT,
+    OPTIONS_SUBMENU_THEMES, PANEL_ACTION_CLOSE, PANEL_ACTION_MOVE_DOWN, PANEL_ACTION_MOVE_LEFT,
+    PANEL_ACTION_MOVE_RIGHT, PANEL_ACTION_MOVE_UP, PANEL_ACTION_SPLIT, SCRIPT_ADD_NEW,
     SCRIPT_MANAGE, SESSIONS_SUBMENU_CHANGE_ROOT, SESSIONS_SUBMENU_ITEM_COUNT, SESSIONS_SUBMENU_NEW,
     SESSIONS_SUBMENU_SWITCH, STASH_NEW, TOOLS_SUBMENU_DIAGNOSTICS, TOOLS_SUBMENU_EDITOR,
     TOOLS_SUBMENU_FILES, TOOLS_SUBMENU_GIT_LOG, TOOLS_SUBMENU_GIT_STATUS, TOOLS_SUBMENU_ITEM_COUNT,

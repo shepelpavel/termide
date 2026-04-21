@@ -54,6 +54,11 @@ impl App {
             return self.handle_bookmarks_submenu_key(key);
         }
 
+        // If Panel action context menu is open, handle its navigation
+        if self.state.ui.panel_action_menu.open {
+            return self.handle_panel_action_menu_key(key);
+        }
+
         // If Options submenu is open, handle submenu navigation
         if self.state.ui.options_submenu.open {
             return self.handle_submenu_key(key);

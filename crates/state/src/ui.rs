@@ -61,6 +61,40 @@ impl SubmenuState {
     }
 }
 
+/// State for panel action context menu (opened from [≡] button)
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct PanelActionMenuState {
+    /// Whether the menu is open
+    pub open: bool,
+    /// Selected item index
+    pub selected: usize,
+    /// Group index of the panel
+    pub group_idx: usize,
+    /// Panel index within the group
+    pub panel_idx: usize,
+    /// Screen X of the [≡] button
+    pub anchor_x: u16,
+    /// Screen Y of the panel header row
+    pub anchor_y: u16,
+}
+
+impl PanelActionMenuState {
+    /// Open the menu at the given button position
+    pub fn open(&mut self, group_idx: usize, panel_idx: usize, anchor_x: u16, anchor_y: u16) {
+        self.open = true;
+        self.selected = 0;
+        self.group_idx = group_idx;
+        self.panel_idx = panel_idx;
+        self.anchor_x = anchor_x;
+        self.anchor_y = anchor_y;
+    }
+
+    /// Close the menu
+    pub fn close(&mut self) {
+        self.open = false;
+    }
+}
+
 /// State for divider drag resize operation
 #[derive(Debug, Default, Clone)]
 pub struct DragState {
@@ -143,6 +177,8 @@ pub struct UiState {
     pub git_operation_in_progress: bool,
     /// Spinner frame for animated loading indicators
     pub spinner_frame: usize,
+    /// Panel action context menu state
+    pub panel_action_menu: PanelActionMenuState,
 }
 
 impl UiState {
@@ -162,6 +198,7 @@ impl UiState {
         self.current_bookmarks_group = None;
         self.current_bookmarks_group_is_project = false;
         self.stash_submenu.close();
+        self.panel_action_menu.close();
     }
 }
 

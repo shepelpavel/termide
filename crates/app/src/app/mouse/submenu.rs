@@ -21,7 +21,7 @@ use termide_ui_render::{
 ///
 /// `menu_x` is the left edge of the dropdown, `dropdown_y` is the top row.
 /// Returns `Some(index)` if the click is on a valid item, `None` otherwise.
-pub(super) fn hit_dropdown_item(
+pub(in crate::app) fn hit_dropdown_item(
     x: u16,
     y: u16,
     menu_x: u16,

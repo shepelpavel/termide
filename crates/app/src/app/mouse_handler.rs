@@ -130,6 +130,14 @@ impl App {
             return Ok(());
         }
 
+        // Handle Panel Action menu clicks when it's open
+        if self.state.ui.panel_action_menu.open
+            && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
+        {
+            self.handle_panel_action_menu_click(mouse.column, mouse.row)?;
+            return Ok(());
+        }
+
         // If menu is open, close it on click outside menu
         if self.state.is_menu_open()
             && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
@@ -248,7 +256,7 @@ impl App {
         }
     }
 
-    /// Handle click on panel [X] button, [▶]/[▼] expand/collapse button, or title area.
+    /// Handle click on panel [≡] button, [▶]/[▼] expand/collapse button, or title area.
     /// Returns true if a button or title was clicked.
     fn handle_panel_close_click(&mut self, click_x: u16, click_y: u16) -> Result<bool> {
         let panel_rects = self.calculate_panel_rects();
@@ -266,21 +274,19 @@ impl App {
 
             let relative_x = click_x - rect.x;
 
-            // Button format: ─[X][▶] Title ─── (collapsed)
-            //          or:   ┌[X][▼] Title ──┐ (expanded)
-            // [X] button: offsets 1-3
-            // [▶]/[▼] button: offsets 4-6
+            // Button format: ─[≡][▶] Title ─── (collapsed)
+            //          or:   ┌[≡][▼] Title ──┐ (expanded)
+            // [≡] action menu button: offsets 1-3
+            // [▶]/[▼] expand/collapse button: offsets 4-6
 
             if (1..=3).contains(&relative_x) {
-                // Click on [X] button - close panel with confirmation if needed
-                // First, activate the clicked panel
-                if let Some(group) = self.layout_manager.panel_groups.get_mut(group_idx) {
-                    group.set_expanded(panel_idx);
-                }
-                self.layout_manager.focus = group_idx;
-
-                // Now use the same close logic as keyboard shortcut (with confirmation)
-                self.handle_close_panel_request()?;
+                // Click on [≡] button — open panel action context menu
+                self.state.ui.close_all_submenus();
+                self.state
+                    .ui
+                    .panel_action_menu
+                    .open(group_idx, panel_idx, rect.x, rect.y);
+                self.state.needs_redraw = true;
                 return Ok(true);
             } else if (4..=6).contains(&relative_x) {
                 // Click on [▶]/[▼] button - expand/collapse panel
@@ -300,7 +306,7 @@ impl App {
             }
 
             // Calculate title zone boundaries
-            // Format: ─[X][▶] Title ─── (group_size > 1) or ─[X] Title ─── (group_size == 1)
+            // Format: ─[≡][▶] Title ─── (group_size > 1) or ─[≡] Title ─── (group_size == 1)
             let group_size = self
                 .layout_manager
                 .panel_groups

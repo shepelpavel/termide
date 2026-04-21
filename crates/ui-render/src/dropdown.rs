@@ -557,6 +557,97 @@ pub fn get_stash_items(
     items
 }
 
+/// Key prefix for panel action context menu items.
+pub const PANEL_ACTION_CLOSE: &str = "__panel_action_close__";
+pub const PANEL_ACTION_SPLIT: &str = "__panel_action_split__";
+pub const PANEL_ACTION_MOVE_LEFT: &str = "__panel_action_move_left__";
+pub const PANEL_ACTION_MOVE_RIGHT: &str = "__panel_action_move_right__";
+pub const PANEL_ACTION_MOVE_UP: &str = "__panel_action_move_up__";
+pub const PANEL_ACTION_MOVE_DOWN: &str = "__panel_action_move_down__";
+
+/// Build the list of items for the panel action context menu (the dropdown
+/// opened from the `[≡]` button on a panel header). The list is filtered by
+/// the number of groups and the number of panels in the current group.
+///
+/// The "toggle stack" entry shows either "Split" (when the current group has
+/// more than one panel, since the action will unstack the current one) or
+/// "Merge" (when the group has one panel and will be merged with a
+/// neighbour). If there is nothing to split or merge (single panel, single
+/// group) the entry is omitted.
+pub fn get_panel_action_menu_items(
+    group_count: usize,
+    current_group_len: usize,
+) -> Vec<DropdownItem> {
+    let t = termide_i18n::t();
+    let mut items = Vec::new();
+
+    if current_group_len > 1 {
+        items.push(DropdownItem::new(
+            t.panel_action_move_up(),
+            PANEL_ACTION_MOVE_UP,
+        ));
+        items.push(DropdownItem::new(
+            t.panel_action_move_down(),
+            PANEL_ACTION_MOVE_DOWN,
+        ));
+    }
+
+    if group_count > 1 {
+        items.push(DropdownItem::new(
+            t.panel_action_move_left(),
+            PANEL_ACTION_MOVE_LEFT,
+        ));
+        items.push(DropdownItem::new(
+            t.panel_action_move_right(),
+            PANEL_ACTION_MOVE_RIGHT,
+        ));
+    }
+
+    if current_group_len > 1 {
+        items.push(DropdownItem::new(
+            t.panel_action_split(),
+            PANEL_ACTION_SPLIT,
+        ));
+    } else if group_count > 1 {
+        items.push(DropdownItem::new(
+            t.panel_action_merge(),
+            PANEL_ACTION_SPLIT,
+        ));
+    }
+
+    items.push(DropdownItem::new(
+        t.panel_action_close(),
+        PANEL_ACTION_CLOSE,
+    ));
+
+    items
+}
+
+/// Compute the top-left corner for the panel action dropdown given its
+/// anchor (the panel's `[≡]` button position), clamping to screen bounds so
+/// it stays visible on narrow terminals. The dropdown is placed one row
+/// below the anchor.
+pub fn panel_action_dropdown_position(
+    items: &[DropdownItem],
+    anchor_x: u16,
+    anchor_y: u16,
+    screen_w: u16,
+    screen_h: u16,
+) -> (u16, u16) {
+    let width = items
+        .iter()
+        .map(|i| i.label.chars().count())
+        .max()
+        .unwrap_or(0) as u16
+        + 6;
+    let height = items.len() as u16 + 2;
+    let x = anchor_x.min(screen_w.saturating_sub(width));
+    let y = anchor_y
+        .saturating_add(1)
+        .min(screen_h.saturating_sub(height));
+    (x, y)
+}
+
 /// Get bookmark items for a specific group
 pub fn get_bookmarks_group_items(
     config: &termide_config::BookmarksConfig,

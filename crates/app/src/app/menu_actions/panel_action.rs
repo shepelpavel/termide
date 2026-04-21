@@ -1,0 +1,165 @@
+//! Panel action context menu — opened from the `[≡]` button on a panel header.
+
+use anyhow::Result;
+use crossterm::event::{KeyCode, KeyEvent};
+use termide_ui_render::{
+    get_panel_action_menu_items, panel_action_dropdown_position, DropdownItem, PANEL_ACTION_CLOSE,
+    PANEL_ACTION_MOVE_DOWN, PANEL_ACTION_MOVE_LEFT, PANEL_ACTION_MOVE_RIGHT, PANEL_ACTION_MOVE_UP,
+    PANEL_ACTION_SPLIT,
+};
+
+use super::super::App;
+
+impl App {
+    /// Build items for the currently-open panel action menu, using the
+    /// targeted panel's group index to derive context-dependent filters.
+    fn panel_action_menu_items(&self) -> Vec<DropdownItem> {
+        let group_count = self.layout_manager.panel_groups.len();
+        let group_idx = self.state.ui.panel_action_menu.group_idx;
+        let current_group_len = self
+            .layout_manager
+            .panel_groups
+            .get(group_idx)
+            .map(|g| g.len())
+            .unwrap_or(0);
+        get_panel_action_menu_items(group_count, current_group_len)
+    }
+
+    /// Activate the panel that the menu was opened for, so actions that
+    /// operate on the active panel target the correct one.
+    fn activate_menu_target_panel(&mut self) {
+        let group_idx = self.state.ui.panel_action_menu.group_idx;
+        let panel_idx = self.state.ui.panel_action_menu.panel_idx;
+        if let Some(group) = self.layout_manager.panel_groups.get_mut(group_idx) {
+            if panel_idx < group.len() {
+                group.set_expanded(panel_idx);
+            }
+        }
+        self.layout_manager.focus = group_idx;
+    }
+
+    /// Handle a click while the panel action menu is open. If the click is
+    /// inside the dropdown, execute the corresponding action; otherwise close
+    /// the menu.
+    pub(in crate::app) fn handle_panel_action_menu_click(&mut self, x: u16, y: u16) -> Result<()> {
+        let items = self.panel_action_menu_items();
+        let (anchor_x, anchor_y) = (
+            self.state.ui.panel_action_menu.anchor_x,
+            self.state.ui.panel_action_menu.anchor_y,
+        );
+        let (dropdown_x, dropdown_y) = panel_action_dropdown_position(
+            &items,
+            anchor_x,
+            anchor_y,
+            self.state.terminal.width,
+            self.state.terminal.height,
+        );
+
+        if let Some(index) =
+            super::super::mouse::submenu::hit_dropdown_item(x, y, dropdown_x, dropdown_y, &items)
+        {
+            self.state.ui.panel_action_menu.selected = index;
+            self.execute_panel_action_menu_action()?;
+            return Ok(());
+        }
+
+        self.state.ui.panel_action_menu.close();
+        self.state.needs_redraw = true;
+        Ok(())
+    }
+
+    /// Handle a key while the panel action menu is open.
+    pub(in crate::app) fn handle_panel_action_menu_key(&mut self, key: KeyEvent) -> Result<()> {
+        let items = self.panel_action_menu_items();
+        let count = items.len();
+        if count == 0 {
+            self.state.ui.panel_action_menu.close();
+            self.state.needs_redraw = true;
+            return Ok(());
+        }
+
+        match key.code {
+            KeyCode::Esc | KeyCode::Left | KeyCode::Right => {
+                self.state.ui.panel_action_menu.close();
+                self.state.needs_redraw = true;
+            }
+            KeyCode::Up => {
+                let sel = &mut self.state.ui.panel_action_menu.selected;
+                *sel = if *sel == 0 { count - 1 } else { *sel - 1 };
+                self.state.needs_redraw = true;
+            }
+            KeyCode::Down => {
+                let sel = &mut self.state.ui.panel_action_menu.selected;
+                *sel = (*sel + 1) % count;
+                self.state.needs_redraw = true;
+            }
+            KeyCode::Enter => {
+                self.execute_panel_action_menu_action()?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Execute the currently-selected panel action menu item.
+    fn execute_panel_action_menu_action(&mut self) -> Result<()> {
+        let items = self.panel_action_menu_items();
+        let selected = self.state.ui.panel_action_menu.selected;
+        let key = match items.get(selected) {
+            Some(i) => i.key.clone(),
+            None => {
+                self.state.ui.panel_action_menu.close();
+                self.state.needs_redraw = true;
+                return Ok(());
+            }
+        };
+
+        self.activate_menu_target_panel();
+        self.state.ui.panel_action_menu.close();
+        self.state.needs_redraw = true;
+
+        let terminal_width = self.state.terminal.width;
+        match key.as_str() {
+            PANEL_ACTION_CLOSE => {
+                self.handle_close_panel_request()?;
+            }
+            PANEL_ACTION_SPLIT => {
+                if let Err(e) = self.layout_manager.toggle_panel_stacking(terminal_width) {
+                    self.show_error_modal(format!("Cannot toggle stacking: {}", e));
+                } else {
+                    self.auto_save_session();
+                }
+            }
+            PANEL_ACTION_MOVE_LEFT => {
+                if let Err(e) = self.layout_manager.move_panel_to_prev_group(terminal_width) {
+                    self.show_error_modal(format!("Cannot move panel: {}", e));
+                } else {
+                    self.auto_save_session();
+                }
+            }
+            PANEL_ACTION_MOVE_RIGHT => {
+                if let Err(e) = self.layout_manager.move_panel_to_next_group(terminal_width) {
+                    self.show_error_modal(format!("Cannot move panel: {}", e));
+                } else {
+                    self.auto_save_session();
+                }
+            }
+            PANEL_ACTION_MOVE_UP => {
+                if let Err(e) = self.layout_manager.move_panel_up_in_group() {
+                    self.show_error_modal(format!("Cannot move panel: {}", e));
+                } else {
+                    self.auto_save_session();
+                }
+            }
+            PANEL_ACTION_MOVE_DOWN => {
+                if let Err(e) = self.layout_manager.move_panel_down_in_group() {
+                    self.show_error_modal(format!("Cannot move panel: {}", e));
+                } else {
+                    self.auto_save_session();
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+}
