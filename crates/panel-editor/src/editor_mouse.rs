@@ -372,9 +372,15 @@ impl Editor {
                     return vec![];
                 }
 
-                // Handle Shift+Click — extend selection from the existing anchor
-                // (or current cursor if no selection yet) to the click position.
-                if mouse.modifiers.contains(KeyModifiers::SHIFT) {
+                // Handle Shift+Click / Alt+Click — extend selection from the
+                // existing anchor (or current cursor if no selection yet) to
+                // the click position. Alt is offered as a fallback because
+                // GNOME Terminal / VTE swallows Shift+Click for its own
+                // native text selection and never forwards the event.
+                if mouse
+                    .modifiers
+                    .intersects(KeyModifiers::SHIFT | KeyModifiers::ALT)
+                {
                     let anchor = self
                         .selection
                         .as_ref()
