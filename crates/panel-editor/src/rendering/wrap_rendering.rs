@@ -377,10 +377,13 @@ fn render_visual_line<H: LineHighlighter>(
     }
 
     // Get syntax highlighting segments
+    let no_syntax_segment;
     let segments = if syntax_highlighting_enabled && highlight_cache.has_syntax() {
         highlight_cache.get_line_segments(line_idx, line_text)
     } else {
-        &[(line_text.to_string(), style)]
+        // No syntax highlighting - borrow line_text directly, no allocation per frame
+        no_syntax_segment = [(std::borrow::Cow::Borrowed(line_text), style)];
+        &no_syntax_segment[..]
     };
 
     // Render graphemes for this visual line

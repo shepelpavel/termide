@@ -3,6 +3,7 @@
 //! Provides highlighting for log entries based on their level (DEBUG, INFO, WARN, ERROR).
 
 use ratatui::style::{Color, Modifier, Style};
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 use termide_highlight::LineHighlighter;
@@ -16,7 +17,8 @@ const MAX_CACHE_SIZE: usize = 500;
 /// Parses log format: `[HH:MM:SS] LEVEL message`
 pub struct LogHighlightCache {
     /// Cached highlighted segments: line_idx -> (segments, access_time)
-    lines: HashMap<usize, (Vec<(String, Style)>, u64)>,
+    #[allow(clippy::type_complexity)]
+    lines: HashMap<usize, (Vec<(Cow<'static, str>, Style)>, u64)>,
     /// Access counter for LRU eviction
     access_counter: u64,
     /// Theme for styling
@@ -42,12 +44,12 @@ impl LogHighlightCache {
     }
 
     /// Compute highlighting segments for a log line.
-    fn compute_line_segments(&self, line_text: &str) -> Vec<(String, Style)> {
+    fn compute_line_segments(&self, line_text: &str) -> Vec<(Cow<'static, str>, Style)> {
         // Parse log format: "[HH:MM:SS] LEVEL message"
         // Or continuation lines (start with spaces)
 
         if line_text.is_empty() {
-            return vec![(String::new(), Style::default())];
+            return vec![(Cow::Borrowed(""), Style::default())];
         }
 
         // Check if this is a timestamp line: starts with '['
@@ -55,17 +57,23 @@ impl LogHighlightCache {
             self.parse_log_line(line_text)
         } else {
             // Continuation line or plain text - use default style
-            vec![(line_text.to_string(), Style::default().fg(self.theme.fg))]
+            vec![(
+                Cow::Owned(line_text.to_string()),
+                Style::default().fg(self.theme.fg),
+            )]
         }
     }
 
     /// Parse a log line with timestamp and level.
-    fn parse_log_line(&self, line_text: &str) -> Vec<(String, Style)> {
+    fn parse_log_line(&self, line_text: &str) -> Vec<(Cow<'static, str>, Style)> {
         let mut segments = Vec::new();
 
         // Find the closing bracket of timestamp
         let Some(bracket_end) = line_text.find(']') else {
-            return vec![(line_text.to_string(), Style::default().fg(self.theme.fg))];
+            return vec![(
+                Cow::Owned(line_text.to_string()),
+                Style::default().fg(self.theme.fg),
+            )];
         };
 
         // Timestamp: [HH:MM:SS]
@@ -73,7 +81,7 @@ impl LogHighlightCache {
         let rest = &line_text[bracket_end + 1..];
 
         let timestamp_style = Style::default().fg(Color::DarkGray);
-        segments.push((timestamp.to_string(), timestamp_style));
+        segments.push((Cow::Owned(timestamp.to_string()), timestamp_style));
 
         // Skip space after timestamp
         let rest = rest.trim_start();
@@ -117,20 +125,23 @@ impl LogHighlightCache {
             )
         } else {
             // Unknown format - return as plain text
-            segments.push((" ".to_string(), Style::default()));
-            segments.push((rest.to_string(), Style::default().fg(self.theme.fg)));
+            segments.push((Cow::Borrowed(" "), Style::default()));
+            segments.push((
+                Cow::Owned(rest.to_string()),
+                Style::default().fg(self.theme.fg),
+            ));
             return segments;
         };
 
         // Add space before level
-        segments.push((" ".to_string(), Style::default()));
+        segments.push((Cow::Borrowed(" "), Style::default()));
 
-        // Add level with its style
-        segments.push((level_text.to_string(), level_style));
+        // Add level with its style (static str, no allocation)
+        segments.push((Cow::Borrowed(level_text), level_style));
 
         // Add message with level's style (for consistency)
         if !message.is_empty() {
-            segments.push((message.to_string(), level_style));
+            segments.push((Cow::Owned(message.to_string()), level_style));
         }
 
         segments
@@ -152,7 +163,11 @@ impl LogHighlightCache {
 }
 
 impl LineHighlighter for LogHighlightCache {
-    fn get_line_segments(&mut self, line_idx: usize, line_text: &str) -> &[(String, Style)] {
+    fn get_line_segments<'a>(
+        &'a mut self,
+        line_idx: usize,
+        line_text: &'a str,
+    ) -> &'a [(Cow<'a, str>, Style)] {
         self.access_counter += 1;
 
         // Update access time if cached

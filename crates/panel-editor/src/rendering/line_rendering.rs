@@ -273,8 +273,8 @@ fn render_line_regular<H: LineHighlighter>(
     let segments = if syntax_highlighting_enabled && highlight_cache.has_syntax() {
         highlight_cache.get_line_segments(line_idx, line_text)
     } else {
-        // No syntax highlighting - use single segment (avoid allocation)
-        no_syntax_segment = [(line_text.to_string(), style)];
+        // No syntax highlighting - borrow line_text directly, no allocation per frame
+        no_syntax_segment = [(std::borrow::Cow::Borrowed(line_text), style)];
         &no_syntax_segment[..]
     };
 
@@ -368,7 +368,7 @@ fn render_line_with_inline_diff<H: LineHighlighter>(
     let syntax_segments = if syntax_highlighting_enabled && highlight_cache.has_syntax() {
         highlight_cache.get_line_segments(line_idx, &current_text)
     } else {
-        no_syntax_seg = [(current_text, style)];
+        no_syntax_seg = [(std::borrow::Cow::Owned(current_text), style)];
         &no_syntax_seg[..]
     };
 

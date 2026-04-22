@@ -3,6 +3,7 @@
 //! Provides syntax highlighting capabilities for multiple programming languages.
 
 use ratatui::style::{Color, Modifier, Style};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::OnceLock;
@@ -480,7 +481,15 @@ const MAX_CACHE_SIZE: usize = 1000;
 /// Allows custom highlighters (e.g., for log files) to integrate with Editor.
 pub trait LineHighlighter: Send + Sync {
     /// Get highlighted segments for a line (with caching).
-    fn get_line_segments(&mut self, line_idx: usize, line_text: &str) -> &[(String, Style)];
+    ///
+    /// Segment text is returned as `Cow<str>` so callers that don't need
+    /// highlighting (fallback path) can avoid per-frame `String` allocations
+    /// by passing a borrowed slice of `line_text` directly.
+    fn get_line_segments<'a>(
+        &'a mut self,
+        line_idx: usize,
+        line_text: &'a str,
+    ) -> &'a [(Cow<'a, str>, Style)];
 
     /// Invalidate cache from given line to end (called when text changes).
     fn invalidate_from(&mut self, line: usize);
@@ -495,7 +504,8 @@ pub trait LineHighlighter: Send + Sync {
 /// Highlighted lines cache for incremental highlighting.
 pub struct HighlightCache {
     /// Highlighted lines: line number -> (vector of segments, last access time)
-    lines: HashMap<usize, (Vec<(String, Style)>, u64)>,
+    #[allow(clippy::type_complexity)]
+    lines: HashMap<usize, (Vec<(Cow<'static, str>, Style)>, u64)>,
     /// Current language
     language: Option<String>,
     /// Global SyntaxHighlighter (static)
@@ -545,7 +555,11 @@ impl HighlightCache {
     }
 
     /// Get line highlighting (with caching).
-    pub fn get_line_segments(&mut self, line_idx: usize, line_text: &str) -> &[(String, Style)] {
+    pub fn get_line_segments<'a>(
+        &'a mut self,
+        line_idx: usize,
+        line_text: &'a str,
+    ) -> &'a [(Cow<'a, str>, Style)] {
         self.access_counter += 1;
 
         if let Some((_, access_time)) = self.lines.get_mut(&line_idx) {
@@ -568,15 +582,15 @@ impl HighlightCache {
     }
 
     /// Compute highlighting for line.
-    fn compute_line_segments(&self, line_text: &str) -> Vec<(String, Style)> {
+    fn compute_line_segments(&self, line_text: &str) -> Vec<(Cow<'static, str>, Style)> {
         let default_style = Style::default().fg(self.default_fg);
 
         let Some(ref language) = self.language else {
-            return vec![(line_text.to_string(), default_style)];
+            return vec![(Cow::Owned(line_text.to_string()), default_style)];
         };
 
         let Some(config) = self.syntax_highlighter.get_config(language) else {
-            return vec![(line_text.to_string(), default_style)];
+            return vec![(Cow::Owned(line_text.to_string()), default_style)];
         };
 
         let mut highlighter = Highlighter::new();
@@ -584,7 +598,7 @@ impl HighlightCache {
 
         let highlights = match highlighter.highlight(config, source, None, |_| None) {
             Ok(h) => h,
-            Err(_) => return vec![(line_text.to_string(), default_style)],
+            Err(_) => return vec![(Cow::Owned(line_text.to_string()), default_style)],
         };
 
         let mut segments = Vec::new();
@@ -601,7 +615,8 @@ impl HighlightCache {
                 Ok(HighlightEvent::HighlightStart(highlight)) => {
                     if !current_text.is_empty() {
                         // Use take() instead of clone() + clear() to avoid allocation
-                        segments.push((std::mem::take(&mut current_text), current_style));
+                        segments
+                            .push((Cow::Owned(std::mem::take(&mut current_text)), current_style));
                     }
                     current_style = self
                         .syntax_highlighter
@@ -610,22 +625,23 @@ impl HighlightCache {
                 Ok(HighlightEvent::HighlightEnd) => {
                     if !current_text.is_empty() {
                         // Use take() instead of clone() + clear() to avoid allocation
-                        segments.push((std::mem::take(&mut current_text), current_style));
+                        segments
+                            .push((Cow::Owned(std::mem::take(&mut current_text)), current_style));
                     }
                     current_style = default_style;
                 }
                 Err(_) => {
-                    return vec![(line_text.to_string(), default_style)];
+                    return vec![(Cow::Owned(line_text.to_string()), default_style)];
                 }
             }
         }
 
         if !current_text.is_empty() {
-            segments.push((current_text, current_style));
+            segments.push((Cow::Owned(current_text), current_style));
         }
 
         if segments.is_empty() {
-            vec![(line_text.to_string(), default_style)]
+            vec![(Cow::Owned(line_text.to_string()), default_style)]
         } else {
             segments
         }
@@ -704,7 +720,11 @@ impl HighlightCache {
 }
 
 impl LineHighlighter for HighlightCache {
-    fn get_line_segments(&mut self, line_idx: usize, line_text: &str) -> &[(String, Style)] {
+    fn get_line_segments<'a>(
+        &'a mut self,
+        line_idx: usize,
+        line_text: &'a str,
+    ) -> &'a [(Cow<'a, str>, Style)] {
         HighlightCache::get_line_segments(self, line_idx, line_text)
     }
 
