@@ -49,15 +49,19 @@ pub fn insert_newline(buffer: &mut TextBuffer, cursor: &Cursor) -> Result<EditRe
 
 /// Insert a newline with auto-indentation at the cursor position.
 ///
-/// The new line inherits the indentation of the current line. If the text
-/// before the cursor ends with `{`, `(`, `[`, or `:`, an additional level
-/// of indentation is added (smart indent).
+/// The new line always inherits the indentation of the current line. When
+/// `smart_indent` is on, an additional level of indentation is added if the
+/// text before the cursor ends with `{`, `(`, `[`, or `:`. Callers pass
+/// `smart_indent = false` for buffers without a recognized syntax so plain
+/// prose (e.g. notes with trailing colons) doesn't accidentally accumulate
+/// indentation.
 ///
 /// Returns EditResult with new cursor position and cache invalidation info.
 pub fn insert_newline_with_indent(
     buffer: &mut TextBuffer,
     cursor: &Cursor,
     tab_size: usize,
+    smart_indent: bool,
 ) -> Result<EditResult> {
     let old_line = cursor.line;
     let line_content = buffer.line(cursor.line).unwrap_or_default();
@@ -71,10 +75,11 @@ pub fn insert_newline_with_indent(
     // Smart indent: check if text before cursor ends with an opener
     let before_cursor: String = line_content.chars().take(cursor.column).collect();
     let trimmed = before_cursor.trim_end();
-    let extra_indent = if trimmed.ends_with('{')
-        || trimmed.ends_with('(')
-        || trimmed.ends_with('[')
-        || trimmed.ends_with(':')
+    let extra_indent = if smart_indent
+        && (trimmed.ends_with('{')
+            || trimmed.ends_with('(')
+            || trimmed.ends_with('[')
+            || trimmed.ends_with(':'))
     {
         " ".repeat(tab_size)
     } else {

@@ -211,10 +211,15 @@ impl Editor {
         self.delete_selection()?;
 
         let result = if self.config.auto_indent {
+            // Only apply the `{` / `(` / `[` / `:` smart-indent triggers when
+            // the file has a recognized syntax — in plain-text buffers a
+            // trailing colon in prose shouldn't push the next line in.
+            let smart_indent = self.render_cache.highlight.has_syntax();
             text_editing::insert_newline_with_indent(
                 &mut self.buffer,
                 &self.cursor,
                 self.config.tab_size,
+                smart_indent,
             )?
         } else {
             text_editing::insert_newline(&mut self.buffer, &self.cursor)?
