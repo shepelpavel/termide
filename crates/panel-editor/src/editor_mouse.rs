@@ -372,6 +372,24 @@ impl Editor {
                     return vec![];
                 }
 
+                // Handle Shift+Click — extend selection from the existing anchor
+                // (or current cursor if no selection yet) to the click position.
+                if mouse.modifiers.contains(KeyModifiers::SHIFT) {
+                    let anchor = self
+                        .selection
+                        .as_ref()
+                        .map(|s| s.anchor)
+                        .unwrap_or(self.cursor);
+                    let new_cursor = Cursor::at(target_line, target_col);
+                    self.cursor = new_cursor;
+                    self.selection = Some(Selection::new(anchor, new_cursor));
+                    self.scroll_follows_cursor = true;
+                    self.close_search();
+                    self.input.selection_drag_active = true;
+                    self.input.click_tracker.reset();
+                    return vec![];
+                }
+
                 self.scroll_follows_cursor = true;
                 self.close_search();
 
