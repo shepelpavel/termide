@@ -108,6 +108,10 @@ pub fn render_editor_content<H: LineHighlighter>(
     // Prepare rendering context
     let mut render_context = context::RenderContext::prepare(search_state, selection, diagnostics);
 
+    // Group diagnostics by line once per render — hot paths read this
+    // instead of rebuilding the HashMap for every visible row.
+    let diagnostics_by_line = crate::git::group_diagnostics_by_line(diagnostics, buffer);
+
     // Select rendering mode
     if word_wrap_enabled && content_width > 0 {
         // Word wrap mode
@@ -122,7 +126,7 @@ pub fn render_editor_content<H: LineHighlighter>(
             syntax_highlighting_enabled,
             highlight_cache,
             &mut render_context,
-            diagnostics,
+            &diagnostics_by_line,
             theme,
             content_width,
             content_height,
@@ -148,7 +152,7 @@ pub fn render_editor_content<H: LineHighlighter>(
             syntax_highlighting_enabled,
             highlight_cache,
             &render_context,
-            diagnostics,
+            &diagnostics_by_line,
             theme,
             content_width,
             content_height,

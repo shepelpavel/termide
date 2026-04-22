@@ -281,16 +281,13 @@ pub fn build_virtual_lines_for_viewport(
     buffer: &TextBuffer,
     git_diff_cache: &Option<GitDiffCache>,
     show_git_diff: bool,
-    diagnostics: &[lsp_types::Diagnostic],
+    diagnostics_by_line: &std::collections::HashMap<usize, Vec<DiagnosticInfo>>,
     viewport_top_line: usize,
     max_lines: usize,
     content_width: usize,
 ) -> Vec<VirtualLine> {
     let mut virtual_lines = Vec::with_capacity(max_lines);
     let buffer_line_count = buffer.line_count();
-
-    // Group diagnostics by line
-    let diagnostics_by_line = group_diagnostics_by_line(diagnostics, buffer);
 
     // Start from viewport_top_line instead of 0
     for line_idx in viewport_top_line..buffer_line_count {
@@ -515,11 +512,13 @@ pub fn get_virtual_line_at_row(
     visual_row: usize,
     content_width: usize,
 ) -> Option<VirtualLine> {
+    // Rare path (mouse click), so building the HashMap here is fine.
+    let diagnostics_by_line = group_diagnostics_by_line(diagnostics, buffer);
     let virtual_lines = build_virtual_lines_for_viewport(
         buffer,
         git_diff_cache,
         show_git_diff,
-        diagnostics,
+        &diagnostics_by_line,
         viewport_top_line,
         visual_row + 1,
         content_width,

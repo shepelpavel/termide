@@ -37,7 +37,7 @@ pub fn render_content_word_wrap<H: LineHighlighter>(
     syntax_highlighting_enabled: bool,
     highlight_cache: &mut H,
     render_context: &mut RenderContext,
-    diagnostics: &[lsp_types::Diagnostic],
+    diagnostics_by_line: &std::collections::HashMap<usize, Vec<git::DiagnosticInfo>>,
     theme: &Theme,
     content_width: usize,
     content_height: usize,
@@ -50,9 +50,6 @@ pub fn render_content_word_wrap<H: LineHighlighter>(
     current_match_style: Style,
     selection_style: Style,
 ) {
-    // Group diagnostics by line for efficient lookup
-    let diagnostics_by_line = git::group_diagnostics_by_line(diagnostics, buffer);
-
     let mut visual_row = 0;
     let mut line_idx = viewport.top_line;
 
