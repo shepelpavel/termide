@@ -375,6 +375,22 @@ impl Modal for SessionsModal {
     ) -> Result<Option<ModalResult<Self::Result>>> {
         use crate::{check_mouse_click_with_item_height, MouseClickResult};
 
+        match mouse.kind {
+            MouseEventKind::ScrollUp => {
+                for _ in 0..3 {
+                    self.cursor_up();
+                }
+                return Ok(None);
+            }
+            MouseEventKind::ScrollDown => {
+                for _ in 0..3 {
+                    self.cursor_down();
+                }
+                return Ok(None);
+            }
+            _ => {}
+        }
+
         if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
             return Ok(None);
         }

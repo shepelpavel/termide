@@ -237,6 +237,22 @@ impl Modal for DirectorySwitcherModal {
     ) -> Result<Option<ModalResult<Self::Result>>> {
         use crate::{check_mouse_click, MouseClickResult};
 
+        match mouse.kind {
+            MouseEventKind::ScrollUp => {
+                for _ in 0..3 {
+                    self.cursor_up();
+                }
+                return Ok(None);
+            }
+            MouseEventKind::ScrollDown => {
+                for _ in 0..3 {
+                    self.cursor_down();
+                }
+                return Ok(None);
+            }
+            _ => {}
+        }
+
         // Only handle left button press
         if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
             return Ok(None);

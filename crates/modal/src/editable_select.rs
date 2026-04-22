@@ -554,6 +554,24 @@ impl Modal for EditableSelectModal {
     ) -> Result<Option<ModalResult<Self::Result>>> {
         use crossterm::event::MouseEventKind;
 
+        if self.suggestion_input.is_expanded() {
+            match mouse.kind {
+                MouseEventKind::ScrollUp => {
+                    for _ in 0..3 {
+                        self.suggestion_input.select_up();
+                    }
+                    return Ok(None);
+                }
+                MouseEventKind::ScrollDown => {
+                    for _ in 0..3 {
+                        self.suggestion_input.select_down();
+                    }
+                    return Ok(None);
+                }
+                _ => {}
+            }
+        }
+
         // Only handle left button press
         if mouse.kind != MouseEventKind::Down(crossterm::event::MouseButton::Left) {
             return Ok(None);

@@ -163,6 +163,19 @@ impl Modal for SelectModal {
         use crate::{check_mouse_click, MouseClickResult};
         use crossterm::event::MouseEventKind;
 
+        match mouse.kind {
+            MouseEventKind::ScrollUp => {
+                self.cursor = self.cursor.saturating_sub(3);
+                return Ok(None);
+            }
+            MouseEventKind::ScrollDown => {
+                let last = self.items.len().saturating_sub(1);
+                self.cursor = (self.cursor + 3).min(last);
+                return Ok(None);
+            }
+            _ => {}
+        }
+
         // Only handle left button press
         if mouse.kind != MouseEventKind::Down(crossterm::event::MouseButton::Left) {
             return Ok(None);
