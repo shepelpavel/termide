@@ -137,7 +137,9 @@ pub fn check_pending_git_diff_update(
 
             // Update diff cache with current buffer
             if let Some(ref mut cache) = git_diff_cache {
-                let _ = cache.update_from_buffer(&content);
+                if let Err(e) = cache.update_from_buffer(&content) {
+                    log::warn!("git diff cache update_from_buffer failed: {e}");
+                }
             }
 
             return (true, None); // Update performed, clear pending

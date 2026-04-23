@@ -112,7 +112,14 @@ impl LayoutManagerSession for LayoutManager {
                             match load_unsaved_buffer(session_dir, buffer_file) {
                                 Ok(content) => {
                                     if content.trim().is_empty() {
-                                        let _ = cleanup_unsaved_buffer(session_dir, buffer_file);
+                                        if let Err(e) =
+                                            cleanup_unsaved_buffer(session_dir, buffer_file)
+                                        {
+                                            log::warn!(
+                                                "cleanup_unsaved_buffer({}) failed: {e}",
+                                                buffer_file
+                                            );
+                                        }
                                         None
                                     } else {
                                         let mut editor = Editor::with_config(editor_config.clone());
