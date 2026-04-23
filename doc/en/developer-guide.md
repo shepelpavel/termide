@@ -120,7 +120,7 @@ termide/
 │   ├── session/              # Session persistence
 │   ├── state/                # Application state (batch, layout, operations, ui)
 │   ├── system-monitor/       # CPU/RAM/Disk monitoring
-│   ├── theme/                # Theme system and 24 built-in themes
+│   ├── theme/                # Theme system and 38 built-in themes
 │   ├── ui/                   # UI utilities and path formatting
 │   ├── ui-render/            # UI rendering (menu, status bar, panels)
 │   ├── vfs/                  # Virtual filesystem (SFTP, FTP, SMB)

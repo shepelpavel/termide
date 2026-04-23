@@ -63,7 +63,7 @@ The active section highlight in the sidebar is cleared when focus leaves it — 
 
 ## Menu Bar
 
-The menu bar is located at the top of the window and includes: menu items on the left, system resource indicators (CPU, RAM, network speed), and a clock in HH:MM format on the right.
+The menu bar is located at the top of the window and includes: menu items on the left, system resource indicators (network speed, CPU, RAM and — when a battery is present — its charge), and a clock in HH:MM format on the right.
 Menu activation/deactivation and each item can be accessed by mouse click or [keyboard shortcuts](#Keyboard-Navigation-and-Panel-Management).
 
 **Menu items:**
@@ -93,18 +93,19 @@ Menu activation/deactivation and each item can be accessed by mouse click or [ke
   - Help — open help panel
   - Quit — exit application
 
-**System Resource Indicators** (all clickable — open a details modal):
+**System Resource Indicators** (clickable indicators open a details modal):
 
 | Indicator | Description | Click opens |
 |-----------|-------------|-------------|
+| `↓…/↑…` | Network speed (↓ download, ↑ upload) | Top-10 processes by network activity |
 | `CPU XX%` | CPU usage | Top-10 processes by CPU |
 | `RAM X/YGB` | Memory usage | Top-10 processes by RAM |
-| `↓…/↑…` | Network speed (↓ download, ↑ upload) | Top-10 processes by network activity |
+| `⚡NN%` / `🔋NN%` | Battery charge (⚡ = AC connected / charging / full, 🔋 = on battery). Hidden on systems without a battery. | — (informational) |
 | `DEVICE used/totalGB` (in status bar) | Disk usage | Top-10 processes by disk + filesystem partitions |
 
 Clicking the same indicator again closes the window it opened (toggle); the same behaviour applies to the disk indicator in the status bar.
 
-Color coding: green < 50%, yellow 50–75%, red > 75%.
+Color coding (CPU / RAM): green < 50%, yellow 50–75%, red > 75%. Battery uses the same scale inverted (green when charging or above 50%, red below 25%). The battery reading is cached for 5 seconds so the per-frame render path never touches `/sys`.
 
 ## Panels Area
 

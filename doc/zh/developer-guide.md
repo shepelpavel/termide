@@ -120,7 +120,7 @@ termide/
 │   ├── session/              # 会话持久化
 │   ├── state/                # 应用状态（批量、布局、操作、UI）
 │   ├── system-monitor/       # CPU/内存/磁盘监控
-│   ├── theme/                # 主题系统和 24 款内置主题
+│   ├── theme/                # 主题系统和 38 款内置主题
 │   ├── ui/                   # UI 工具和路径格式化
 │   ├── ui-render/            # UI 渲染（菜单、状态栏、面板）
 │   ├── vfs/                  # 虚拟文件系统（SFTP、FTP、SMB）
