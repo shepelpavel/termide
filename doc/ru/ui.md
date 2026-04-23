@@ -223,3 +223,15 @@
 | `Ctrl+Shift+P`    | Открыть командную палитру (альтернатива)   |
 | `Alt+1-9`         | Перейти к панели по номеру                 |
 | `Ctrl+Alt+1-9`    | Перейти к панели по номеру (запасной вариант для gnome-terminal / Windows Terminal) |
+
+### Caps Lock
+
+Termide включает [Kitty keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/) через `KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES | REPORT_ALTERNATE_KEYS | REPORT_EVENT_TYPES`. `REPORT_EVENT_TYPES` пробрасывает `KeyEventState::CAPS_LOCK`, и матчер хоткеев использует этот бит, чтобы игнорировать «фантомный» `Shift`, который X11/Linux-терминалы навешивают на каждый буквенный event при включённом Caps Lock.
+
+Что это даёт на практике:
+
+- Бинты вроде `Alt+T` продолжают работать при включённом Caps Lock (без фикса event пришёл бы как `{Char('T'), Alt|Shift}` и не совпал бы с `{Char('t'), Alt}`).
+- Намеренные `Shift+буква`-бинты (например, `Ctrl+Shift+F` для content-поиска) остаются отличимыми от безшифтовых версий — Shift игнорируется только если реально сообщён Caps Lock.
+- Терминалы без поддержки Kitty protocol (бит Caps Lock не приходит) падают на строгое сравнение модификаторов, поведение там прежнее — лучше использовать такие терминалы с выключенным Caps Lock.
+
+Про кодировку модифицированных стрелок и Home/End для встроенного эмулятора терминала см. [terminal.md](terminal.md#взаимодействие).

@@ -215,3 +215,15 @@ The device name is automatically detected from the filesystem:
 | `Ctrl+Shift+P`    | Open command palette (alternative)         |
 | `Alt+1-9`         | Jump to panel by number                    |
 | `Ctrl+Alt+1-9`    | Jump to panel by number (fallback for gnome-terminal / Windows Terminal) |
+
+### Caps Lock
+
+Termide opts into the [Kitty keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/) via `KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES | REPORT_ALTERNATE_KEYS | REPORT_EVENT_TYPES`. `REPORT_EVENT_TYPES` exposes `KeyEventState::CAPS_LOCK`, which the hotkey matcher uses to ignore the spurious `Shift` modifier that X11/Linux terminals attach to every letter event while Caps Lock is on.
+
+The practical effect:
+
+- Bindings like `Alt+T` keep working with Caps Lock pressed (without this, the event would arrive as `{Char('T'), Alt|Shift}` and miss the `{Char('t'), Alt}` binding).
+- Intentional `Shift+letter` bindings (e.g. `Ctrl+Shift+F` for content search) stay distinct from their unshifted counterparts — Shift is only ignored when Caps Lock is actually reported.
+- Terminals without Kitty protocol support (Caps Lock bit not delivered) fall back to strict modifier comparison, so behaviour there is unchanged — use those terminals without Caps Lock for best results.
+
+Modified arrow keys and Home/End are encoded for the embedded terminal emulator — see [terminal.md](terminal.md#interaction).

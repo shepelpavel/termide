@@ -214,3 +214,15 @@
 | `Ctrl+Shift+P`    | 打开命令面板                            |
 | `Alt+1-9`         | 按编号跳转到面板                           |
 | `Ctrl+Alt+1-9`    | 按编号跳转到面板（gnome-terminal / Windows Terminal 备用方案） |
+
+### Caps Lock
+
+Termide 通过 `KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES | REPORT_ALTERNATE_KEYS | REPORT_EVENT_TYPES` 启用 [Kitty 键盘协议](https://sw.kovidgoyal.net/kitty/keyboard-protocol/)。`REPORT_EVENT_TYPES` 会在每次按键事件中附带 `KeyEventState::CAPS_LOCK`，热键匹配器据此忽略 X11/Linux 终端在 Caps Lock 开启时强行附加的虚假 `Shift` 修饰符。
+
+实际效果：
+
+- 开启 Caps Lock 时 `Alt+T` 这类绑定依然生效（否则事件到达时是 `{Char('T'), Alt|Shift}`，无法匹配 `{Char('t'), Alt}`）。
+- 真正的 `Shift+字母` 绑定（例如 `Ctrl+Shift+F` 用于内容搜索）仍与无 Shift 版本区分清楚——只在真的报告了 Caps Lock 时才剥离 Shift。
+- 不支持 Kitty 协议的终端（不发送 Caps Lock 位）会回退到严格的修饰符比较，行为保持不变——在这些终端中建议关闭 Caps Lock 使用。
+
+内嵌终端模拟器的方向键和 Home/End 的修饰编码见 [terminal.md](terminal.md#交互)。
