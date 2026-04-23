@@ -382,6 +382,12 @@ impl App {
             // Process events
             match self.event_handler.next()? {
                 Event::Key(key) => {
+                    // REPORT_EVENT_TYPES (Kitty keyboard protocol) also sends
+                    // Release/Repeat events; the rest of the app expects only
+                    // presses, so drop the extras at the boundary.
+                    if key.kind != crossterm::event::KeyEventKind::Press {
+                        continue;
+                    }
                     self.state.last_activity = std::time::Instant::now();
                     self.event_handler.set_tick_rate(Duration::from_millis(
                         termide_config::constants::EVENT_HANDLER_INTERVAL_MS,

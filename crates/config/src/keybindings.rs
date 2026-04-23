@@ -11,7 +11,7 @@
 //! copy_files = ["C", "F5"]  # multiple bindings
 //! ```
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyEventState, KeyModifiers};
 use serde::{Deserialize, Serialize};
 
 /// A keybinding that can be either a single key or multiple alternatives.
@@ -81,14 +81,22 @@ impl ParsedKeyBinding {
             (a, b) => a == b,
         };
 
-        // Strict modifier match. We used to ignore Shift for Char bindings
-        // to cope with Caps Lock on X11 (which attaches Shift to every
-        // letter event), but doing so silently collapses `Ctrl+F` and
-        // `Ctrl+Shift+F` into the same match. Without a reliable Caps Lock
-        // signal (Kitty keyboard protocol / KeyEventState::CAPS_LOCK is not
-        // enabled), there is no safe way to distinguish the two at this
-        // layer, so we keep the comparison strict.
-        key_matches && self.modifiers == event.modifiers
+        // Caps Lock on Linux/X11 attaches Shift to every letter event. The
+        // Kitty keyboard protocol (REPORT_EVENT_TYPES) surfaces that via
+        // `KeyEventState::CAPS_LOCK`, so when *that* bit is set we can safely
+        // strip the spurious Shift from the event before comparing modifiers
+        // — only for Char bindings that don't explicitly ask for Shift. This
+        // leaves intentional `Ctrl+Shift+F` / `Shift+Tab` bindings untouched.
+        let caps_lock_shift = event.state.contains(KeyEventState::CAPS_LOCK)
+            && matches!(self.key, KeyCode::Char(_))
+            && !self.modifiers.contains(KeyModifiers::SHIFT);
+        let event_modifiers = if caps_lock_shift {
+            event.modifiers - KeyModifiers::SHIFT
+        } else {
+            event.modifiers
+        };
+
+        key_matches && self.modifiers == event_modifiers
     }
 }
 
@@ -924,6 +932,51 @@ mod tests {
 
         let wrong_event = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::empty());
         assert!(!kb.matches(&wrong_event));
+    }
+
+    #[test]
+    fn test_keybinding_matches_respects_caps_lock_state() {
+        use crossterm::event::{KeyEventKind, KeyEventState};
+
+        let search = KeyBinding::Single("Ctrl+F".to_string());
+        let search_content = KeyBinding::Single("Ctrl+Shift+F".to_string());
+
+        let make_event = |code, mods, state| KeyEvent {
+            code,
+            modifiers: mods,
+            kind: KeyEventKind::Press,
+            state,
+        };
+
+        // Without Caps Lock bit: strict match stays strict.
+        assert!(search.matches(&make_event(
+            KeyCode::Char('f'),
+            KeyModifiers::CONTROL,
+            KeyEventState::NONE,
+        )));
+        assert!(!search.matches(&make_event(
+            KeyCode::Char('F'),
+            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+            KeyEventState::NONE,
+        )));
+        assert!(search_content.matches(&make_event(
+            KeyCode::Char('F'),
+            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+            KeyEventState::NONE,
+        )));
+
+        // With Caps Lock reported: Ctrl+F (no Shift binding) matches even
+        // when the event carries Shift, Ctrl+Shift+F keeps its own match.
+        assert!(search.matches(&make_event(
+            KeyCode::Char('F'),
+            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+            KeyEventState::CAPS_LOCK,
+        )));
+        assert!(search_content.matches(&make_event(
+            KeyCode::Char('F'),
+            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+            KeyEventState::CAPS_LOCK,
+        )));
     }
 
     #[test]

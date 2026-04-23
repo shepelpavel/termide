@@ -147,11 +147,18 @@ fn main() -> Result<()> {
         // Note: REPORT_ALL_KEYS_AS_ESCAPE_CODES causes modifier keys (Shift, Ctrl, Alt)
         // to generate separate events, which breaks combinations like Shift+Home.
         // We only use DISAMBIGUATE_ESCAPE_CODES and REPORT_ALTERNATE_KEYS.
+        //
+        // REPORT_EVENT_TYPES exposes `KeyEventState::CAPS_LOCK` on every key
+        // event, which the hotkey matcher uses to ignore the spurious Shift
+        // modifier that Caps Lock attaches to letters. The main loop filters
+        // out Release/Repeat so the rest of the app keeps its press-only
+        // assumption.
         execute!(
             stdout,
             PushKeyboardEnhancementFlags(
                 KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
                     | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
+                    | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
             )
         )?;
     }
