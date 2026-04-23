@@ -22,12 +22,7 @@ use lsp_types::{
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-/// Convert a file path to an LSP Uri
-fn path_to_uri(path: &std::path::Path) -> Option<Uri> {
-    let url = url::Url::from_file_path(path).ok()?;
-    url.as_str().parse().ok()
-}
-
+use crate::path_to_uri;
 use crate::protocol::{
     decode_header, encode_message, JsonRpcMessage, JsonRpcNotification, JsonRpcRequest,
     JsonRpcResponse, RequestId,

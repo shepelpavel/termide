@@ -31,8 +31,8 @@ use lsp_types::{
 };
 use url::Url;
 
-/// Convert a file path to an LSP Uri
-fn path_to_uri(path: &Path) -> Option<Uri> {
+/// Convert a file path to an LSP Uri. Used across the crate (lib, server).
+pub(crate) fn path_to_uri(path: &Path) -> Option<Uri> {
     let url = Url::from_file_path(path).ok()?;
     url.as_str().parse().ok()
 }
