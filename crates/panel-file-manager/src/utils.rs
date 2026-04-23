@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::Path;
-use std::time::SystemTime;
+use std::time::{Duration, Instant, SystemTime};
 
 use termide_git::truncate_right;
 use termide_ui::constants::{GIGABYTE, KILOBYTE, MEGABYTE};
@@ -79,6 +79,65 @@ pub fn format_size(bytes: u64) -> String {
         )
     } else {
         format!("{} {}", bytes, t.size_bytes())
+    }
+}
+
+/// Result of a time-bounded directory size walk.
+///
+/// `overflowed == true` means the walk was cut short because `budget`
+/// elapsed before the tree was fully traversed; in that case `size`
+/// holds the partial total accumulated so far (never a final number).
+#[derive(Debug, Clone, Copy)]
+pub struct DirSizeOutcome {
+    pub size: u64,
+    pub overflowed: bool,
+}
+
+/// Iteratively walk `path` and sum file sizes, stopping at `budget`.
+///
+/// Mirrors [`calculate_dir_size`] (same symlink policy — `entry.metadata()`
+/// follows symlinks, breadth-first traversal with a queue) but returns
+/// an overflow flag so callers can render a marker instead of a stale
+/// partial number when the walk didn't finish in time.
+pub fn calculate_dir_size_bounded(path: &Path, budget: Duration) -> DirSizeOutcome {
+    use std::collections::VecDeque;
+
+    let start = Instant::now();
+    let mut total: u64 = 0;
+    let mut queue: VecDeque<std::path::PathBuf> = VecDeque::new();
+    queue.push_back(path.to_path_buf());
+
+    while let Some(dir) = queue.pop_front() {
+        if start.elapsed() >= budget {
+            return DirSizeOutcome {
+                size: total,
+                overflowed: true,
+            };
+        }
+        let entries = match fs::read_dir(&dir) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            if start.elapsed() >= budget {
+                return DirSizeOutcome {
+                    size: total,
+                    overflowed: true,
+                };
+            }
+            if let Ok(meta) = entry.metadata() {
+                if meta.is_file() {
+                    total = total.saturating_add(meta.len());
+                } else if meta.is_dir() {
+                    queue.push_back(entry.path());
+                }
+            }
+        }
+    }
+
+    DirSizeOutcome {
+        size: total,
+        overflowed: false,
     }
 }
 
@@ -168,4 +227,47 @@ pub fn format_modified_time(time: Option<SystemTime>) -> String {
                 .to_string()
         })
         .unwrap_or_else(|| "                   ".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    fn write_file(path: &Path, bytes: usize) {
+        let mut f = fs::File::create(path).expect("create file");
+        f.write_all(&vec![0u8; bytes]).expect("write file");
+    }
+
+    #[test]
+    fn bounded_completes_small_tree() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        // Flat tree with predictable total: 3 * 100 = 300 bytes.
+        for i in 0..3 {
+            write_file(&tmp.path().join(format!("f{i}.bin")), 100);
+        }
+        let sub = tmp.path().join("nested");
+        fs::create_dir(&sub).unwrap();
+        write_file(&sub.join("x.bin"), 50);
+
+        let outcome = calculate_dir_size_bounded(tmp.path(), Duration::from_secs(60));
+        assert!(!outcome.overflowed, "small tree must finish well under 60s");
+        assert_eq!(outcome.size, 350);
+    }
+
+    #[test]
+    fn bounded_stops_when_budget_exhausted() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        // Enough entries that a zero-duration budget trips the deadline
+        // on the very first loop iteration. We don't care exactly how much
+        // was accumulated, only that overflowed is reported.
+        for i in 0..32 {
+            write_file(&tmp.path().join(format!("f{i}.bin")), 1024);
+        }
+
+        let outcome = calculate_dir_size_bounded(tmp.path(), Duration::from_nanos(0));
+        assert!(outcome.overflowed, "zero-budget walk must overflow");
+        // Partial total must never exceed reality.
+        assert!(outcome.size <= 32 * 1024);
+    }
 }

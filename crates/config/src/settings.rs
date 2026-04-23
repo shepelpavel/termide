@@ -163,6 +163,17 @@ pub struct FileManagerSettings {
     #[serde(default = "default_content_search_max_file_size_mb")]
     pub content_search_max_file_size_mb: u64,
 
+    /// When `true`, the wide view computes and shows directory sizes in the
+    /// Size column for local filesystems. Remote VFS is never walked.
+    #[serde(default = "default_dir_size_in_wide_view")]
+    pub dir_size_in_wide_view: bool,
+
+    /// Per-directory time budget in milliseconds for that walk. A walk that
+    /// exceeds this budget is reported with a dash marker. `0` disables the
+    /// feature entirely.
+    #[serde(default = "default_dir_size_budget_ms")]
+    pub dir_size_budget_ms: u64,
+
     /// File manager keyboard shortcuts
     #[serde(default)]
     pub keybindings: FileManagerKeybindings,
@@ -331,6 +342,14 @@ fn default_content_search_max_file_size_mb() -> u64 {
     defaults::CONTENT_SEARCH_MAX_FILE_SIZE_MB
 }
 
+fn default_dir_size_in_wide_view() -> bool {
+    defaults::FM_DIR_SIZE_IN_WIDE_VIEW
+}
+
+fn default_dir_size_budget_ms() -> u64 {
+    defaults::FM_DIR_SIZE_BUDGET_MS
+}
+
 fn default_min_level() -> String {
     defaults::MIN_LOG_LEVEL.to_string()
 }
@@ -472,6 +491,8 @@ impl From<LegacyConfig> for Config {
             file_manager: FileManagerSettings {
                 extended_view_width: legacy.fm_extended_view_width,
                 content_search_max_file_size_mb: defaults::CONTENT_SEARCH_MAX_FILE_SIZE_MB,
+                dir_size_in_wide_view: defaults::FM_DIR_SIZE_IN_WIDE_VIEW,
+                dir_size_budget_ms: defaults::FM_DIR_SIZE_BUDGET_MS,
                 keybindings: FileManagerKeybindings::default(),
             },
             git_status: GitStatusSettings::default(),
@@ -527,6 +548,8 @@ impl Default for FileManagerSettings {
         Self {
             extended_view_width: default_extended_view_width(),
             content_search_max_file_size_mb: default_content_search_max_file_size_mb(),
+            dir_size_in_wide_view: default_dir_size_in_wide_view(),
+            dir_size_budget_ms: default_dir_size_budget_ms(),
             keybindings: FileManagerKeybindings::default(),
         }
     }

@@ -132,6 +132,14 @@ pub(super) fn fields_for_tab(tab: SettingsTab) -> Vec<FieldDescriptor> {
                 label: t.settings_fm_content_search_max_size(),
                 field_type: FieldType::Number,
             },
+            FieldDescriptor {
+                label: t.settings_fm_dir_size_in_wide_view(),
+                field_type: FieldType::Bool,
+            },
+            FieldDescriptor {
+                label: t.settings_fm_dir_size_budget_ms(),
+                field_type: FieldType::Number,
+            },
         ],
         SettingsTab::Terminal => vec![FieldDescriptor {
             label: t.settings_terminal_default_shell(),
@@ -206,6 +214,8 @@ pub(super) fn get_field_value(config: &Config, tab: SettingsTab, index: usize) -
                 .file_manager
                 .content_search_max_file_size_mb
                 .to_string(),
+            2 => bool_str(config.file_manager.dir_size_in_wide_view),
+            3 => config.file_manager.dir_size_budget_ms.to_string(),
             _ => String::new(),
         },
         SettingsTab::Terminal => match index {
@@ -272,6 +282,12 @@ pub(super) fn toggle_field(config: &mut Config, tab: SettingsTab, index: usize) 
             1 => config.lsp.auto_completion = !config.lsp.auto_completion,
             _ => {}
         },
+        SettingsTab::FileManager => {
+            if index == 2 {
+                config.file_manager.dir_size_in_wide_view =
+                    !config.file_manager.dir_size_in_wide_view;
+            }
+        }
         _ => {}
     }
 }

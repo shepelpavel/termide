@@ -198,6 +198,22 @@ impl FileManager {
 
                 let size_str: std::borrow::Cow<'static, str> = if let Some(size) = entry.size {
                     format!("{:>10}", utils::format_size_compact(size)).into()
+                } else if entry.is_dir
+                    && entry.name != ".."
+                    && !entry.is_symlink
+                    && !self.is_remote()
+                    && config.dir_size_in_wide_view
+                    && config.dir_size_budget_ms > 0
+                {
+                    match self.dir_size_cache.get(&tree_entry.full_path) {
+                        Some(outcome) if outcome.overflowed => {
+                            std::borrow::Cow::Borrowed("         -")
+                        }
+                        Some(outcome) => {
+                            format!("{:>10}", utils::format_size_compact(outcome.size)).into()
+                        }
+                        None => std::borrow::Cow::Borrowed("          "),
+                    }
                 } else {
                     std::borrow::Cow::Borrowed("          ")
                 };

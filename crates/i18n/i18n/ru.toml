@@ -226,6 +226,8 @@ settings_editor_large_file_threshold = "Порог больших файлов (
 # Settings modal — File Manager fields
 settings_fm_extended_view_width = "Ширина расш. вида"
 settings_fm_content_search_max_size = "Макс. размер файла для поиска (МБ)"
+settings_fm_dir_size_in_wide_view = "Размеры каталогов в расш. виде"
+settings_fm_dir_size_budget_ms = "Бюджет подсчёта размера (мс)"
 
 # Settings modal — Terminal fields
 settings_terminal_default_shell = "Оболочка по умолчанию"

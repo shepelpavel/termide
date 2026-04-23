@@ -404,10 +404,12 @@ impl SettingsModal {
             ],
             SettingsTab::FileManager => vec![
                 Header("Display"),
-                Field(0),
+                Field(0), // extended_view_width
+                Field(2), // dir_size_in_wide_view
+                Field(3), // dir_size_budget_ms
                 Spacer,
                 Header("Search"),
-                Field(1),
+                Field(1), // content_search_max_file_size_mb
             ],
             SettingsTab::Terminal => vec![Field(0)],
             SettingsTab::Lsp => {
@@ -570,6 +572,7 @@ impl SettingsModal {
             SettingsTab::FileManager => match index {
                 0 => self.config.file_manager.extended_view_width = val as usize,
                 1 => self.config.file_manager.content_search_max_file_size_mb = val,
+                3 => self.config.file_manager.dir_size_budget_ms = val,
                 _ => {}
             },
             SettingsTab::Lsp => match index {

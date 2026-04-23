@@ -219,6 +219,8 @@ settings_editor_large_file_threshold = "Large file threshold (MB)"
 # Settings modal — File Manager fields
 settings_fm_extended_view_width = "Extended view width"
 settings_fm_content_search_max_size = "Content search max file size (MB)"
+settings_fm_dir_size_in_wide_view = "Show directory sizes in wide view"
+settings_fm_dir_size_budget_ms = "Directory size budget (ms)"
 
 # Settings modal — Terminal fields
 settings_terminal_default_shell = "Default shell"

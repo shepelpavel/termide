@@ -395,6 +395,8 @@ pub trait Translation: Send + Sync {
     // Settings modal — File Manager fields
     fn settings_fm_extended_view_width(&self) -> &str;
     fn settings_fm_content_search_max_size(&self) -> &str;
+    fn settings_fm_dir_size_in_wide_view(&self) -> &str;
+    fn settings_fm_dir_size_budget_ms(&self) -> &str;
 
     // Settings modal — Terminal fields
     fn settings_terminal_default_shell(&self) -> &str;

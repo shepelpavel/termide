@@ -290,6 +290,8 @@ impl Translation for RuntimeTranslation {
         settings_general_resource_interval,
         settings_editor_large_file_threshold,
         settings_fm_content_search_max_size,
+        settings_fm_dir_size_in_wide_view,
+        settings_fm_dir_size_budget_ms,
         settings_terminal_default_shell,
         settings_lsp_add_server,
         settings_logging_min_level,
