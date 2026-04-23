@@ -455,7 +455,6 @@ pub trait Translation: Send + Sync {
     fn status_pos(&self) -> &str;
     fn status_tab(&self) -> &str;
     fn status_tab_modal_title(&self) -> &str;
-    fn status_tab_modal_prompt(&self) -> &str;
     fn status_plain_text(&self) -> &str;
     fn status_readonly(&self) -> &str;
     fn status_terminal(&self) -> &str;

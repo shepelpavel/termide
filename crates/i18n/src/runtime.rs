@@ -320,7 +320,6 @@ impl Translation for RuntimeTranslation {
         status_pos,
         status_tab,
         status_tab_modal_title,
-        status_tab_modal_prompt,
         status_plain_text,
         status_readonly,
         status_terminal,

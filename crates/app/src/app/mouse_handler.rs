@@ -521,11 +521,10 @@ impl App {
                 let tab_start = (pos_label.width() + pos_value.width()) as u16;
                 let tab_end = tab_start + (tab_label.width() + tab_value.width()) as u16;
                 if (tab_start..tab_end).contains(&x) {
-                    let modal = modal::InputModal::with_default(
-                        t.status_tab_modal_title(),
-                        t.status_tab_modal_prompt(),
-                        tab_value,
-                    );
+                    // Empty prompt: the title alone is self-explanatory and
+                    // `InputModal::render` skips the prompt row when it's empty.
+                    let modal =
+                        modal::InputModal::with_default(t.status_tab_modal_title(), "", tab_value);
                     self.state.pending_action = Some(PendingAction::ChangeEditorTabSize);
                     self.state.active_modal = Some(ActiveModal::Input(Box::new(modal)));
                     self.state.needs_redraw = true;
