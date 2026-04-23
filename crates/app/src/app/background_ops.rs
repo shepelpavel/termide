@@ -362,29 +362,30 @@ impl App {
                     #[cfg(windows)]
                     let path = std::path::PathBuf::from(path_str.trim_start_matches('/'));
 
-                    // Store in app state for later use (e.g., when opening diagnostics panel)
-                    self.state
-                        .all_diagnostics
-                        .insert(path.clone(), params.diagnostics.clone());
+                    let diagnostics = params.diagnostics;
 
-                    // Find editor with this file and update diagnostics
+                    // Single pass over panels: the matching editor takes an
+                    // owned copy via clone(); the diagnostics panel borrows.
+                    let mut editor_updated = false;
                     for panel in self.layout_manager.iter_all_panels_mut() {
-                        if let Some(editor) = panel.as_editor_mut() {
-                            if editor.file_path() == Some(&path) {
-                                editor.update_diagnostics(params.diagnostics.clone());
-                                self.state.needs_redraw = true;
-                                break;
+                        if !editor_updated {
+                            if let Some(editor) = panel.as_editor_mut() {
+                                if editor.file_path() == Some(&path) {
+                                    editor.update_diagnostics(diagnostics.clone());
+                                    self.state.needs_redraw = true;
+                                    editor_updated = true;
+                                    continue;
+                                }
                             }
                         }
-                    }
-
-                    // Update diagnostics panel if open
-                    for panel in self.layout_manager.iter_all_panels_mut() {
                         if let Some(diag_panel) = panel.as_diagnostics_panel_mut() {
-                            diag_panel.update_diagnostics(path.clone(), &params.diagnostics);
+                            diag_panel.update_diagnostics(path.clone(), &diagnostics);
                             self.state.needs_redraw = true;
                         }
                     }
+
+                    // Move the diagnostics into app state (no extra clone).
+                    self.state.all_diagnostics.insert(path, diagnostics);
                 }
             }
         }
