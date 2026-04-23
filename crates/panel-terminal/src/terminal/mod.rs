@@ -211,6 +211,11 @@ pub struct TerminalScreen {
 
 impl TerminalScreen {
     pub fn new(rows: usize, cols: usize) -> Self {
+        // Hard-floor the dimensions at 1×1 so the scroll/cursor code (which
+        // freely uses `rows - 1`, `cols - 1`, `self.lines[0]`) never hits
+        // out-of-bounds or subtract-overflow panics on very small terminals.
+        let rows = rows.max(1);
+        let cols = cols.max(1);
         let empty_cell = Cell {
             ch: ' ',
             style: CellStyle::default(),
@@ -399,7 +404,11 @@ impl TerminalScreen {
         if top == 0 && bottom == self.rows.saturating_sub(1) {
             // For main buffer, save line to scrollback
             if !self.use_alt_screen {
-                let top_line = self.lines[0].clone();
+                // Guard against a shrunk-to-zero buffer (tiny terminal). Without
+                // this, `self.lines[0]` panics with "Out of bounds access".
+                let Some(top_line) = self.lines.front().cloned() else {
+                    return;
+                };
                 self.scrollback.push_back(top_line);
 
                 // Save wrapped flag to scrollback
@@ -516,8 +525,8 @@ impl TerminalScreen {
     /// Move cursor
     pub fn move_cursor(&mut self, row: usize, col: usize) {
         self.wrap_pending = false;
-        self.cursor.0 = row.min(self.rows - 1);
-        self.cursor.1 = col.min(self.cols - 1);
+        self.cursor.0 = row.min(self.rows.saturating_sub(1));
+        self.cursor.1 = col.min(self.cols.saturating_sub(1));
     }
 
     /// Backspace
@@ -532,7 +541,7 @@ impl TerminalScreen {
     pub fn tab(&mut self) {
         // Move cursor to next position divisible by 8
         let next_tab = ((self.cursor.1 / 8) + 1) * 8;
-        self.cursor.1 = next_tab.min(self.cols - 1);
+        self.cursor.1 = next_tab.min(self.cols.saturating_sub(1));
     }
 
     /// Save cursor position
