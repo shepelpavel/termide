@@ -132,8 +132,32 @@ impl App {
         // Track scroll timing for throttling heavy operations in Event::Tick
         self.state.last_mouse_scroll = Some(std::time::Instant::now());
 
-        // Skip scroll when modal is active
+        // When a modal is open, forward the wheel event to it instead of the
+        // panel underneath — otherwise scrollable modals (InfoModal for the
+        // report-script output, list modals, etc.) never see wheel input and
+        // look broken to the user.
         if self.state.has_modal() {
+            let kind = if delta < 0 {
+                crossterm::event::MouseEventKind::ScrollUp
+            } else if delta > 0 {
+                crossterm::event::MouseEventKind::ScrollDown
+            } else {
+                return Ok(());
+            };
+            let modal_area = ratatui::layout::Rect {
+                x: 0,
+                y: 0,
+                width: self.state.terminal.width,
+                height: self.state.terminal.height,
+            };
+            // Coalescing lost per-step granularity; replay it so the modal's
+            // per-tick scroll step (e.g. 3 lines in InfoModal) actually maps
+            // to the physical notch count.
+            let steps = delta.unsigned_abs();
+            for _ in 0..steps {
+                let ev = crossterm::event::MouseEvent { kind, ..mouse };
+                self.handle_modal_mouse(ev, modal_area)?;
+            }
             return Ok(());
         }
 

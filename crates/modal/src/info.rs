@@ -578,3 +578,111 @@ impl Modal for InfoModal {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyEventKind, KeyEventState, KeyModifiers, MouseEvent};
+    use ratatui::buffer::Buffer;
+    use ratatui::layout::Rect;
+    use std::sync::Once;
+
+    static INIT_I18N: Once = Once::new();
+
+    fn setup_i18n() {
+        INIT_I18N.call_once(|| {
+            let _ = i18n::init();
+        });
+    }
+
+    fn many_lines(n: usize) -> Vec<(String, String)> {
+        (0..n)
+            .map(|i| (String::new(), format!("line {i}")))
+            .collect()
+    }
+
+    fn wheel(kind: crossterm::event::MouseEventKind) -> MouseEvent {
+        MouseEvent {
+            kind,
+            column: 10,
+            row: 10,
+            modifiers: KeyModifiers::empty(),
+        }
+    }
+
+    fn press(code: KeyCode) -> KeyEvent {
+        KeyEvent {
+            code,
+            modifiers: KeyModifiers::empty(),
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        }
+    }
+
+    #[test]
+    fn mouse_wheel_scrolls_when_content_overflows() {
+        // Construct a modal with more lines than the render window can show,
+        // render once so cached_total_lines / cached_visible are populated,
+        // then dispatch ScrollDown and verify scroll_offset moved.
+        setup_i18n();
+        let mut modal = InfoModal::new("Report", many_lines(200));
+        let theme = Theme::default();
+        let area = Rect::new(0, 0, 80, 24);
+        let mut buf = Buffer::empty(area);
+        modal.render(area, &mut buf, &theme);
+
+        assert!(
+            modal.cached_total_lines > modal.cached_visible,
+            "test scaffold: content must exceed visible window \
+             (total={}, visible={})",
+            modal.cached_total_lines,
+            modal.cached_visible
+        );
+
+        let before = modal.scroll_offset;
+        let _ = modal
+            .handle_mouse(wheel(crossterm::event::MouseEventKind::ScrollDown), area)
+            .expect("handle_mouse returns Ok");
+        assert!(
+            modal.scroll_offset > before,
+            "ScrollDown should advance scroll_offset: before={}, after={}",
+            before,
+            modal.scroll_offset
+        );
+
+        let mid = modal.scroll_offset;
+        let _ = modal
+            .handle_mouse(wheel(crossterm::event::MouseEventKind::ScrollUp), area)
+            .expect("handle_mouse returns Ok");
+        assert!(
+            modal.scroll_offset < mid,
+            "ScrollUp should rewind scroll_offset: mid={}, after={}",
+            mid,
+            modal.scroll_offset
+        );
+    }
+
+    #[test]
+    fn keyboard_and_mouse_wheel_agree() {
+        setup_i18n();
+        let mut modal = InfoModal::new("Report", many_lines(200));
+        let theme = Theme::default();
+        let area = Rect::new(0, 0, 80, 24);
+        let mut buf = Buffer::empty(area);
+        modal.render(area, &mut buf, &theme);
+
+        let _ = modal.handle_key(press(KeyCode::Down)).unwrap();
+        let after_key = modal.scroll_offset;
+        assert!(after_key > 0, "keyboard Down should advance scroll_offset");
+
+        let _ = modal
+            .handle_mouse(wheel(crossterm::event::MouseEventKind::ScrollDown), area)
+            .unwrap();
+        assert!(
+            modal.scroll_offset > after_key,
+            "ScrollDown after keyboard should advance further: key={}, mouse={}",
+            after_key,
+            modal.scroll_offset
+        );
+    }
+}
