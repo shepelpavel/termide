@@ -81,23 +81,14 @@ impl ParsedKeyBinding {
             (a, b) => a == b,
         };
 
-        // For character keys (where case is handled via eq_ignore_ascii_case)
-        // the Shift modifier is redundant and is often reported spuriously:
-        // Caps Lock on Linux/X11 attaches Shift to every letter event, so
-        // `Alt+T` with Caps Lock arrives as `{Char('T'), Alt|Shift}` and would
-        // no longer match a binding parsed as `{Char('t'), Alt}`. Strip Shift
-        // from both sides before the comparison for Char keys; it remains
-        // significant for non-character keys (e.g. `Shift+Tab`, `Shift+F3`).
-        let (lhs, rhs) = if matches!(self.key, KeyCode::Char(_)) {
-            (
-                self.modifiers - KeyModifiers::SHIFT,
-                event.modifiers - KeyModifiers::SHIFT,
-            )
-        } else {
-            (self.modifiers, event.modifiers)
-        };
-
-        key_matches && lhs == rhs
+        // Strict modifier match. We used to ignore Shift for Char bindings
+        // to cope with Caps Lock on X11 (which attaches Shift to every
+        // letter event), but doing so silently collapses `Ctrl+F` and
+        // `Ctrl+Shift+F` into the same match. Without a reliable Caps Lock
+        // signal (Kitty keyboard protocol / KeyEventState::CAPS_LOCK is not
+        // enabled), there is no safe way to distinguish the two at this
+        // layer, so we keep the comparison strict.
+        key_matches && self.modifiers == event.modifiers
     }
 }
 
@@ -933,22 +924,6 @@ mod tests {
 
         let wrong_event = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::empty());
         assert!(!kb.matches(&wrong_event));
-    }
-
-    #[test]
-    fn test_keybinding_matches_with_caps_lock() {
-        // Linux/X11 terminals tack SHIFT onto every letter event when Caps
-        // Lock is on. The binding should still match because case is handled
-        // by `eq_ignore_ascii_case` and Shift is cosmetic for Char keys.
-        let kb = KeyBinding::Single("Alt+T".to_string());
-        let caps_lock_event =
-            KeyEvent::new(KeyCode::Char('T'), KeyModifiers::ALT | KeyModifiers::SHIFT);
-        assert!(kb.matches(&caps_lock_event));
-
-        // Shift stays significant for non-character keys.
-        let shift_tab = KeyBinding::Single("Shift+Tab".to_string());
-        assert!(shift_tab.matches(&KeyEvent::new(KeyCode::Tab, KeyModifiers::SHIFT)));
-        assert!(!shift_tab.matches(&KeyEvent::new(KeyCode::Tab, KeyModifiers::empty())));
     }
 
     #[test]
