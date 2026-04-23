@@ -324,7 +324,7 @@ pub fn render_layout_with_accordion(
         ram_unit,
         net_down_rate: state.system_monitor.net_download_rate(),
         net_up_rate: state.system_monitor.net_upload_rate(),
-        battery: termide_system_monitor::get_battery_info(),
+        battery: state.system_monitor.battery_cached(),
     };
     render_menu(frame, main_chunks[0], &menu_params);
 

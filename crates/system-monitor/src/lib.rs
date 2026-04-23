@@ -74,7 +74,15 @@ struct NetworkState {
 pub struct SystemMonitor {
     system: Arc<Mutex<System>>,
     net_state: Mutex<NetworkState>,
+    /// Cached battery reading + when it was taken. starship-battery rereads
+    /// `/sys/class/power_supply` on every call and the render loop used to
+    /// invoke it ~24 times per second; here we refresh at most once per
+    /// `BATTERY_REFRESH`.
+    battery_cache: Mutex<(Option<BatteryInfo>, Instant)>,
 }
+
+/// How often the cached battery reading is refreshed.
+const BATTERY_REFRESH: std::time::Duration = std::time::Duration::from_secs(5);
 
 // Manual Debug impl because Networks doesn't implement Debug
 impl std::fmt::Debug for SystemMonitor {
@@ -106,6 +114,16 @@ impl SystemMonitor {
 
         let networks = Networks::new_with_refreshed_list();
 
+        // Seed the battery cache so the first render doesn't block waiting
+        // for `/sys`. The `Instant::now() - BATTERY_REFRESH` trick forces a
+        // refresh on the next `battery_cached()` call.
+        let battery_cache = Mutex::new((
+            None,
+            Instant::now()
+                .checked_sub(BATTERY_REFRESH)
+                .unwrap_or_else(Instant::now),
+        ));
+
         Self {
             system: Arc::new(Mutex::new(system)),
             net_state: Mutex::new(NetworkState {
@@ -114,7 +132,23 @@ impl SystemMonitor {
                 upload_rate: 0,
                 last_refresh: Instant::now(),
             }),
+            battery_cache,
         }
+    }
+
+    /// Get the battery reading, refreshed at most every `BATTERY_REFRESH`.
+    ///
+    /// Intended for the hot path (status bar / menu render). Use
+    /// [`get_battery_info`] directly for a forced read.
+    pub fn battery_cached(&self) -> Option<BatteryInfo> {
+        let mut guard = match self.battery_cache.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        if guard.1.elapsed() >= BATTERY_REFRESH {
+            *guard = (get_battery_info(), Instant::now());
+        }
+        guard.0
     }
 
     /// Get refresh kind configuration.
