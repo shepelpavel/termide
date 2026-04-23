@@ -107,6 +107,29 @@ pub struct Terminal {
     last_config_ptr: usize,
 }
 
+/// Encode key modifiers as an xterm CSI parameter for modified arrow / Home /
+/// End keys: final byte is preceded by `1;<param>`. Returns `None` when no
+/// modifier is held, so callers fall back to the plain sequence.
+///
+/// xterm protocol:
+///   2 = Shift, 3 = Alt, 4 = Shift+Alt,
+///   5 = Ctrl,  6 = Ctrl+Shift, 7 = Ctrl+Alt, 8 = Ctrl+Shift+Alt.
+fn arrow_modifier_param(mods: KeyModifiers) -> Option<u8> {
+    let shift = mods.contains(KeyModifiers::SHIFT);
+    let alt = mods.contains(KeyModifiers::ALT);
+    let ctrl = mods.contains(KeyModifiers::CONTROL);
+    match (shift, alt, ctrl) {
+        (false, false, false) => None,
+        (true, false, false) => Some(2),
+        (false, true, false) => Some(3),
+        (true, true, false) => Some(4),
+        (false, false, true) => Some(5),
+        (true, false, true) => Some(6),
+        (false, true, true) => Some(7),
+        (true, true, true) => Some(8),
+    }
+}
+
 /// Build HotkeyTable for the terminal panel from config.
 fn build_terminal_hotkey_table(config: &Config) -> HotkeyTable {
     let mut t = HotkeyTable::new();
@@ -1564,44 +1587,56 @@ impl Panel for Terminal {
                 let _ = self.send_input(b"\x1b[3~");
             }
             KeyCode::Left => {
-                // In Application Cursor Keys Mode send \x1bO instead of \x1b[
-                if application_cursor_keys {
+                if let Some(m) = arrow_modifier_param(key.modifiers) {
+                    let _ = self.send_input(format!("\x1b[1;{m}D").as_bytes());
+                } else if application_cursor_keys {
+                    // In Application Cursor Keys Mode send \x1bO instead of \x1b[
                     let _ = self.send_input(b"\x1bOD");
                 } else {
                     let _ = self.send_input(b"\x1b[D");
                 }
             }
             KeyCode::Right => {
-                if application_cursor_keys {
+                if let Some(m) = arrow_modifier_param(key.modifiers) {
+                    let _ = self.send_input(format!("\x1b[1;{m}C").as_bytes());
+                } else if application_cursor_keys {
                     let _ = self.send_input(b"\x1bOC");
                 } else {
                     let _ = self.send_input(b"\x1b[C");
                 }
             }
             KeyCode::Up => {
-                if application_cursor_keys {
+                if let Some(m) = arrow_modifier_param(key.modifiers) {
+                    let _ = self.send_input(format!("\x1b[1;{m}A").as_bytes());
+                } else if application_cursor_keys {
                     let _ = self.send_input(b"\x1bOA");
                 } else {
                     let _ = self.send_input(b"\x1b[A");
                 }
             }
             KeyCode::Down => {
-                if application_cursor_keys {
+                if let Some(m) = arrow_modifier_param(key.modifiers) {
+                    let _ = self.send_input(format!("\x1b[1;{m}B").as_bytes());
+                } else if application_cursor_keys {
                     let _ = self.send_input(b"\x1bOB");
                 } else {
                     let _ = self.send_input(b"\x1b[B");
                 }
             }
             KeyCode::Home => {
-                // In Application Cursor Keys Mode send \x1bO instead of \x1b[
-                if application_cursor_keys {
+                if let Some(m) = arrow_modifier_param(key.modifiers) {
+                    let _ = self.send_input(format!("\x1b[1;{m}H").as_bytes());
+                } else if application_cursor_keys {
+                    // In Application Cursor Keys Mode send \x1bO instead of \x1b[
                     let _ = self.send_input(b"\x1bOH");
                 } else {
                     let _ = self.send_input(b"\x1b[H");
                 }
             }
             KeyCode::End => {
-                if application_cursor_keys {
+                if let Some(m) = arrow_modifier_param(key.modifiers) {
+                    let _ = self.send_input(format!("\x1b[1;{m}F").as_bytes());
+                } else if application_cursor_keys {
                     let _ = self.send_input(b"\x1bOF");
                 } else {
                     let _ = self.send_input(b"\x1b[F");
