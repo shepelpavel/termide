@@ -29,6 +29,16 @@ TermIDE supports Cyrillic keyboard layouts for common shortcuts. When using a Ru
 
 All other key combinations are passed directly to the application running in the terminal.
 
+**Modified arrow keys and Home/End** are encoded as the standard xterm CSI
+`1;{mod}{final}` escape sequence (`{mod}` is the xterm modifier parameter:
+`2` = Shift, `3` = Alt, `5` = Ctrl, `6` = Ctrl+Shift, and so on; `{final}`
+is `A`/`B`/`C`/`D`/`H`/`F`). In practice this means `Ctrl+Left` / `Ctrl+Right`
+trigger `backward-word` / `forward-word` in bash/zsh readline, `Shift+Home` /
+`Shift+End` select to line boundaries where the shell supports it, and so on.
+Plain arrows keep their existing path, including application-cursor-mode
+substitution (`\x1bOA` vs `\x1b[A`). `Alt+Left` / `Alt+Right` remain bound
+globally to previous/next panel group and therefore aren't forwarded.
+
 ## Text Search
 
 Press `Ctrl+F` to open the search modal. The search works across the entire scrollback buffer and the visible screen:
