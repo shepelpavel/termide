@@ -1125,11 +1125,12 @@ impl FileManager {
         self.recompute_visible();
 
         // Enqueue directories for a bounded size walk (local FS only).
-        // Symlinks and ".." are skipped — consistent with Info modal's policy
-        // and avoids cycles.
+        // Symlinks to directories are included — their targets are real dirs
+        // the user cares about. Cycles are tolerated because the budget
+        // terminates any runaway walk.
         if self.cached_config.dir_size_in_wide_view && self.cached_config.dir_size_budget_ms > 0 {
             for te in &self.tree_entries {
-                if te.file_entry.is_dir && !te.file_entry.is_symlink && te.file_entry.name != ".." {
+                if te.file_entry.is_dir && te.file_entry.name != ".." {
                     self.dir_size_queue.push_back(te.full_path.clone());
                 }
             }

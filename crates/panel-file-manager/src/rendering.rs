@@ -200,7 +200,6 @@ impl FileManager {
                     format!("{:>10}", utils::format_size_compact(size)).into()
                 } else if entry.is_dir
                     && entry.name != ".."
-                    && !entry.is_symlink
                     && !self.is_remote()
                     && config.dir_size_in_wide_view
                     && config.dir_size_budget_ms > 0
