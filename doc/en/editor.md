@@ -129,6 +129,7 @@ Press `Ctrl+H` to open an interactive replace modal with two input fields:
 - **Double click**: Select word under cursor
 - **Triple click**: Select entire line
 - **Hold + move**: Text selection
+- **Shift+click** / **Alt+click**: Extend the current selection from its anchor (or the cursor, if no selection yet) to the click position. Alt+click exists because GNOME Terminal / VTE swallows Shift+click for its own native text selection; on terminals like kitty / alacritty / WezTerm both gestures work.
 - **Scroll wheel**: Scroll editor content
 - **Ctrl+Click**: Go to definition (LSP); or show color preview if cursor is on a hex color (e.g. `#ff0000`, `#abc`)
 
@@ -199,6 +200,7 @@ auto_close_brackets = true  # or false (default: true)
 When working in the editor, the status bar displays:
 - File name and modification indicator (*)
 - Current cursor position (line:column)
+- Tab size (`Tab N`) — **clickable**: opens a small input modal that overrides `tab_size` for this editor panel only. The override wins over the global `[editor].tab_size` and survives the per-frame config resync, but doesn't touch `config.toml`. Accepts 1..=16; empty/invalid input is ignored.
 - Line ending format (LF / CRLF) and encoding (UTF-8)
 - Search information (number of matches)
 - File type (plain text / read-only)
