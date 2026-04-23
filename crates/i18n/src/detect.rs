@@ -20,7 +20,7 @@ pub fn detect_language() -> String {
 }
 
 /// Normalize language string (e.g., "ru_RU.UTF-8" -> "ru").
-pub fn normalize_lang(lang: &str) -> String {
+pub(crate) fn normalize_lang(lang: &str) -> String {
     let normalized = lang
         .split('_')
         .next()

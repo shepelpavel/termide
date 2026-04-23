@@ -11,7 +11,7 @@ mod detect;
 pub mod loader;
 pub mod runtime;
 
-pub use detect::{detect_language, normalize_lang};
+pub use detect::detect_language;
 pub use loader::{Metadata, PluralRules, TranslationData};
 
 /// Supported languages with their native names (code, native_name).
