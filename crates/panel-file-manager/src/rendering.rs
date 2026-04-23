@@ -204,7 +204,7 @@ impl FileManager {
                     && config.dir_size_in_wide_view
                     && config.dir_size_budget_ms > 0
                 {
-                    match self.dir_size_cache.get(&tree_entry.full_path) {
+                    match utils::shared_dir_size_cache().get(&tree_entry.full_path) {
                         Some(outcome) if outcome.overflowed => {
                             std::borrow::Cow::Borrowed("         -")
                         }

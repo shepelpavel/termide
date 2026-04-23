@@ -103,7 +103,7 @@ use anyhow::Result;
 use crossterm::event::KeyEvent;
 use ratatui::{buffer::Buffer, layout::Rect, prelude::Widget, widgets::Paragraph};
 use std::any::Any;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashSet, VecDeque};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -147,13 +147,17 @@ pub struct FileManager {
     git_status_receiver: Option<mpsc::Receiver<GitStatusAsyncResult>>,
     /// Channel receiver for directory size calculation results (needs to be passed to AppState)
     pub dir_size_receiver: Option<mpsc::Receiver<DirSizeResult>>,
-    /// Per-directory cached sizes for the Size column (local FS, wide view).
-    dir_size_cache: HashMap<PathBuf, utils::DirSizeOutcome>,
-    /// Directories waiting for a bounded size walk, FIFO.
+    /// Directories waiting for a bounded size walk, FIFO. Results land
+    /// in the process-wide `utils::shared_dir_size_cache()`, not here.
     dir_size_queue: VecDeque<PathBuf>,
-    /// Currently running size walk, if any — paired with its target path so
-    /// we can drop stale results that arrive after the FM navigated away.
-    dir_size_pending: Option<(PathBuf, mpsc::Receiver<utils::DirSizeOutcome>)>,
+    /// Currently running size walk: the path being walked and a ready
+    /// channel that signals completion (the result itself goes straight
+    /// into the shared cache).
+    dir_size_pending: Option<(PathBuf, mpsc::Receiver<()>)>,
+    /// Last `shared_dir_size_cache().generation()` value we observed —
+    /// when it changes we trigger a redraw so updates from other panels
+    /// are picked up without polling individual paths.
+    dir_size_cache_generation: u64,
     /// Navigation state (cursor restoration, debouncing)
     navigation: NavigationState,
     /// Git repository root (None = not in git repo)
@@ -282,9 +286,9 @@ impl FileManager {
             git_status_cache: None,
             git_status_receiver: None,
             dir_size_receiver: None,
-            dir_size_cache: HashMap::new(),
             dir_size_queue: VecDeque::new(),
             dir_size_pending: None,
+            dir_size_cache_generation: 0,
             navigation: NavigationState::new(),
             git_root: None,
             cached_theme: Theme::default(),
@@ -325,9 +329,9 @@ impl FileManager {
             git_status_cache: None,
             git_status_receiver: None,
             dir_size_receiver: None,
-            dir_size_cache: HashMap::new(),
             dir_size_queue: VecDeque::new(),
             dir_size_pending: None,
+            dir_size_cache_generation: 0,
             navigation: NavigationState::new(),
             git_root: None,
             cached_theme: Theme::default(),
@@ -1085,10 +1089,10 @@ impl FileManager {
         self.selection.clear();
         self.selection.end_drag();
 
-        // Invalidate directory-size cache/queue on navigation; any pending
-        // worker result will be silently dropped in `tick()` because its
-        // recorded path no longer matches the current parent.
-        self.dir_size_cache.clear();
+        // Invalidate directory-size cache for this subtree (other panels'
+        // directories stay cached). Any in-flight walk whose claim is
+        // dropped here will have its result discarded by `complete()`.
+        utils::shared_dir_size_cache().invalidate_subtree(&self.current_path);
         self.dir_size_queue.clear();
 
         // Start async git status loading (non-blocking)
@@ -1124,17 +1128,10 @@ impl FileManager {
 
         self.recompute_visible();
 
-        // Enqueue directories for a bounded size walk (local FS only).
-        // Symlinks to directories are included — their targets are real dirs
-        // the user cares about. Cycles are tolerated because the budget
-        // terminates any runaway walk.
-        if self.cached_config.dir_size_in_wide_view && self.cached_config.dir_size_budget_ms > 0 {
-            for te in &self.tree_entries {
-                if te.file_entry.is_dir && te.file_entry.name != ".." {
-                    self.dir_size_queue.push_back(te.full_path.clone());
-                }
-            }
-        }
+        // Size-walk queue is populated lazily in `tick()` from the
+        // current `tree_entries`, so we don't need to enumerate directories
+        // here. That also lets sibling panels trigger a refresh merely by
+        // invalidating the shared cache.
 
         // Restore selection by file names
         if !selected_names.is_empty() {
@@ -1641,43 +1638,78 @@ impl Panel for FileManager {
             return vec![];
         }
 
-        // Directory size scheduler: one worker at a time. Intentionally
-        // sequential — parallel walks would hammer the page cache without
-        // improving perceived UX (FM shows a handful of dirs at once).
+        // Directory size scheduler. Each panel runs at most one worker,
+        // but all panels share the process-wide cache, so overlapping
+        // directories are computed once.
         if self.cached_config.dir_size_in_wide_view && self.cached_config.dir_size_budget_ms > 0 {
-            // Drain a completed walk, if any.
-            if let Some((path, rx)) = self.dir_size_pending.as_ref() {
+            let cache = utils::shared_dir_size_cache();
+
+            // 1. Drain the completion signal for our own worker, if any.
+            if let Some((_, rx)) = self.dir_size_pending.as_ref() {
                 match rx.try_recv() {
-                    Ok(outcome) => {
-                        let path = path.clone();
+                    Ok(()) => {
                         self.dir_size_pending = None;
-                        self.dir_size_cache.insert(path, outcome);
                         events.push(PanelEvent::NeedsRedraw);
                     }
                     Err(mpsc::TryRecvError::Empty) => {}
                     Err(mpsc::TryRecvError::Disconnected) => {
-                        // Worker panicked or dropped the sender; drop the slot.
                         self.dir_size_pending = None;
                     }
                 }
             }
 
-            // Start the next walk if nothing is in flight.
+            // 2. Pick up results other panels have just produced.
+            let gen = cache.generation();
+            if gen != self.dir_size_cache_generation {
+                self.dir_size_cache_generation = gen;
+                events.push(PanelEvent::NeedsRedraw);
+            }
+
+            // 3. Start the next walk if we have no worker in flight.
             if self.dir_size_pending.is_none() {
-                while let Some(path) = self.dir_size_queue.pop_front() {
-                    if self.dir_size_cache.contains_key(&path) {
-                        continue;
+                // Top up the queue lazily: on first run after a reload,
+                // or when another panel invalidated entries under us.
+                if self.dir_size_queue.is_empty() {
+                    for te in &self.tree_entries {
+                        if te.file_entry.is_dir
+                            && te.file_entry.name != ".."
+                            && cache.get(&te.full_path).is_none()
+                        {
+                            self.dir_size_queue.push_back(te.full_path.clone());
+                        }
                     }
-                    let budget =
-                        std::time::Duration::from_millis(self.cached_config.dir_size_budget_ms);
-                    let (tx, rx) = mpsc::channel();
-                    let worker_path = path.clone();
-                    std::thread::spawn(move || {
-                        let outcome = utils::calculate_dir_size_bounded(&worker_path, budget);
-                        let _ = tx.send(outcome);
-                    });
-                    self.dir_size_pending = Some((path, rx));
-                    break;
+                }
+
+                while let Some(path) = self.dir_size_queue.pop_front() {
+                    match cache.claim(&path) {
+                        utils::ClaimOutcome::AlreadyCached => {
+                            // Sibling panel populated this while we waited;
+                            // the generation bump above will trigger a redraw.
+                            continue;
+                        }
+                        utils::ClaimOutcome::InProgress => {
+                            // Another panel owns this walk — defer and try
+                            // again next tick. Breaking avoids spinning on
+                            // a full queue of contended paths.
+                            self.dir_size_queue.push_back(path);
+                            break;
+                        }
+                        utils::ClaimOutcome::Claimed => {
+                            let budget = std::time::Duration::from_millis(
+                                self.cached_config.dir_size_budget_ms,
+                            );
+                            let (tx, rx) = mpsc::channel();
+                            let worker_path = path.clone();
+                            std::thread::spawn(move || {
+                                let outcome =
+                                    utils::calculate_dir_size_bounded(&worker_path, budget);
+                                utils::shared_dir_size_cache().complete(worker_path, outcome);
+                                let _ = tx.send(());
+                            });
+                            self.dir_size_pending = Some((path, rx));
+                            break;
+                        }
+                    }
                 }
             }
         }

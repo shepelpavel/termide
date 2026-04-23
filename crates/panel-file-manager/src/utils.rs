@@ -1,5 +1,8 @@
+use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime};
 
 use termide_git::truncate_right;
@@ -91,6 +94,102 @@ pub fn format_size(bytes: u64) -> String {
 pub struct DirSizeOutcome {
     pub size: u64,
     pub overflowed: bool,
+}
+
+/// Outcome of trying to claim a size walk through the shared cache.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClaimOutcome {
+    /// Result is already in the cache — no work needed.
+    AlreadyCached,
+    /// Another panel is currently walking this path — wait for it.
+    InProgress,
+    /// Caller has exclusive ownership and must compute.
+    Claimed,
+}
+
+/// Process-wide shared cache for directory sizes shown in FM wide view.
+///
+/// Multiple FM panels open on overlapping trees share results through
+/// this cache. The `inflight` set ensures that only one panel walks any
+/// given path at a time; other panels observing the path see `InProgress`
+/// and wait for the completion to land in `entries`. A monotonic
+/// `generation` counter ticks on every mutation so panels can cheaply
+/// detect "something changed" and trigger a redraw.
+///
+/// Invalidation is per-subtree: when an FM panel reloads its current
+/// directory, only entries and claims rooted at that directory are
+/// dropped. Results for other panels' directories stay intact.
+#[derive(Default)]
+pub struct DirSizeCache {
+    entries: Mutex<HashMap<PathBuf, DirSizeOutcome>>,
+    inflight: Mutex<HashSet<PathBuf>>,
+    generation: AtomicU64,
+}
+
+impl DirSizeCache {
+    /// Monotonic counter — increments on any mutation (insert/invalidate).
+    /// Panels compare the last-seen value to decide when to redraw.
+    pub fn generation(&self) -> u64 {
+        self.generation.load(Ordering::Acquire)
+    }
+
+    pub fn get(&self, path: &Path) -> Option<DirSizeOutcome> {
+        self.entries.lock().ok()?.get(path).copied()
+    }
+
+    /// Try to acquire exclusive ownership of a walk for `path`.
+    pub fn claim(&self, path: &Path) -> ClaimOutcome {
+        if let Ok(entries) = self.entries.lock() {
+            if entries.contains_key(path) {
+                return ClaimOutcome::AlreadyCached;
+            }
+        }
+        let Ok(mut inflight) = self.inflight.lock() else {
+            return ClaimOutcome::InProgress;
+        };
+        if inflight.contains(path) {
+            ClaimOutcome::InProgress
+        } else {
+            inflight.insert(path.to_path_buf());
+            ClaimOutcome::Claimed
+        }
+    }
+
+    /// Deposit a completed result. Silently dropped if the claim was
+    /// revoked by `invalidate_subtree` while the worker was running,
+    /// preventing a stale number from replacing fresh tree state.
+    pub fn complete(&self, path: PathBuf, outcome: DirSizeOutcome) {
+        let Ok(mut inflight) = self.inflight.lock() else {
+            return;
+        };
+        if !inflight.remove(&path) {
+            return;
+        }
+        drop(inflight);
+        if let Ok(mut entries) = self.entries.lock() {
+            entries.insert(path, outcome);
+            self.generation.fetch_add(1, Ordering::Release);
+        }
+    }
+
+    /// Drop entries and claims rooted at `root`. Any worker currently
+    /// walking an invalidated path will have its result discarded on
+    /// `complete` because its claim is gone.
+    pub fn invalidate_subtree(&self, root: &Path) {
+        if let Ok(mut entries) = self.entries.lock() {
+            entries.retain(|p, _| !p.starts_with(root));
+        }
+        if let Ok(mut inflight) = self.inflight.lock() {
+            inflight.retain(|p| !p.starts_with(root));
+        }
+        self.generation.fetch_add(1, Ordering::Release);
+    }
+}
+
+/// Accessor for the process-wide shared directory-size cache.
+pub fn shared_dir_size_cache() -> &'static DirSizeCache {
+    static CACHE: OnceLock<DirSizeCache> = OnceLock::new();
+    CACHE.get_or_init(DirSizeCache::default)
 }
 
 /// Iteratively walk `path` and sum file sizes, stopping at `budget`.
@@ -253,6 +352,74 @@ mod tests {
         let outcome = calculate_dir_size_bounded(tmp.path(), Duration::from_secs(60));
         assert!(!outcome.overflowed, "small tree must finish well under 60s");
         assert_eq!(outcome.size, 350);
+    }
+
+    #[test]
+    fn shared_cache_claim_deduplicates_walks() {
+        // Using a unique path so the global cache doesn't collide with
+        // other tests in this process.
+        let path = PathBuf::from("/__dir_size_cache_test__/dedup_A");
+
+        let cache = DirSizeCache::default();
+        assert_eq!(cache.claim(&path), ClaimOutcome::Claimed);
+        // Second claim while first is in-flight must not race.
+        assert_eq!(cache.claim(&path), ClaimOutcome::InProgress);
+
+        cache.complete(
+            path.clone(),
+            DirSizeOutcome {
+                size: 42,
+                overflowed: false,
+            },
+        );
+        // Now the value is cached and further claims short-circuit.
+        assert_eq!(cache.claim(&path), ClaimOutcome::AlreadyCached);
+        assert_eq!(cache.get(&path).map(|o| o.size), Some(42));
+    }
+
+    #[test]
+    fn shared_cache_invalidate_discards_stale_completion() {
+        let root = PathBuf::from("/__dir_size_cache_test__/invalidate");
+        let child = root.join("child");
+
+        let cache = DirSizeCache::default();
+        assert_eq!(cache.claim(&child), ClaimOutcome::Claimed);
+
+        // Subtree invalidation before the worker reports in — its result
+        // must be silently dropped so we don't poison a fresh tree state.
+        cache.invalidate_subtree(&root);
+        cache.complete(
+            child.clone(),
+            DirSizeOutcome {
+                size: 999,
+                overflowed: false,
+            },
+        );
+        assert!(cache.get(&child).is_none());
+    }
+
+    #[test]
+    fn shared_cache_generation_ticks_on_insert_and_invalidate() {
+        let path = PathBuf::from("/__dir_size_cache_test__/generation");
+        let cache = DirSizeCache::default();
+        let g0 = cache.generation();
+
+        assert_eq!(cache.claim(&path), ClaimOutcome::Claimed);
+        // claim alone does not bump generation (no observable change).
+        assert_eq!(cache.generation(), g0);
+
+        cache.complete(
+            path.clone(),
+            DirSizeOutcome {
+                size: 1,
+                overflowed: false,
+            },
+        );
+        let g1 = cache.generation();
+        assert!(g1 > g0, "complete must bump generation");
+
+        cache.invalidate_subtree(&path);
+        assert!(cache.generation() > g1, "invalidate must bump generation");
     }
 
     #[test]
