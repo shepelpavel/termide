@@ -1395,7 +1395,7 @@ impl Panel for Terminal {
         format!("{} ({})", self.title_prefix, self.get_foreground_command())
     }
 
-    fn prepare_render(&mut self, theme: &Theme, config: std::sync::Arc<Config>) {
+    fn prepare_render(&mut self, theme: &Theme, config: &std::sync::Arc<Config>) {
         // Invalidate cache if theme changed
         if self.cached_theme != *theme {
             self.cached_lines = None;
@@ -1404,10 +1404,10 @@ impl Panel for Terminal {
         if self.keybindings != config.terminal.keybindings {
             self.keybindings = config.terminal.keybindings.clone();
         }
-        let config_ptr = std::sync::Arc::as_ptr(&config) as usize;
+        let config_ptr = std::sync::Arc::as_ptr(config) as usize;
         if self.last_config_ptr != config_ptr {
             self.last_config_ptr = config_ptr;
-            self.hotkeys = build_terminal_hotkey_table(&config);
+            self.hotkeys = build_terminal_hotkey_table(config);
         }
     }
 

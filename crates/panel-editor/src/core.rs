@@ -1686,9 +1686,9 @@ impl Panel for Editor {
         )
     }
 
-    fn prepare_render(&mut self, theme: &Theme, config: Arc<Config>) {
+    fn prepare_render(&mut self, theme: &Theme, config: &Arc<Config>) {
         self.render_cache.theme = *theme;
-        self.render_cache.config = config.clone();
+        self.render_cache.config = Arc::clone(config);
 
         // Sync EditorConfig with global Config.editor settings
         // This ensures runtime config changes are applied to the editor
@@ -1707,10 +1707,10 @@ impl Panel for Editor {
             .set_light_theme(theme.is_light_theme());
         self.render_cache.highlight.set_default_fg(theme.fg);
 
-        let config_ptr = Arc::as_ptr(&config) as usize;
+        let config_ptr = Arc::as_ptr(config) as usize;
         if self.last_config_ptr != config_ptr {
             self.last_config_ptr = config_ptr;
-            self.hotkeys = build_editor_hotkey_table(&config);
+            self.hotkeys = build_editor_hotkey_table(config);
         }
     }
 

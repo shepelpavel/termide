@@ -373,7 +373,7 @@ pub fn render_expanded_panel(
     is_focused: bool,
     panel_index: usize,
     theme: &Theme,
-    config: Arc<Config>,
+    config: &Arc<Config>,
     params: ExpandedPanelParams,
     _group_size: usize,
 ) {

@@ -194,8 +194,10 @@ pub trait Panel: Any {
 
     /// Prepare panel for rendering (update cached theme/config).
     ///
-    /// Called before render() to sync panel's internal state with current app state.
-    fn prepare_render(&mut self, theme: &Theme, config: Arc<Config>) {
+    /// Called before render() to sync panel's internal state with current app
+    /// state. `config` is borrowed so the per-frame call is a no-op for panels
+    /// that ignore it and at most one `Arc::clone` for panels that cache it.
+    fn prepare_render(&mut self, theme: &Theme, config: &Arc<Config>) {
         let _ = (theme, config);
     }
 

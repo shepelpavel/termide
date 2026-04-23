@@ -123,7 +123,7 @@ impl Panel for ImagePanel {
         self.title.clone()
     }
 
-    fn prepare_render(&mut self, _theme: &Theme, _config: std::sync::Arc<Config>) {
+    fn prepare_render(&mut self, _theme: &Theme, _config: &std::sync::Arc<Config>) {
         // No preparation needed
     }
 

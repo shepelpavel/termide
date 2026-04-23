@@ -254,7 +254,7 @@ impl Panel for OperationsPanel {
         t.panel_operations().to_string()
     }
 
-    fn prepare_render(&mut self, theme: &Theme, config: std::sync::Arc<Config>) {
+    fn prepare_render(&mut self, theme: &Theme, config: &std::sync::Arc<Config>) {
         self.cached_theme = ThemeColors::from(theme);
         self.vim_mode = config.general.vim_mode;
         // Operations panel has no configurable hotkeys — vim navigation only

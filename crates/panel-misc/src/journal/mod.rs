@@ -124,9 +124,9 @@ impl Panel for JournalPanel {
         termide_i18n::t().panel_journal().to_string()
     }
 
-    fn prepare_render(&mut self, theme: &Theme, config: std::sync::Arc<termide_config::Config>) {
+    fn prepare_render(&mut self, theme: &Theme, config: &std::sync::Arc<termide_config::Config>) {
         self.cached_theme = *theme;
-        self.cached_config = (*config).clone();
+        self.cached_config = (**config).clone();
         self.highlight_cache.set_theme(*theme);
         // Propagate config to inner editor so its hotkey table is built
         // (needed for Ctrl+C copy, Ctrl+F search, etc.)

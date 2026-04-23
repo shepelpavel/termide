@@ -124,7 +124,7 @@ impl termide_core::Panel for ReferencesPanel {
         WidthPreference::PreferNarrow
     }
 
-    fn prepare_render(&mut self, theme: &Theme, _config: Arc<termide_config::Config>) {
+    fn prepare_render(&mut self, theme: &Theme, _config: &Arc<termide_config::Config>) {
         self.cached_theme = *theme;
     }
 

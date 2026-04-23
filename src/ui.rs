@@ -576,7 +576,7 @@ fn render_panel_group(
                 is_focused,
                 global_panel_index,
                 state.theme,
-                state.config.clone(),
+                &state.config,
                 params,
                 group_size,
             );
