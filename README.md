@@ -31,7 +31,7 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 - **LSP Support** - Code completion, Find References (Shift+F12), Rename Symbol (F4), Go to Definition (Ctrl+Click), diagnostics
 - **Smart File Manager** - Tree view with expandable directories, nested git status, batch operations, file/content search (glob/regex), in-tree incremental search
 - **Integrated Terminal** - Full PTY support, VT100 escape sequences, mouse tracking
-- **Git Integration** - Status panel, commit log with ASCII graph, staging/unstaging, branch switching, stash management, inline blame (Alt+B)
+- **Git Integration** - Status panel, commit log with ASCII graph, staging/unstaging, branch switching, stash management, inline blame
 - **Multi-panel Layout** - Accordion system with smart auto-stacking; new panels open after the currently active one
 - **Image Viewer** - Native graphics in Kitty, WezTerm, iTerm2, Ghostty, foot terminals
 - **External Apps** - Open files with system default applications (Shift+Enter)
@@ -47,9 +47,9 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 - **Full Mouse Support** - Click navigation, scroll, double-click actions
 - **Keyboard Layouts** - Cyrillic support with automatic hotkey translation
 - **Vim Mode** - Optional Vim-style editing with Cyrillic keyboard support
-- **Directory Switcher** - Quick directory switching with Ctrl+P
+- **Directory Switcher** - Quick directory switching with Ctrl+/
 - **Bookmarks** - Save and organize frequently used locations
-- **Command Palette** - Quick access to all commands (Ctrl+Shift+P)
+- **Command Palette** - Quick access to all commands (Ctrl+P)
 
 ## Installation
 
@@ -261,7 +261,7 @@ For detailed documentation, see:
 - `Alt+Q` - Quit
 - `Alt+←/→` or `Alt+A/D` - Switch panel groups
 - `Alt+↑/↓` or `Alt+W/S` - Navigate panels in group
-- `Alt+1-9` / `Ctrl+Alt+1-9` - Jump to panel by number
+- `Alt+1-9` - Jump to panel by number
 - `Alt+B` - Add bookmark
 - `Ctrl+P` - Command palette
 - `Alt+X` / `Alt+Delete` - Close panel
@@ -284,7 +284,6 @@ For detailed documentation, see:
 
 **File Manager:**
 - `Ctrl+/` - Open directory switcher
-- `Alt+K` - Add bookmark
 - `Enter` - Open file/directory
 - `Backspace` - Parent directory
 - `→` / `l` - Expand directory (tree view)
@@ -310,7 +309,6 @@ For detailed documentation, see:
 - `Ctrl+Shift+S` - Save As (with executable checkbox)
 - `Ctrl+Z` - Undo
 - `Ctrl+Y` / `Ctrl+Shift+Z` - Redo
-- `Alt+B` - Toggle git blame
 - `Ctrl+F` - Find
 - `Ctrl+H` - Replace
 - `F3` / `Shift+F3` - Next/previous match
@@ -399,6 +397,16 @@ min_level = "info"
 - `solarized-dark` - Dark Solarized theme
 - `midnight` - Midnight Commander inspired
 - `macos-dark` - macOS dark style
+- `ayu-dark` - Ayu Dark theme
+- `billiard` - Billiard table green tones
+- `catppuccin-macchiato` - Catppuccin Macchiato theme
+- `everforest` - Everforest dark theme
+- `github-dark` - GitHub Dark theme
+- `gruvbox` - Gruvbox dark theme
+- `kanagawa` - Kanagawa theme
+- `material-ocean` - Material Ocean theme
+- `rosepine` - Rosé Pine theme
+- `tokyonight` - Tokyo Night theme
 
 **Light Themes:**
 - `atom-one-light` - Atom One Light theme
@@ -408,6 +416,9 @@ min_level = "info"
 - `material-lighter` - Material Lighter theme
 - `solarized-light` - Light Solarized theme
 - `macos-light` - macOS light style
+- `blue-sky` - Blue Sky theme
+- `green-backs` - Green dollar bills theme
+- `pinky-pie` - Pinky Pie theme
 
 **Retro Themes:**
 - `far-manager` - FAR Manager style
@@ -485,7 +496,6 @@ TermIDE uses a Cargo workspace with modular crates:
 crates/
 ├── app/              # Application core, event handling, panel management
 ├── app-core/         # Core application traits and types
-├── app-event/        # Event handling logic
 ├── app-modal/        # Modal dialog handling
 ├── app-panel/        # Panel management operations
 ├── app-session/      # Session save/restore
@@ -520,6 +530,7 @@ crates/
 ├── theme/            # Theme system and built-in themes
 ├── ui/               # UI utilities and path formatting
 ├── ui-render/        # UI rendering (menu, status bar, panels)
+├── unicode-width-fix/ # Unicode width corrections
 ├── vfs/              # Virtual filesystem (SFTP, FTP, SMB)
 └── watcher/          # File system event watcher
 

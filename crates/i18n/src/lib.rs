@@ -230,6 +230,13 @@ pub trait Translation: Send + Sync {
     fn help_desc_copy_hash(&self) -> &str;
     fn help_desc_scroll_half_down(&self) -> &str;
     fn help_desc_stage_unstage(&self) -> &str;
+    fn help_desc_tree_search(&self) -> &str;
+    fn help_desc_expand_dir(&self) -> &str;
+    fn help_desc_collapse_dir(&self) -> &str;
+    fn help_desc_word_select(&self) -> &str;
+    fn help_desc_paragraph_select(&self) -> &str;
+    fn help_desc_switch_focus(&self) -> &str;
+    fn help_desc_open_in_browser(&self) -> &str;
 
     // File operation status
     fn status_file_created(&self, name: &str) -> String;

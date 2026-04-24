@@ -212,9 +212,7 @@ The device name is automatically detected from the filesystem:
 | `Alt+N`           | Create new session                         |
 | `Alt+B`           | Add bookmark                               |
 | `Ctrl+P`          | Open command palette                       |
-| `Ctrl+Shift+P`    | Open command palette (alternative)         |
 | `Alt+1-9`         | Jump to panel by number                    |
-| `Ctrl+Alt+1-9`    | Jump to panel by number (fallback for gnome-terminal / Windows Terminal) |
 
 ### Caps Lock
 

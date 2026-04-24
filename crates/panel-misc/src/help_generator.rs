@@ -318,6 +318,18 @@ impl HelpGenerator {
                 keys: Self::format_keys(&kb.clipboard_paste),
                 description: t.help_desc_edit_paste().to_string(),
             },
+            HelpEntry {
+                keys: "/".to_string(),
+                description: t.help_desc_tree_search().to_string(),
+            },
+            HelpEntry {
+                keys: "→ / l".to_string(),
+                description: t.help_desc_expand_dir().to_string(),
+            },
+            HelpEntry {
+                keys: "← / h".to_string(),
+                description: t.help_desc_collapse_dir().to_string(),
+            },
         ];
 
         HelpSection {
@@ -428,6 +440,14 @@ impl HelpGenerator {
                 keys: "Ctrl+↑/↓".to_string(),
                 description: t.help_desc_paragraph_nav().to_string(),
             },
+            HelpEntry {
+                keys: "Ctrl+Shift+←/→".to_string(),
+                description: t.help_desc_word_select().to_string(),
+            },
+            HelpEntry {
+                keys: "Ctrl+Shift+↑/↓".to_string(),
+                description: t.help_desc_paragraph_select().to_string(),
+            },
         ];
 
         HelpSection {
@@ -473,6 +493,10 @@ impl HelpGenerator {
             HelpEntry {
                 keys: Self::format_keys(&kb.refresh),
                 description: t.help_desc_refresh().to_string(),
+            },
+            HelpEntry {
+                keys: "Tab".to_string(),
+                description: t.help_desc_switch_focus().to_string(),
             },
         ];
 
@@ -550,6 +574,14 @@ impl HelpGenerator {
             HelpEntry {
                 keys: Self::format_keys(&fm_kb.open_external),
                 description: t.help_desc_open_external().to_string(),
+            },
+            HelpEntry {
+                keys: "Tab".to_string(),
+                description: t.help_desc_switch_focus().to_string(),
+            },
+            HelpEntry {
+                keys: "Shift+Enter".to_string(),
+                description: t.help_desc_open_in_browser().to_string(),
             },
         ];
 

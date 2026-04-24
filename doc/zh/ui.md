@@ -211,9 +211,7 @@
 | `Alt+N`           | 创建新会话                                 |
 | `Alt+B`           | 添加书签                                   |
 | `Ctrl+P`          | 打开命令面板                               |
-| `Ctrl+Shift+P`    | 打开命令面板                            |
 | `Alt+1-9`         | 按编号跳转到面板                           |
-| `Ctrl+Alt+1-9`    | 按编号跳转到面板（gnome-terminal / Windows Terminal 备用方案） |
 
 ### Caps Lock
 

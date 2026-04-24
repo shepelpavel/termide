@@ -89,7 +89,6 @@ termide/
 ├── crates/
 │   ├── app/                  # 应用核心、事件处理、面板管理
 │   ├── app-core/             # 核心应用 trait（LayoutController、PanelProvider）
-│   ├── app-event/            # 事件处理逻辑和快捷键处理
 │   ├── app-modal/            # 模态对话框处理
 │   ├── app-panel/            # 面板管理操作
 │   ├── app-session/          # 会话保存/恢复逻辑
@@ -123,6 +122,7 @@ termide/
 │   ├── theme/                # 主题系统和 38 款内置主题
 │   ├── ui/                   # UI 工具和路径格式化
 │   ├── ui-render/            # UI 渲染（菜单、状态栏、面板）
+│   ├── unicode-width-fix/    # Unicode 宽度修正
 │   ├── vfs/                  # 虚拟文件系统（SFTP、FTP、SMB）
 │   └── watcher/              # 文件系统事件监视器
 ├── doc/                       # 文档
@@ -295,9 +295,9 @@ WARN Missing translation key: my_key (using English fallback)
 ### 日志
 
 TermIDE 将日志写入：
-- Linux: `~/.config/termide/termide.log`
-- macOS: `~/Library/Application Support/termide/termide.log`
-- Windows: `%APPDATA%\\termide\\termide.log`
+- Linux: `~/.cache/termide/termide.log`
+- macOS: `~/Library/Caches/termide/termide.log`
+- Windows: `%LOCALAPPDATA%\\termide\\cache\\termide.log`
 
 在代码中使用日志：
 ```rust

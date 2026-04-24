@@ -89,7 +89,6 @@ termide/
 ├── crates/
 │   ├── app/                  # Ядро приложения, обработка событий, управление панелями
 │   ├── app-core/             # Базовые трейты (LayoutController, PanelProvider)
-│   ├── app-event/            # Логика обработки событий и горячих клавиш
 │   ├── app-modal/            # Обработка модальных диалогов
 │   ├── app-panel/            # Операции управления панелями
 │   ├── app-session/          # Логика сохранения/восстановления сессий
@@ -123,6 +122,7 @@ termide/
 │   ├── theme/                # Система тем и 38 встроенных тем
 │   ├── ui/                   # UI-утилиты и форматирование путей
 │   ├── ui-render/            # Рендеринг UI (меню, статусная строка, панели)
+│   ├── unicode-width-fix/    # Исправление unicode-width для терминала
 │   ├── vfs/                  # Виртуальная файловая система (SFTP, FTP, SMB)
 │   └── watcher/              # Наблюдатель событий файловой системы
 ├── doc/                       # Документация
@@ -294,9 +294,9 @@ WARN Missing translation key: my_key (using English fallback)
 ### Логирование
 
 TermIDE записывает логи в:
-- Linux: `~/.config/termide/termide.log`
-- macOS: `~/Library/Application Support/termide/termide.log`
-- Windows: `%APPDATA%\\termide\\termide.log`
+- Linux: `~/.cache/termide/termide.log`
+- macOS: `~/Library/Caches/termide/termide.log`
+- Windows: `%LOCALAPPDATA%\\termide\\cache\\termide.log`
 
 Используйте логирование в коде:
 ```rust

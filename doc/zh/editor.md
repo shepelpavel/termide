@@ -270,17 +270,15 @@ show_git_diff = true
 
 ### 控制
 
-| 快捷键  | 操作                     |
-|---------|--------------------------|
-| `Alt+B` | 切换 blame 注解开/关     |
+通过设置模态框（Alt+P → Editor → Show Blame）切换 blame 注解的开关。
 
 **注意：** 在 git 仓库中打开文件时，blame **默认启用**。注解在后台异步加载，`git blame` 进程完成后显示。
 
 ### 配置
 
 ```toml
-[editor.keybindings]
-show_blame = "Alt+B"
+[editor]
+show_blame = true  # 或 false（默认：true）
 ```
 
 ---

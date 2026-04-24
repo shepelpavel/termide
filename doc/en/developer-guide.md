@@ -89,7 +89,6 @@ termide/
 ├── crates/
 │   ├── app/                  # Application core, event handling, panel management
 │   ├── app-core/             # Core application traits (LayoutController, PanelProvider)
-│   ├── app-event/            # Event handling logic and hotkey processing
 │   ├── app-modal/            # Modal dialog handling
 │   ├── app-panel/            # Panel management operations
 │   ├── app-session/          # Session save/restore logic
@@ -123,6 +122,7 @@ termide/
 │   ├── theme/                # Theme system and 38 built-in themes
 │   ├── ui/                   # UI utilities and path formatting
 │   ├── ui-render/            # UI rendering (menu, status bar, panels)
+│   ├── unicode-width-fix/    # Unicode width corrections for East Asian characters
 │   ├── vfs/                  # Virtual filesystem (SFTP, FTP, SMB)
 │   └── watcher/              # File system event watcher
 ├── doc/                       # Documentation
@@ -294,9 +294,9 @@ When making changes, test:
 ### Logging
 
 TermIDE writes logs to:
-- Linux: `~/.config/termide/termide.log`
-- macOS: `~/Library/Application Support/termide/termide.log`
-- Windows: `%APPDATA%\\termide\\termide.log`
+- Linux: `~/.cache/termide/termide.log`
+- macOS: `~/Library/Caches/termide/termide.log`
+- Windows: `%LOCALAPPDATA%\\termide\\cache\\termide.log`
 
 Use logging in code:
 ```rust

@@ -270,17 +270,13 @@ The annotation appears at the end of the current line in a dimmed color:
 
 ### Controls
 
-| Shortcut | Action                         |
-|----------|--------------------------------|
-| `Alt+B`  | Toggle blame annotation on/off |
-
-**Note:** Blame is **enabled by default** when opening a file in a git repository. The annotation loads asynchronously in the background and appears once the `git blame` process completes.
+**Note:** Blame is **enabled by default** when opening a file in a git repository. The annotation loads asynchronously in the background and appears once the `git blame` process completes. Toggle via the Settings modal (`Alt+P` → Editor → Show Blame).
 
 ### Configuration
 
 ```toml
-[editor.keybindings]
-show_blame = "Alt+B"
+[editor]
+show_blame = true
 ```
 
 ---
