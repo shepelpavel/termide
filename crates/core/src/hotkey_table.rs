@@ -79,14 +79,6 @@ impl HotkeyTable {
             String::new()
         }
     }
-
-    /// Check if table has any bindings for an action.
-    pub fn has(&self, action: &str) -> bool {
-        self.bindings
-            .get(action)
-            .map(|v| !v.is_empty())
-            .unwrap_or(false)
-    }
 }
 
 /// Format a parsed key binding to human-readable string.

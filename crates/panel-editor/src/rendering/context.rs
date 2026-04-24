@@ -17,9 +17,6 @@ pub struct RenderContext {
     /// Map of (line, column) -> match_index for O(1) search highlight lookups.
     pub search_match_map: HashMap<(usize, usize), usize>,
 
-    /// List of search matches as (line, column, length) tuples.
-    pub search_matches: Vec<(usize, usize, usize)>,
-
     /// Index of the current (active) search match, if any.
     pub current_match_idx: Option<usize>,
 
@@ -70,7 +67,6 @@ impl RenderContext {
 
         Self {
             search_match_map,
-            search_matches,
             current_match_idx,
             selection_range,
             cursor_viewport_pos: None,

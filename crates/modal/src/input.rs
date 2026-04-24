@@ -86,12 +86,6 @@ impl InputModal {
         }
     }
 
-    /// Enable password mode (mask input with asterisks).
-    pub fn with_password_mode(mut self) -> Self {
-        self.is_password = true;
-        self
-    }
-
     /// Add an optional checkbox to the modal
     pub fn with_checkbox(mut self, label: String) -> Self {
         self.checkbox_label = Some(label);

@@ -23,15 +23,6 @@ pub fn get_data_dir() -> Result<PathBuf> {
         .context("Failed to determine data directory")
 }
 
-/// Get the cache directory following XDG conventions.
-///
-/// Returns `$XDG_CACHE_HOME/termide` or `~/.cache/termide`.
-pub fn get_cache_dir() -> Result<PathBuf> {
-    dirs::cache_dir()
-        .map(|p| p.join(APP_NAME))
-        .context("Failed to determine cache directory")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

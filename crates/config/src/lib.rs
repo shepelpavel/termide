@@ -22,7 +22,7 @@ pub use settings::{
     GitStatusSettings, IconMode, LegacyConfig, LoggingSettings, LspServerSettings, LspSettings,
     TerminalSettings, VfsSettings,
 };
-pub use xdg::{get_cache_dir, get_config_dir, get_data_dir};
+pub use xdg::{get_config_dir, get_data_dir};
 
 use anyhow::Result;
 use std::path::PathBuf;

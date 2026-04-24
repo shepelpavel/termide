@@ -6,7 +6,6 @@
 use anyhow::Result;
 
 use termide_buffer::{is_word_boundary, Cursor, Selection, TextBuffer};
-use termide_highlight::HighlightCache;
 
 /// Select all text in the buffer.
 ///
@@ -111,17 +110,6 @@ pub fn delete_selection(
         }
     }
     Ok(None)
-}
-
-/// Invalidate highlight cache after selection deletion.
-///
-/// This is a helper to ensure cache invalidation happens consistently.
-pub fn invalidate_cache_after_deletion(
-    highlight_cache: &mut HighlightCache,
-    deletion_start_line: usize,
-    buffer_line_count: usize,
-) {
-    highlight_cache.invalidate_range(deletion_start_line, buffer_line_count);
 }
 
 /// Select word at cursor position.

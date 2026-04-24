@@ -122,11 +122,6 @@ impl SearchModal {
         self.input_handler = TextInputHandler::with_default(text);
     }
 
-    /// Set content input text (Content mode)
-    pub fn set_content_input(&mut self, text: String) {
-        self.content_input_handler = TextInputHandler::with_default(text);
-    }
-
     /// Get the title for this mode
     fn title(&self) -> &str {
         match self.mode {

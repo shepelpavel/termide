@@ -19,30 +19,18 @@ pub fn spinner_frame() -> &'static str {
     SPINNER_FRAMES[frame_idx]
 }
 
-/// Static loading indicator (deprecated, use spinner_frame() for animated spinners).
-pub const LOADING_INDICATOR: &str = "●";
-
 /// File sizes.
 pub const KILOBYTE: u64 = 1024;
 pub const MEGABYTE: u64 = KILOBYTE * 1024;
 pub const GIGABYTE: u64 = MEGABYTE * 1024;
 
-/// Default file size threshold in MB for enabling smart features (5 MB).
-pub const DEFAULT_LARGE_FILE_THRESHOLD_MB: u64 = 5;
-
 // ===== UI and layout constants =====
-
-/// Minimum terminal width for single panel mode.
-pub const MIN_WIDTH_SINGLE_PANEL: u16 = 80;
 
 /// Minimum terminal width for multi-panel mode.
 pub const MIN_WIDTH_MULTI_PANEL: u16 = 100;
 
 /// Minimum main panel width in multi-panel mode.
 pub const MIN_MAIN_PANEL_WIDTH: u16 = 80;
-
-/// Default main panel width in multi-panel mode.
-pub const DEFAULT_MAIN_PANEL_WIDTH: u16 = 80;
 
 // ===== Modal constants =====
 

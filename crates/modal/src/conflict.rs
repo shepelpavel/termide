@@ -62,7 +62,7 @@ impl ConflictModal {
     /// * `remaining_items` - Number of items remaining in queue (excluding current)
     /// * `current_conflict` - Current conflict number (1-indexed)
     /// * `total_conflicts` - Total number of conflicts detected (or best estimate)
-    pub fn with_counter(
+    fn with_counter(
         source: &Path,
         destination: &Path,
         remaining_items: usize,

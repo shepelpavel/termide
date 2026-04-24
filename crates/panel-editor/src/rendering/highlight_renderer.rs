@@ -102,7 +102,6 @@ mod tests {
 
         RenderContext {
             search_match_map,
-            search_matches: vec![],
             current_match_idx,
             selection_range,
             cursor_viewport_pos: None,
