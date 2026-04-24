@@ -184,6 +184,20 @@ impl DirSizeCache {
         }
         self.generation.fetch_add(1, Ordering::Release);
     }
+
+    /// Drop entries and claims whose path is an **ancestor** of `changed`
+    /// (including `changed` itself). Intended for FS-watcher events:
+    /// a file under `/a/b/c` mutating invalidates the cached sizes of
+    /// `/a/b/c`, `/a/b`, `/a` — their totals are now stale.
+    pub fn invalidate_ancestors(&self, changed: &Path) {
+        if let Ok(mut entries) = self.entries.lock() {
+            entries.retain(|p, _| !changed.starts_with(p));
+        }
+        if let Ok(mut inflight) = self.inflight.lock() {
+            inflight.retain(|p| !changed.starts_with(p));
+        }
+        self.generation.fetch_add(1, Ordering::Release);
+    }
 }
 
 /// Accessor for the process-wide shared directory-size cache.
@@ -396,6 +410,37 @@ mod tests {
             },
         );
         assert!(cache.get(&child).is_none());
+    }
+
+    #[test]
+    fn shared_cache_invalidate_ancestors_targets_parents_only() {
+        let parent = PathBuf::from("/__dir_size_cache_test__/ancestors");
+        let child_file = parent.join("sub/file.txt");
+        let sibling = PathBuf::from("/__dir_size_cache_test__/other");
+
+        let cache = DirSizeCache::default();
+        let outcome = DirSizeOutcome {
+            size: 1,
+            overflowed: false,
+        };
+        // Seed three entries: ancestor of the changed file, the
+        // changed file itself (unlikely to be in cache but valid), and
+        // an unrelated sibling that must survive.
+        cache.claim(&parent);
+        cache.complete(parent.clone(), outcome);
+        cache.claim(&sibling);
+        cache.complete(sibling.clone(), outcome);
+
+        cache.invalidate_ancestors(&child_file);
+
+        assert!(
+            cache.get(&parent).is_none(),
+            "ancestor of changed path must be invalidated"
+        );
+        assert!(
+            cache.get(&sibling).is_some(),
+            "unrelated entry must survive ancestor invalidation"
+        );
     }
 
     #[test]

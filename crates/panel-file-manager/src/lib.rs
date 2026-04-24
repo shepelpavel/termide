@@ -17,6 +17,7 @@ mod vfs_state;
 pub use file_info::FileInfo;
 use navigation::NavigationState;
 use selection::SelectionState;
+pub use utils::shared_dir_size_cache;
 use vfs_state::VfsState;
 
 /// Build HotkeyTable for the file manager from config.
@@ -580,7 +581,9 @@ impl FileManager {
             // Entries will be populated by tick() when VFS operation completes
             Ok(())
         } else {
-            // Local paths can reload synchronously
+            // Explicit reload — drop cached sizes under the current path
+            // so the user sees a fresh recomputation.
+            utils::shared_dir_size_cache().invalidate_subtree(&self.current_path);
             self.load_directory_inner(false)
         }
     }
@@ -629,6 +632,8 @@ impl FileManager {
             return Ok(());
         }
 
+        // Explicit reload — drop cached sizes under the current path.
+        utils::shared_dir_size_cache().invalidate_subtree(&self.current_path);
         self.load_directory_inner(true)
     }
 
@@ -1089,10 +1094,10 @@ impl FileManager {
         self.selection.clear();
         self.selection.end_drag();
 
-        // Invalidate directory-size cache for this subtree (other panels'
-        // directories stay cached). Any in-flight walk whose claim is
-        // dropped here will have its result discarded by `complete()`.
-        utils::shared_dir_size_cache().invalidate_subtree(&self.current_path);
+        // Navigation does not invalidate the size cache: cached values
+        // stay valid until the FS watcher reports a real change or the
+        // user explicitly reloads. This avoids re-walking a directory
+        // every time the user enters and leaves it.
         self.dir_size_queue.clear();
 
         // Start async git status loading (non-blocking)

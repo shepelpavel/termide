@@ -111,6 +111,17 @@ impl App {
             let _ = watcher.watch_repository(repo_root);
         }
 
+        // Invalidate FM directory-size cache for any ancestor containing
+        // a changed path. Panels keep stale totals until this event lands,
+        // which is why navigating away and back does NOT recompute sizes —
+        // only real FS activity does.
+        {
+            let cache = termide_panel_file_manager::shared_dir_size_cache();
+            for path in &fs_paths {
+                cache.invalidate_ancestors(path);
+            }
+        }
+
         // Invalidate cached scripts registry on any filesystem change in scripts directories.
         // Scripts live in ~/.local/share/termide/scripts/ or .termide/scripts/.
         if self.state.cache.scripts_registry.is_some() {
