@@ -1672,15 +1672,17 @@ impl Panel for FileManager {
 
             // 3. Start the next walk if we have no worker in flight.
             if self.dir_size_pending.is_none() {
-                // Top up the queue lazily: on first run after a reload,
-                // or when another panel invalidated entries under us.
+                // Top up the queue lazily: any visible directory that is
+                // either missing from the cache or marked stale needs
+                // (re)computing. Stale entries keep their old value
+                // visible while they wait in the queue.
                 if self.dir_size_queue.is_empty() {
                     for te in &self.tree_entries {
-                        if te.file_entry.is_dir
-                            && te.file_entry.name != ".."
-                            && cache.get(&te.full_path).is_none()
-                        {
-                            self.dir_size_queue.push_back(te.full_path.clone());
+                        if te.file_entry.is_dir && te.file_entry.name != ".." {
+                            let path = &te.full_path;
+                            if cache.get(path).is_none() || cache.is_stale(path) {
+                                self.dir_size_queue.push_back(path.clone());
+                            }
                         }
                     }
                 }

@@ -116,12 +116,14 @@ pub enum ClaimOutcome {
 /// `generation` counter ticks on every mutation so panels can cheaply
 /// detect "something changed" and trigger a redraw.
 ///
-/// Invalidation is per-subtree: when an FM panel reloads its current
-/// directory, only entries and claims rooted at that directory are
-/// dropped. Results for other panels' directories stay intact.
+/// Invalidation is soft: entries are **marked stale** rather than
+/// removed, so the UI keeps showing the last-known number while the
+/// recompute runs in the background. On completion the stale flag is
+/// cleared and the new value takes over.
 #[derive(Default)]
 pub struct DirSizeCache {
     entries: Mutex<HashMap<PathBuf, DirSizeOutcome>>,
+    stale: Mutex<HashSet<PathBuf>>,
     inflight: Mutex<HashSet<PathBuf>>,
     generation: AtomicU64,
 }
@@ -137,12 +139,23 @@ impl DirSizeCache {
         self.entries.lock().ok()?.get(path).copied()
     }
 
-    /// Try to acquire exclusive ownership of a walk for `path`.
+    /// True if `path` has been marked for recompute but no fresh value
+    /// has landed yet. `get()` still returns the old value.
+    pub fn is_stale(&self, path: &Path) -> bool {
+        self.stale.lock().map(|s| s.contains(path)).unwrap_or(false)
+    }
+
+    /// Try to acquire exclusive ownership of a walk for `path`. A stale
+    /// cache entry is still claimable — the walk will refresh it.
     pub fn claim(&self, path: &Path) -> ClaimOutcome {
-        if let Ok(entries) = self.entries.lock() {
-            if entries.contains_key(path) {
-                return ClaimOutcome::AlreadyCached;
-            }
+        let cached = self
+            .entries
+            .lock()
+            .ok()
+            .map(|e| e.contains_key(path))
+            .unwrap_or(false);
+        if cached && !self.is_stale(path) {
+            return ClaimOutcome::AlreadyCached;
         }
         let Ok(mut inflight) = self.inflight.lock() else {
             return ClaimOutcome::InProgress;
@@ -155,9 +168,8 @@ impl DirSizeCache {
         }
     }
 
-    /// Deposit a completed result. Silently dropped if the claim was
-    /// revoked by `invalidate_subtree` while the worker was running,
-    /// preventing a stale number from replacing fresh tree state.
+    /// Deposit a completed result. Clears the stale flag and replaces
+    /// the old value. Silently dropped if the claim was revoked.
     pub fn complete(&self, path: PathBuf, outcome: DirSizeOutcome) {
         let Ok(mut inflight) = self.inflight.lock() else {
             return;
@@ -167,36 +179,51 @@ impl DirSizeCache {
         }
         drop(inflight);
         if let Ok(mut entries) = self.entries.lock() {
-            entries.insert(path, outcome);
+            entries.insert(path.clone(), outcome);
+        }
+        if let Ok(mut stale) = self.stale.lock() {
+            stale.remove(&path);
+        }
+        self.generation.fetch_add(1, Ordering::Release);
+    }
+
+    /// Mark every cached entry rooted at `root` as stale. The old value
+    /// stays visible; the scheduler picks it up for recompute.
+    /// Intended for explicit user reload (Ctrl+R).
+    pub fn invalidate_subtree(&self, root: &Path) {
+        let mut any_marked = false;
+        if let Ok(entries) = self.entries.lock() {
+            if let Ok(mut stale) = self.stale.lock() {
+                for key in entries.keys() {
+                    if key.starts_with(root) && stale.insert(key.clone()) {
+                        any_marked = true;
+                    }
+                }
+            }
+        }
+        if any_marked {
             self.generation.fetch_add(1, Ordering::Release);
         }
     }
 
-    /// Drop entries and claims rooted at `root`. Any worker currently
-    /// walking an invalidated path will have its result discarded on
-    /// `complete` because its claim is gone.
-    pub fn invalidate_subtree(&self, root: &Path) {
-        if let Ok(mut entries) = self.entries.lock() {
-            entries.retain(|p, _| !p.starts_with(root));
-        }
-        if let Ok(mut inflight) = self.inflight.lock() {
-            inflight.retain(|p| !p.starts_with(root));
-        }
-        self.generation.fetch_add(1, Ordering::Release);
-    }
-
-    /// Drop entries and claims whose path is an **ancestor** of `changed`
-    /// (including `changed` itself). Intended for FS-watcher events:
-    /// a file under `/a/b/c` mutating invalidates the cached sizes of
-    /// `/a/b/c`, `/a/b`, `/a` — their totals are now stale.
+    /// Mark cached entries whose path is an ancestor of `changed`
+    /// (including the path itself) as stale. Intended for FS-watcher
+    /// events: a file under `/a/b/c` mutating flags `/a`, `/a/b`,
+    /// `/a/b/c` for recompute, but leaves sibling subtrees alone.
     pub fn invalidate_ancestors(&self, changed: &Path) {
-        if let Ok(mut entries) = self.entries.lock() {
-            entries.retain(|p, _| !changed.starts_with(p));
+        let mut any_marked = false;
+        if let Ok(entries) = self.entries.lock() {
+            if let Ok(mut stale) = self.stale.lock() {
+                for key in entries.keys() {
+                    if changed.starts_with(key) && stale.insert(key.clone()) {
+                        any_marked = true;
+                    }
+                }
+            }
         }
-        if let Ok(mut inflight) = self.inflight.lock() {
-            inflight.retain(|p| !changed.starts_with(p));
+        if any_marked {
+            self.generation.fetch_add(1, Ordering::Release);
         }
-        self.generation.fetch_add(1, Ordering::Release);
     }
 }
 
@@ -392,24 +419,38 @@ mod tests {
     }
 
     #[test]
-    fn shared_cache_invalidate_discards_stale_completion() {
+    fn shared_cache_invalidate_marks_stale_keeping_old_value() {
         let root = PathBuf::from("/__dir_size_cache_test__/invalidate");
         let child = root.join("child");
 
         let cache = DirSizeCache::default();
+        let old = DirSizeOutcome {
+            size: 100,
+            overflowed: false,
+        };
+        assert_eq!(cache.claim(&child), ClaimOutcome::Claimed);
+        cache.complete(child.clone(), old);
+
+        // Soft invalidation: the old number is still visible to the UI
+        // while a fresh walk is queued in the background.
+        cache.invalidate_subtree(&root);
+        assert_eq!(
+            cache.get(&child).map(|o| o.size),
+            Some(100),
+            "stale entry must still render the last known value"
+        );
+        assert!(cache.is_stale(&child));
+        // And the entry is immediately claimable again for recompute.
         assert_eq!(cache.claim(&child), ClaimOutcome::Claimed);
 
-        // Subtree invalidation before the worker reports in — its result
-        // must be silently dropped so we don't poison a fresh tree state.
-        cache.invalidate_subtree(&root);
-        cache.complete(
-            child.clone(),
-            DirSizeOutcome {
-                size: 999,
-                overflowed: false,
-            },
-        );
-        assert!(cache.get(&child).is_none());
+        // On completion, new value replaces old and stale is cleared.
+        let new = DirSizeOutcome {
+            size: 250,
+            overflowed: false,
+        };
+        cache.complete(child.clone(), new);
+        assert_eq!(cache.get(&child).map(|o| o.size), Some(250));
+        assert!(!cache.is_stale(&child));
     }
 
     #[test]
@@ -423,9 +464,6 @@ mod tests {
             size: 1,
             overflowed: false,
         };
-        // Seed three entries: ancestor of the changed file, the
-        // changed file itself (unlikely to be in cache but valid), and
-        // an unrelated sibling that must survive.
         cache.claim(&parent);
         cache.complete(parent.clone(), outcome);
         cache.claim(&sibling);
@@ -434,13 +472,16 @@ mod tests {
         cache.invalidate_ancestors(&child_file);
 
         assert!(
-            cache.get(&parent).is_none(),
-            "ancestor of changed path must be invalidated"
+            cache.is_stale(&parent),
+            "ancestor of changed path must be marked stale"
         );
         assert!(
-            cache.get(&sibling).is_some(),
-            "unrelated entry must survive ancestor invalidation"
+            !cache.is_stale(&sibling),
+            "unrelated entry must not be marked stale"
         );
+        // Old values stay visible while recompute is scheduled.
+        assert!(cache.get(&parent).is_some());
+        assert!(cache.get(&sibling).is_some());
     }
 
     #[test]
