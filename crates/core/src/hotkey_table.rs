@@ -73,6 +73,16 @@ impl HotkeyTable {
         }
     }
 
+    /// Find the first action whose name starts with `prefix` that matches the key.
+    pub fn find_match(&self, prefix: &str, key: &KeyEvent) -> Option<String> {
+        for action in self.bindings.keys() {
+            if action.starts_with(prefix) && self.matches(action, key) {
+                return Some(action.clone());
+            }
+        }
+        None
+    }
+
     /// Get display string for an action (for help panel).
     /// Returns empty string if action has no bindings.
     pub fn display(&self, action: &str) -> String {

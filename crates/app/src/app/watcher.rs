@@ -131,6 +131,7 @@ impl App {
                 .any(|p| p.file_name() == Some(commands_toml.as_os_str()));
             if invalidate {
                 self.state.cache.commands_registry = None;
+                self.state.cache.hotkey_table = None;
             }
         }
 

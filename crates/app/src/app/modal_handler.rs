@@ -547,6 +547,7 @@ impl App {
                         self.handle_command_config_result(result)?;
                     }
                     self.state.cache.commands_registry = None;
+                    self.state.cache.hotkey_table = None;
                 }
                 PendingAction::EditCommand { .. } => {
                     use termide_modal::CommandConfigResult;
@@ -579,6 +580,7 @@ impl App {
                             log::error!("Failed to save commands.toml: {}", e);
                         }
                         self.state.cache.commands_registry = None;
+                        self.state.cache.hotkey_table = None;
                         self.state.needs_redraw = true;
                     }
                 }
@@ -606,6 +608,7 @@ impl App {
                                 }
                             }
                             self.state.cache.commands_registry = None;
+                            self.state.cache.hotkey_table = None;
                         }
                     }
                     self.reopen_commands_menu(group, selected);

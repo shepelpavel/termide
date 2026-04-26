@@ -72,14 +72,18 @@ impl App {
     ///
     /// Returns `true` if the action was handled, `false` to pass to panel.
     pub(super) fn handle_global_hotkey(&mut self, key: &KeyEvent) -> Result<bool> {
-        let mut table = build_global_hotkey_table(&self.state.config.general.keybindings);
-
-        // Register command hotkeys
-        if let Some(registry) = self.commands_registry() {
-            for (command, key_str) in registry.commands_with_hotkeys() {
-                table.insert_raw(format!("run_command:{}", command.name), key_str);
+        // Build table only when cache is empty
+        if self.state.cache.hotkey_table.is_none() {
+            let mut table = build_global_hotkey_table(&self.state.config.general.keybindings);
+            if let Some(registry) = self.commands_registry() {
+                for (command, key_str) in registry.commands_with_hotkeys() {
+                    table.insert_raw(format!("run_command:{}", command.name), key_str);
+                }
             }
+            self.state.cache.hotkey_table = Some(table);
         }
+
+        let table = self.state.cache.hotkey_table.as_ref().unwrap();
 
         // Menu
         if table.matches("menu", key) {
@@ -219,16 +223,11 @@ impl App {
             return Ok(true);
         }
 
-        // Command hotkeys
-        let matched_command = self.commands_registry().and_then(|registry| {
-            registry
-                .commands_with_hotkeys()
-                .iter()
-                .find(|(command, _)| table.matches(&format!("run_command:{}", command.name), key))
-                .map(|(command, _)| command.name.clone())
-        });
-        if let Some(name) = matched_command {
-            self.run_command_by_name(&name)?;
+        // Command hotkeys (already in cached table as run_command:* entries)
+        let matched = table.find_match("run_command:", key);
+        if let Some(action) = matched {
+            let name = action.strip_prefix("run_command:").unwrap();
+            self.run_command_by_name(name)?;
             return Ok(true);
         }
 

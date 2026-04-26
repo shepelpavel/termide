@@ -27,6 +27,7 @@ impl App {
         }
 
         self.state.cache.commands_registry = None;
+        self.state.cache.hotkey_table = None;
         Ok(())
     }
 

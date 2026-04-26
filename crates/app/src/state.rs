@@ -251,6 +251,8 @@ pub struct CacheState {
     pub disk_space: Option<termide_system_monitor::DiskSpaceInfo>,
     /// Cached commands registry (invalidated on menu close and filesystem changes)
     pub commands_registry: Option<termide_config::commands::CommandsRegistry>,
+    /// Cached global hotkey table (invalidated when commands_registry is)
+    pub hotkey_table: Option<termide_core::HotkeyTable>,
 }
 
 /// Global application state
@@ -484,6 +486,7 @@ impl AppState {
         self.ui.close_all_submenus();
         self.cache.shells.clear();
         self.cache.commands_registry = None;
+        self.cache.hotkey_table = None;
     }
 
     /// Close resource indicator modal (CPU/RAM/Net/Calendar) and clear refresh state.
@@ -518,6 +521,7 @@ impl AppState {
         // Force fresh load — the cache may have been populated before the
         // filesystem made command files visible (FUSE/autofs on NixOS, etc.).
         self.cache.commands_registry = None;
+        self.cache.hotkey_table = None;
     }
 
     /// Close submenu and all nested menus

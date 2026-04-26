@@ -77,7 +77,12 @@ impl EventHandler {
                 CrosstermEvent::Key(key) if key.kind == KeyEventKind::Press => {
                     self.try_coalesce_paste(key)
                 }
-                CrosstermEvent::Key(_) => Ok(Event::Tick), // Ignore Release and Repeat
+                CrosstermEvent::Key(_) => {
+                    // Release/Repeat from REPORT_EVENT_TYPES — drain buffered
+                    // events with zero timeout instead of generating a spurious
+                    // Tick that triggers the full background-processing pipeline.
+                    self.drain_non_press_keys()
+                }
                 CrosstermEvent::Mouse(mouse)
                     if matches!(
                         mouse.kind,
@@ -174,6 +179,26 @@ impl EventHandler {
         }
 
         Ok(Event::Mouse(latest))
+    }
+
+    /// Drain buffered Release/Repeat key events left by REPORT_EVENT_TYPES.
+    /// Returns the first real event found (Press key, mouse, resize…) or Tick
+    /// when the queue is empty.
+    fn drain_non_press_keys(&self) -> Result<Event> {
+        while event::poll(Duration::ZERO)? {
+            match event::read()? {
+                CrosstermEvent::Key(key) if key.kind == KeyEventKind::Press => {
+                    return self.try_coalesce_paste(key);
+                }
+                CrosstermEvent::Key(_) => continue,
+                other => {
+                    if let Some(ev) = self.convert_crossterm_event(other) {
+                        return Ok(ev);
+                    }
+                }
+            }
+        }
+        Ok(Event::Tick)
     }
 
     /// On Windows, pasted text arrives as individual Key events because the console
