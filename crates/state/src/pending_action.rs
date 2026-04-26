@@ -199,17 +199,36 @@ pub enum PendingAction {
         /// Stash ref string (e.g. "stash@{0}") for diff
         ref_str: String,
     },
-    /// Create a new script via ScriptCreateModal
-    CreateScript,
-    /// Delete a script file (with confirmation)
-    DeleteScript {
-        path: PathBuf,
-        /// Selected index in scripts submenu to restore on return
+    /// Create a new command via CommandConfigModal (create mode)
+    CreateCommand,
+    /// Edit an existing command via CommandConfigModal (edit mode)
+    EditCommand {
+        /// Command name / TOML key
+        command_name: String,
+        /// Group name for nested submenu restoration
+        group: Option<String>,
+        /// Selected index to restore on return
         selected: usize,
     },
-    /// Rename a script file
-    RenameScript {
-        old_path: PathBuf,
+    /// Run a command with user-provided parameters
+    RunCommandWithParams {
+        command: termide_config::commands::CommandItem,
+    },
+    /// Delete a command (with confirmation)
+    DeleteCommand {
+        /// Command name / TOML key.
+        command_name: String,
+        /// Whether this is a project-local command.
+        is_project: bool,
+        /// Selected index in commands submenu to restore on return
+        selected: usize,
+    },
+    /// Rename a command
+    RenameCommand {
+        /// Command name / TOML key.
+        command_name: String,
+        /// Whether this is a project-local command.
+        is_project: bool,
         /// Group name for nested submenu restoration
         group: Option<String>,
         /// Selected index to restore on return

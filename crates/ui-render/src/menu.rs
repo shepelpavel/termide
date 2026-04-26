@@ -39,7 +39,7 @@ pub fn get_menu_items() -> Vec<String> {
     let t = i18n::t();
     vec![
         t.menu_bookmarks().to_string(),
-        t.menu_scripts().to_string(),
+        t.menu_commands().to_string(),
         t.menu_sessions().to_string(),
         t.menu_windows().to_string(),
         t.menu_options().to_string(),
@@ -69,8 +69,8 @@ pub const INDICATOR_DISK_INDEX: usize = MENU_ITEM_COUNT + 4;
 /// Index of Bookmarks menu item
 pub const BOOKMARKS_MENU_INDEX: usize = 0;
 
-/// Index of Scripts menu item
-pub const SCRIPTS_MENU_INDEX: usize = 1;
+/// Index of Commands menu item
+pub const COMMANDS_MENU_INDEX: usize = 1;
 
 /// Index of Sessions menu item
 pub const SESSIONS_MENU_INDEX: usize = 2;

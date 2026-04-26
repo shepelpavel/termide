@@ -1250,31 +1250,31 @@ impl App {
 
     /// Handle CancelOperation event - cancel an operation
     fn event_cancel_operation(&mut self, op_id: termide_file_ops::OperationId) {
-        // Check if this is a script operation (not managed by OperationManager)
+        // Check if this is a command operation (not managed by OperationManager)
         if let Some(op) = self.state.active_operations.get(&op_id) {
-            if op.op_type.is_script() {
+            if op.op_type.is_command() {
                 // Kill the process and remove from tracking
                 use crate::state::kill_process_tree;
 
-                // Kill bg_script process if present
+                // Kill bg_command process if present
                 if let Some(pos) = self
                     .state
-                    .bg_script_handles
+                    .bg_command_handles
                     .iter()
                     .position(|(id, _, _)| *id == op_id)
                 {
-                    let (_, _, pid) = self.state.bg_script_handles.remove(pos);
+                    let (_, _, pid) = self.state.bg_command_handles.remove(pos);
                     kill_process_tree(pid);
                 }
 
-                // Kill report script process if it matches
+                // Kill report command process if it matches
                 if let Some(pos) = self
                     .state
-                    .script_operation_handles
+                    .command_operation_handles
                     .iter()
                     .position(|h| h.operation_id == Some(op_id))
                 {
-                    let handle = self.state.script_operation_handles.remove(pos);
+                    let handle = self.state.command_operation_handles.remove(pos);
                     if let Some(pid) = handle.pid {
                         kill_process_tree(pid);
                     }

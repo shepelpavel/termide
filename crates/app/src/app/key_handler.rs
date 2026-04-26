@@ -48,9 +48,9 @@ impl App {
             return self.handle_tools_submenu_key(key);
         }
 
-        // If Scripts submenu is open, handle its navigation
-        if self.state.ui.scripts_submenu.open {
-            return self.handle_scripts_submenu_key(key);
+        // If Commands submenu is open, handle its navigation
+        if self.state.ui.commands_submenu.open {
+            return self.handle_commands_submenu_key(key);
         }
 
         // If Stash submenu is open, handle its navigation

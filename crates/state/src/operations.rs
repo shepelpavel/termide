@@ -23,23 +23,23 @@ pub enum OperationType {
     MoveDownload,
     /// Delete file(s)
     Delete,
-    /// Background script (.bg.) — ⚙ icon
-    ScriptBackground,
-    /// Background script with result modal (.report.) — 📋 icon
-    ScriptReport,
+    /// Background command (.bg.) — ⚙ icon
+    CommandBackground,
+    /// Background command with result modal (.report.) — 📋 icon
+    CommandReport,
 }
 
 impl OperationType {
-    /// Returns true if this is any script variant.
-    pub fn is_script(&self) -> bool {
-        matches!(self, Self::ScriptBackground | Self::ScriptReport)
+    /// Returns true if this is any command variant.
+    pub fn is_command(&self) -> bool {
+        matches!(self, Self::CommandBackground | Self::CommandReport)
     }
 
-    /// Returns true if this operation involves data transfer (not delete/rename/script)
+    /// Returns true if this operation involves data transfer (not delete/rename/command)
     pub fn has_data_progress(&self) -> bool {
         !matches!(
             self,
-            Self::Delete | Self::Rename | Self::ScriptBackground | Self::ScriptReport
+            Self::Delete | Self::Rename | Self::CommandBackground | Self::CommandReport
         )
     }
 }
@@ -190,15 +190,15 @@ mod tests {
         assert!(OperationType::CopyDownload.has_data_progress());
         assert!(!OperationType::Delete.has_data_progress());
         assert!(!OperationType::Rename.has_data_progress());
-        assert!(!OperationType::ScriptBackground.has_data_progress());
-        assert!(!OperationType::ScriptReport.has_data_progress());
+        assert!(!OperationType::CommandBackground.has_data_progress());
+        assert!(!OperationType::CommandReport.has_data_progress());
     }
 
     #[test]
-    fn test_operation_type_is_script() {
-        assert!(OperationType::ScriptBackground.is_script());
-        assert!(OperationType::ScriptReport.is_script());
-        assert!(!OperationType::Copy.is_script());
-        assert!(!OperationType::Delete.is_script());
+    fn test_operation_type_is_command() {
+        assert!(OperationType::CommandBackground.is_command());
+        assert!(OperationType::CommandReport.is_command());
+        assert!(!OperationType::Copy.is_command());
+        assert!(!OperationType::Delete.is_command());
     }
 }

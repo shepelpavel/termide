@@ -41,8 +41,8 @@ fn op_type_icon(op_type: &termide_state::OperationType) -> &'static str {
         termide_state::OperationType::MoveUpload => "\u{2191}", // ↑
         termide_state::OperationType::MoveDownload => "\u{2193}", // ↓
         termide_state::OperationType::Delete => "\u{2715}", // ✕
-        termide_state::OperationType::ScriptBackground => "\u{2699}", // ⚙
-        termide_state::OperationType::ScriptReport => "\u{1F4CB}", // 📋
+        termide_state::OperationType::CommandBackground => "\u{2699}", // ⚙
+        termide_state::OperationType::CommandReport => "\u{1F4CB}", // 📋
     }
 }
 
@@ -58,8 +58,8 @@ fn op_type_label(op_type: &termide_state::OperationType) -> &str {
         termide_state::OperationType::MoveUpload => t.op_type_move_upload(),
         termide_state::OperationType::MoveDownload => t.op_type_move_download(),
         termide_state::OperationType::Delete => t.progress_delete_title(),
-        termide_state::OperationType::ScriptBackground => t.op_type_script(),
-        termide_state::OperationType::ScriptReport => t.op_type_script(),
+        termide_state::OperationType::CommandBackground => t.op_type_command(),
+        termide_state::OperationType::CommandReport => t.op_type_command(),
     }
 }
 
@@ -80,7 +80,7 @@ fn render_snapshot_card(
     };
 
     let t = termide_i18n::t();
-    let is_script = op.op_type.is_script();
+    let is_command = op.op_type.is_command();
     let is_scanning = op.is_scanning;
     let has_data = !is_scanning && op.op_type.has_data_progress();
 
@@ -102,8 +102,8 @@ fn render_snapshot_card(
 
     let pause_icon = if op.is_paused { " \u{23F8}" } else { "" }; // ⏸
 
-    let title = if is_script {
-        // Script: show script name in title instead of generic "Script" label
+    let title = if is_command {
+        // Command: show command name in title instead of generic "Command" label
         Line::from(Span::styled(
             format!(" {} {}{} ", icon, op.source, pause_icon),
             title_style,
@@ -145,7 +145,7 @@ fn render_snapshot_card(
     let mut y = inner.y;
 
     // Line 1: Progress bar (file operations only)
-    if !is_script {
+    if !is_command {
         let bar_width = content_width;
         let percent_val = op.progress.percent() as usize;
         let filled = (bar_width * percent_val) / 100;
@@ -165,8 +165,8 @@ fn render_snapshot_card(
         y += 1;
     }
 
-    // Source path (file ops only — script name is in border title)
-    if !is_script {
+    // Source path (file ops only — command name is in border title)
+    if !is_command {
         let source = truncate_left(&op.source, content_width);
         buf.set_line(
             inner.x,
@@ -189,8 +189,8 @@ fn render_snapshot_card(
         y += 1;
     }
 
-    // Files count (skip for scripts, during scanning show "Found: N")
-    if !is_script {
+    // Files count (skip for commands, during scanning show "Found: N")
+    if !is_command {
         let files = if is_scanning {
             t.op_found_count(op.progress.total_files)
         } else {

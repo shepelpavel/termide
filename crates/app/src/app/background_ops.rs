@@ -3,7 +3,7 @@
 //! Contains tick handlers for various background operations:
 //! - Directory size calculation
 //! - Git operations (push/pull, status, diff)
-//! - Script execution
+//! - Command execution
 //! - System resource monitoring
 //! - Modal spinners
 //! - LSP completion polling
@@ -239,15 +239,15 @@ impl App {
         }
     }
 
-    /// Check for background script operation results (.report. scripts)
-    pub(super) fn check_script_operation_result(&mut self) {
-        if self.state.script_operation_handles.is_empty() {
+    /// Check for background command operation results (.report. commands)
+    pub(super) fn check_command_operation_result(&mut self) {
+        if self.state.command_operation_handles.is_empty() {
             return;
         }
 
         let mut last_result_modal = None;
 
-        self.state.script_operation_handles.retain(|handle| {
+        self.state.command_operation_handles.retain(|handle| {
             match handle.receiver.try_recv() {
                 Ok(result) => {
                     // Remove from Operations panel
@@ -255,11 +255,11 @@ impl App {
                         self.state.active_operations.remove(&op_id);
                     }
 
-                    // Build modal (last completed script wins if multiple finish same tick)
+                    // Build modal (last completed command wins if multiple finish same tick)
                     let title = if result.success {
-                        format!("{} \u{2713}", result.script_name)
+                        format!("{} \u{2713}", result.command_name)
                     } else {
-                        format!("{} \u{2717}", result.script_name)
+                        format!("{} \u{2717}", result.command_name)
                     };
 
                     let mut lines = vec![];
@@ -292,7 +292,7 @@ impl App {
             }
         });
 
-        // Show modal for the last completed script
+        // Show modal for the last completed command
         if let Some((title, lines)) = last_result_modal {
             let modal = InfoModal::new(&title, lines);
             self.state.active_modal = Some(ActiveModal::Info(Box::new(modal)));
@@ -300,9 +300,9 @@ impl App {
         }
     }
 
-    /// Check for completed background scripts (.bg.) and remove from Operations panel.
-    pub(super) fn check_bg_script_completion(&mut self) {
-        self.state.bg_script_handles.retain(|(op_id, rx, _pid)| {
+    /// Check for completed background commands (.bg.) and remove from Operations panel.
+    pub(super) fn check_bg_command_completion(&mut self) {
+        self.state.bg_command_handles.retain(|(op_id, rx, _pid)| {
             match rx.try_recv() {
                 Ok(()) | Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                     self.state.active_operations.remove(op_id);

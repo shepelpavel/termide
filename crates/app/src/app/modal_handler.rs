@@ -541,56 +541,74 @@ impl App {
                 } => {
                     self.handle_git_stash_action(repo_path, index, ref_str, value)?;
                 }
-                PendingAction::CreateScript => {
-                    use termide_modal::ScriptCreateResult;
-                    if let Some(result) = value.downcast_ref::<ScriptCreateResult>() {
-                        self.handle_create_script_result(result)?;
+                PendingAction::CreateCommand => {
+                    use termide_modal::CommandConfigResult;
+                    if let Some(result) = value.downcast_ref::<CommandConfigResult>() {
+                        self.handle_command_config_result(result)?;
+                    }
+                    self.state.cache.commands_registry = None;
+                }
+                PendingAction::EditCommand { .. } => {
+                    use termide_modal::CommandConfigResult;
+                    if let Some(result) = value.downcast_ref::<CommandConfigResult>() {
+                        self.handle_command_config_result(result)?;
                     }
                 }
-                PendingAction::DeleteScript { path, .. } => {
+                PendingAction::RunCommandWithParams { command } => {
+                    use termide_modal::CommandParamsResult;
+                    if let Some(result) = value.downcast_ref::<CommandParamsResult>() {
+                        self.run_command_with_params(&command, &result.values)?;
+                    }
+                }
+                PendingAction::DeleteCommand {
+                    command_name,
+                    is_project,
+                    ..
+                } => {
                     if value.downcast_ref::<bool>().copied().unwrap_or(false) {
-                        if let Err(e) = std::fs::remove_file(&path) {
-                            log::error!("Failed to delete script file {}: {}", path.display(), e);
+                        let config_dir = if is_project {
+                            self.project_root.join(".termide")
+                        } else {
+                            termide_config::get_data_dir()
+                                .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                        };
+                        let mut metadata =
+                            termide_config::commands::CommandsMetadata::load(&config_dir);
+                        metadata.entries.remove(&command_name);
+                        if let Err(e) = metadata.save(&config_dir) {
+                            log::error!("Failed to save commands.toml: {}", e);
                         }
-                        // Remove empty parent directory (group folder) if it was the last script
-                        if let Some(parent) = path.parent() {
-                            if parent
-                                .read_dir()
-                                .map(|mut d| d.next().is_none())
-                                .unwrap_or(false)
-                            {
-                                if let Err(e) = std::fs::remove_dir(parent) {
-                                    log::warn!(
-                                        "Failed to remove empty script group folder {}: {}",
-                                        parent.display(),
-                                        e
-                                    );
-                                }
-                            }
-                        }
+                        self.state.cache.commands_registry = None;
                         self.state.needs_redraw = true;
                     }
                 }
-                PendingAction::RenameScript {
-                    old_path,
+                PendingAction::RenameCommand {
+                    command_name,
+                    is_project,
                     group,
                     selected,
                 } => {
                     if let Some(new_name) = value.downcast_ref::<String>() {
                         let sanitized = termide_modal::sanitize_filename(new_name.trim());
-                        if !sanitized.is_empty() {
-                            let new_path = old_path.with_file_name(&sanitized);
-                            if let Err(e) = std::fs::rename(&old_path, &new_path) {
-                                log::error!(
-                                    "Failed to rename script {} -> {}: {}",
-                                    old_path.display(),
-                                    new_path.display(),
-                                    e
-                                );
+                        if !sanitized.is_empty() && sanitized != command_name {
+                            let config_dir = if is_project {
+                                self.project_root.join(".termide")
+                            } else {
+                                termide_config::get_data_dir()
+                                    .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                            };
+                            let mut metadata =
+                                termide_config::commands::CommandsMetadata::load(&config_dir);
+                            if let Some(entry) = metadata.entries.remove(&command_name) {
+                                metadata.entries.insert(sanitized, entry);
+                                if let Err(e) = metadata.save(&config_dir) {
+                                    log::error!("Failed to save commands.toml: {}", e);
+                                }
                             }
+                            self.state.cache.commands_registry = None;
                         }
                     }
-                    self.reopen_scripts_menu(group, selected);
+                    self.reopen_commands_menu(group, selected);
                 }
                 PendingAction::RenameBookmark {
                     path,

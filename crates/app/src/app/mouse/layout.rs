@@ -134,7 +134,7 @@ impl App {
 
         // When a modal is open, forward the wheel event to it instead of the
         // panel underneath — otherwise scrollable modals (InfoModal for the
-        // report-script output, list modals, etc.) never see wheel input and
+        // report-command output, list modals, etc.) never see wheel input and
         // look broken to the user.
         if self.state.has_modal() {
             let kind = if delta < 0 {

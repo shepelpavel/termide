@@ -1,0 +1,4 @@
+[build-release]
+command = "cargo build --release"
+name = "Build release"
+mode = "report"

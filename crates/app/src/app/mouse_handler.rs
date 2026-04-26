@@ -121,10 +121,10 @@ impl App {
             return Ok(());
         }
 
-        // Handle Scripts submenu clicks when it's open
-        if self.state.ui.scripts_submenu.open
+        // Handle Commands submenu clicks when it's open
+        if self.state.ui.commands_submenu.open
             && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
-            && self.handle_scripts_submenu_click(mouse.column, mouse.row)?
+            && self.handle_commands_submenu_click(mouse.column, mouse.row)?
         {
             return Ok(());
         }

@@ -122,17 +122,15 @@ impl App {
             }
         }
 
-        // Invalidate cached scripts registry on any filesystem change in scripts directories.
-        // Scripts live in ~/.local/share/termide/scripts/ or .termide/scripts/.
-        if self.state.cache.scripts_registry.is_some() {
-            let scripts_dir_suffix = std::path::Path::new("scripts");
+        // Invalidate cached commands registry on any filesystem change involving commands.toml.
+        // Commands live in ~/.local/share/termide/commands.toml or .termide/commands.toml.
+        if self.state.cache.commands_registry.is_some() {
+            let commands_toml = std::path::Path::new("commands.toml");
             let invalidate = fs_paths.iter().any(|p| {
-                p.components()
-                    .any(|c| c.as_os_str() == scripts_dir_suffix.as_os_str())
-                    || p.ancestors().any(|a| a.ends_with("scripts"))
+                p.file_name() == Some(commands_toml.as_os_str())
             });
             if invalidate {
-                self.state.cache.scripts_registry = None;
+                self.state.cache.commands_registry = None;
             }
         }
 

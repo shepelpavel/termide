@@ -350,33 +350,48 @@ pub const OPTIONS_SUBMENU_PREFERENCES: usize = 2;
 pub const OPTIONS_SUBMENU_HELP: usize = 3;
 pub const OPTIONS_SUBMENU_QUIT: usize = 4;
 
-/// Special script ID for "Add script..." menu item
-pub const SCRIPT_ADD_NEW: &str = "__add_script__";
-/// Special ID for "Manage scripts" menu item
-pub const SCRIPT_MANAGE: &str = "__manage_scripts__";
+/// Special command ID for "Add command..." menu item
+pub const COMMAND_ADD_NEW: &str = "__add_command__";
+/// Special ID for "Manage commands" menu item
+pub const COMMAND_MANAGE: &str = "__manage_commands__";
 
-/// Get scripts submenu items from ScriptsRegistry
-/// Format script label with type icon prefix (when terminal supports emoji).
+/// Get commands submenu items from CommandsRegistry
+/// Format command label with type icon prefix (when terminal supports emoji).
 /// 💻 = runs in terminal panel, ⚙ = background, 📋 = background with result modal
-fn script_label(script: &termide_config::scripts::ScriptItem) -> String {
+fn command_label(command: &termide_config::commands::CommandItem) -> String {
+    use termide_config::commands::CommandMode;
+
+    let display_name = command
+        .metadata
+        .as_ref()
+        .and_then(|m| m.display_name.as_deref())
+        .unwrap_or(&command.name);
+
+    let key_hint = command
+        .metadata
+        .as_ref()
+        .and_then(|m| m.key.as_deref())
+        .map(|k| format!(" [{}]", k))
+        .unwrap_or_default();
+
     if termide_core::use_emoji_icons() {
-        let icon = if script.is_report {
-            "📋"
-        } else if script.is_background {
-            "⚙"
-        } else {
-            "💻"
+        let icon = match command.mode {
+            CommandMode::Report => "📋",
+            CommandMode::Background => "⚙",
+            CommandMode::Terminal => "💻",
         };
-        format!("{} {}", icon, script.name)
+        format!("{} {}{}", icon, display_name, key_hint)
     } else {
-        script.name.clone()
+        format!("{}{}", display_name, key_hint)
     }
 }
 
-pub fn get_scripts_items(registry: &termide_config::scripts::ScriptsRegistry) -> Vec<DropdownItem> {
+pub fn get_commands_items(
+    registry: &termide_config::commands::CommandsRegistry,
+) -> Vec<DropdownItem> {
     let t = i18n::t();
     let mut items = vec![
-        DropdownItem::new(t.menu_scripts_add(), SCRIPT_ADD_NEW),
+        DropdownItem::new(t.menu_commands_add(), COMMAND_ADD_NEW),
         DropdownItem::separator(),
     ];
 
@@ -385,9 +400,9 @@ pub fn get_scripts_items(registry: &termide_config::scripts::ScriptsRegistry) ->
     let has_global = registry.root_items.iter().any(|s| !s.is_project)
         || registry.groups.iter().any(|g| !g.is_project);
 
-    // Project scripts first (bold)
-    for script in registry.root_items.iter().filter(|s| s.is_project) {
-        items.push(DropdownItem::new(script_label(script), &script.name).with_project());
+    // Project commands first (bold)
+    for command in registry.root_items.iter().filter(|s| s.is_project) {
+        items.push(DropdownItem::new(command_label(command), &command.name).with_project());
     }
     for group in registry.groups.iter().filter(|g| g.is_project) {
         items.push(
@@ -402,25 +417,20 @@ pub fn get_scripts_items(registry: &termide_config::scripts::ScriptsRegistry) ->
         items.push(DropdownItem::separator());
     }
 
-    // Global scripts
-    for script in registry.root_items.iter().filter(|s| !s.is_project) {
-        items.push(DropdownItem::new(script_label(script), &script.name));
+    // Global commands
+    for command in registry.root_items.iter().filter(|s| !s.is_project) {
+        items.push(DropdownItem::new(command_label(command), &command.name));
     }
     for group in registry.groups.iter().filter(|g| !g.is_project) {
         items.push(DropdownItem::new(&group.name, &group.name).with_submenu());
     }
 
-    // If no scripts exist, show "Add script..." item
-    if registry.root_items.is_empty() && registry.groups.is_empty() {
-        items.push(DropdownItem::new(t.menu_scripts_add(), SCRIPT_ADD_NEW));
-    }
-
     items
 }
 
-/// Get scripts nested submenu items for a specific group
-pub fn get_scripts_group_items(
-    registry: &termide_config::scripts::ScriptsRegistry,
+/// Get commands nested submenu items for a specific group
+pub fn get_commands_group_items(
+    registry: &termide_config::commands::CommandsRegistry,
     group_name: &str,
 ) -> Vec<DropdownItem> {
     registry
@@ -431,9 +441,9 @@ pub fn get_scripts_group_items(
             group
                 .items
                 .iter()
-                .map(|script| {
-                    let mut item = DropdownItem::new(script_label(script), &script.name);
-                    if script.is_project {
+                .map(|command| {
+                    let mut item = DropdownItem::new(command_label(command), &command.name);
+                    if command.is_project {
                         item = item.with_project();
                     }
                     item

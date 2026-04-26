@@ -3259,6 +3259,7 @@ dependencies = [
  "chrono",
  "crossterm 0.28.1",
  "dirs",
+ "log",
  "serde",
  "termide-keyboard",
  "toml",

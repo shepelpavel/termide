@@ -6,7 +6,7 @@
 pub mod bookmarks;
 pub mod constants;
 pub mod keybindings;
-pub mod scripts;
+pub mod commands;
 mod settings;
 mod xdg;
 
@@ -141,11 +141,6 @@ impl Config {
     /// Get path to themes directory.
     pub fn get_themes_dir() -> Result<PathBuf> {
         Ok(get_config_dir()?.join("themes"))
-    }
-
-    /// Get path to scripts directory for user scripts.
-    pub fn get_scripts_dir() -> Result<PathBuf> {
-        Ok(get_data_dir()?.join("scripts"))
     }
 
     /// Check if path is the config file.

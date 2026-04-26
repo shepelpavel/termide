@@ -277,8 +277,35 @@ pub trait Translation: Send + Sync {
     // Menu
     fn menu_sessions(&self) -> &str;
     fn menu_windows(&self) -> &str;
-    fn menu_scripts(&self) -> &str;
-    fn menu_scripts_add(&self) -> &str;
+    fn menu_commands(&self) -> &str;
+    fn menu_commands_add(&self) -> &str;
+
+    // Command parameters modal
+    fn command_params_title(&self) -> &str;
+    fn command_params_run(&self) -> &str;
+    fn command_params_cancel(&self) -> &str;
+    fn command_run_label(&self) -> &str;
+
+    // Command config modal (create/edit)
+    fn command_config_label_name(&self) -> &str;
+    fn command_config_label_command(&self) -> &str;
+    fn command_config_label_group(&self) -> &str;
+    fn command_config_label_display_name(&self) -> &str;
+    fn command_config_label_mode(&self) -> &str;
+    fn command_config_label_hotkey(&self) -> &str;
+    fn command_config_label_project(&self) -> &str;
+    fn command_config_project_checkbox(&self) -> &str;
+    fn command_config_hotkey_hint(&self) -> &str;
+    fn command_config_hotkey_invalid(&self) -> &str;
+    fn command_config_button_create(&self) -> &str;
+    fn command_config_button_save(&self) -> &str;
+    fn command_config_button_edit_file(&self) -> &str;
+    fn command_config_button_cancel(&self) -> &str;
+    fn command_config_mode_terminal(&self) -> &str;
+    fn command_config_mode_background(&self) -> &str;
+    fn command_config_mode_report(&self) -> &str;
+    fn command_config_group_root(&self) -> &str;
+
     fn menu_options(&self) -> &str;
     fn menu_quit(&self) -> &str;
     fn menu_bookmarks(&self) -> &str;
@@ -550,7 +577,7 @@ pub trait Translation: Send + Sync {
     fn op_type_move_upload(&self) -> &str;
     fn op_type_move_download(&self) -> &str;
     fn op_type_rename(&self) -> &str;
-    fn op_type_script(&self) -> &str;
+    fn op_type_command(&self) -> &str;
     fn op_type_scanning(&self) -> &str;
     fn op_found_count(&self, count: usize) -> String;
     fn op_files_progress(&self, current: usize, total: usize) -> String;

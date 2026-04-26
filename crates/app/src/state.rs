@@ -77,12 +77,12 @@ impl std::fmt::Debug for GitOperationHandle {
     }
 }
 
-/// Result of background script operation (.report. scripts)
+/// Result of background command operation (.report. commands)
 #[derive(Debug)]
-pub struct ScriptOperationResult {
-    /// Script display name
-    pub script_name: String,
-    /// Whether the script succeeded (exit code 0)
+pub struct CommandOperationResult {
+    /// Command display name
+    pub command_name: String,
+    /// Whether the command succeeded (exit code 0)
     pub success: bool,
     /// Standard output
     pub stdout: String,
@@ -90,27 +90,27 @@ pub struct ScriptOperationResult {
     pub stderr: String,
 }
 
-/// Handle for background script operation
-pub struct ScriptOperationHandle {
+/// Handle for background command operation
+pub struct CommandOperationHandle {
     /// Receiver for operation result
-    pub receiver: mpsc::Receiver<ScriptOperationResult>,
-    /// Script display name
-    pub script_name: String,
+    pub receiver: mpsc::Receiver<CommandOperationResult>,
+    /// Command display name
+    pub command_name: String,
     /// Operation ID for tracking in Operations panel
     pub operation_id: Option<termide_file_ops::OperationId>,
-    /// Process ID for killing the script on cancel
+    /// Process ID for killing the command on cancel
     pub pid: Option<u32>,
 }
 
-/// Kill a background script process by PID (cross-platform).
+/// Kill a background command process by PID (cross-platform).
 /// On Unix, uses negative PID to kill the entire process session.
 /// Requires the child to have been started with `setsid()` via `pre_exec`
-/// (done in `script_command()`) so that `-pid` targets only the child's session.
+/// (done in `build_command_command()`) so that `-pid` targets only the child's session.
 pub fn kill_process_tree(pid: u32) {
     #[cfg(unix)]
     {
         // Kill the entire session (negative PID) with SIGKILL.
-        // Works because script_command() calls setsid() in pre_exec.
+        // Works because build_command_command() calls setsid() in pre_exec.
         unsafe {
             libc::kill(-(pid as i32), libc::SIGKILL);
         }
@@ -124,10 +124,10 @@ pub fn kill_process_tree(pid: u32) {
     }
 }
 
-impl std::fmt::Debug for ScriptOperationHandle {
+impl std::fmt::Debug for CommandOperationHandle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ScriptOperationHandle")
-            .field("script_name", &self.script_name)
+        f.debug_struct("CommandOperationHandle")
+            .field("command_name", &self.command_name)
             .finish_non_exhaustive()
     }
 }
@@ -242,15 +242,15 @@ pub struct StashState {
     pub include_untracked: bool,
 }
 
-/// Cache state — menus, scripts registry, disk space.
+/// Cache state — menus, commands registry, disk space.
 #[derive(Debug, Default)]
 pub struct CacheState {
     /// Cached shell list for the shell picker submenu (populated on open, cleared on close).
     pub shells: Vec<termide_panel_terminal::shell_utils::ShellInfo>,
     /// Cached disk space for the active panel (updated on tick, used in status bar rendering).
     pub disk_space: Option<termide_system_monitor::DiskSpaceInfo>,
-    /// Cached scripts registry (invalidated on menu close and filesystem changes)
-    pub scripts_registry: Option<termide_config::scripts::ScriptsRegistry>,
+    /// Cached commands registry (invalidated on menu close and filesystem changes)
+    pub commands_registry: Option<termide_config::commands::CommandsRegistry>,
 }
 
 /// Global application state
@@ -274,10 +274,10 @@ pub struct AppState {
     pub dir_size_receiver: Option<mpsc::Receiver<DirSizeResult>>,
     /// Handle for background git operation (allows cancellation)
     pub git_operation_handle: Option<GitOperationHandle>,
-    /// Handles for background script operations (.report. scripts)
-    pub script_operation_handles: Vec<ScriptOperationHandle>,
-    /// Handles for background scripts (.bg.) tracked in Operations panel: (op_id, receiver, pid)
-    pub bg_script_handles: Vec<(termide_file_ops::OperationId, mpsc::Receiver<()>, u32)>,
+    /// Handles for background command operations (.report. commands)
+    pub command_operation_handles: Vec<CommandOperationHandle>,
+    /// Handles for background commands (.bg.) tracked in Operations panel: (op_id, receiver, pid)
+    pub bg_command_handles: Vec<(termide_file_ops::OperationId, mpsc::Receiver<()>, u32)>,
     /// Pending editor download via OperationManager (replaces download_operation for editor opens)
     pub pending_editor_download: Option<PendingEditorDownload>,
     /// Grouped state for an in-flight batch operation (upload/delete/tracking).
@@ -347,7 +347,7 @@ pub struct AppState {
     // Batch-operation fields moved to `batch: BatchOperationState` above.
     /// Cached shell list for the shell picker submenu (populated on open, cleared on close).
     pub stash: StashState,
-    /// Cached menus, scripts registry, disk space.
+    /// Cached menus, commands registry, disk space.
     pub cache: CacheState,
 }
 
@@ -396,8 +396,8 @@ impl AppState {
             pending_action: None,
             dir_size_receiver: None,
             git_operation_handle: None,
-            script_operation_handles: Vec::new(),
-            bg_script_handles: Vec::new(),
+            command_operation_handles: Vec::new(),
+            bg_command_handles: Vec::new(),
             pending_editor_download: None,
             batch: BatchOperationState {
                 id_counter: u64::MAX / 2,
@@ -483,7 +483,7 @@ impl AppState {
         self.ui.selected_dropdown_item = 0;
         self.ui.close_all_submenus();
         self.cache.shells.clear();
-        self.cache.scripts_registry = None;
+        self.cache.commands_registry = None;
     }
 
     /// Close resource indicator modal (CPU/RAM/Net/Calendar) and clear refresh state.
@@ -511,10 +511,13 @@ impl AppState {
         self.ui.tools_submenu.open();
     }
 
-    /// Open Scripts submenu
-    pub fn open_scripts_submenu(&mut self) {
+    /// Open Commands submenu
+    pub fn open_commands_submenu(&mut self) {
         self.ui.close_all_submenus();
-        self.ui.scripts_submenu.open();
+        self.ui.commands_submenu.open();
+        // Force fresh load — the cache may have been populated before the
+        // filesystem made command files visible (FUSE/autofs on NixOS, etc.).
+        self.cache.commands_registry = None;
     }
 
     /// Close submenu and all nested menus
@@ -547,23 +550,23 @@ impl AppState {
         self.cache.shells.clear();
     }
 
-    /// Close Scripts submenu
-    pub fn close_scripts_submenu(&mut self) {
-        self.ui.scripts_submenu.close();
-        self.ui.scripts_nested.close();
-        self.ui.current_scripts_group = None;
+    /// Close Commands submenu
+    pub fn close_commands_submenu(&mut self) {
+        self.ui.commands_submenu.close();
+        self.ui.commands_nested.close();
+        self.ui.current_commands_group = None;
     }
 
-    /// Open Scripts nested submenu (for a group)
-    pub fn open_scripts_nested_submenu(&mut self, group_name: String) {
-        self.ui.scripts_nested.open();
-        self.ui.current_scripts_group = Some(group_name);
+    /// Open Commands nested submenu (for a group)
+    pub fn open_commands_nested_submenu(&mut self, group_name: String) {
+        self.ui.commands_nested.open();
+        self.ui.current_commands_group = Some(group_name);
     }
 
-    /// Close Scripts nested submenu
-    pub fn close_scripts_nested_submenu(&mut self) {
-        self.ui.scripts_nested.close();
-        self.ui.current_scripts_group = None;
+    /// Close Commands nested submenu
+    pub fn close_commands_nested_submenu(&mut self) {
+        self.ui.commands_nested.close();
+        self.ui.current_commands_group = None;
     }
 
     /// Open nested submenu (e.g., Themes list)
@@ -928,7 +931,7 @@ impl AppState {
         batch_id
     }
 
-    /// Generate a synthetic OperationId for non-OperationManager use (scripts, etc.).
+    /// Generate a synthetic OperationId for non-OperationManager use (commands, etc.).
     pub fn next_synthetic_operation_id(&mut self) -> termide_file_ops::OperationId {
         self.batch.id_counter = self.batch.id_counter.wrapping_add(1);
         termide_file_ops::OperationId::new(self.batch.id_counter)

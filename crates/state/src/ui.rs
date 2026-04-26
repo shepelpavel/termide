@@ -231,12 +231,12 @@ pub struct UiState {
     pub tools_submenu: SubmenuState,
     /// Tools nested submenu state (shell picker inside Terminal)
     pub tools_nested: SubmenuState,
-    /// Scripts submenu state
-    pub scripts_submenu: SubmenuState,
-    /// Scripts nested submenu state (for subdirectory groups)
-    pub scripts_nested: SubmenuState,
-    /// Current script group name (for nested submenu)
-    pub current_scripts_group: Option<String>,
+    /// Commands submenu state
+    pub commands_submenu: SubmenuState,
+    /// Commands nested submenu state (for groups)
+    pub commands_nested: SubmenuState,
+    /// Current command group name (for nested submenu)
+    pub current_commands_group: Option<String>,
     /// Bookmarks submenu state
     pub bookmarks_submenu: SubmenuState,
     /// Bookmarks nested submenu state (for groups)
@@ -260,7 +260,7 @@ pub struct UiState {
 }
 
 impl UiState {
-    /// Close all main-level submenus (sessions, tools, options, scripts, bookmarks)
+    /// Close all main-level submenus (sessions, tools, options, commands, bookmarks)
     /// and their nested submenus. Use before opening a specific submenu.
     pub fn close_all_submenus(&mut self) {
         self.sessions_submenu.close();
@@ -268,9 +268,9 @@ impl UiState {
         self.tools_nested.close();
         self.options_submenu.close();
         self.nested_submenu.close();
-        self.scripts_submenu.close();
-        self.scripts_nested.close();
-        self.current_scripts_group = None;
+        self.commands_submenu.close();
+        self.commands_nested.close();
+        self.current_commands_group = None;
         self.bookmarks_submenu.close();
         self.bookmarks_nested.close();
         self.current_bookmarks_group = None;
@@ -413,9 +413,9 @@ mod tests {
         ui.tools_submenu.open();
         ui.tools_nested.open();
         ui.options_submenu.open();
-        ui.scripts_submenu.open();
+        ui.commands_submenu.open();
         ui.bookmarks_submenu.open();
-        ui.current_scripts_group = Some("test".to_string());
+        ui.current_commands_group = Some("test".to_string());
         ui.current_bookmarks_group = Some("test".to_string());
 
         ui.close_all_submenus();
@@ -424,9 +424,9 @@ mod tests {
         assert!(!ui.tools_submenu.open);
         assert!(!ui.tools_nested.open);
         assert!(!ui.options_submenu.open);
-        assert!(!ui.scripts_submenu.open);
+        assert!(!ui.commands_submenu.open);
         assert!(!ui.bookmarks_submenu.open);
-        assert!(ui.current_scripts_group.is_none());
+        assert!(ui.current_commands_group.is_none());
         assert!(ui.current_bookmarks_group.is_none());
     }
 

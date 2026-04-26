@@ -13,11 +13,11 @@ use termide_panel_file_manager::FileManager;
 use termide_panel_terminal::Terminal;
 use termide_theme::Theme;
 use termide_ui_render::{
-    get_bookmarks_group_items, get_bookmarks_items, get_menu_item_x_position, get_options_items,
-    get_scripts_group_items, get_scripts_items, get_sessions_items, get_shell_items,
+    get_bookmarks_group_items, get_bookmarks_items, get_commands_group_items, get_commands_items,
+    get_menu_item_x_position, get_options_items, get_sessions_items, get_shell_items,
     get_tools_items, render_collapsed_panel, render_dividers, render_expanded_panel, render_menu,
     Dropdown, ExpandedPanelParams, LanguageDropdown, MenuRenderParams, ThemeDropdown,
-    BOOKMARKS_MENU_INDEX, OPTIONS_MENU_INDEX, SCRIPTS_MENU_INDEX, SESSIONS_MENU_INDEX,
+    BOOKMARKS_MENU_INDEX, COMMANDS_MENU_INDEX, OPTIONS_MENU_INDEX, SESSIONS_MENU_INDEX,
     WINDOWS_MENU_INDEX,
 };
 
@@ -94,29 +94,29 @@ fn render_dropdowns_and_modals(
         }
     }
 
-    // Render Scripts submenu if open
+    // Render Commands submenu if open
     if state.ui.menu_open
-        && state.ui.selected_menu_item == Some(SCRIPTS_MENU_INDEX)
-        && state.ui.scripts_submenu.open
+        && state.ui.selected_menu_item == Some(COMMANDS_MENU_INDEX)
+        && state.ui.commands_submenu.open
     {
-        // Load scripts registry (use cache if available)
-        let registry = if let Some(ref cached) = state.cache.scripts_registry {
+        // Load commands registry (use cache if available)
+        let registry = if let Some(ref cached) = state.cache.commands_registry {
             Some(cached.clone())
         } else {
             let loaded =
-                termide_config::scripts::ScriptsRegistry::load_merged(Some(&state.project_root));
-            state.cache.scripts_registry = loaded.clone();
+                termide_config::commands::CommandsRegistry::load_merged(Some(&state.project_root));
+            state.cache.commands_registry = loaded.clone();
             loaded
         };
         if let Some(registry) = registry {
-            let menu_x = get_menu_item_x_position(SCRIPTS_MENU_INDEX);
+            let menu_x = get_menu_item_x_position(COMMANDS_MENU_INDEX);
             let dropdown_y = 1_u16; // Below menu bar
 
-            // Render Scripts submenu
-            let scripts_items = get_scripts_items(&registry);
+            // Render Commands submenu
+            let commands_items = get_commands_items(&registry);
             let dropdown = Dropdown::new(
-                &scripts_items,
-                state.ui.scripts_submenu.selected,
+                &commands_items,
+                state.ui.commands_submenu.selected,
                 menu_x,
                 dropdown_y,
                 theme,
@@ -124,18 +124,18 @@ fn render_dropdowns_and_modals(
             dropdown.render(frame.buffer_mut());
 
             // If a group is selected and nested submenu is open
-            if state.ui.scripts_nested.open {
-                if let Some(group_name) = &state.ui.current_scripts_group {
-                    let nested_items = get_scripts_group_items(&registry, group_name);
+            if state.ui.commands_nested.open {
+                if let Some(group_name) = &state.ui.current_commands_group {
+                    let nested_items = get_commands_group_items(&registry, group_name);
                     if !nested_items.is_empty() {
-                        // Calculate position: to the right of scripts dropdown
+                        // Calculate position: to the right of commands dropdown
                         let nested_x = menu_x + dropdown.width();
                         // Align with selected group item (inside border)
-                        let nested_y = dropdown_y + 1 + state.ui.scripts_submenu.selected as u16;
+                        let nested_y = dropdown_y + 1 + state.ui.commands_submenu.selected as u16;
 
                         let nested_dropdown = Dropdown::new(
                             &nested_items,
-                            state.ui.scripts_nested.selected,
+                            state.ui.commands_nested.selected,
                             nested_x,
                             nested_y,
                             theme,

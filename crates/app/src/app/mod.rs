@@ -593,9 +593,9 @@ impl App {
                         // Check background git operation result (push/pull)
                         self.check_git_operation_result();
 
-                        // Check background script operation result (.report. scripts)
-                        self.check_script_operation_result();
-                        self.check_bg_script_completion();
+                        // Check background command operation result (.report. commands)
+                        self.check_command_operation_result();
+                        self.check_bg_command_completion();
 
                         // Poll unified operation manager for events (new system)
                         self.poll_operation_manager();

@@ -59,13 +59,13 @@ impl OperationSnapshot {
     /// Card height for this operation based on its type and state.
     /// Type label and percent are in the border title, not content lines.
     pub fn card_height(&self) -> u16 {
-        let is_script = self.op_type.is_script();
+        let is_command = self.op_type.is_command();
         let has_dest = !self.dest.is_empty();
         let has_data = !self.is_scanning && self.op_type.has_data_progress();
         // Content lines:
-        //   Script: elapsed(1) only (name is in border title)
+        //   Command: elapsed(1) only (name is in border title)
         //   File op: bar(1) + source(1) + dest(?) + files(1) + data+speed(?) + elapsed(1)
-        let content_lines: u16 = if is_script {
+        let content_lines: u16 = if is_command {
             has_dest as u16 + 1
         } else {
             1 // progress bar

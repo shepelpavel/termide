@@ -12,8 +12,8 @@ use termide_i18n as i18n;
 use termide_theme::Theme;
 use termide_ui_render::{
     get_bookmarks_group_items, get_bookmarks_items, get_menu_item_x_position, get_options_items,
-    get_scripts_group_items, get_scripts_items, get_sessions_items, get_shell_items,
-    get_tools_items, BOOKMARKS_MENU_INDEX, OPTIONS_MENU_INDEX, SCRIPTS_MENU_INDEX,
+    get_commands_group_items, get_commands_items, get_sessions_items, get_shell_items,
+    get_tools_items, BOOKMARKS_MENU_INDEX, OPTIONS_MENU_INDEX, COMMANDS_MENU_INDEX,
     SESSIONS_MENU_INDEX, WINDOWS_MENU_INDEX,
 };
 
@@ -300,10 +300,10 @@ impl App {
         Ok(true)
     }
 
-    /// Handle click on Scripts submenu dropdown
+    /// Handle click on Commands submenu dropdown
     /// Returns true if click was handled
-    pub(in crate::app) fn handle_scripts_submenu_click(&mut self, x: u16, y: u16) -> Result<bool> {
-        let registry = match self.scripts_registry() {
+    pub(in crate::app) fn handle_commands_submenu_click(&mut self, x: u16, y: u16) -> Result<bool> {
+        let registry = match self.commands_registry() {
             Some(r) => r,
             None => {
                 self.state.close_menu();
@@ -312,12 +312,12 @@ impl App {
         };
 
         // If nested submenu is open, handle clicks on it first
-        if self.state.ui.scripts_nested.open {
-            if let Some(group_name) = self.state.ui.current_scripts_group.as_ref() {
-                let nested_items = get_scripts_group_items(&registry, group_name);
+        if self.state.ui.commands_nested.open {
+            if let Some(group_name) = self.state.ui.current_commands_group.as_ref() {
+                let nested_items = get_commands_group_items(&registry, group_name);
                 if !nested_items.is_empty() {
-                    let menu_x = get_menu_item_x_position(SCRIPTS_MENU_INDEX);
-                    let parent_items = get_scripts_items(&registry);
+                    let menu_x = get_menu_item_x_position(COMMANDS_MENU_INDEX);
+                    let parent_items = get_commands_items(&registry);
                     let parent_width = parent_items
                         .iter()
                         .map(|i| i.label.width())
@@ -325,23 +325,23 @@ impl App {
                         .unwrap_or(10) as u16
                         + 4;
                     let nested_x = menu_x + parent_width;
-                    let nested_y = 2 + self.state.ui.scripts_submenu.selected as u16;
+                    let nested_y = 2 + self.state.ui.commands_submenu.selected as u16;
                     if let Some(index) = hit_dropdown_item(x, y, nested_x, nested_y, &nested_items)
                     {
-                        self.state.ui.scripts_nested.selected = index;
-                        self.execute_scripts_nested_action()?;
+                        self.state.ui.commands_nested.selected = index;
+                        self.execute_commands_nested_action()?;
                         return Ok(true);
                     }
                 }
             }
         }
 
-        // Check click on Scripts main dropdown
-        let menu_x = get_menu_item_x_position(SCRIPTS_MENU_INDEX);
-        let scripts_items = get_scripts_items(&registry);
-        if let Some(index) = hit_dropdown_item(x, y, menu_x, 1, &scripts_items) {
-            self.state.ui.scripts_submenu.selected = index;
-            self.execute_scripts_submenu_action()?;
+        // Check click on Commands main dropdown
+        let menu_x = get_menu_item_x_position(COMMANDS_MENU_INDEX);
+        let commands_items = get_commands_items(&registry);
+        if let Some(index) = hit_dropdown_item(x, y, menu_x, 1, &commands_items) {
+            self.state.ui.commands_submenu.selected = index;
+            self.execute_commands_submenu_action()?;
             return Ok(true);
         }
 

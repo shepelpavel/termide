@@ -45,6 +45,13 @@ impl HotkeyTable {
         }
     }
 
+    /// Insert an action with a raw key binding string (e.g. "Ctrl+Shift+D").
+    pub fn insert_raw(&mut self, action: impl Into<String>, key_str: &str) {
+        if let Ok(parsed) = termide_config::parse_keybinding(key_str) {
+            self.bindings.insert(action.into(), vec![parsed]);
+        }
+    }
+
     /// Check if a key event matches the given action name.
     ///
     /// Checks both the raw key and its Cyrillic→Latin normalized alternative,

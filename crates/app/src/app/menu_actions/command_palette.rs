@@ -195,7 +195,27 @@ impl App {
 
         let (actions, entries): (Vec<&str>, Vec<CommandEntry>) = commands.into_iter().unzip();
 
-        self.command_palette_actions = Some(actions.into_iter().map(String::from).collect());
+        let mut actions: Vec<String> = actions.into_iter().map(String::from).collect();
+        let mut entries = entries;
+
+        // Add commands from registry
+        if let Some(registry) = self.commands_registry() {
+            for (command, key_str) in registry.commands_with_hotkeys() {
+                let display_name = command
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| m.display_name.as_deref())
+                    .unwrap_or(&command.name);
+                actions.push(format!("run_command:{}", command.name));
+                entries.push(CommandEntry {
+                    label: format!("Run command: {}", display_name),
+                    category: "Commands",
+                    keybinding: key_str.to_string(),
+                });
+            }
+        }
+
+        self.command_palette_actions = Some(actions);
 
         let modal = CommandPaletteModal::new(entries);
         self.state.set_pending_action(

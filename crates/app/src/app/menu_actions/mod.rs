@@ -7,9 +7,9 @@
 
 mod bookmarks;
 mod command_palette;
+mod commands;
 mod outline;
 mod panel_action;
-mod scripts;
 mod sessions;
 mod settings;
 mod stash;
@@ -23,9 +23,9 @@ use crate::state::{ActiveModal, PendingAction};
 use termide_i18n as i18n;
 use termide_theme::Theme;
 use termide_ui_render::menu::{
-    BOOKMARKS_MENU_INDEX, INDICATOR_CLOCK_INDEX, INDICATOR_CPU_INDEX, INDICATOR_DISK_INDEX,
-    INDICATOR_NET_INDEX, INDICATOR_RAM_INDEX, MENU_TOTAL_COUNT, OPTIONS_MENU_INDEX,
-    SCRIPTS_MENU_INDEX, SESSIONS_MENU_INDEX, WINDOWS_MENU_INDEX,
+    BOOKMARKS_MENU_INDEX, COMMANDS_MENU_INDEX, INDICATOR_CLOCK_INDEX, INDICATOR_CPU_INDEX,
+    INDICATOR_DISK_INDEX, INDICATOR_NET_INDEX, INDICATOR_RAM_INDEX, MENU_TOTAL_COUNT,
+    OPTIONS_MENU_INDEX, SESSIONS_MENU_INDEX, WINDOWS_MENU_INDEX,
 };
 use termide_ui_render::{
     OPTIONS_SUBMENU_HELP, OPTIONS_SUBMENU_LANGUAGE, OPTIONS_SUBMENU_PREFERENCES,
@@ -92,13 +92,15 @@ fn navigate_submenu(
 }
 
 impl App {
-    /// Get cached ScriptsRegistry, loading from disk on first access.
-    pub(super) fn scripts_registry(&mut self) -> Option<termide_config::scripts::ScriptsRegistry> {
-        if let Some(ref reg) = self.state.cache.scripts_registry {
+    /// Get cached CommandsRegistry, loading from disk on first access.
+    pub(super) fn commands_registry(
+        &mut self,
+    ) -> Option<termide_config::commands::CommandsRegistry> {
+        if let Some(ref reg) = self.state.cache.commands_registry {
             return Some(reg.clone());
         }
-        let reg = termide_config::scripts::ScriptsRegistry::load_merged(Some(&self.project_root));
-        self.state.cache.scripts_registry = reg.clone();
+        let reg = termide_config::commands::CommandsRegistry::load_merged(Some(&self.project_root));
+        self.state.cache.commands_registry = reg.clone();
         reg
     }
 
@@ -148,8 +150,8 @@ impl App {
                 WINDOWS_MENU_INDEX => {
                     self.state.open_tools_submenu();
                 }
-                SCRIPTS_MENU_INDEX => {
-                    self.state.open_scripts_submenu();
+                COMMANDS_MENU_INDEX => {
+                    self.state.open_commands_submenu();
                 }
                 BOOKMARKS_MENU_INDEX => {
                     self.state.open_bookmarks_submenu();
