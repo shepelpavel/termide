@@ -22,6 +22,12 @@ use termide_git::{self as git};
 use termide_theme::Theme;
 use termide_ui::ScrollBar;
 
+use regex::Regex;
+use std::sync::LazyLock;
+
+static HUNK_HEADER_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@").unwrap());
+
 /// Blend two colors together.
 /// `ratio` 0.0 = all color1, 1.0 = all color2
 fn blend_colors(color1: Color, color2: Color, ratio: f32) -> Color {
@@ -574,20 +580,16 @@ impl GitDiffPanel {
 
     /// Parse hunk header to get start line numbers
     fn parse_hunk_header(header: &str) -> (usize, usize) {
-        // Format: @@ -old_start,old_count +new_start,new_count @@
-        let re = regex::Regex::new(r"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@").ok();
-        if let Some(re) = re {
-            if let Some(caps) = re.captures(header) {
-                let old_start: usize = caps
-                    .get(1)
-                    .and_then(|m| m.as_str().parse().ok())
-                    .unwrap_or(1);
-                let new_start: usize = caps
-                    .get(2)
-                    .and_then(|m| m.as_str().parse().ok())
-                    .unwrap_or(1);
-                return (old_start, new_start);
-            }
+        if let Some(caps) = HUNK_HEADER_RE.captures(header) {
+            let old_start: usize = caps
+                .get(1)
+                .and_then(|m| m.as_str().parse().ok())
+                .unwrap_or(1);
+            let new_start: usize = caps
+                .get(2)
+                .and_then(|m| m.as_str().parse().ok())
+                .unwrap_or(1);
+            return (old_start, new_start);
         }
         (1, 1)
     }

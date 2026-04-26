@@ -34,8 +34,8 @@ pub struct MenuRenderParams<'a> {
     pub battery: Option<BatteryInfo>,
 }
 
-/// Get menu items with translations
-pub fn get_menu_items() -> Vec<String> {
+/// Get menu items with translations (cached, allocated once).
+static CACHED_MENU_ITEMS: std::sync::LazyLock<Vec<String>> = std::sync::LazyLock::new(|| {
     let t = i18n::t();
     vec![
         t.menu_bookmarks().to_string(),
@@ -44,6 +44,11 @@ pub fn get_menu_items() -> Vec<String> {
         t.menu_windows().to_string(),
         t.menu_options().to_string(),
     ]
+});
+
+/// Get menu items with translations
+pub fn get_menu_items() -> &'static Vec<String> {
+    &CACHED_MENU_ITEMS
 }
 
 /// Number of menu items
@@ -93,24 +98,27 @@ pub struct MenuLayout {
 }
 
 impl MenuLayout {
-    pub fn compute() -> Self {
-        let menu_items = get_menu_items();
-        let mut x_positions = [0u16; MENU_ITEM_COUNT];
-        let mut widths = [0u16; MENU_ITEM_COUNT];
-        let mut x = 1u16; // initial " " padding
+    pub fn compute() -> &'static Self {
+        static CACHED_LAYOUT: std::sync::LazyLock<MenuLayout> = std::sync::LazyLock::new(|| {
+            let menu_items = get_menu_items();
+            let mut x_positions = [0u16; MENU_ITEM_COUNT];
+            let mut widths = [0u16; MENU_ITEM_COUNT];
+            let mut x = 1u16; // initial " " padding
 
-        for (i, item) in menu_items.iter().enumerate() {
-            x_positions[i] = x;
-            widths[i] = str_display_width(item) as u16;
-            x += widths[i] + 2; // item + "  " separator
-        }
+            for (i, item) in menu_items.iter().enumerate() {
+                x_positions[i] = x;
+                widths[i] = str_display_width(item) as u16;
+                x += widths[i] + 2; // item + "  " separator
+            }
 
-        let total_width = x as usize - 1; // subtract trailing separator overshoot
-        Self {
-            x_positions,
-            widths,
-            total_width,
-        }
+            let total_width = x as usize - 1; // subtract trailing separator overshoot
+            MenuLayout {
+                x_positions,
+                widths,
+                total_width,
+            }
+        });
+        &CACHED_LAYOUT
     }
 }
 

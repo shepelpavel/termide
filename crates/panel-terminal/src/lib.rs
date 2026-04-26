@@ -104,6 +104,9 @@ pub struct Terminal {
     hotkeys: HotkeyTable,
     /// Pointer of the last Arc<Config> used to build hotkeys (skip rebuild when unchanged)
     last_config_ptr: usize,
+    /// Cached foreground command name (avoids /proc reads on every render frame).
+    /// Mutex for interior mutability from `&self` in `title()`.
+    cached_fg_command: std::sync::Mutex<(String, std::time::Instant)>,
 }
 
 /// Encode key modifiers as an xterm CSI parameter for modified arrow / Home /
@@ -253,6 +256,10 @@ impl Terminal {
             color_preview: None,
             hotkeys: HotkeyTable::default(),
             last_config_ptr: 0,
+            cached_fg_command: std::sync::Mutex::new((
+                "shell".to_string(),
+                std::time::Instant::now(),
+            )),
         }
     }
 
@@ -1108,8 +1115,22 @@ impl Terminal {
         self.has_new_data.swap(false, Ordering::AcqRel)
     }
 
-    /// Get the name of the currently running foreground command
+    /// Get the name of the currently running foreground command (cached, 500ms TTL).
     fn get_foreground_command(&self) -> String {
+        const FG_COMMAND_TTL: std::time::Duration = std::time::Duration::from_millis(500);
+
+        let mut cache = self.cached_fg_command.lock().unwrap();
+        if cache.1.elapsed() < FG_COMMAND_TTL {
+            return cache.0.clone();
+        }
+
+        let result = self.read_foreground_command_raw();
+        *cache = (result.clone(), std::time::Instant::now());
+        result
+    }
+
+    /// Read foreground command from /proc (Unix) or process snapshot (Windows).
+    fn read_foreground_command_raw(&self) -> String {
         if let Some(pid) = self.shell_pid {
             #[cfg(unix)]
             {

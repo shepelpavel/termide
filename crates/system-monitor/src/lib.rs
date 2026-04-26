@@ -93,6 +93,8 @@ pub struct SystemMonitor {
     mount_cache: Mutex<(Option<MountCacheEntry>, Instant)>,
     /// Cached process lists for CPU/RAM modals.
     process_cache: Mutex<(Option<ProcessCacheEntry>, Instant)>,
+    /// Cached all-disk info for Disk modal.
+    all_disk_cache: Mutex<(Vec<DiskSpaceInfo>, Instant)>,
 }
 
 /// How often the cached battery reading is refreshed.
@@ -107,6 +109,9 @@ const PROCESS_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(2)
 
 /// How often the cached network process list is refreshed.
 const NET_PROCESS_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// How often the cached all-disk list is refreshed.
+const ALL_DISK_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(5);
 
 // Manual Debug impl because Networks doesn't implement Debug
 impl std::fmt::Debug for SystemMonitor {
@@ -174,6 +179,12 @@ impl SystemMonitor {
                 Vec::new(),
                 Instant::now()
                     .checked_sub(NET_PROCESS_CACHE_TTL)
+                    .unwrap_or_else(Instant::now),
+            )),
+            all_disk_cache: Mutex::new((
+                Vec::new(),
+                Instant::now()
+                    .checked_sub(ALL_DISK_CACHE_TTL)
                     .unwrap_or_else(Instant::now),
             )),
         }
@@ -498,6 +509,18 @@ impl SystemMonitor {
         });
         processes.truncate(n);
         processes
+    }
+
+    /// Cached version of [`get_all_disk_space_info()`] with 5s TTL.
+    pub fn get_all_disk_space_info_cached(&self) -> Vec<DiskSpaceInfo> {
+        let mut guard = match self.all_disk_cache.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        if guard.1.elapsed() >= ALL_DISK_CACHE_TTL {
+            *guard = (get_all_disk_space_info(), Instant::now());
+        }
+        guard.0.clone()
     }
 }
 

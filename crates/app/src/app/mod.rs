@@ -578,14 +578,8 @@ impl App {
                         // Poll unified watcher for git and filesystem events
                         self.poll_watcher_events();
 
-                        // Check async git status results for FileManager panels
-                        self.check_fm_git_status_async();
-
-                        // Check async directory reload results (watcher-triggered)
-                        self.check_fm_async_reload();
-
-                        // Check pending git diff updates (debounced)
-                        self.check_pending_git_diff_updates();
+                        // Single-pass: async git status, async dir reload, pending git diff
+                        self.check_background_panel_updates();
 
                         // Check background git operation result (push/pull)
                         self.check_git_operation_result();

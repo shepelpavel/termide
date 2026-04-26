@@ -48,38 +48,29 @@ impl App {
         }
     }
 
-    /// Check async git status results for all FileManager panels.
-    /// Uses try_recv (O(1)) so it's safe to run for collapsed panels too —
-    /// otherwise the receiver never drains and the spinner hangs forever.
-    pub(super) fn check_fm_git_status_async(&mut self) {
+    /// Single-pass check of all background panel updates:
+    /// - async git status results (FileManager panels)
+    /// - async directory reloads (FileManager panels, watcher-triggered)
+    /// - pending git diff updates and async git diff results (all panels)
+    ///
+    /// Consolidated into one panel iteration to avoid 3 separate `iter_all_panels_mut()` passes.
+    pub(super) fn check_background_panel_updates(&mut self) {
         for panel in self.layout_manager.iter_all_panels_mut() {
+            // FileManager: drain async git status receiver
             if let Some(fm) = panel.as_file_manager_mut() {
                 if fm.check_git_status_async() {
                     self.state.needs_redraw = true;
                 }
             }
-        }
-    }
-
-    /// Check for completed async directory reloads (watcher-triggered).
-    pub(super) fn check_fm_async_reload(&mut self) {
-        for panel in self.layout_manager.iter_all_panels_mut() {
+            // FileManager: drain async directory reload receiver
             if let Some(fm) = panel.as_file_manager_mut() {
                 if fm.check_async_reload() {
                     self.state.needs_redraw = true;
                 }
             }
-        }
-    }
-
-    /// Check and apply pending git diff updates (debounced) and async git diff results.
-    /// Runs for all panels because CheckGitDiffReceiver is a cheap try_recv
-    /// that must be drained to avoid stale receivers in collapsed panels.
-    pub(super) fn check_pending_git_diff_updates(&mut self) {
-        for panel in self.layout_manager.iter_all_panels_mut() {
-            // Check debounced buffer updates
+            // All panels: check debounced git diff buffer updates
             panel.handle_command(PanelCommand::CheckPendingGitDiff);
-            // Check async git diff results (from background thread)
+            // All panels: drain async git diff result receiver
             if panel
                 .handle_command(PanelCommand::CheckGitDiffReceiver)
                 .needs_redraw()

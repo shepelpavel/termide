@@ -240,11 +240,11 @@ impl App {
         &self,
     ) -> Vec<(String, termide_modal::info::ModalValue)> {
         use termide_modal::info::{ModalValue, SegmentStyle, StyledSegment};
-        use termide_system_monitor::{format_bytes, get_all_disk_space_info};
+        use termide_system_monitor::format_bytes;
         use termide_ui_render::resource_color;
 
         let t = i18n::t();
-        let disks = get_all_disk_space_info();
+        let disks = self.state.system_monitor.get_all_disk_space_info_cached();
 
         // Header row: free | used | total
         let mut lines: Vec<(String, ModalValue)> = vec![(
