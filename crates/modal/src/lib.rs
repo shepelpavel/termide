@@ -24,7 +24,9 @@ pub use input_keys::{handle_input_key, InputKeyResult};
 pub mod bookmark_add;
 pub mod calendar;
 pub mod choice;
+pub mod command_config;
 pub mod command_palette;
+pub mod command_params;
 pub mod commit;
 pub mod confirm;
 pub mod conflict;
@@ -38,8 +40,6 @@ pub mod progress;
 pub mod rename_pattern;
 pub mod replace;
 pub mod save_as;
-pub mod command_config;
-pub mod command_params;
 pub mod search;
 pub mod select;
 pub mod sessions;
@@ -48,7 +48,12 @@ pub mod settings;
 pub use bookmark_add::{BookmarkAddModal, BookmarkAddResult};
 pub use calendar::CalendarModal;
 pub use choice::ChoiceModal;
+pub use command_config::{
+    sanitize_filename, CommandConfigAction, CommandConfigModal, CommandConfigMode,
+    CommandConfigResult,
+};
 pub use command_palette::{CommandEntry, CommandPaletteModal};
+pub use command_params::{CommandParamsModal, CommandParamsResult};
 pub use commit::CommitModal;
 pub use confirm::ConfirmModal;
 pub use conflict::{ConflictModal, ConflictResolution};
@@ -64,10 +69,6 @@ pub use progress::ProgressModal;
 pub use rename_pattern::RenamePatternModal;
 pub use replace::{ReplaceAction, ReplaceModal, ReplaceModalResult};
 pub use save_as::{SaveAsModal, SaveAsResult};
-pub use command_config::{
-    sanitize_filename, CommandConfigAction, CommandConfigModal, CommandConfigMode, CommandConfigResult,
-};
-pub use command_params::{CommandParamsModal, CommandParamsResult};
 pub use search::{SearchAction, SearchModal, SearchModalResult};
 pub use select::SelectModal;
 pub use sessions::{SessionAction, SessionItem, SessionsModal};

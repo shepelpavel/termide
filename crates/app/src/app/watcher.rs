@@ -126,9 +126,9 @@ impl App {
         // Commands live in ~/.local/share/termide/commands.toml or .termide/commands.toml.
         if self.state.cache.commands_registry.is_some() {
             let commands_toml = std::path::Path::new("commands.toml");
-            let invalidate = fs_paths.iter().any(|p| {
-                p.file_name() == Some(commands_toml.as_os_str())
-            });
+            let invalidate = fs_paths
+                .iter()
+                .any(|p| p.file_name() == Some(commands_toml.as_os_str()));
             if invalidate {
                 self.state.cache.commands_registry = None;
             }

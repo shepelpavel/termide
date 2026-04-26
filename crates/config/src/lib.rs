@@ -4,9 +4,9 @@
 //! with support for TOML format and XDG directory conventions.
 
 pub mod bookmarks;
+pub mod commands;
 pub mod constants;
 pub mod keybindings;
-pub mod commands;
 mod settings;
 mod xdg;
 

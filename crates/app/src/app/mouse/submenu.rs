@@ -11,9 +11,9 @@ use crate::app::App;
 use termide_i18n as i18n;
 use termide_theme::Theme;
 use termide_ui_render::{
-    get_bookmarks_group_items, get_bookmarks_items, get_menu_item_x_position, get_options_items,
-    get_commands_group_items, get_commands_items, get_sessions_items, get_shell_items,
-    get_tools_items, BOOKMARKS_MENU_INDEX, OPTIONS_MENU_INDEX, COMMANDS_MENU_INDEX,
+    get_bookmarks_group_items, get_bookmarks_items, get_commands_group_items, get_commands_items,
+    get_menu_item_x_position, get_options_items, get_sessions_items, get_shell_items,
+    get_tools_items, BOOKMARKS_MENU_INDEX, COMMANDS_MENU_INDEX, OPTIONS_MENU_INDEX,
     SESSIONS_MENU_INDEX, WINDOWS_MENU_INDEX,
 };
 
