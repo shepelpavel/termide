@@ -70,19 +70,43 @@ struct NetworkState {
     last_refresh: Instant,
 }
 
+struct MountCacheEntry {
+    canonical_path: std::path::PathBuf,
+    device: Option<String>,
+}
+
+struct ProcessCacheEntry {
+    cpu_top: Vec<ProcessInfo>,
+    mem_top: Vec<ProcessInfo>,
+}
+
 /// System monitor for tracking resource usage.
 pub struct SystemMonitor {
     system: Arc<Mutex<System>>,
     net_state: Mutex<NetworkState>,
-    /// Cached battery reading + when it was taken. starship-battery rereads
-    /// `/sys/class/power_supply` on every call and the render loop used to
-    /// invoke it ~24 times per second; here we refresh at most once per
-    /// `BATTERY_REFRESH`.
+    /// Cached battery reading + when it was taken.
     battery_cache: Mutex<(Option<BatteryInfo>, Instant)>,
+    /// Cached network process list, refreshed at most every `NET_PROCESS_CACHE_TTL`.
+    net_process_cache: Mutex<(Vec<NetworkProcessInfo>, Instant)>,
+    /// Cached mount-device resolution. The mount table rarely changes.
+    #[cfg(unix)]
+    mount_cache: Mutex<(Option<MountCacheEntry>, Instant)>,
+    /// Cached process lists for CPU/RAM modals.
+    process_cache: Mutex<(Option<ProcessCacheEntry>, Instant)>,
 }
 
 /// How often the cached battery reading is refreshed.
 const BATTERY_REFRESH: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// How often the mount table cache is refreshed.
+#[cfg(unix)]
+const MOUNT_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// How often the cached process lists are refreshed.
+const PROCESS_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// How often the cached network process list is refreshed.
+const NET_PROCESS_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(3);
 
 // Manual Debug impl because Networks doesn't implement Debug
 impl std::fmt::Debug for SystemMonitor {
@@ -133,6 +157,25 @@ impl SystemMonitor {
                 last_refresh: Instant::now(),
             }),
             battery_cache,
+            #[cfg(unix)]
+            mount_cache: Mutex::new((
+                None,
+                Instant::now()
+                    .checked_sub(MOUNT_CACHE_TTL)
+                    .unwrap_or_else(Instant::now),
+            )),
+            process_cache: Mutex::new((
+                None,
+                Instant::now()
+                    .checked_sub(PROCESS_CACHE_TTL)
+                    .unwrap_or_else(Instant::now),
+            )),
+            net_process_cache: Mutex::new((
+                Vec::new(),
+                Instant::now()
+                    .checked_sub(NET_PROCESS_CACHE_TTL)
+                    .unwrap_or_else(Instant::now),
+            )),
         }
     }
 
@@ -287,12 +330,111 @@ impl SystemMonitor {
         self.grouped_processes(n, |p| p.memory_bytes as f32, false)
     }
 
-    /// Get top N processes by network activity (established connections), sorted descending.
-    pub fn top_network_processes(&self, n: usize) -> Vec<NetworkProcessInfo> {
-        let mut result = net_processes::collect();
-        result.sort_by_key(|p| std::cmp::Reverse(p.connections));
-        result.truncate(n);
-        result
+    /// Get cached top N processes by CPU and memory, refreshing at most every
+    /// `PROCESS_CACHE_TTL`. Avoids a full process refresh on every resource tick.
+    pub fn top_processes_cached(&self, n: usize) -> (Vec<ProcessInfo>, Vec<ProcessInfo>) {
+        let mut guard = match self.process_cache.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        if guard.1.elapsed() >= PROCESS_CACHE_TTL {
+            let cpu = self.grouped_processes(n, |p| p.cpu_percent, true);
+            let mem = self.grouped_processes(n, |p| p.memory_bytes as f32, false);
+            *guard = (
+                Some(ProcessCacheEntry {
+                    cpu_top: cpu.clone(),
+                    mem_top: mem.clone(),
+                }),
+                Instant::now(),
+            );
+            (cpu, mem)
+        } else {
+            guard
+                .0
+                .as_ref()
+                .map(|e| (e.cpu_top.clone(), e.mem_top.clone()))
+                .unwrap_or_default()
+        }
+    }
+
+    /// Get top N processes by network activity, cached to avoid scanning `/proc`
+    /// on every resource tick. The cache refreshes every `NET_PROCESS_CACHE_TTL`.
+    pub fn top_network_processes_cached(&self, n: usize) -> Vec<NetworkProcessInfo> {
+        let mut guard = match self.net_process_cache.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        if guard.1.elapsed() >= NET_PROCESS_CACHE_TTL {
+            let mut result = net_processes::collect();
+            result.sort_by_key(|p| std::cmp::Reverse(p.connections));
+            result.truncate(n);
+            *guard = (result.clone(), Instant::now());
+            result
+        } else {
+            guard.0.clone()
+        }
+    }
+
+    /// Get disk space info with cached mount-device resolution.
+    ///
+    /// Same as `get_disk_space_info()` but avoids re-reading `/proc/mounts`
+    /// and calling `canonicalize()` on every mount entry when the path hasn't
+    /// changed and the cache is fresh.
+    #[cfg(unix)]
+    pub fn get_disk_space_info_cached(&self, path: &Path) -> Option<DiskSpaceInfo> {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+
+        let canonical = path.canonicalize().ok()?;
+
+        let device = {
+            let mut guard = match self.mount_cache.lock() {
+                Ok(g) => g,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            let needs_refresh = guard.1.elapsed() >= MOUNT_CACHE_TTL
+                || guard
+                    .0
+                    .as_ref()
+                    .is_none_or(|e| e.canonical_path != canonical);
+            if needs_refresh {
+                let dev = get_device_for_path(path);
+                *guard = (
+                    Some(MountCacheEntry {
+                        canonical_path: canonical,
+                        device: dev.clone(),
+                    }),
+                    Instant::now(),
+                );
+                dev
+            } else {
+                guard.0.as_ref().unwrap().device.clone()
+            }
+        };
+
+        let path_cstr = CString::new(path.as_os_str().as_bytes()).ok()?;
+        unsafe {
+            let mut stat: libc::statvfs = std::mem::zeroed();
+            if libc::statvfs(path_cstr.as_ptr(), &mut stat) == 0 {
+                #[cfg(target_os = "macos")]
+                let available = (stat.f_bavail as u64) * stat.f_bsize;
+                #[cfg(not(target_os = "macos"))]
+                let available = stat.f_bavail * stat.f_bsize;
+
+                #[cfg(target_os = "macos")]
+                let total = (stat.f_blocks as u64) * stat.f_bsize;
+                #[cfg(not(target_os = "macos"))]
+                let total = stat.f_blocks * stat.f_bsize;
+
+                Some(DiskSpaceInfo {
+                    device,
+                    available,
+                    total,
+                })
+            } else {
+                None
+            }
+        }
     }
 
     /// Refresh processes and return top N grouped by name, sorted by the given key.

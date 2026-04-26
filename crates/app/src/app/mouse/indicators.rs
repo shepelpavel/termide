@@ -36,6 +36,7 @@ impl App {
     }
 
     /// Get disk space info from the active panel (if available).
+    /// Uses the SystemMonitor mount cache to avoid re-reading `/proc/mounts`.
     pub(in crate::app) fn get_active_panel_disk_space(
         &self,
     ) -> Option<termide_system_monitor::DiskSpaceInfo> {
@@ -43,16 +44,28 @@ impl App {
         let panel = self.layout_manager.active_panel()?;
         let panel_any = &**panel as &dyn Any;
         if let Some(fm) = panel_any.downcast_ref::<termide_panel_file_manager::FileManager>() {
-            return fm.get_disk_space_info();
+            if fm.vfs_state().has_pending_operation() {
+                return None;
+            }
+            return self
+                .state
+                .system_monitor
+                .get_disk_space_info_cached(fm.current_path());
         }
         if let Some(editor) = panel_any.downcast_ref::<termide_panel_editor::Editor>() {
-            return editor.get_disk_space_info();
+            if let Some(path) = editor.file_path() {
+                return self.state.system_monitor.get_disk_space_info_cached(path);
+            }
+            return None;
         }
+        // GitStatusPanel and Terminal use their own path resolution
         if let Some(git) = panel_any.downcast_ref::<termide_panel_git_status::GitStatusPanel>() {
             return git.get_disk_space_info();
         }
         if let Some(terminal) = panel_any.downcast_ref::<termide_panel_terminal::Terminal>() {
-            return terminal.get_terminal_info().disk_space;
+            let info = terminal.get_terminal_info();
+            let cwd = std::path::Path::new(&info.cwd);
+            return self.state.system_monitor.get_disk_space_info_cached(cwd);
         }
         None
     }
@@ -146,9 +159,10 @@ impl App {
         }
 
         let t = i18n::t();
+        let (cpu_processes, mem_processes) = self.state.system_monitor.top_processes_cached(10);
         let processes = match kind {
-            ResourceModalKind::Cpu => self.state.system_monitor.top_cpu_processes(10),
-            ResourceModalKind::Ram => self.state.system_monitor.top_memory_processes(10),
+            ResourceModalKind::Cpu => &cpu_processes,
+            ResourceModalKind::Ram => &mem_processes,
             // Only Cpu and Ram modals have process lists;
             // Network/Disk kinds should never reach this code path.
             ResourceModalKind::Network | ResourceModalKind::Disk => {
@@ -178,7 +192,7 @@ impl App {
         )];
 
         // Data rows
-        for p in &processes {
+        for p in processes {
             // CPU color based on per-process percentage
             let cpu_pct = p.cpu_percent.round() as u8;
             let cpu_color = match resource_color(cpu_pct, self.state.theme) {
@@ -356,7 +370,7 @@ impl App {
             }
         }
 
-        let processes = self.state.system_monitor.top_network_processes(10);
+        let processes = self.state.system_monitor.top_network_processes_cached(10);
 
         // Header row
         let mut lines: Vec<(String, ModalValue)> = vec![(

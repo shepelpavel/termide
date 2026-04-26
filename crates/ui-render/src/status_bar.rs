@@ -222,7 +222,7 @@ impl StatusBar {
             }
 
             // If there's disk information, add it on the right
-            if let Some(disk) = &info.disk_space {
+            if let Some(disk) = disk_space {
                 append_disk_space(&mut spans, disk, theme, total_width, params.disk_selected);
             }
 

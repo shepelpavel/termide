@@ -2,7 +2,6 @@
 #![allow(clippy::needless_range_loop)]
 
 mod clipboard;
-mod disk_space;
 mod link_detection;
 pub mod shell_utils;
 mod terminal;
@@ -528,14 +527,7 @@ impl Terminal {
             .map(|p| p.display().to_string())
             .unwrap_or_else(|_| "~".to_string());
 
-        // Get disk info for current directory
-        let disk_space = disk_space::get_disk_space_for_path(&cwd);
-
-        TerminalInfo {
-            user_host,
-            cwd,
-            disk_space,
-        }
+        TerminalInfo { user_host, cwd }
     }
 
     /// Acquire a read lock on the terminal screen, recovering from poisoning.
