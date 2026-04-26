@@ -486,7 +486,8 @@ impl AppState {
         self.ui.close_all_submenus();
         self.cache.shells.clear();
         self.cache.commands_registry = None;
-        self.cache.hotkey_table = None;
+        // Note: hotkey_table is NOT invalidated here — key bindings don't
+        // change when a menu closes. Only invalidated on config/command changes.
     }
 
     /// Close resource indicator modal (CPU/RAM/Net/Calendar) and clear refresh state.
@@ -521,7 +522,7 @@ impl AppState {
         // Force fresh load — the cache may have been populated before the
         // filesystem made command files visible (FUSE/autofs on NixOS, etc.).
         self.cache.commands_registry = None;
-        self.cache.hotkey_table = None;
+        // hotkey_table not invalidated — bindings don't change on submenu open
     }
 
     /// Close submenu and all nested menus

@@ -69,8 +69,9 @@ pub const MAX_LOG_ENTRIES: usize = 1000;
 /// Event update interval in milliseconds (42ms = ~24 FPS).
 pub const EVENT_HANDLER_INTERVAL_MS: u64 = 42;
 
-/// Idle tick rate in milliseconds (200ms = 5 FPS) — reduces CPU when no user input.
-pub const IDLE_TICK_MS: u64 = 200;
+/// Idle tick rate in milliseconds (100ms = 10 FPS) — reduces CPU when no user input
+/// while keeping key response latency under 100ms after idle.
+pub const IDLE_TICK_MS: u64 = 100;
 
 /// Duration of inactivity before switching to idle tick rate (in milliseconds).
 pub const IDLE_THRESHOLD_MS: u64 = 500;
