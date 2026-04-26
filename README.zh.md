@@ -39,14 +39,15 @@
 - **自定义主题** - 使用 TOML 格式创建自己的主题
 - **15 种界面语言** - 孟加拉语、中文、英语、法语、德语、印地语、印尼语、日语、韩语、葡萄牙语、俄语、西班牙语、泰语、土耳其语、越南语
 - **会话管理** - 自动保存和恢复面板布局
-- **系统监控** - 状态栏实时显示 CPU、内存、磁盘使用情况
+- **系统监控** - 菜单栏实时显示 CPU、RAM、网络 I/O；状态栏显示磁盘使用情况；点击指标可打开详细模态窗口
 - **搜索和替换** - 实时预览、匹配计数、正则表达式支持
 - **自定义脚本** - 从脚本菜单运行用户定义的脚本（支持 `.bg.` 后台执行、`.report.` 模态输出）
 - **跨平台** - Linux（x86_64、ARM64）、macOS（Intel、Apple Silicon）、Windows（原生 ConPTY、WSL）
 - **完整鼠标支持** - 点击导航、滚动、双击操作
 - **键盘布局** - 西里尔文支持，自动快捷键翻译
 - **Vim 模式** - 可选的 Vim 风格编辑，支持西里尔文键盘
-- **目录切换器** - 使用 Ctrl+P 快速切换目录
+- **命令面板** - 使用 Ctrl+P 快速打开命令
+- **目录切换器** - 使用 Ctrl+/ 快速切换目录
 - **书签** - 保存和管理常用位置
 
 ## 安装
@@ -266,7 +267,8 @@ cargo build --release
 - `Alt+P` - 打开配置
 
 **文件管理器：**
-- `Ctrl+P` - 打开目录切换器
+- `Ctrl+/` - 打开目录切换器
+- `Ctrl+P` - 命令面板
 - `Ctrl+B` - 添加书签
 - `Enter` - 打开文件/目录
 - `Backspace` - 上级目录
@@ -464,7 +466,6 @@ TermIDE 使用 Cargo workspace，采用模块化 crate 架构：
 crates/
 ├── app/              # 应用核心、事件处理、面板管理
 ├── app-core/         # 核心应用 trait 和类型
-├── app-event/        # 事件处理逻辑
 ├── app-modal/        # 模态对话框处理
 ├── app-panel/        # 面板管理操作
 ├── app-session/      # 会话保存/恢复
@@ -489,7 +490,8 @@ crates/
 ├── panel-git-log/    # Git 日志面板
 ├── panel-git-status/ # Git 状态面板
 ├── panel-image/      # 图片查看器面板
-├── panel-misc/       # 帮助和日志面板
+├── panel-misc/       # 帮助、日志和引用面板
+├── panel-outline/    # 代码大纲面板
 ├── panel-operations/ # 后台操作面板
 ├── panel-terminal/   # 终端模拟器面板
 ├── session/          # 会话持久化
@@ -501,7 +503,7 @@ crates/
 ├── vfs/              # 虚拟文件系统（SFTP、FTP、SMB）
 └── watcher/          # 文件系统事件监视器
 
-themes/               # 内置主题定义（TOML 文件）
+crates/theme/themes/  # 内置主题定义（TOML 文件）
 doc/
 ├── en/               # 英文文档
 ├── ru/               # 俄文文档

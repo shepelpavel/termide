@@ -452,7 +452,7 @@ You can create custom themes by placing TOML files in the themes directory:
 - macOS: `~/Library/Application Support/termide/themes/`
 - Windows: `%APPDATA%\termide\themes\`
 
-User themes take priority over built-in themes with the same name. See `themes/` directory in the repository for theme file format examples.
+User themes take priority over built-in themes with the same name. See `crates/theme/themes/` directory in the repository for theme file format examples.
 
 ### Custom Scripts
 

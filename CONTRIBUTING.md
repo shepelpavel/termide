@@ -313,8 +313,9 @@ To add support for a new language:
 
 1. Create a new TOML file in `crates/i18n/i18n/` (e.g., `ja.toml` for Japanese), using `en.toml` as a template
 2. Add the language to `SUPPORTED_LANGUAGES` in `crates/i18n/src/lib.rs`
-3. Create documentation in `doc/<lang>/README.md` (optional but appreciated)
-6. Test thoroughly, especially:
+3. Add the new keys to the `i18n_get_string_methods!` macro in `crates/i18n/src/runtime.rs`
+4. Create documentation in `doc/<lang>/README.md` (optional but appreciated)
+5. Test thoroughly, especially:
    - UI text rendering
    - Keyboard shortcuts (if your language uses different script)
    - Date/time formatting

@@ -52,6 +52,11 @@ impl HelpGenerator {
                 t,
             ),
             Self::generate_terminal_section(&config.terminal.keybindings, t),
+            Self::generate_diagnostics_section(t),
+            Self::generate_operations_section(t),
+            Self::generate_outline_section(t),
+            Self::generate_references_section(t),
+            Self::generate_image_section(t),
         ]
     }
 
@@ -61,6 +66,36 @@ impl HelpGenerator {
             Some(KeyBinding::Single(s)) => s.clone(),
             Some(KeyBinding::Multiple(v)) => v.join(" / "),
             None => String::new(),
+        }
+    }
+
+    /// Format goto_panel_1..9 bindings as a compact display string.
+    fn format_goto_panel_keys(kb: &GlobalKeybindings) -> String {
+        let bindings: Vec<_> = [
+            &kb.goto_panel_1,
+            &kb.goto_panel_2,
+            &kb.goto_panel_3,
+            &kb.goto_panel_4,
+            &kb.goto_panel_5,
+            &kb.goto_panel_6,
+            &kb.goto_panel_7,
+            &kb.goto_panel_8,
+            &kb.goto_panel_9,
+        ]
+        .iter()
+        .map(|b| Self::format_keys(b))
+        .collect();
+
+        // Check if all follow "Alt+N" pattern
+        let all_default = bindings
+            .iter()
+            .enumerate()
+            .all(|(i, b)| *b == format!("Alt{}", i + 1));
+
+        if all_default {
+            "Alt+1..9".to_string()
+        } else {
+            bindings.join(" / ")
         }
     }
 
@@ -205,7 +240,7 @@ impl HelpGenerator {
                 description: t.help_desc_next_panel().to_string(),
             },
             HelpEntry {
-                keys: "Alt+1..9".to_string(),
+                keys: Self::format_goto_panel_keys(kb),
                 description: t.help_desc_goto_panel().to_string(),
             },
         ];
@@ -660,10 +695,96 @@ impl HelpGenerator {
                 keys: "End / G".to_string(),
                 description: t.help_desc_end().to_string(),
             },
+            HelpEntry {
+                keys: "Ctrl+W h/j/k/l".to_string(),
+                description: t.help_desc_vim_panel_nav().to_string(),
+            },
         ];
 
         HelpSection {
             header: t.help_section_navigation().to_string(),
+            entries,
+        }
+    }
+
+    /// Generate diagnostics panel keybindings section.
+    fn generate_diagnostics_section(t: &dyn termide_i18n::Translation) -> HelpSection {
+        let entries = vec![
+            HelpEntry {
+                keys: "Enter".to_string(),
+                description: t.help_desc_navigate().to_string(),
+            },
+            HelpEntry {
+                keys: "Ctrl+C".to_string(),
+                description: t.help_desc_copy_name().to_string(),
+            },
+            HelpEntry {
+                keys: "Ctrl+F".to_string(),
+                description: t.help_desc_toggle_filter().to_string(),
+            },
+        ];
+        HelpSection {
+            header: t.help_section_diagnostics().to_string(),
+            entries,
+        }
+    }
+
+    /// Generate operations panel keybindings section.
+    fn generate_operations_section(t: &dyn termide_i18n::Translation) -> HelpSection {
+        let entries = vec![
+            HelpEntry {
+                keys: "Space".to_string(),
+                description: t.help_desc_pause_resume().to_string(),
+            },
+            HelpEntry {
+                keys: "Delete / Backspace".to_string(),
+                description: t.help_desc_cancel_operation().to_string(),
+            },
+        ];
+        HelpSection {
+            header: t.help_section_operations().to_string(),
+            entries,
+        }
+    }
+
+    /// Generate outline panel keybindings section.
+    fn generate_outline_section(t: &dyn termide_i18n::Translation) -> HelpSection {
+        let entries = vec![
+            HelpEntry {
+                keys: "Enter".to_string(),
+                description: t.help_desc_navigate().to_string(),
+            },
+            HelpEntry {
+                keys: "Ctrl+C".to_string(),
+                description: t.help_desc_copy_name().to_string(),
+            },
+        ];
+        HelpSection {
+            header: t.help_section_outline().to_string(),
+            entries,
+        }
+    }
+
+    /// Generate references panel keybindings section.
+    fn generate_references_section(t: &dyn termide_i18n::Translation) -> HelpSection {
+        let entries = vec![HelpEntry {
+            keys: "Enter".to_string(),
+            description: t.help_desc_navigate().to_string(),
+        }];
+        HelpSection {
+            header: t.help_section_references().to_string(),
+            entries,
+        }
+    }
+
+    /// Generate image viewer keybindings section.
+    fn generate_image_section(t: &dyn termide_i18n::Translation) -> HelpSection {
+        let entries = vec![HelpEntry {
+            keys: "q".to_string(),
+            description: t.help_desc_close_image().to_string(),
+        }];
+        HelpSection {
+            header: t.help_section_image().to_string(),
             entries,
         }
     }

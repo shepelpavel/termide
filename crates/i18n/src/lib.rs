@@ -238,6 +238,20 @@ pub trait Translation: Send + Sync {
     fn help_desc_switch_focus(&self) -> &str;
     fn help_desc_open_in_browser(&self) -> &str;
 
+    // Help sections for additional panels
+    fn help_section_diagnostics(&self) -> &str;
+    fn help_section_operations(&self) -> &str;
+    fn help_section_outline(&self) -> &str;
+    fn help_section_references(&self) -> &str;
+    fn help_section_image(&self) -> &str;
+    fn help_desc_toggle_filter(&self) -> &str;
+    fn help_desc_pause_resume(&self) -> &str;
+    fn help_desc_cancel_operation(&self) -> &str;
+    fn help_desc_navigate(&self) -> &str;
+    fn help_desc_copy_name(&self) -> &str;
+    fn help_desc_close_image(&self) -> &str;
+    fn help_desc_vim_panel_nav(&self) -> &str;
+
     // File operation status
     fn status_file_created(&self, name: &str) -> String;
     fn status_dir_created(&self, name: &str) -> String;

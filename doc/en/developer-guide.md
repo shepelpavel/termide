@@ -99,7 +99,7 @@ termide/
 │   ├── core/                 # Core Panel trait and shared types
 │   ├── file-ops/             # File operations (copy, move, delete, upload, download)
 │   ├── git/                  # Git integration (status, diff, log)
-│   ├── highlight/            # Syntax highlighting (tree-sitter, 15+ languages)
+│   ├── highlight/            # Syntax highlighting (tree-sitter, 21 languages)
 │   ├── i18n/                 # Internationalization (15 languages)
 │   ├── keyboard/             # Keyboard handling and layout translation
 │   ├── layout/               # Panel layout and accordion system
@@ -113,7 +113,7 @@ termide/
 │   ├── panel-git-log/        # Git log panel
 │   ├── panel-git-status/     # Git status panel
 │   ├── panel-image/          # Image viewer panel
-│   ├── panel-misc/           # Welcome and Log panels
+│   ├── panel-misc/           # Help, Journal, and References panels
 │   ├── panel-operations/     # Background operations panel
 │   ├── panel-terminal/       # Terminal emulator panel (PTY)
 │   ├── session/              # Session persistence
@@ -127,7 +127,8 @@ termide/
 │   └── watcher/              # File system event watcher
 ├── doc/                       # Documentation
 │   ├── en/                   # English documentation
-│   └── ru/                   # Russian documentation
+│   ├── ru/                   # Russian documentation
+│   └── zh/                   # Chinese documentation
 └── packaging/                 # Distribution packaging (deb, rpm, AUR, Homebrew, Nix)
 ```
 
