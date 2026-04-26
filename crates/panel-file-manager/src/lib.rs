@@ -768,12 +768,22 @@ impl FileManager {
     /// Check if a background directory reload has completed and apply the result.
     /// Returns `true` if entries were updated.
     pub fn check_async_reload(&mut self) -> bool {
-        let result = self
-            .async_reload_receiver
-            .take_if(|rx| rx.try_recv().is_ok());
-        let Some(rx) = result else { return false };
-        let result = rx.try_recv().unwrap();
-        self.async_reload_receiver = None;
+        let rx = match self.async_reload_receiver.take() {
+            Some(rx) => rx,
+            None => return false,
+        };
+        let result = match rx.try_recv() {
+            Ok(result) => result,
+            Err(std::sync::mpsc::TryRecvError::Empty) => {
+                // Not ready yet — put receiver back
+                self.async_reload_receiver = Some(rx);
+                return false;
+            }
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                // Sender dropped without sending — discard
+                return false;
+            }
+        };
 
         if result.path != self.current_path {
             return false; // Stale result — user navigated away
