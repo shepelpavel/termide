@@ -511,6 +511,14 @@ impl SystemMonitor {
         processes
     }
 
+    /// Windows fallback: no `/proc/mounts` to cache, so just call the
+    /// underlying `get_disk_space_info()` directly. Mirrors the cfg-gating
+    /// of the free function below.
+    #[cfg(windows)]
+    pub fn get_disk_space_info_cached(&self, path: &std::path::Path) -> Option<DiskSpaceInfo> {
+        get_disk_space_info(path)
+    }
+
     /// Cached version of [`get_all_disk_space_info()`] with 5s TTL.
     pub fn get_all_disk_space_info_cached(&self) -> Vec<DiskSpaceInfo> {
         let mut guard = match self.all_disk_cache.lock() {
