@@ -12,7 +12,7 @@ pub enum CharType {
 }
 
 /// Determine character type for word motion.
-pub fn char_type(grapheme: &str) -> CharType {
+pub(crate) fn char_type(grapheme: &str) -> CharType {
     if let Some(ch) = grapheme.chars().next() {
         if ch.is_whitespace() {
             CharType::Space
@@ -30,7 +30,7 @@ pub fn char_type(grapheme: &str) -> CharType {
 ///
 /// Returns the column index of the next word start, or None if no word start
 /// exists after `start_col` on this line.
-pub fn find_next_word_start(graphemes: &[&str], start_col: usize) -> Option<usize> {
+pub(crate) fn find_next_word_start(graphemes: &[&str], start_col: usize) -> Option<usize> {
     if start_col >= graphemes.len() {
         return None;
     }

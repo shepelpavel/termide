@@ -29,7 +29,7 @@ static XML_SELF_CLOSE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"<([a-zA-Z][a-zA-Z0-9_:-]*)[^>]*/\s*>").expect("valid regex"));
 
 /// Extract symbols using regex patterns for languages without tree-sitter support.
-pub fn extract_symbols_regex(source: &str, language: &str) -> Vec<SymbolInfo> {
+pub(crate) fn extract_symbols_regex(source: &str, language: &str) -> Vec<SymbolInfo> {
     match language {
         "markdown" => extract_markdown_headings(source),
         "html" => extract_html_headings(source),

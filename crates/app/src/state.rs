@@ -525,12 +525,6 @@ impl AppState {
         // hotkey_table not invalidated — bindings don't change on submenu open
     }
 
-    /// Close submenu and all nested menus
-    pub fn close_submenu(&mut self) {
-        self.ui.options_submenu.close();
-        self.ui.nested_submenu.close();
-    }
-
     /// Close Sessions submenu
     pub fn close_sessions_submenu(&mut self) {
         self.ui.sessions_submenu.close();
@@ -896,11 +890,6 @@ impl AppState {
         let mut ops: Vec<_> = self.active_operations.values().collect();
         ops.sort_by_key(|op| std::cmp::Reverse(op.started_at));
         ops
-    }
-
-    /// Find index of operation by ID in the sorted list.
-    pub fn operation_index(&self, id: termide_file_ops::OperationId) -> Option<usize> {
-        self.operations_list().iter().position(|op| op.id == id)
     }
 
     /// Check if there are any active operations being tracked.

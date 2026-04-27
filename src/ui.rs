@@ -436,10 +436,10 @@ fn render_drag_overlay(
         .map(|p| p.name());
     if let Some(name) = name {
         let icon = termide_ui_render::panel_icon(name);
-        let ghost_label = if termide_core::use_emoji_icons() {
-            format!("[{}]", icon)
+        let ghost_label: std::borrow::Cow<'_, str> = if termide_core::use_emoji_icons() {
+            format!("[{}]", icon).into()
         } else {
-            "[≡]".to_string()
+            std::borrow::Cow::Borrowed("[≡]")
         };
         let ghost_style = Style::default()
             .fg(theme.accented_fg)

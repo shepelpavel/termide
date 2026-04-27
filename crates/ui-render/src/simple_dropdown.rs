@@ -8,26 +8,6 @@ use unicode_width::UnicodeWidthStr;
 
 use termide_core::ThemeColors;
 
-/// Parameters for [`render_simple_dropdown`].
-pub struct SimpleDropdownParams<'a> {
-    /// List items to display.
-    pub items: &'a [String],
-    /// Index of the currently selected (committed) item.
-    pub selected: usize,
-    /// Index of the cursor (highlighted, not yet confirmed) item.
-    pub cursor: usize,
-    /// Left edge of the dropdown.
-    pub x: u16,
-    /// Top edge of the dropdown.
-    pub y: u16,
-    /// Maximum width (the dropdown auto-fits but won't exceed this).
-    pub max_width: u16,
-    /// Maximum number of visible rows (the list scrolls beyond this).
-    pub max_height: u16,
-    /// Theme colors.
-    pub theme: &'a ThemeColors,
-}
-
 /// Render a bordered dropdown list overlay directly into the buffer.
 ///
 /// The dropdown draws a box at `(x, y)` and lists `items`, highlighting the

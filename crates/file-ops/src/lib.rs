@@ -84,10 +84,9 @@ pub use manager::{OperationManager, OperationManagerConfig};
 pub use queue::{OperationQueue, QueuedOperation};
 pub use retry::{is_retryable_error, RetryPolicy, RetryState};
 pub use types::{
-    BackgroundOperationSummary, ConflictInfo, ConflictMode, ConflictResolution, FileOperation,
-    OperationControl, OperationError, OperationEvent, OperationId, OperationInfo, OperationPath,
-    OperationPhase, OperationPriority, OperationProgress, OperationRequest, OperationResult,
-    OperationType,
+    BackgroundOperationSummary, ConflictInfo, ConflictMode, ConflictResolution, OperationControl,
+    OperationError, OperationEvent, OperationId, OperationInfo, OperationPath, OperationPhase,
+    OperationPriority, OperationProgress, OperationRequest, OperationResult, OperationType,
 };
 pub use worker::{
     ConflictContext, DownloadWorker, LocalCopyWorker, LocalDeleteWorker, OperationWorker,

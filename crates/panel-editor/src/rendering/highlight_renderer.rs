@@ -19,7 +19,7 @@ use super::context::RenderContext;
 /// 5. Diagnostic underline (applied on top of base style)
 /// 6. Base syntax highlighting style
 #[allow(clippy::too_many_arguments)] // Logical grouping of styling parameters
-pub fn determine_cell_style(
+pub(crate) fn determine_cell_style(
     line: usize,
     column: usize,
     base_style: Style,

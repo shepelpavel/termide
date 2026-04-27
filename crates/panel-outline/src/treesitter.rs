@@ -349,7 +349,7 @@ fn register(
 /// Extract symbols from source using tree-sitter queries.
 ///
 /// Accepts a `&mut Parser` so callers can reuse it across invocations.
-pub fn extract_symbols_treesitter(
+pub(crate) fn extract_symbols_treesitter(
     source: &str,
     language: &str,
     parser: &mut Parser,

@@ -14,7 +14,7 @@ use termide_theme::Theme;
 ///
 /// Swaps foreground and background colors with fallback to theme colors.
 /// Adds BOLD modifier for better visibility.
-pub fn render_cursor_at(buf: &mut Buffer, x: u16, y: u16, area: Rect, theme: &Theme) {
+pub(crate) fn render_cursor_at(buf: &mut Buffer, x: u16, y: u16, area: Rect, theme: &Theme) {
     if x < area.x + area.width && y < area.y + area.height {
         if let Some(cell) = buf.cell_mut((x, y)) {
             invert_cell_colors(cell, theme);

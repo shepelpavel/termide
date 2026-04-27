@@ -7,7 +7,7 @@
 pub const PAIRS: &[(char, char)] = &[('(', ')'), ('[', ']'), ('{', '}'), ('"', '"'), ('\'', '\'')];
 
 /// Get the closing character for an opening character.
-pub fn closing_char(open: char) -> Option<char> {
+pub(crate) fn closing_char(open: char) -> Option<char> {
     PAIRS.iter().find(|(o, _)| *o == open).map(|(_, c)| *c)
 }
 

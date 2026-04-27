@@ -128,13 +128,6 @@ impl OperationManager {
         Ok(id)
     }
 
-    /// Start a specific queued operation.
-    pub fn start(&mut self, id: OperationId) -> Result<(), OperationError> {
-        let queued = self.queue.remove(id).ok_or(OperationError::NotFound(id))?;
-
-        self.start_operation(id, queued.request)
-    }
-
     /// Internal: start an operation.
     fn start_operation(
         &mut self,
@@ -471,31 +464,6 @@ impl OperationManager {
         events
     }
 
-    /// Get information about an operation.
-    pub fn get_info(&self, id: OperationId) -> Option<&OperationInfo> {
-        self.active.get(&id).map(|op| &op.info)
-    }
-
-    /// Get all active operation IDs.
-    pub fn active_ids(&self) -> Vec<OperationId> {
-        self.active.keys().copied().collect()
-    }
-
-    /// Get all queued operation IDs.
-    pub fn queued_ids(&self) -> Vec<OperationId> {
-        self.queue.ids()
-    }
-
-    /// Get the number of active operations.
-    pub fn active_count(&self) -> usize {
-        self.active.len()
-    }
-
-    /// Get the number of queued operations.
-    pub fn queued_count(&self) -> usize {
-        self.queue.len()
-    }
-
     /// Check if any operations are running or queued.
     pub fn has_operations(&self) -> bool {
         !self.active.is_empty() || !self.queue.is_empty()
@@ -510,11 +478,6 @@ impl OperationManager {
 
         // Clear queue
         self.queue.clear();
-    }
-
-    /// Change priority of a queued operation.
-    pub fn set_priority(&mut self, id: OperationId, priority: OperationPriority) -> bool {
-        self.queue.set_priority(id, priority)
     }
 
     /// Resolve a conflict for an operation waiting for user decision.
@@ -545,11 +508,6 @@ impl OperationManager {
             }
         }
         false
-    }
-
-    /// Get the current conflict mode for an operation.
-    pub fn conflict_mode(&self, id: OperationId) -> Option<ConflictMode> {
-        self.active.get(&id).map(|op| op.conflict_mode)
     }
 
     /// Get a summary of all background operations for status bar display.

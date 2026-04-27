@@ -37,7 +37,7 @@ pub type HighlightSegment = (usize, usize, usize);
 /// Returns (LinkType, start_row, start_col, display_len) if found.
 /// `display_len` is the length of the matched text on screen (in cells),
 /// which may differ from `link_text().len()` for resolved file paths.
-pub fn detect_link_at_position(
+pub(crate) fn detect_link_at_position(
     screen: &TerminalScreen,
     abs_row: usize,
     col: usize,
@@ -163,7 +163,7 @@ pub fn detect_link_at_position(
 }
 
 /// Build highlight segments for multi-line link.
-pub fn build_link_segments(
+pub(crate) fn build_link_segments(
     text_len: usize,
     start_row: usize,
     start_col: usize,
@@ -191,7 +191,7 @@ pub fn build_link_segments(
 }
 
 /// Get the text representation of a link for display/copying
-pub fn link_text(link: &LinkType) -> String {
+pub(crate) fn link_text(link: &LinkType) -> String {
     match link {
         LinkType::Url(url) => url.clone(),
         LinkType::FilePath(path) => path.display().to_string(),

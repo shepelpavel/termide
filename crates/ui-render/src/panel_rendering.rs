@@ -332,10 +332,10 @@ pub fn render_collapsed_panel(
     }
 
     // Buttons: [≡] icon with emoji, or [≡] in unicode mode
-    let buttons = if use_emoji_icons() {
-        format!("[≡] {}", panel_icon(panel.name()))
+    let buttons: std::borrow::Cow<'_, str> = if use_emoji_icons() {
+        format!("[≡] {}", panel_icon(panel.name())).into()
     } else {
-        "[≡]".to_string()
+        std::borrow::Cow::Borrowed("[≡]")
     };
     let buttons_width = buttons.width() as u16;
 

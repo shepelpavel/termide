@@ -166,19 +166,6 @@ impl RetryState {
     }
 }
 
-/// Errors that are typically retryable.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RetryableErrorKind {
-    /// Network connection error.
-    ConnectionError,
-    /// Timeout.
-    Timeout,
-    /// Temporary unavailability.
-    TemporaryUnavailable,
-    /// Rate limited.
-    RateLimited,
-}
-
 /// Check if an error is retryable.
 pub fn is_retryable_error(error: &str) -> bool {
     let error_lower = error.to_lowercase();

@@ -10,7 +10,7 @@ use crate::word_boundary;
 /// Move cursor up by one line.
 ///
 /// Returns true if preferred column should be maintained.
-pub fn move_up(cursor: &mut Cursor) -> bool {
+pub(crate) fn move_up(cursor: &mut Cursor) -> bool {
     cursor.move_up(1);
     true // Maintain preferred column
 }
@@ -18,7 +18,7 @@ pub fn move_up(cursor: &mut Cursor) -> bool {
 /// Move cursor down by one line.
 ///
 /// Returns true if preferred column should be maintained.
-pub fn move_down(cursor: &mut Cursor, buffer: &TextBuffer) -> bool {
+pub(crate) fn move_down(cursor: &mut Cursor, buffer: &TextBuffer) -> bool {
     let max_line = buffer.line_count().saturating_sub(1);
     cursor.move_down(1, max_line);
     true // Maintain preferred column

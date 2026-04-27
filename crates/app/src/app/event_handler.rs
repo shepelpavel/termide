@@ -1343,7 +1343,7 @@ impl App {
                     ops_panel.update_operations(&ops_list);
 
                     // Select the specific operation
-                    if let Some(index) = self.state.operation_index(op_id) {
+                    if let Some(index) = ops_list.iter().position(|op| op.id == op_id) {
                         ops_panel.set_selected(index);
                     }
 

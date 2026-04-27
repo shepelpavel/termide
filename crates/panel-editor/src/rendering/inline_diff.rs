@@ -23,7 +23,7 @@ pub struct VisualSegment<'a> {
 ///
 /// # Returns
 /// Vec of segments in display order, including both deleted and current text.
-pub fn build_visual_line(inline_changes: &[InlineChange]) -> Vec<VisualSegment<'_>> {
+pub(crate) fn build_visual_line(inline_changes: &[InlineChange]) -> Vec<VisualSegment<'_>> {
     inline_changes
         .iter()
         .map(|change| VisualSegment {

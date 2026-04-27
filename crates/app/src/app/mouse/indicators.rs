@@ -10,6 +10,47 @@ use termide_i18n as i18n;
 use termide_modal as modal;
 use termide_ui_render::{get_resource_indicator_ranges, MenuRenderParams};
 
+/// Pad or truncate `s` to exactly `width` display columns.
+fn fit_name(s: &str, width: usize) -> String {
+    use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+    let w = s.width();
+    if w <= width {
+        let mut out = s.to_string();
+        for _ in 0..(width - w) {
+            out.push(' ');
+        }
+        out
+    } else {
+        let mut out = String::new();
+        let mut cur = 0;
+        for ch in s.chars() {
+            let cw = UnicodeWidthChar::width(ch).unwrap_or(0);
+            if cur + cw > width - 1 {
+                break;
+            }
+            out.push(ch);
+            cur += cw;
+        }
+        out.push('…');
+        cur += 1;
+        for _ in 0..(width - cur) {
+            out.push(' ');
+        }
+        out
+    }
+}
+
+/// Map usage percentage to a styled segment via theme resource colors.
+fn pct_to_style(pct: u8, theme: &termide_theme::Theme) -> termide_modal::info::SegmentStyle {
+    use termide_modal::info::SegmentStyle;
+    use termide_ui_render::resource_color;
+    match resource_color(pct, theme) {
+        c if c == theme.error => SegmentStyle::Error,
+        c if c == theme.warning => SegmentStyle::Warning,
+        _ => SegmentStyle::Success,
+    }
+}
+
 impl App {
     pub(in crate::app) fn get_indicator_ranges(
         &self,
@@ -121,42 +162,9 @@ impl App {
         use crate::state::ResourceModalKind;
         use termide_modal::info::{ModalValue, SegmentStyle, StyledSegment};
         use termide_system_monitor::format_bytes;
-        use termide_ui_render::resource_color;
-        use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
         // Fixed name column width so CPU/RAM columns never shift
         const NAME_COL: usize = 24;
-
-        /// Pad or truncate `s` to exactly `width` display columns.
-        fn fit_name(s: &str, width: usize) -> String {
-            let w = s.width();
-            if w <= width {
-                // Pad with spaces
-                let mut out = s.to_string();
-                for _ in 0..(width - w) {
-                    out.push(' ');
-                }
-                out
-            } else {
-                // Truncate and add "…"
-                let mut out = String::new();
-                let mut cur = 0;
-                for ch in s.chars() {
-                    let cw = UnicodeWidthChar::width(ch).unwrap_or(0);
-                    if cur + cw > width - 1 {
-                        break;
-                    }
-                    out.push(ch);
-                    cur += cw;
-                }
-                out.push('…');
-                cur += 1;
-                for _ in 0..(width - cur) {
-                    out.push(' ');
-                }
-                out
-            }
-        }
 
         let t = i18n::t();
         let (cpu_processes, mem_processes) = self.state.system_monitor.top_processes_cached(10);
@@ -193,25 +201,15 @@ impl App {
 
         // Data rows
         for p in processes {
-            // CPU color based on per-process percentage
             let cpu_pct = p.cpu_percent.round() as u8;
-            let cpu_color = match resource_color(cpu_pct, self.state.theme) {
-                c if c == self.state.theme.error => SegmentStyle::Error,
-                c if c == self.state.theme.warning => SegmentStyle::Warning,
-                _ => SegmentStyle::Success,
-            };
+            let cpu_color = pct_to_style(cpu_pct, self.state.theme);
 
-            // RAM color based on share of total memory
             let mem_pct = if total_mem > 0 {
                 ((p.memory_bytes as f64 / total_mem as f64) * 100.0) as u8
             } else {
                 0
             };
-            let ram_color = match resource_color(mem_pct, self.state.theme) {
-                c if c == self.state.theme.error => SegmentStyle::Error,
-                c if c == self.state.theme.warning => SegmentStyle::Warning,
-                _ => SegmentStyle::Success,
-            };
+            let ram_color = pct_to_style(mem_pct, self.state.theme);
 
             let count_text = format!("{:>6}", p.count);
 
@@ -241,7 +239,6 @@ impl App {
     ) -> Vec<(String, termide_modal::info::ModalValue)> {
         use termide_modal::info::{ModalValue, SegmentStyle, StyledSegment};
         use termide_system_monitor::format_bytes;
-        use termide_ui_render::resource_color;
 
         let t = i18n::t();
         let disks = self.state.system_monitor.get_all_disk_space_info_cached();
@@ -270,11 +267,7 @@ impl App {
             let name = d.device_name().unwrap_or_else(|| "???".to_string());
             let usage = d.usage_percent();
             let avail_pct = 100_u8.saturating_sub(usage);
-            let used_color = match resource_color(usage, self.state.theme) {
-                c if c == self.state.theme.error => SegmentStyle::Error,
-                c if c == self.state.theme.warning => SegmentStyle::Warning,
-                _ => SegmentStyle::Success,
-            };
+            let used_color = pct_to_style(usage, self.state.theme);
             let segments = vec![
                 StyledSegment {
                     text: format!("{:>4}% {:>8}", avail_pct, format_bytes(d.available)),
@@ -307,34 +300,6 @@ impl App {
 
         const NAME_COL: usize = 20;
         const PORTS_COL: usize = 14;
-
-        fn fit_name(s: &str, width: usize) -> String {
-            let w = s.width();
-            if w <= width {
-                let mut out = s.to_string();
-                for _ in 0..(width - w) {
-                    out.push(' ');
-                }
-                out
-            } else {
-                let mut out = String::new();
-                let mut cur = 0;
-                for ch in s.chars() {
-                    let cw = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
-                    if cur + cw > width - 1 {
-                        break;
-                    }
-                    out.push(ch);
-                    cur += cw;
-                }
-                out.push('…');
-                cur += 1;
-                for _ in 0..(width - cur) {
-                    out.push(' ');
-                }
-                out
-            }
-        }
 
         fn fit_ports(ports: &[u16], width: usize) -> String {
             if ports.is_empty() {

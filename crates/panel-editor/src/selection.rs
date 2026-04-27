@@ -10,7 +10,7 @@ use termide_buffer::{is_word_boundary, Cursor, Selection, TextBuffer};
 /// Select all text in the buffer.
 ///
 /// Returns (new_selection, new_cursor_position).
-pub fn select_all(buffer: &TextBuffer) -> (Selection, Cursor) {
+pub(crate) fn select_all(buffer: &TextBuffer) -> (Selection, Cursor) {
     let start = Cursor::at(0, 0);
     let max_line = buffer.line_count().saturating_sub(1);
     let line_len = buffer.line_len_graphemes(max_line);

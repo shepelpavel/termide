@@ -357,7 +357,7 @@ impl FileManager {
 
             let mut spans = Vec::new();
             if !prefix.is_empty() {
-                spans.push(Span::styled(prefix.clone(), prefix_style));
+                spans.push(Span::styled(prefix.as_str(), prefix_style));
             }
             spans.push(Span::styled(icon_text, style));
             if node.is_dir {

@@ -2,7 +2,6 @@
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc;
 use std::sync::Arc;
 
 use termide_vfs::VfsPath;
@@ -596,70 +595,6 @@ pub struct OperationInfo {
     pub is_active: bool,
 }
 
-/// Handle to an active file operation.
-pub struct FileOperation {
-    /// Operation ID.
-    pub id: OperationId,
-    /// Operation type.
-    pub op_type: OperationType,
-    /// Source path(s).
-    pub sources: Vec<OperationPath>,
-    /// Destination path.
-    pub destination: Option<OperationPath>,
-    /// Control flags.
-    pub control: OperationControl,
-    /// Progress receiver.
-    pub(crate) progress_rx: mpsc::Receiver<OperationProgress>,
-    /// Completion receiver.
-    pub(crate) completion_rx: mpsc::Receiver<OperationResult>,
-}
-
-impl FileOperation {
-    /// Try to receive progress update without blocking.
-    pub fn try_recv_progress(&self) -> Option<OperationProgress> {
-        self.progress_rx.try_recv().ok()
-    }
-
-    /// Drain all pending progress updates and return the latest.
-    pub fn drain_progress(&self) -> Option<OperationProgress> {
-        let mut latest = None;
-        while let Ok(p) = self.progress_rx.try_recv() {
-            latest = Some(p);
-        }
-        latest
-    }
-
-    /// Try to receive completion result without blocking.
-    pub fn try_recv_completion(&self) -> Option<OperationResult> {
-        self.completion_rx.try_recv().ok()
-    }
-
-    /// Pause the operation.
-    pub fn pause(&self) {
-        self.control.set_paused(true);
-    }
-
-    /// Resume the operation.
-    pub fn resume(&self) {
-        self.control.set_paused(false);
-    }
-
-    /// Cancel the operation.
-    pub fn cancel(&self) {
-        self.control.cancel();
-    }
-
-    /// Check if paused.
-    pub fn is_paused(&self) -> bool {
-        self.control.is_paused()
-    }
-
-    /// Check if cancelled.
-    pub fn is_cancelled(&self) -> bool {
-        self.control.is_cancelled()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -927,17 +862,6 @@ mod tests {
     fn test_operation_id_equality() {
         assert_eq!(OperationId::new(1), OperationId::new(1));
         assert_ne!(OperationId::new(1), OperationId::new(2));
-    }
-}
-
-impl std::fmt::Debug for FileOperation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("FileOperation")
-            .field("id", &self.id)
-            .field("op_type", &self.op_type)
-            .field("paused", &self.is_paused())
-            .field("cancelled", &self.is_cancelled())
-            .finish_non_exhaustive()
     }
 }
 
