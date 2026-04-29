@@ -4,24 +4,27 @@ This document describes the technical architecture of TermIDE.
 
 ## High-Level Overview
 
-TermIDE is a terminal-based IDE built with Rust using the `ratatui` TUI framework. It features an innovative **accordion panel layout system** that adapts to terminal width and allows efficient multi-panel workflows.
+TermIDE is a terminal-based IDE built with Rust using the `ratatui` TUI framework. It features an adaptive **split panel layout** that resizes to terminal width and gives every stacked panel an independently adjustable height — with a one-key fullscreen preset for the focused panel.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │ Menu Bar     [CPU] [RAM] [Clock]                        │
 ├───────────────────┬─────────────────────────────────────┤
-│ ┌[≡][📁] Files ─┐ │ ┌[≡][📝] Editor: main.rs ─────────┐│
-│ │               │ │ │                                  ││
-│ │ src/          │ │ │  fn main() {                     ││
-│ │ tests/        │ │ │      // code here                ││
-│ │ Cargo.toml    │ │ │  }                               ││
-│ │               │ │ │                                  ││
+│ ┌[≡] 📁 Files ──┐ │ ┌[≡] 📝 Editor: main.rs ──────────┐│
+│ │ src/          │ │ │                                  ││
+│ │ tests/        │ │ │  fn main() {                     ││
+│ │ Cargo.toml    │ │ │      // code here                ││
+│ │               │ │ │  }                               ││
+│ ├[≡] 💻 Terminal┤ │ │                                  ││
+│ │ $ cargo build │ │ │                                  ││
+│ │ Compiling...  │ │ │                                  ││
 │ └───────────────┘ │ └──────────────────────────────────┘│
-│ ─[≡][💻] Terminal │ ─[≡][📋] Log ───────────────────────│
 ├───────────────────┴─────────────────────────────────────┤
 │ Status: file.rs:42  Ln 10, Col 5        Disk: 83%      │
 └─────────────────────────────────────────────────────────┘
 ```
+
+The left column above shows two stacked panels sharing the column with their own heights; on the right, a single panel takes the full column. Pressing `Alt+F11` collapses every non-focused panel in the active column to its title row (one-row preset), pressing it again restores the previous heights.
 
 ## Core Architectural Components
 
@@ -31,7 +34,7 @@ TermIDE is a terminal-based IDE built with Rust using the `ratatui` TUI framewor
 
 **Location:** `crates/layout/src/lib.rs`
 
-The `LayoutManager` is the heart of the accordion layout system. It manages:
+The `LayoutManager` owns the split-layout state. It manages:
 
 **Components:**
 - `panel_groups: Vec<PanelGroup>` - Horizontal arrangement of panel groups
@@ -40,8 +43,9 @@ The `LayoutManager` is the heart of the accordion layout system. It manages:
 **Key Responsibilities:**
 - Adding panels with automatic stacking based on width threshold
 - Managing horizontal navigation (Alt+Left/Right)
-- Managing vertical navigation within groups (Alt+Up/Down)
-- Smart panel stacking/unstacking (Alt+Backspace)
+- Managing vertical focus within a group (Alt+Up/Down)
+- Smart panel stacking/unstacking between groups (Alt+Backspace, F11)
+- Proportional width redistribution when the terminal resizes
 - Closing panels and cleaning up empty groups
 
 **Focus Management:**
@@ -51,28 +55,33 @@ Focus is a simple `usize` index indicating which panel group is currently active
 
 **Location:** `crates/layout/src/panel_group.rs`
 
-A `PanelGroup` represents a vertical stack of panels with accordion behavior.
+A `PanelGroup` represents a vertical split of panels sharing one column.
 
 **Structure:**
 ```rust
 pub struct PanelGroup {
-    panels: Vec<Box<dyn Panel>>,  // Panels in this group
-    expanded_index: usize,         // Which panel is expanded
-    pub width: Option<u16>,        // Width in characters (None = auto-distribution)
+    panels: Vec<Box<dyn Panel>>,         // Panels in this group
+    expanded_index: usize,               // Focused panel (active border)
+    pub width: Option<u16>,              // Column width (None = auto-distribute)
+    split_heights: Option<Vec<u16>>,     // Cached per-panel heights
+    fullscreen_cache: Option<Vec<u16>>,  // Saved heights from before
+                                         // entering the fullscreen preset
 }
 ```
 
-**Accordion Behavior:**
-- Exactly one panel is expanded (shows full content)
-- Other panels are collapsed to title bar only
-- Click panel icon button in title bar to expand/collapse
-- Alt+Up/Down navigates between panels in group
+**Layout behaviour:**
+- Every panel in the group is visible. The minimum height per panel is one row (the title bar).
+- `split_heights` is the per-panel height cache. `None` means "no cache — derive equal distribution on first use". Heights are rescaled proportionally whenever the column height changes.
+- Pressing `Alt+F11` (or the bound `toggle_fullscreen_panel` action) toggles a fullscreen preset: the focused panel takes the column's full height, the others collapse to one row each. The pre-toggle heights are stashed in `fullscreen_cache` so a second press restores them.
+- While the preset is active, switching focus with `Alt+Up` / `Alt+Down` (`prev_panel` / `next_panel`) re-applies the preset to the new focus — visually identical to a classic accordion view.
+- `Ctrl+Alt+=` / `Ctrl+Alt+-` (`panel_grow_vertical` / `panel_shrink_vertical`) grow / shrink the focused panel by 3 rows, taking from a neighbour with available room (cascade).
 
 **Key Operations:**
-- `add_panel()` - Add panel to group
-- `remove_panel()` - Remove panel (resets expanded_index if needed)
-- `set_expanded()` - Change which panel is expanded
-- `next_panel()` / `prev_panel()` - Cycle through panels
+- `add_panel()` / `insert_panel()` / `remove_panel()` - mutate panels and rebalance the height caches.
+- `set_expanded()` / `next_panel()` / `prev_panel()` - move focus; re-apply the preset when active.
+- `toggle_fullscreen()` - turn the preset on or off.
+- `grow_focused()` / `shrink_focused()` - adjust the focused panel's height.
+- `resize_panel_divider()` - apply a delta to the divider above a given panel (used by the mouse drag handler).
 
 #### 1.3 Automatic Stacking
 
@@ -82,10 +91,10 @@ When adding a new panel via `LayoutManager::add_panel()`:
 let new_width_if_split = available_width / (num_groups + 1);
 
 if new_width_if_split < config.min_panel_width {
-    // Stack vertically in current group (accordion)
+    // Stack vertically in the active group (split with cached heights)
     active_group.add_panel(panel);
 } else {
-    // Create new horizontal group
+    // Create a new horizontal group
     let new_group = PanelGroup::new(panel);
     panel_groups.push(new_group);
 }
@@ -264,9 +273,10 @@ Handles mouse input:
 
 **Panel Title Bar:**
 - Click `[≡]` button → Open panel action context menu (Close / Split / Merge / Move)
-- Click `[▶]/[▼]` button → Toggle expand/collapse
 - Click title area → Activate panel (double-click on file manager → directory picker)
-- **Drag title area** → Panel drag-and-drop: ghost follows cursor, drop zone is highlighted; release over another panel's header inserts into that group, between groups creates a new one. `Escape` cancels.
+- **Drag title area** → Two-mode gesture:
+  - Drop inside the source group's column → vertical resize (the divider above the dragged panel snaps to the cursor).
+  - Drop in another column or between columns → panel move: ghost follows cursor, drop zone is highlighted; release over another panel's header inserts into that group, between groups creates a new one. `Escape` cancels.
 
 **Panel Content:**
 - Clicks forwarded to `panel.handle_mouse()`
@@ -309,47 +319,55 @@ When modal is open, keyboard input goes to modal first. Escape closes modal.
 Rendering flow:
 
 ```rust
-fn render_layout_with_accordion(frame, layout_manager, state) {
-    // 1. Calculate horizontal layout for all panel groups
+fn render_main_area(frame, layout_manager, state) {
+    // 1. Compute column widths (proportional, with min_panel_width floor).
     let horizontal_chunks = calculate_horizontal_layout();
 
-    // 2. Render panel groups
+    // 2. For each column, drive vertical constraints from the group's
+    //    cached split heights (or equal distribution as a fallback).
     for group in groups {
-        let vertical_chunks = calculate_vertical_layout(group);
+        let vertical_chunks =
+            termide_layout::compute_vertical_constraints(group, area_height);
 
-        // 3. Render each panel (expanded or collapsed)
-        for panel in group {
-            if is_expanded {
-                render_expanded_panel(panel, area, ...);
+        // 3. Render each panel. Panels with height >= 2 render their
+        //    full content + border; panels clamped to a single row
+        //    fall back to header-only rendering.
+        for (idx, panel) in group.panels().enumerate() {
+            if vertical_chunks[idx].height >= 2 {
+                let omit_bottom_border = idx + 1 < group.len();
+                render_expanded_panel(panel, area, omit_bottom_border, ...);
             } else {
                 render_collapsed_panel(panel, area, ...);
             }
         }
     }
 
-    // 4. Render modal (if open)
+    // 4. Render modal (if open).
     if let Some(modal) = state.active_modal {
         render_modal(modal, ...);
     }
 }
 ```
 
+Every non-last panel skips its bottom border so the next panel's titled top border doubles as the divider — saves a row per gap. The lower panel's top corners are post-processed from `┌`/`┐` to `├`/`┤` so the box-drawing characters meet cleanly with the upper panel's `│` walls.
+
 #### 4.2 Panel Rendering
 
 **Location:** `crates/ui-render/src/panel.rs`
 
-**Expanded Panel:**
-- Border with `[≡][icon]` buttons and title (e.g. `[≡][📁] Files`)
+**Full panel (height ≥ 2 rows):**
+- Border with the `[≡]` action button and emoji + title (e.g. `[≡] 📁 Files`)
 - Full content area
 - Scrollable if content exceeds area
+- The bottom border is dropped when another panel sits below in the same group; the next panel's titled top border serves as the divider
 
-**Collapsed Panel:**
-- Title bar only: `─[≡][📁] Files ─────`
-- Takes minimal vertical space (1 line)
-- Clicking expands
+**Collapsed panel (height = 1 row, only when shrunk to the minimum):**
+- Title bar only: `─[≡] 📁 Files ─────`
+- Takes one row
+- Click the title to focus the panel; press `Alt+F11` or `Ctrl+Alt+=` to grow it
 
 **Icon Mode:**
-Panel titles show emoji icons based on panel type (📁 file manager, 💻 terminal, 📝 editor, etc.). Icon mode is configured via `icon_mode` in `[general]` settings:
+Panel titles show emoji icons based on panel type (📁 file manager, 💻 terminal, 📝 editor, 🔄 operations, 🚧 diagnostics, 📑 outline, 🎨 image, etc.). All icons are chosen to be reliably 2-cells wide in modern terminals so the title alignment after the icon stays stable. Icon mode is configured via `icon_mode` in `[general]` settings:
 - `auto` (default) — emoji if terminal supports it, plain `[≡]` otherwise
 - `emoji` — always show emoji icons
 - `unicode` — no icons, no arrows, just `[≡]`
@@ -504,15 +522,15 @@ crates/i18n/
 
 ## Design Decisions
 
-### Why Accordion Layout?
+### Why Split Layout with a Fullscreen Preset?
 
-**Problem:** Terminal space is limited, multi-panel IDEs often feel cramped.
+**Problem:** Terminal space is limited and multi-panel IDEs often feel cramped, but binary "one-expanded, rest collapsed" layouts also throw away cases where the user wants to see two or three panels at adjusted heights at once.
 
-**Solution:** Accordion layout maximizes usable space:
-- One expanded panel per group gets full vertical space
-- Other panels collapse to title bar (1 line)
-- Quick access via Alt+Up/Down or mouse click
-- Automatic stacking when terminal is too narrow
+**Solution:** Adjustable split layout per group, plus a one-key fullscreen preset:
+- Every panel in a group is visible by default; the user picks heights via mouse drag, `Ctrl+Alt+=` / `Ctrl+Alt+-`, or by simply dragging a panel header up/down.
+- `Alt+F11` toggles a "fullscreen current panel" preset that mirrors the legacy accordion view (one panel takes the full column, others collapse to one row), with the previous heights stashed for instant restore.
+- Heights are cached and rescaled proportionally when the terminal resizes.
+- Automatic stacking still kicks in when the terminal is too narrow (`min_panel_width`).
 
 ### Why Dynamic Panels?
 
@@ -522,7 +540,7 @@ crates/i18n/
 - Multiple file managers for different directories
 
 **Challenge:** Managing many panels efficiently
-- Accordion prevents clutter
+- The fullscreen preset gives a clutter-free single-panel view on demand
 - Hotkeys provide fast navigation
 - Welcome screen auto-closes
 
@@ -540,9 +558,9 @@ crates/i18n/
 
 ## Performance Characteristics
 
-**Rendering:** O(n) where n = number of visible panels
-- Only expanded panels render full content
-- Collapsed panels render single line
+**Rendering:** O(n) where n = number of panels in visible groups
+- Panels with height ≥ 2 render their full content; panels collapsed to one row render only the title bar
+- Bottom borders between stacked panels are merged with the next panel's title row to save a line per gap
 
 **Event Handling:** O(1) for most operations
 - Direct index access to focused panel
@@ -575,18 +593,24 @@ Session persistence allows saving and restoring panel layouts:
 
 **Session File Format:**
 ```toml
+focused_group = 0
+
 [[panel_groups]]
-expanded_index = 0
-horizontal_weight = 100
+expanded_index = 1            # focused panel within the group
+width = 80                    # column width (None = auto-distribute)
+split_heights = [12, 6]       # per-panel heights (omitted when uncached)
+fullscreen_cache = [10, 8]    # heights to restore on Alt+F11 toggle-off
 
 [[panel_groups.panels]]
-panel_type = "file_manager"
-state = { current_path = "/home/user/project" }
+type = "file_manager"
+path_or_url = "/home/user/project"
 
 [[panel_groups.panels]]
-panel_type = "editor"
-state = { file_path = "/home/user/project/main.rs", cursor_line = 42 }
+type = "editor"
+path = "/home/user/project/main.rs"
 ```
+
+A legacy `mode = "accordion"` field is still accepted on read and triggers a one-time migration to the fullscreen preset (current code never writes it).
 
 ## Future Architecture Considerations
 
@@ -645,9 +669,9 @@ state = { file_path = "/home/user/project/main.rs", cursor_line = 42 }
 
 TermIDE's architecture prioritizes:
 - **Flexibility** - Dynamic panel system adapts to user needs
-- **Efficiency** - Accordion layout maximizes usable space
+- **Efficiency** - Adjustable split layout with a one-key fullscreen preset maximises usable space without giving up multi-panel views
 - **Extensibility** - Trait-based design allows easy additions
 - **Robustness** - Defensive programming prevents crashes
 - **Performance** - Efficient rendering and event handling
 
-The accordion layout system is the key innovation that differentiates TermIDE from traditional multi-panel terminal applications.
+The split-with-fullscreen layout system is the key innovation that differentiates TermIDE from traditional multi-panel terminal applications.

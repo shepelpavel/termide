@@ -102,7 +102,7 @@ termide/
 │   ├── highlight/            # 语法高亮（tree-sitter，15+ 种语言）
 │   ├── i18n/                 # 国际化（15 种语言）
 │   ├── keyboard/             # 键盘处理和布局翻译
-│   ├── layout/               # 面板布局和手风琴系统
+│   ├── layout/               # 面板组、拆分布局、全屏预设
 │   ├── logger/               # 日志系统
 │   ├── lsp/                  # 语言服务器协议客户端
 │   ├── modal/                # 模态对话框实现
@@ -136,19 +136,23 @@ termide/
 
 ### 1. LayoutManager (`crates/layout/src/`)
 
-管理手风琴面板布局系统：
-- 管理水平面板组（`Vec<PanelGroup>`）
-- 处理焦点导航（Alt+Left/Right 在组之间切换）
-- 智能面板堆叠/拆分（Alt+Backspace）
+持有整个窗口的拆分布局状态：
+- 水平排列 `Vec<PanelGroup>`（每个组是一列）
+- 组之间的焦点导航（Alt+Left/Right）
+- 在相邻组之间智能堆叠/拆分面板（Alt+Backspace、F11）
+- 终端尺寸变化时按比例重新分配宽度
 - 通过 `setup_default_layout()` 实现宽度自适应默认布局
 
 ### 2. PanelGroup (`crates/layout/src/panel_group.rs`)
 
-表示面板的垂直堆叠（手风琴式）：
-- 一个展开的面板，其他折叠为标题栏
-- 维护 `expanded_index`
-- `width: Option<u16>` 用于显式宽度控制
-- 提供组内导航（Alt+Up/Down）
+由若干面板组成的列，每个面板高度可调：
+- `expanded_index: usize` — 聚焦面板（活动边框 + 全屏预设激活时被放大的那个）
+- `width: Option<u16>` — 列宽（None = 自动分配）
+- `split_heights: Option<Vec<u16>>` — 缓存的每面板高度，终端尺寸变化时按比例重缩放
+- `fullscreen_cache: Option<Vec<u16>>` — `Alt+F11` 关闭全屏预设时恢复的高度
+- `next_panel`/`prev_panel`/`set_expanded` 移动焦点；预设激活时重新应用预设
+- `grow_focused`/`shrink_focused` 以 3 行为步长调整聚焦面板的高度，向相邻面板级联回填
+- `resize_panel_divider` 把增量应用到给定面板上方的分隔线（鼠标拖动处理器使用）
 
 ### 3. Panel Trait (`crates/core/src/lib.rs`)
 

@@ -825,6 +825,13 @@ impl Terminal {
             return Ok(());
         }
 
+        // Split-mode panels can collapse to a 1- or 2-row strip; the
+        // inner area below would have width/height = 0 and the clamp
+        // bounds below would invert (`min > max`), which panics.
+        if panel_area.width < 3 || panel_area.height < 3 {
+            return Ok(());
+        }
+
         let inner_x_min = panel_area.x + 1;
         let inner_x_max = panel_area.x + panel_area.width.saturating_sub(2);
         let inner_y_min = panel_area.y + 1;
@@ -1937,6 +1944,13 @@ impl Panel for Terminal {
 
         // If process exited, don't handle mouse
         if !self.is_alive() {
+            return vec![];
+        }
+
+        // Split-mode panels can collapse to a 1- or 2-row strip; the
+        // inner area would have zero width/height and the clamp bounds
+        // below would invert (`min > max`), which panics.
+        if panel_area.width < 3 || panel_area.height < 3 {
             return vec![];
         }
 

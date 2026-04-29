@@ -59,6 +59,9 @@ pub(super) fn build_global_hotkey_table(kb: &GlobalKeybindings) -> HotkeyTable {
     t.insert("move_last", &kb.move_last);
     t.insert("resize_smaller", &kb.resize_smaller);
     t.insert("resize_larger", &kb.resize_larger);
+    t.insert("toggle_fullscreen_panel", &kb.toggle_fullscreen_panel);
+    t.insert("panel_grow_vertical", &kb.panel_grow_vertical);
+    t.insert("panel_shrink_vertical", &kb.panel_shrink_vertical);
     t.insert("panel_action_menu", &kb.panel_action_menu);
 
     // Application
@@ -221,6 +224,18 @@ impl App {
             self.handle_resize_panel(1)?;
             return Ok(true);
         }
+        if table.matches("toggle_fullscreen_panel", key) {
+            self.toggle_active_group_fullscreen();
+            return Ok(true);
+        }
+        if table.matches("panel_grow_vertical", key) {
+            self.handle_panel_resize_vertical(true);
+            return Ok(true);
+        }
+        if table.matches("panel_shrink_vertical", key) {
+            self.handle_panel_resize_vertical(false);
+            return Ok(true);
+        }
 
         // Application
         if table.matches("quit", key) {
@@ -272,6 +287,9 @@ impl App {
             "move_last" => self.move_panel_to_last(),
             "resize_smaller" => self.handle_resize_panel(-1)?,
             "resize_larger" => self.handle_resize_panel(1)?,
+            "toggle_fullscreen_panel" => self.toggle_active_group_fullscreen(),
+            "panel_grow_vertical" => self.handle_panel_resize_vertical(true),
+            "panel_shrink_vertical" => self.handle_panel_resize_vertical(false),
             "quit" => self.handle_quit_request()?,
             other => {
                 if let Some(key) = other.strip_prefix("run_command:") {
@@ -388,4 +406,44 @@ impl App {
         let result = self.layout_manager.move_panel_to_last_group(terminal_width);
         self.handle_layout_op("Cannot move panel", result);
     }
+
+    /// Toggle the fullscreen-current-panel preset for the active group.
+    /// Off → preset (one panel takes the full height, the rest collapse
+    /// to a single header line, mirroring the legacy accordion view);
+    /// On → restore the heights from before the toggle.
+    fn toggle_active_group_fullscreen(&mut self) {
+        let area_height = self.panels_area_height();
+        if let Some(group_idx) = self.layout_manager.active_group_index() {
+            if let Some(group) = self.layout_manager.panel_groups.get_mut(group_idx) {
+                group.toggle_fullscreen(area_height);
+            }
+        }
+    }
+
+    /// Grow (`grow=true`) or shrink (`grow=false`) the focused panel in
+    /// the active group by [`PANEL_VERTICAL_RESIZE_STEP`] lines.
+    fn handle_panel_resize_vertical(&mut self, grow: bool) {
+        let area_height = self.panels_area_height();
+        if let Some(group_idx) = self.layout_manager.active_group_index() {
+            if let Some(group) = self.layout_manager.panel_groups.get_mut(group_idx) {
+                if grow {
+                    group.grow_focused(PANEL_VERTICAL_RESIZE_STEP, area_height);
+                } else {
+                    group.shrink_focused(PANEL_VERTICAL_RESIZE_STEP, area_height);
+                }
+            }
+        }
+    }
+
+    /// Available vertical space for panels (terminal height minus the menu
+    /// row and status bar row, see `render_main_area` in `src/ui.rs`).
+    fn panels_area_height(&self) -> u16 {
+        self.state.terminal.height.saturating_sub(2)
+    }
 }
+
+/// Number of lines added/removed per `panel_grow_vertical` /
+/// `panel_shrink_vertical` press. Hardcoded — single-line steps make the
+/// hotkey feel broken, larger steps overshoot. Mirrors the rationale for
+/// keeping horizontal resize step hardcoded.
+const PANEL_VERTICAL_RESIZE_STEP: u16 = 3;

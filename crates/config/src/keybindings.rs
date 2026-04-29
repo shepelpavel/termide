@@ -212,6 +212,12 @@ pub struct GlobalKeybindings {
     pub move_last: Option<KeyBinding>,
     pub resize_smaller: Option<KeyBinding>,
     pub resize_larger: Option<KeyBinding>,
+    /// Toggle accordion / split layout for the active panel group.
+    pub toggle_fullscreen_panel: Option<KeyBinding>,
+    /// Grow the focused panel's height in split mode.
+    pub panel_grow_vertical: Option<KeyBinding>,
+    /// Shrink the focused panel's height in split mode.
+    pub panel_shrink_vertical: Option<KeyBinding>,
     /// Open the active panel's action context menu (the `[≡]` button dropdown).
     pub panel_action_menu: Option<KeyBinding>,
 
@@ -483,6 +489,9 @@ impl GlobalKeybindings {
         set_default!(move_last, "Alt+End");
         set_default!(resize_smaller, "Alt+-");
         set_default!(resize_larger, "Alt+=");
+        set_default!(toggle_fullscreen_panel, "Alt+F11");
+        set_default!(panel_grow_vertical, "Ctrl+Alt+=");
+        set_default!(panel_shrink_vertical, "Ctrl+Alt+-");
 
         // Navigation (with WASD alternatives)
         macro_rules! set_default_multiple {

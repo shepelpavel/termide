@@ -151,6 +151,9 @@ pub trait Translation: Send + Sync {
     fn help_desc_move_last(&self) -> &str;
     fn help_desc_resize_smaller(&self) -> &str;
     fn help_desc_resize_larger(&self) -> &str;
+    fn help_desc_toggle_fullscreen_panel(&self) -> &str;
+    fn help_desc_panel_grow_vertical(&self) -> &str;
+    fn help_desc_panel_shrink_vertical(&self) -> &str;
     fn help_desc_prev_group(&self) -> &str;
     fn help_desc_next_group(&self) -> &str;
     fn help_desc_prev_panel(&self) -> &str;

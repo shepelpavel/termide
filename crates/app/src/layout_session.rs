@@ -7,14 +7,27 @@ use std::path::Path;
 use anyhow::Result;
 
 use termide_core::Panel;
-use termide_layout::{LayoutManager, PanelGroup};
+use termide_layout::{LayoutManager, PanelGroup, MIN_PANEL_HEIGHT};
+
+fn fullscreen_preset(n: usize, focused: usize, area_height: u16) -> Vec<u16> {
+    let collapsed_total = MIN_PANEL_HEIGHT as u32 * (n as u32 - 1);
+    let focused_height = (area_height as u32)
+        .saturating_sub(collapsed_total)
+        .max(MIN_PANEL_HEIGHT as u32) as u16;
+    let mut heights = vec![MIN_PANEL_HEIGHT; n];
+    if focused < n {
+        heights[focused] = focused_height;
+    }
+    heights
+}
 use termide_panel_editor::{Editor, EditorConfig};
 use termide_panel_file_manager::FileManager;
 use termide_panel_image::ImagePanel;
 use termide_panel_misc::JournalPanel;
 use termide_panel_terminal::Terminal;
 use termide_session::{
-    cleanup_unsaved_buffer, load_unsaved_buffer, Session, SessionPanel, SessionPanelGroup,
+    cleanup_unsaved_buffer, load_unsaved_buffer, Session, SessionGroupMode, SessionPanel,
+    SessionPanelGroup,
 };
 use termide_theme::Theme;
 
@@ -49,6 +62,10 @@ impl LayoutManagerSession for LayoutManager {
                     panels,
                     expanded_index: group.expanded_index(),
                     width: group.width,
+                    // `mode` is legacy — never written by current code.
+                    mode: SessionGroupMode::default(),
+                    split_heights: group.split_heights().map(|s| s.to_vec()),
+                    fullscreen_cache: group.fullscreen_cache().map(|c| c.to_vec()),
                 }
             })
             .collect();
@@ -197,16 +214,58 @@ impl LayoutManagerSession for LayoutManager {
                 continue;
             }
 
-            let mut group = PanelGroup::new(panels.remove(0));
-            for panel in panels {
-                group.add_panel(panel);
-            }
+            let n_panels = panels.len();
+            let expanded_idx = session_group.expanded_index.min(n_panels - 1);
 
-            let expanded_idx = session_group
-                .expanded_index
-                .min(group.len().saturating_sub(1));
-            group.set_expanded(expanded_idx);
-            group.width = session_group.width;
+            // Decide what fullscreen-cache to seed the group with so
+            // toggle-off in this run restores the user's pre-fullscreen
+            // layout from the previous run, not a generated preset.
+            //
+            // 1. New sessions explicitly carry `fullscreen_cache` when
+            //    the preset was active at save time.
+            // 2. Legacy sessions with `mode = Accordion` and no
+            //    `split_heights` (= old binary accordion view) get a
+            //    fresh equal-distribution cache so toggling off lands
+            //    the user in a sane free-resize layout.
+            let area_height = term_height.saturating_sub(2);
+            let fullscreen_cache = if let Some(cache) = session_group.fullscreen_cache {
+                Some(cache)
+            } else if matches!(session_group.mode, SessionGroupMode::Accordion)
+                && session_group.split_heights.is_none()
+                && n_panels >= 2
+            {
+                let per = area_height / n_panels as u16;
+                let rem = area_height % n_panels as u16;
+                let cache: Vec<u16> = (0..n_panels as u16)
+                    .map(|i| if i < rem { per + 1 } else { per }.max(1))
+                    .collect();
+                Some(cache)
+            } else {
+                None
+            };
+
+            // If we have a fullscreen cache, the on-disk `split_heights`
+            // is the preset shape (or absent for legacy sessions); apply
+            // the preset for the focused panel.
+            let in_fullscreen = fullscreen_cache.is_some();
+            let split_heights = if in_fullscreen {
+                Some(fullscreen_preset(n_panels, expanded_idx, area_height))
+            } else {
+                session_group.split_heights
+            };
+
+            let mut group = PanelGroup::from_parts(
+                panels,
+                expanded_idx,
+                session_group.width,
+                split_heights,
+                fullscreen_cache,
+            );
+            // RefreshIfStale on the focused panel — `from_parts` is a
+            // raw constructor and skips that signal.
+            if let Some(panel) = group.expanded_panel_mut() {
+                panel.handle_command(termide_core::PanelCommand::RefreshIfStale);
+            }
 
             layout.panel_groups.push(group);
         }

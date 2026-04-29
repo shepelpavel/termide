@@ -3360,6 +3360,7 @@ dependencies = [
  "anyhow",
  "crossterm 0.28.1",
  "ratatui",
+ "serde",
  "termide-config",
  "termide-core",
  "termide-session",

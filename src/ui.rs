@@ -532,16 +532,9 @@ fn render_panel_group(
 
     let expanded_idx = group.expanded_index();
 
-    // Build vertical constraints: collapsed panels = 1 line, expanded = Min(0)
-    let vertical_constraints: Vec<Constraint> = (0..group.len())
-        .map(|i| {
-            if i == expanded_idx {
-                Constraint::Min(0) // Expanded panel takes all remaining space
-            } else {
-                Constraint::Length(1) // Collapsed panels are 1 line
-            }
-        })
-        .collect();
+    // Constraints come from the layout crate so accordion / split geometry
+    // stays in sync with `calculate_panel_rects` (used for hit-testing).
+    let vertical_constraints = termide_layout::compute_vertical_constraints(group, area.height);
 
     let vertical_chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -551,23 +544,35 @@ fn render_panel_group(
     // Get group size for conditional icon rendering
     let group_size = group.len();
 
-    // Render each panel in the group
+    // Render each panel in the group.
+    //
+    // In Accordion mode the focused panel gets `area.height >= 2` (Min(0))
+    // and others get exactly 1 row (header). In Split mode every panel
+    // gets at least 1 row from its cached height. The render branch is
+    // driven by the actual area height, not the focus flag, so in Split
+    // every panel above min draws its full contents.
     for (panel_idx, panel) in group.panels_mut().iter_mut().enumerate() {
         let panel_area = vertical_chunks[panel_idx];
-        let is_expanded = panel_idx == expanded_idx;
-        let is_focused = is_active_group && is_expanded;
+        let is_focused_panel = panel_idx == expanded_idx;
+        let is_focused = is_active_group && is_focused_panel;
 
         // Calculate global panel index for rendering
         // (не используется сейчас, но может понадобиться для совместимости)
         let global_panel_index = group_idx * 100 + panel_idx;
 
-        if is_expanded {
-            // Render expanded panel with full border
+        if panel_area.height >= 2 {
+            // Every non-last panel above the minimum height skips its
+            // bottom border so the next panel's titled top border acts
+            // as the divider — saves one row per gap. The last panel
+            // keeps its full border to close the group cleanly.
+            let omit_bottom_border = panel_idx + 1 < group_size;
+            // Render full panel with border + content.
             let params = ExpandedPanelParams {
                 tab_size: state.config.editor.tab_size,
                 word_wrap: state.config.editor.word_wrap,
                 terminal_width: state.terminal.width,
                 terminal_height: state.terminal.height,
+                omit_bottom_border,
             };
             render_expanded_panel(
                 panel,
@@ -580,8 +585,28 @@ fn render_panel_group(
                 params,
                 group_size,
             );
+
+            // The upper panel's `│` walls continue down to the boundary
+            // row, where the lower panel draws `┌─Title─┐`. Replace its
+            // top corners with T-junctions so the box-drawing characters
+            // meet cleanly. Skip for the first panel (no panel above)
+            // and when there's no full second column (single-column).
+            if panel_idx > 0 && panel_area.width >= 2 {
+                let buf = frame.buffer_mut();
+                let right_x = panel_area.x + panel_area.width - 1;
+                if let Some(cell) = buf.cell_mut((panel_area.x, panel_area.y)) {
+                    if cell.symbol() == "┌" {
+                        cell.set_symbol("├");
+                    }
+                }
+                if let Some(cell) = buf.cell_mut((right_x, panel_area.y)) {
+                    if cell.symbol() == "┐" {
+                        cell.set_symbol("┤");
+                    }
+                }
+            }
         } else {
-            // Render collapsed panel (only title bar)
+            // Render collapsed panel (only title bar).
             render_collapsed_panel(
                 &**panel,
                 panel_area,
@@ -590,6 +615,33 @@ fn render_panel_group(
                 state.theme,
                 group_size,
             );
+
+            // Patch the `─` end-caps of the title row so the box-drawing
+            // characters meet the neighbouring panels' side walls. The
+            // shape depends on whether this collapsed panel has another
+            // panel above and/or below it in the group.
+            if panel_area.width >= 2 {
+                let buf = frame.buffer_mut();
+                let right_x = panel_area.x + panel_area.width - 1;
+                let has_above = panel_idx > 0;
+                let has_below = panel_idx + 1 < group_size;
+                let (left_char, right_char) = match (has_above, has_below) {
+                    (true, true) => ("├", "┤"),
+                    (true, false) => ("└", "┘"),
+                    (false, true) => ("┌", "┐"),
+                    (false, false) => ("─", "─"),
+                };
+                if let Some(cell) = buf.cell_mut((panel_area.x, panel_area.y)) {
+                    if cell.symbol() == "─" {
+                        cell.set_symbol(left_char);
+                    }
+                }
+                if let Some(cell) = buf.cell_mut((right_x, panel_area.y)) {
+                    if cell.symbol() == "─" {
+                        cell.set_symbol(right_char);
+                    }
+                }
+            }
         }
     }
 }

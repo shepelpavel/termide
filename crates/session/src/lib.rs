@@ -18,15 +18,41 @@ pub struct Session {
     pub focused_group: usize,
 }
 
-/// A group of panels (one vertical column)
+/// Legacy layout-mode tag retained for backward compatibility with
+/// sessions saved before the unified-split refactor. Newer code never
+/// writes this field; older sessions deserialize the tag and the
+/// loader treats `Accordion` as a request to apply the
+/// fullscreen-current-panel preset on top of `expanded_index`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SessionGroupMode {
+    #[default]
+    #[serde(rename = "accordion")]
+    Accordion,
+    #[serde(rename = "split")]
+    Split,
+}
+
+/// A group of panels (one vertical column).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionPanelGroup {
-    /// Panels in this group
+    /// Panels in this group.
     pub panels: Vec<SessionPanel>,
-    /// Which panel is expanded (0-based index)
+    /// Which panel is focused (0-based index).
     pub expanded_index: usize,
-    /// Column width in characters (None = auto-distributed)
+    /// Column width in characters (None = auto-distributed).
     pub width: Option<u16>,
+    /// Legacy mode tag — still parsed from old sessions to drive
+    /// fullscreen-preset migration. New sessions never write it.
+    #[serde(default, skip_serializing)]
+    pub mode: SessionGroupMode,
+    /// Cached panel heights (in lines). `None` means "no cache yet —
+    /// derive equal distribution on first use".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub split_heights: Option<Vec<u16>>,
+    /// When `Some`, the group is in the fullscreen-current-panel preset
+    /// and this is the heights snapshot to restore on toggle-off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fullscreen_cache: Option<Vec<u16>>,
 }
 
 /// Panel data for serialization
@@ -649,6 +675,9 @@ mod tests {
                         },
                     ],
                     expanded_index: 1,
+                    mode: Default::default(),
+                    split_heights: None,
+                    fullscreen_cache: None,
                     width: Some(120),
                 },
                 SessionPanelGroup {
@@ -657,6 +686,9 @@ mod tests {
                     }],
                     expanded_index: 0,
                     width: None,
+                    mode: Default::default(),
+                    split_heights: None,
+                    fullscreen_cache: None,
                 },
             ],
             focused_group: 0,
@@ -711,6 +743,9 @@ path = "/old/style/path"
                 }],
                 expanded_index: 0,
                 width: None,
+                mode: Default::default(),
+                split_heights: None,
+                fullscreen_cache: None,
             }],
             focused_group: 0,
         };
@@ -839,6 +874,9 @@ panels = []
                 ],
                 expanded_index: 0,
                 width: None,
+                mode: Default::default(),
+                split_heights: None,
+                fullscreen_cache: None,
             }],
             focused_group: 0,
         };

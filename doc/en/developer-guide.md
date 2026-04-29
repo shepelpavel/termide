@@ -102,7 +102,7 @@ termide/
 │   ├── highlight/            # Syntax highlighting (tree-sitter, 21 languages)
 │   ├── i18n/                 # Internationalization (15 languages)
 │   ├── keyboard/             # Keyboard handling and layout translation
-│   ├── layout/               # Panel layout and accordion system
+│   ├── layout/               # Panel groups, split layout, fullscreen preset
 │   ├── logger/               # Logging system
 │   ├── lsp/                  # Language Server Protocol client
 │   ├── modal/                # Modal dialog implementations
@@ -136,19 +136,23 @@ termide/
 
 ### 1. LayoutManager (`crates/layout/src/`)
 
-Manages the accordion panel layout system:
-- Manages horizontal panel groups (`Vec<PanelGroup>`)
-- Handles focus navigation (Alt+Left/Right between groups)
-- Smart panel stacking/unstacking (Alt+Backspace)
+Owns the split-layout state for the whole window:
+- Horizontal arrangement of `Vec<PanelGroup>` (each group is a column)
+- Focus navigation between groups (Alt+Left/Right)
+- Smart stacking/unstacking of panels between adjacent groups (Alt+Backspace, F11)
+- Proportional width redistribution on terminal resize
 - Width-adaptive default layout via `setup_default_layout()`
 
 ### 2. PanelGroup (`crates/layout/src/panel_group.rs`)
 
-Represents a vertical stack of panels (accordion):
-- One expanded panel, others collapsed to title bar
-- Maintains `expanded_index`
-- `width: Option<u16>` for explicit width control
-- Provides navigation within group (Alt+Up/Down)
+A column of vertically stacked panels with adjustable heights:
+- `expanded_index: usize` — focused panel (active border + the one boosted by the fullscreen preset, when active)
+- `width: Option<u16>` — column width (None = auto-distribute)
+- `split_heights: Option<Vec<u16>>` — cached per-panel heights, rescaled proportionally on resize
+- `fullscreen_cache: Option<Vec<u16>>` — heights to restore when the fullscreen preset toggles off (`Alt+F11`)
+- `next_panel`/`prev_panel`/`set_expanded` move focus and re-apply the preset when active
+- `grow_focused`/`shrink_focused` add or remove rows from the focused panel (3-row step), cascading through neighbours
+- `resize_panel_divider` applies a delta to the divider above a given panel (used by the mouse drag handler)
 
 ### 3. Panel Trait (`crates/core/src/lib.rs`)
 

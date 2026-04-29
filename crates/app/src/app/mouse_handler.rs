@@ -271,12 +271,12 @@ impl App {
         }
     }
 
-    /// Handle click on panel [≡] button, [▶]/[▼] expand/collapse button, or title area.
+    /// Handle click on panel `[≡]` button or title area.
     /// Returns true if a button or title was clicked.
     fn handle_panel_close_click(&mut self, click_x: u16, click_y: u16) -> Result<bool> {
         let panel_rects = self.calculate_panel_rects();
 
-        for (group_idx, panel_idx, rect, is_expanded) in panel_rects {
+        for (group_idx, panel_idx, rect, _is_expanded) in panel_rects {
             // Check if click is on this panel's top line
             if click_y != rect.y {
                 continue;
@@ -289,10 +289,10 @@ impl App {
 
             let relative_x = click_x - rect.x;
 
-            // Button format: ─[≡][▶] Title ─── (collapsed)
-            //          or:   ┌[≡][▼] Title ──┐ (expanded)
-            // [≡] action menu button: offsets 1-3
-            // [▶]/[▼] expand/collapse button: offsets 4-6
+            // Title bar layout: `─[≡] Title ─── ─` (or `┌` / `├` corner
+            // depending on position in the group). The action-menu
+            // button occupies offsets 1..=3; everything from offset 4
+            // onward (after the trailing space) is treated as title.
 
             if (1..=3).contains(&relative_x) {
                 // Click on [≡] button — open panel action context menu
@@ -303,34 +303,9 @@ impl App {
                     .open(group_idx, panel_idx, rect.x, rect.y);
                 self.state.needs_redraw = true;
                 return Ok(true);
-            } else if (4..=6).contains(&relative_x) {
-                // Click on [▶]/[▼] button - expand/collapse panel
-                if let Some(group) = self.layout_manager.panel_groups.get_mut(group_idx) {
-                    if is_expanded && group.len() > 1 {
-                        // Currently expanded - collapse by expanding next panel
-                        let next_idx = (panel_idx + 1) % group.len();
-                        group.set_expanded(next_idx);
-                    } else {
-                        // Currently collapsed - expand this panel
-                        group.set_expanded(panel_idx);
-                        // Also make this group active
-                        self.layout_manager.focus = group_idx;
-                    }
-                }
-                return Ok(true);
             }
 
-            // Calculate title zone boundaries
-            // Format: ─[≡][▶] Title ─── (group_size > 1) or ─[≡] Title ─── (group_size == 1)
-            let group_size = self
-                .layout_manager
-                .panel_groups
-                .get(group_idx)
-                .map(|g| g.len())
-                .unwrap_or(1);
-
-            // Check for title click (only if buttons didn't handle it)
-            let title_start = if group_size > 1 { 7 } else { 4 };
+            let title_start: u16 = 4;
 
             if relative_x >= title_start {
                 // Record a pending panel drag. If the cursor moves past

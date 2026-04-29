@@ -4,24 +4,27 @@
 
 ## 概述
 
-TermIDE 是一个使用 Rust 语言基于 `ratatui` TUI 框架构建的基于终端的 IDE。它采用创新的**手风琴面板布局系统**，可自适应终端宽度，实现高效的多面板工作流。
+TermIDE 是一个使用 Rust 语言基于 `ratatui` TUI 框架构建的基于终端的 IDE。它采用自适应的**垂直拆分面板布局**：每个面板高度可独立调整，并支持一键切换聚焦面板的全屏预设。
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │ 菜单栏     [CPU] [RAM] [时钟]                            │
 ├───────────────────┬─────────────────────────────────────┤
-│ ┌[≡][📁] 文件 ──┐ │ ┌[≡][📝] 编辑器: main.rs ──────────┐│
-│ │               │ │ │                                  ││
-│ │ src/          │ │ │  fn main() {                     ││
-│ │ tests/        │ │ │      // code here                ││
-│ │ Cargo.toml    │ │ │  }                               ││
-│ │               │ │ │                                  ││
+│ ┌[≡] 📁 文件 ──┐ │ ┌[≡] 📝 编辑器: main.rs ───────────┐│
+│ │ src/          │ │ │                                  ││
+│ │ tests/        │ │ │  fn main() {                     ││
+│ │ Cargo.toml    │ │ │      // code here                ││
+│ │               │ │ │  }                               ││
+│ ├[≡] 💻 终端 ──┤ │ │                                  ││
+│ │ $ cargo build │ │ │                                  ││
+│ │ Compiling...  │ │ │                                  ││
 │ └───────────────┘ │ └──────────────────────────────────┘│
-│ ─[≡][💻] 终端─── │ ─[≡][📋] 日志 ──────────────────────│
 ├───────────────────┴─────────────────────────────────────┤
 │ 状态: file.rs:42  行 10, 列 5        磁盘: 83%          │
 └─────────────────────────────────────────────────────────┘
 ```
+
+左侧列上方为两个共享列、各自高度可调的面板；右侧由一个面板独占整列。按 `Alt+F11` 把活动列中所有非聚焦面板缩为标题行（一行预设），再次按下恢复之前的高度。
 
 ## 核心架构组件
 
@@ -31,7 +34,7 @@ TermIDE 是一个使用 Rust 语言基于 `ratatui` TUI 框架构建的基于终
 
 **位置：** `crates/layout/src/lib.rs`
 
-`LayoutManager` 是手风琴布局系统的核心。它管理：
+`LayoutManager` 持有拆分布局的状态。它管理：
 
 **组成部分：**
 - `panel_groups: Vec<PanelGroup>` - 面板组的水平排列
@@ -40,8 +43,9 @@ TermIDE 是一个使用 Rust 语言基于 `ratatui` TUI 框架构建的基于终
 **主要职责：**
 - 基于宽度阈值自动堆叠添加面板
 - 管理水平导航（Alt+Left/Right）
-- 管理组内垂直导航（Alt+Up/Down）
-- 智能面板堆叠/拆分（Alt+Backspace）
+- 管理组内垂直焦点（Alt+Up/Down）
+- 在相邻组之间智能堆叠/拆分面板（Alt+Backspace、F11）
+- 终端尺寸变化时按比例重新分配宽度
 - 关闭面板并清理空组
 
 **焦点管理：**
@@ -51,28 +55,32 @@ TermIDE 是一个使用 Rust 语言基于 `ratatui` TUI 框架构建的基于终
 
 **位置：** `crates/layout/src/panel_group.rs`
 
-`PanelGroup` 表示具有手风琴行为的面板垂直堆叠。
+`PanelGroup` 表示同列中的多个面板，每个面板高度可调。
 
 **结构：**
 ```rust
 pub struct PanelGroup {
-    panels: Vec<Box<dyn Panel>>,  // 此组中的面板
-    expanded_index: usize,         // 哪个面板是展开的
-    pub width: Option<u16>,        // 字符宽度（None = 自动分配）
+    panels: Vec<Box<dyn Panel>>,         // 此组中的面板
+    expanded_index: usize,               // 聚焦面板（活动边框）
+    pub width: Option<u16>,              // 列宽（None = 自动分配）
+    split_heights: Option<Vec<u16>>,     // 缓存的每面板高度
+    fullscreen_cache: Option<Vec<u16>>,  // 进入全屏预设前的高度，用于撤销
 }
 ```
 
-**手风琴行为：**
-- 恰好一个面板处于展开状态（显示完整内容）
-- 其他面板折叠为仅显示标题栏
-- 点击标题栏面板图标按钮进行展开/折叠
-- Alt+Up/Down 在组内面板之间导航
+**布局行为：**
+- 组内所有面板均可见。每个面板的最低高度为一行（标题栏）。
+- `split_heights` 是按面板缓存的高度。`None` 表示「无缓存——首次使用时按等量分配」。终端列高变化时高度按比例重缩放。
+- 按下 `Alt+F11`（或绑定 `toggle_fullscreen_panel`）切换全屏预设：聚焦面板占满整列高度，其他面板各自缩为一行。预设前的高度保存到 `fullscreen_cache`，再次按下即可恢复。
+- 预设激活时，通过 `Alt+Up` / `Alt+Down`（`prev_panel` / `next_panel`）切换焦点会把预设重新应用到新焦点 —— 视觉上等同于经典的手风琴视图。
+- `Ctrl+Alt+=` / `Ctrl+Alt+-`（`panel_grow_vertical` / `panel_shrink_vertical`）以 3 行为步长增大/缩小聚焦面板，向有空闲的相邻面板回填行数（级联）。
 
 **关键操作：**
-- `add_panel()` - 向组中添加面板
-- `remove_panel()` - 移除面板（如需重置 expanded_index）
-- `set_expanded()` - 更改展开的面板
-- `next_panel()` / `prev_panel()` - 循环切换面板
+- `add_panel()` / `insert_panel()` / `remove_panel()` - 修改面板列表并重新平衡高度缓存。
+- `set_expanded()` / `next_panel()` / `prev_panel()` - 移动焦点；预设激活时重新应用预设。
+- `toggle_fullscreen()` - 打开或关闭全屏预设。
+- `grow_focused()` / `shrink_focused()` - 调整聚焦面板的高度。
+- `resize_panel_divider()` - 把增量应用到给定面板上方的分隔线（鼠标拖动处理器使用）。
 
 #### 1.3 自动堆叠
 
@@ -82,7 +90,7 @@ pub struct PanelGroup {
 let new_width_if_split = available_width / (num_groups + 1);
 
 if new_width_if_split < config.min_panel_width {
-    // 在当前组中垂直堆叠（手风琴式）
+    // 在活动组中垂直堆叠（带高度缓存的拆分布局）
     active_group.add_panel(panel);
 } else {
     // 创建新的水平组
@@ -264,9 +272,10 @@ while !state.should_quit {
 
 **面板标题栏：**
 - 点击 `[≡]` 按钮 → 打开面板操作上下文菜单（关闭 / 拆分 / 合并 / 移动）
-- 点击 `[▶]/[▼]` 按钮 → 切换展开/折叠
 - 点击标题区域 → 激活面板（双击文件管理器 → 目录选择器）
-- **拖拽标题区域** → 面板 drag-and-drop：ghost 跟随光标，drop 区被高亮；释放在另一个面板的标题上则插入到该组，释放在组之间则创建新组。`Escape` 取消。
+- **拖拽标题区域** → 双模式手势：
+  - 在源组所在列内释放 → 垂直 resize：被拖面板上方的分隔线跟随光标。
+  - 在另一列或两列之间释放 → 移动面板：ghost 跟随光标，drop 区高亮；释放在另一个面板的标题上则插入到该组，释放在两组之间则创建新组。`Escape` 取消。
 
 **面板内容：**
 - 点击转发到 `panel.handle_mouse()`
@@ -309,44 +318,51 @@ while !state.should_quit {
 渲染流程：
 
 ```rust
-fn render_layout_with_accordion(frame, layout_manager, state) {
-    // 1. 计算所有面板组的水平布局
+fn render_main_area(frame, layout_manager, state) {
+    // 1. 计算列宽（按比例分配，受 min_panel_width 约束）。
     let horizontal_chunks = calculate_horizontal_layout();
 
-    // 2. 渲染面板组
+    // 2. 对每一列，从该组缓存的高度（或等量分配的回退值）
+    //    推导出垂直约束。
     for group in groups {
-        let vertical_chunks = calculate_vertical_layout(group);
+        let vertical_chunks =
+            termide_layout::compute_vertical_constraints(group, area_height);
 
-        // 3. 渲染每个面板（展开或折叠）
-        for panel in group {
-            if is_expanded {
-                render_expanded_panel(panel, area, ...);
+        // 3. 渲染每个面板。height >= 2 的面板渲染完整内容和边框；
+        //    被压到 1 行的面板回退为仅渲染标题。
+        for (idx, panel) in group.panels().enumerate() {
+            if vertical_chunks[idx].height >= 2 {
+                let omit_bottom_border = idx + 1 < group.len();
+                render_expanded_panel(panel, area, omit_bottom_border, ...);
             } else {
                 render_collapsed_panel(panel, area, ...);
             }
         }
     }
 
-    // 4. 渲染模态框（如果打开）
+    // 4. 渲染模态框（如果打开）。
     if let Some(modal) = state.active_modal {
         render_modal(modal, ...);
     }
 }
 ```
 
+每个非末尾面板都会跳过自己的底部边框，由下一个面板带标题的顶部边框充当分隔线，每个连接处节省一行。下方面板的 `┌`/`┐` 角字符会被 post-process 为 `├`/`┤`，与上方面板的 `│` 干净地相接。
+
 #### 4.2 面板渲染
 
 **位置：** `crates/ui-render/src/panel.rs`
 
-**展开的面板：**
-- 带 `[≡][图标]` 按钮和标题的边框（例如 `[≡][📁] 文件`）
+**完整面板（height ≥ 2 行）：**
+- 带 `[≡]` 操作按钮、emoji 与标题的边框（例如 `[≡] 📁 文件`）
 - 完整的内容区域
 - 内容超出区域时可滚动
+- 当下方在同一组中还有面板时，底部边框被省略；下面板带标题的顶部边框作为分隔线
 
-**折叠的面板：**
-- 仅标题栏：`─[≡][📁] 文件 ─────`
-- 占用最小垂直空间（1 行）
-- 点击即展开
+**折叠面板（height = 1 行，仅在压到最小时）：**
+- 仅标题栏：`─[≡] 📁 文件 ─────`
+- 占用 1 行
+- 点击标题以聚焦面板；`Alt+F11` 或 `Ctrl+Alt+=` 可放大它
 
 **图标模式：**
 面板标题根据面板类型显示 emoji 图标（📁 文件管理器、💻 终端、📝 编辑器等）。通过 `[general]` 中的 `icon_mode` 配置：
@@ -504,15 +520,15 @@ crates/i18n/
 
 ## 设计决策
 
-### 为什么选择手风琴布局？
+### 为什么采用拆分布局加全屏预设？
 
-**问题：** 终端空间有限，多面板 IDE 常常显得拥挤。
+**问题：** 终端空间有限，多面板 IDE 常常显得拥挤；但「一个展开、其余折叠」的二元布局又会丢掉用户希望同时看到两三个面板（且高度可调）的场景。
 
-**解决方案：** 手风琴布局最大化可用空间：
-- 每组一个展开的面板获得完整的垂直空间
-- 其他面板折叠为标题栏（1 行）
-- 通过 Alt+Up/Down 或鼠标点击快速访问
-- 终端太窄时自动堆叠
+**解决方案：** 每组面板高度可调，并提供一键全屏预设：
+- 默认每个面板都可见；用户通过鼠标拖动、`Ctrl+Alt+=` / `Ctrl+Alt+-`，或在列内上下拖动面板标题来调整高度。
+- `Alt+F11` 切换「聚焦面板全屏」预设，模拟旧的手风琴视图（一个面板占满整列，其余缩为一行），先前的高度被保存以便瞬间恢复。
+- 高度被缓存，并在终端尺寸变化时按比例重缩放。
+- 终端过窄时（`min_panel_width`）仍会自动堆叠到同一组中。
 
 ### 为什么选择动态面板？
 
@@ -522,7 +538,7 @@ crates/i18n/
 - 多个文件管理器用于不同目录
 
 **挑战：** 高效管理多个面板
-- 手风琴防止混乱
+- 全屏预设按需提供干净的「单面板视图」
 - 快捷键提供快速导航
 - 欢迎界面自动关闭
 
@@ -540,9 +556,9 @@ crates/i18n/
 
 ## 性能特征
 
-**渲染：** O(n)，n = 可见面板数量
-- 仅展开的面板渲染完整内容
-- 折叠的面板渲染单行
+**渲染：** O(n)，n = 可见组中的面板数量
+- height ≥ 2 的面板渲染完整内容；被压到 1 行的面板仅渲染标题栏
+- 相邻面板的底部边框与下一个面板的标题行合并 —— 每个连接处节省一行
 
 **事件处理：** 大多数操作 O(1)
 - 直接索引访问聚焦面板
@@ -575,18 +591,24 @@ crates/i18n/
 
 **会话文件格式：**
 ```toml
+focused_group = 0
+
 [[panel_groups]]
-expanded_index = 0
-horizontal_weight = 100
+expanded_index = 1            # 组内聚焦面板
+width = 80                    # 列宽（None = 自动分配）
+split_heights = [12, 6]       # 每面板高度（无缓存时省略）
+fullscreen_cache = [10, 8]    # Alt+F11 关闭时恢复的高度
 
 [[panel_groups.panels]]
-panel_type = "file_manager"
-state = { current_path = "/home/user/project" }
+type = "file_manager"
+path_or_url = "/home/user/project"
 
 [[panel_groups.panels]]
-panel_type = "editor"
-state = { file_path = "/home/user/project/main.rs", cursor_line = 42 }
+type = "editor"
+path = "/home/user/project/main.rs"
 ```
+
+旧会话中的 `mode = "accordion"` 字段仍会被读取，并在加载时一次性迁移为全屏预设（当前代码不再写入该字段）。
 
 ## 未来架构考虑
 
@@ -645,9 +667,9 @@ state = { file_path = "/home/user/project/main.rs", cursor_line = 42 }
 
 TermIDE 的架构优先考虑：
 - **灵活性** - 动态面板系统适应用户需求
-- **高效性** - 手风琴布局最大化可用空间
+- **高效性** - 可调拆分布局加一键全屏预设，在不放弃多面板视图的前提下最大化可用空间
 - **可扩展性** - 基于 Trait 的设计便于扩展
 - **健壮性** - 防御性编程防止崩溃
 - **性能** - 高效的渲染和事件处理
 
-手风琴布局系统是 TermIDE 区别于传统多面板终端应用程序的关键创新。
+带全屏预设的拆分布局是 TermIDE 区别于传统多面板终端应用程序的关键创新。

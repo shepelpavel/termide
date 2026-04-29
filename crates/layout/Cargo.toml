@@ -13,6 +13,7 @@ termide-core = { path = "../core" }
 termide-config = { path = "../config" }
 anyhow.workspace = true
 ratatui.workspace = true
+serde.workspace = true
 
 [dev-dependencies]
 crossterm.workspace = true

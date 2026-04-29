@@ -223,7 +223,7 @@ pub struct UiState {
     pub theme_preview_original: Option<String>,
     /// Original language code before preview (for restoring on cancel)
     pub language_preview_original: Option<String>,
-    /// Divider drag state for panel resize
+    /// Divider drag state for panel-group resize (horizontal).
     pub drag: DragState,
     /// Sessions submenu state
     pub sessions_submenu: SubmenuState,

@@ -300,6 +300,11 @@ pub struct ExpandedPanelParams {
     pub word_wrap: bool,
     pub terminal_width: u16,
     pub terminal_height: u16,
+    /// Skip drawing the bottom border row. Used in Split mode for every
+    /// panel except the last in its group: the next panel's top border
+    /// (with its title) acts as a visual separator, saving one row that
+    /// would otherwise be wasted on the duplicated divider line.
+    pub omit_bottom_border: bool,
 }
 
 /// Render collapsed panel (header only, 1 line).
@@ -406,8 +411,13 @@ pub fn render_expanded_panel(
     title_spans.extend(title_line.spans);
     title_spans.push(Span::styled(" ", style));
 
+    let borders = if params.omit_bottom_border {
+        Borders::TOP | Borders::LEFT | Borders::RIGHT
+    } else {
+        Borders::ALL
+    };
     let block = Block::default()
-        .borders(Borders::ALL)
+        .borders(borders)
         .border_style(style)
         .title(Line::from(title_spans));
 

@@ -32,7 +32,7 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 - **Smart File Manager** - Tree view with expandable directories, nested git status, batch operations, file/content search (glob/regex), in-tree incremental search
 - **Integrated Terminal** - Full PTY support, VT100 escape sequences, mouse tracking
 - **Git Integration** - Status panel, commit log with ASCII graph, staging/unstaging, branch switching, stash management, inline blame
-- **Multi-panel Layout** - Accordion system with smart auto-stacking; new panels open after the currently active one
+- **Multi-panel Layout** - Vertically split panel groups with adjustable per-panel heights and a one-key fullscreen toggle (`Alt+F11`); smart auto-stacking when the terminal narrows; new panels open after the currently active one
 - **Image Viewer** - Native graphics in Kitty, WezTerm, iTerm2, Ghostty, foot terminals
 - **External Apps** - Open files with system default applications (Shift+Enter)
 - **38 Built-in Themes** - Dark, light, retro, and cinematic themes (Dracula, Nord, Monokai, Solarized, Matrix, Pip-Boy, Blue Sky, Pinky Pie, etc.)
@@ -238,9 +238,11 @@ Options:
 ### Quick Start
 
 After launching TermIDE, you'll see a width-adaptive layout:
-- **Wide terminals (>= 160 cols):** Sidebar (Git Status + Operations accordion) + two File Manager panels
-- **Normal terminals (< 160 cols):** Sidebar (Git Status + File Manager + Operations accordion) + File Manager panel
+- **Wide terminals (>= 160 cols):** Sidebar (Git Status stacked with Operations) + two File Manager panels
+- **Normal terminals (< 160 cols):** Sidebar (Git Status, File Manager and Operations stacked) + File Manager panel
 - Menu bar at the top, status bar at the bottom
+
+Stacked panels share a column with adjustable per-panel heights. `Alt+F11` toggles a "fullscreen current panel" preset (one panel takes the full column height, the rest collapse to their title row); `Ctrl+Alt+=` / `Ctrl+Alt+-` grow / shrink the focused panel by 3 lines.
 
 Use `Alt+←/→` to switch between panel groups, `Alt+↑/↓` to navigate within a group, `Alt+M` to open the menu.
 
@@ -509,7 +511,7 @@ crates/
 ├── highlight/        # Syntax highlighting (tree-sitter)
 ├── i18n/             # Internationalization (15 languages)
 ├── keyboard/         # Keyboard handling and layout translation
-├── layout/           # Panel layout and accordion system
+├── layout/           # Panel groups, split layout, fullscreen preset
 ├── logger/           # Logging system
 ├── lsp/              # Language Server Protocol client
 ├── modal/            # Modal dialog implementations

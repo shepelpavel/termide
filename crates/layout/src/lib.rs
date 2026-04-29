@@ -8,7 +8,7 @@ pub mod layout_manager;
 pub mod panel_group;
 
 pub use layout_manager::{
-    calculate_panel_rects, compute_drop_target, group_spans_from_rects, LayoutManager,
-    PanelDropTarget,
+    calculate_panel_rects, compute_drop_target, compute_vertical_constraints,
+    group_spans_from_rects, LayoutManager, PanelDropTarget,
 };
-pub use panel_group::PanelGroup;
+pub use panel_group::{PanelGroup, MIN_PANEL_HEIGHT};

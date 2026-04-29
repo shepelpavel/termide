@@ -224,6 +224,18 @@ impl HelpGenerator {
                 description: t.help_desc_resize_larger().to_string(),
             },
             HelpEntry {
+                keys: Self::format_keys(&kb.toggle_fullscreen_panel),
+                description: t.help_desc_toggle_fullscreen_panel().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.panel_grow_vertical),
+                description: t.help_desc_panel_grow_vertical().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.panel_shrink_vertical),
+                description: t.help_desc_panel_shrink_vertical().to_string(),
+            },
+            HelpEntry {
                 keys: Self::format_keys(&kb.prev_group),
                 description: t.help_desc_prev_group().to_string(),
             },

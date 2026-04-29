@@ -41,15 +41,7 @@ pub fn calculate_panel_rects(
         let group_area = group_chunks[group_idx];
         let expanded_idx = group.expanded_index();
 
-        let vertical_constraints: Vec<Constraint> = (0..group.len())
-            .map(|i| {
-                if i == expanded_idx {
-                    Constraint::Min(0)
-                } else {
-                    Constraint::Length(1)
-                }
-            })
-            .collect();
+        let vertical_constraints = compute_vertical_constraints(group, group_area.height);
 
         let vertical_chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -57,6 +49,11 @@ pub fn calculate_panel_rects(
             .split(group_area);
 
         for panel_idx in 0..group.len() {
+            // In Accordion mode `is_expanded` carries both meanings (expanded
+            // and focused). In Split mode every panel is "expanded" in the
+            // visual sense, so the flag means "focused" — rendering uses it
+            // to choose the active border colour, which is the right
+            // behaviour in both modes.
             let is_expanded = panel_idx == expanded_idx;
             result.push((
                 group_idx,
@@ -68,6 +65,22 @@ pub fn calculate_panel_rects(
     }
 
     result
+}
+
+/// Compute vertical layout constraints for the panels of `group` given the
+/// available `area_height`. Shared by [`calculate_panel_rects`] and the
+/// main rendering loop in `src/ui.rs` so geometry stays in lockstep.
+///
+/// Heights come from the group's cached `split_heights`, falling back to
+/// equal distribution. The fullscreen-current-panel preset is just a
+/// particular shape of those heights (`[1, …, area_height − (n − 1), …,
+/// 1]`) — there is no separate code path.
+pub fn compute_vertical_constraints(group: &PanelGroup, area_height: u16) -> Vec<Constraint> {
+    let heights = group.effective_split_heights(area_height);
+    heights
+        .into_iter()
+        .map(|h| Constraint::Length(h.max(crate::MIN_PANEL_HEIGHT)))
+        .collect()
 }
 
 /// Collapse panel rects into group spans `(group_idx, left_edge, right_edge)`,
