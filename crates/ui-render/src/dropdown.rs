@@ -389,6 +389,8 @@ fn command_label(command: &termide_config::commands::CommandItem) -> String {
 pub fn get_commands_items(
     registry: &termide_config::commands::CommandsRegistry,
 ) -> Vec<DropdownItem> {
+    use termide_config::commands::{encode_command_menu_key, CommandMenuKeyKind};
+
     let t = i18n::t();
     let mut items = vec![
         DropdownItem::new(t.menu_commands_add(), COMMAND_ADD_NEW),
@@ -402,13 +404,22 @@ pub fn get_commands_items(
 
     // Project commands first (bold)
     for command in registry.root_items.iter().filter(|s| s.is_project) {
-        items.push(DropdownItem::new(command_label(command), &command.name).with_project());
+        items.push(
+            DropdownItem::new(
+                command_label(command),
+                encode_command_menu_key(CommandMenuKeyKind::Command, &command.name, true),
+            )
+            .with_project(),
+        );
     }
     for group in registry.groups.iter().filter(|g| g.is_project) {
         items.push(
-            DropdownItem::new(&group.name, &group.name)
-                .with_submenu()
-                .with_project(),
+            DropdownItem::new(
+                &group.name,
+                encode_command_menu_key(CommandMenuKeyKind::Group, &group.name, true),
+            )
+            .with_submenu()
+            .with_project(),
         );
     }
 
@@ -419,10 +430,19 @@ pub fn get_commands_items(
 
     // Global commands
     for command in registry.root_items.iter().filter(|s| !s.is_project) {
-        items.push(DropdownItem::new(command_label(command), &command.name));
+        items.push(DropdownItem::new(
+            command_label(command),
+            encode_command_menu_key(CommandMenuKeyKind::Command, &command.name, false),
+        ));
     }
     for group in registry.groups.iter().filter(|g| !g.is_project) {
-        items.push(DropdownItem::new(&group.name, &group.name).with_submenu());
+        items.push(
+            DropdownItem::new(
+                &group.name,
+                encode_command_menu_key(CommandMenuKeyKind::Group, &group.name, false),
+            )
+            .with_submenu(),
+        );
     }
 
     items
@@ -431,18 +451,30 @@ pub fn get_commands_items(
 /// Get commands nested submenu items for a specific group
 pub fn get_commands_group_items(
     registry: &termide_config::commands::CommandsRegistry,
-    group_name: &str,
+    group_key: &str,
 ) -> Vec<DropdownItem> {
+    let Some(decoded) = termide_config::commands::decode_command_menu_key(group_key) else {
+        return Vec::new();
+    };
+    if decoded.kind != termide_config::commands::CommandMenuKeyKind::Group {
+        return Vec::new();
+    }
+
     registry
-        .groups
-        .iter()
-        .find(|g| g.name == group_name)
+        .find_group(&decoded.name, decoded.is_project)
         .map(|group| {
             group
                 .items
                 .iter()
                 .map(|command| {
-                    let mut item = DropdownItem::new(command_label(command), &command.name);
+                    let mut item = DropdownItem::new(
+                        command_label(command),
+                        termide_config::commands::encode_command_menu_key(
+                            termide_config::commands::CommandMenuKeyKind::Command,
+                            &command.name,
+                            command.is_project,
+                        ),
+                    );
                     if command.is_project {
                         item = item.with_project();
                     }

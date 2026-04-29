@@ -50,7 +50,7 @@ pub use calendar::CalendarModal;
 pub use choice::ChoiceModal;
 pub use command_config::{
     sanitize_filename, CommandConfigAction, CommandConfigModal, CommandConfigMode,
-    CommandConfigResult,
+    CommandConfigResult, ReservedHotkey,
 };
 pub use command_palette::{CommandEntry, CommandPaletteModal};
 pub use command_params::{CommandParamsModal, CommandParamsResult};

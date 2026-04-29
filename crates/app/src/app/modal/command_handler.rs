@@ -1,6 +1,7 @@
 //! Command config modal result handler (create + edit).
 
 use anyhow::Result;
+use std::path::{Path, PathBuf};
 
 use termide_config::commands::{CommandMetadata, CommandsMetadata};
 
@@ -12,17 +13,11 @@ impl App {
         &mut self,
         result: &termide_modal::CommandConfigResult,
     ) -> Result<()> {
-        let config_dir = if result.is_project {
-            self.project_root.join(".termide")
-        } else {
-            termide_config::get_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
-        };
-
         if result.is_edit {
-            // Edit mode: update existing entry
-            self.update_command_entry(result, &config_dir)?;
+            let config_dir = self.command_config_dir(result.is_project);
+            self.write_command_entry(result, &config_dir, result.name.clone())?;
         } else {
-            // Create mode: insert new entry
+            let config_dir = self.command_config_dir(result.is_project);
             self.create_command_entry(result, &config_dir)?;
         }
 
@@ -31,34 +26,59 @@ impl App {
         Ok(())
     }
 
+    fn command_config_dir(&self, is_project: bool) -> PathBuf {
+        if is_project {
+            self.project_root.join(".termide")
+        } else {
+            termide_config::get_config_dir().unwrap_or_else(|_| PathBuf::from("."))
+        }
+    }
+
     /// Create a new command entry in commands.toml.
     fn create_command_entry(
         &mut self,
         result: &termide_modal::CommandConfigResult,
-        config_dir: &std::path::Path,
+        config_dir: &Path,
     ) -> Result<()> {
-        let mut metadata = CommandsMetadata::load(config_dir);
-        let key = result.name.clone();
-        let mut entry = metadata.entries.remove(&key).unwrap_or_default();
-        apply_result_to_entry(&mut entry, result);
-        metadata.entries.insert(key, entry);
-        metadata.save(config_dir)?;
+        self.write_command_entry(result, config_dir, result.name.clone())?;
         Ok(())
     }
 
-    /// Update an existing command entry in commands.toml (edit mode).
-    fn update_command_entry(
+    pub(in crate::app) fn handle_edit_command_config_result(
         &mut self,
+        command_name: String,
+        was_project: bool,
         result: &termide_modal::CommandConfigResult,
-        config_dir: &std::path::Path,
+    ) -> Result<()> {
+        let source_dir = self.command_config_dir(was_project);
+        let target_dir = self.command_config_dir(result.is_project);
+        let old_key = command_name;
+
+        if was_project != result.is_project {
+            let mut source_metadata = CommandsMetadata::load(&source_dir);
+            let mut entry = source_metadata.entries.remove(&old_key).unwrap_or_default();
+            apply_result_to_entry(&mut entry, result);
+            source_metadata.save(&source_dir)?;
+
+            let mut target_metadata = CommandsMetadata::load(&target_dir);
+            target_metadata.entries.insert(old_key, entry);
+            target_metadata.save(&target_dir)?;
+            return Ok(());
+        }
+
+        self.write_command_entry(result, &target_dir, old_key)
+    }
+
+    fn write_command_entry(
+        &self,
+        result: &termide_modal::CommandConfigResult,
+        config_dir: &Path,
+        key: String,
     ) -> Result<()> {
         let mut metadata = CommandsMetadata::load(config_dir);
-        // The command name from the modal is the original TOML key
-        let old_key = result.name.clone();
-        let old_entry = metadata.entries.remove(&old_key);
-        let mut entry = old_entry.unwrap_or_default();
+        let mut entry = metadata.entries.remove(&key).unwrap_or_default();
         apply_result_to_entry(&mut entry, result);
-        metadata.entries.insert(old_key, entry);
+        metadata.entries.insert(key, entry);
         metadata.save(config_dir)?;
         Ok(())
     }
@@ -73,4 +93,39 @@ fn apply_result_to_entry(entry: &mut CommandMetadata, result: &termide_modal::Co
     entry.mode = Some(result.mode);
     entry.key = result.hotkey.clone();
     entry.group = result.group.clone();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use termide_modal::{CommandConfigAction, CommandConfigResult};
+
+    fn result_with_project(is_project: bool) -> CommandConfigResult {
+        CommandConfigResult {
+            name: "build".to_string(),
+            command: Some("cargo test".to_string()),
+            display_name: Some("Build".to_string()),
+            group: Some("dev".to_string()),
+            mode: termide_config::commands::CommandMode::Terminal,
+            hotkey: Some("Ctrl+B".to_string()),
+            is_project,
+            action: CommandConfigAction::Save,
+            is_edit: true,
+        }
+    }
+
+    #[test]
+    fn apply_result_updates_metadata_fields() {
+        let mut entry = CommandMetadata::default();
+        let result = result_with_project(true);
+        apply_result_to_entry(&mut entry, &result);
+        assert_eq!(entry.command.as_deref(), Some("cargo test"));
+        assert_eq!(entry.display_name.as_deref(), Some("Build"));
+        assert_eq!(entry.group.as_deref(), Some("dev"));
+        assert_eq!(entry.key.as_deref(), Some("Ctrl+B"));
+        assert_eq!(
+            entry.mode,
+            Some(termide_config::commands::CommandMode::Terminal)
+        );
+    }
 }

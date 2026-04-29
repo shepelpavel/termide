@@ -549,10 +549,14 @@ impl App {
                     self.state.cache.commands_registry = None;
                     self.state.cache.hotkey_table = None;
                 }
-                PendingAction::EditCommand { .. } => {
+                PendingAction::EditCommand {
+                    command_name,
+                    is_project,
+                    ..
+                } => {
                     use termide_modal::CommandConfigResult;
                     if let Some(result) = value.downcast_ref::<CommandConfigResult>() {
-                        self.handle_command_config_result(result)?;
+                        self.handle_edit_command_config_result(command_name, is_project, result)?;
                     }
                 }
                 PendingAction::RunCommandWithParams { command } => {
@@ -570,7 +574,7 @@ impl App {
                         let config_dir = if is_project {
                             self.project_root.join(".termide")
                         } else {
-                            termide_config::get_data_dir()
+                            termide_config::get_config_dir()
                                 .unwrap_or_else(|_| std::path::PathBuf::from("."))
                         };
                         let mut metadata =
@@ -596,7 +600,7 @@ impl App {
                             let config_dir = if is_project {
                                 self.project_root.join(".termide")
                             } else {
-                                termide_config::get_data_dir()
+                                termide_config::get_config_dir()
                                     .unwrap_or_else(|_| std::path::PathBuf::from("."))
                             };
                             let mut metadata =

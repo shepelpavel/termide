@@ -123,7 +123,7 @@ impl App {
         }
 
         // Invalidate cached commands registry on any filesystem change involving commands.toml.
-        // Commands live in ~/.local/share/termide/commands.toml or .termide/commands.toml.
+        // Commands live in ~/.config/termide/commands.toml or .termide/commands.toml.
         if self.state.cache.commands_registry.is_some() {
             let commands_toml = std::path::Path::new("commands.toml");
             let invalidate = fs_paths

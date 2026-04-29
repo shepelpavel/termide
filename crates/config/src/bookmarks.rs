@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use crate::get_data_dir;
+use crate::get_config_dir;
 
 /// Bookmarks configuration containing all user bookmarks.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -216,13 +216,13 @@ impl Bookmark {
 impl BookmarksConfig {
     /// Get the path to the bookmarks config file.
     pub fn config_file_path() -> anyhow::Result<PathBuf> {
-        let data_dir = get_data_dir()?;
-        Ok(data_dir.join("bookmarks.toml"))
+        let config_dir = get_config_dir()?;
+        Ok(config_dir.join("bookmarks.toml"))
     }
 
-    /// Load bookmarks from data directory.
-    pub fn load_from_dir(data_dir: &Path) -> Self {
-        let path = data_dir.join("bookmarks.toml");
+    /// Load bookmarks from a config directory.
+    pub fn load_from_dir(config_dir: &Path) -> Self {
+        let path = config_dir.join("bookmarks.toml");
         if path.exists() {
             std::fs::read_to_string(&path)
                 .ok()
@@ -248,26 +248,26 @@ impl BookmarksConfig {
         Some(config)
     }
 
-    /// Load bookmarks from the default data directory.
+    /// Load bookmarks from the default config directory.
     pub fn load() -> Self {
-        match get_data_dir() {
-            Ok(data_dir) => Self::load_from_dir(&data_dir),
+        match get_config_dir() {
+            Ok(config_dir) => Self::load_from_dir(&config_dir),
             Err(_) => Self::default(),
         }
     }
 
-    /// Save bookmarks to data directory.
-    pub fn save_to_dir(&self, data_dir: &Path) -> std::io::Result<()> {
-        std::fs::create_dir_all(data_dir)?;
-        let path = data_dir.join("bookmarks.toml");
+    /// Save bookmarks to a config directory.
+    pub fn save_to_dir(&self, config_dir: &Path) -> std::io::Result<()> {
+        std::fs::create_dir_all(config_dir)?;
+        let path = config_dir.join("bookmarks.toml");
         let content = toml::to_string_pretty(self).map_err(std::io::Error::other)?;
         std::fs::write(path, content)
     }
 
-    /// Save bookmarks to the default data directory.
+    /// Save bookmarks to the default config directory.
     pub fn save(&self) -> std::io::Result<()> {
-        let data_dir = get_data_dir().map_err(std::io::Error::other)?;
-        self.save_to_dir(&data_dir)
+        let config_dir = get_config_dir().map_err(std::io::Error::other)?;
+        self.save_to_dir(&config_dir)
     }
 
     /// Add a bookmark (ignores duplicates within same group).

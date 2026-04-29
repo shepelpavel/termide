@@ -206,7 +206,12 @@ impl App {
                     .as_ref()
                     .and_then(|m| m.display_name.as_deref())
                     .unwrap_or(&command.name);
-                actions.push(format!("run_command:{}", command.name));
+                let command_key = termide_config::commands::encode_command_menu_key(
+                    termide_config::commands::CommandMenuKeyKind::Command,
+                    &command.name,
+                    command.is_project,
+                );
+                actions.push(format!("run_command:{command_key}"));
                 entries.push(CommandEntry {
                     label: format!("Run command: {}", display_name),
                     category: "Commands",

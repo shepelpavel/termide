@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
-use super::get_data_dir;
+use super::get_config_dir;
 
 /// Command execution mode.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -108,8 +108,8 @@ pub struct CommandsMetadata {
 impl CommandsMetadata {
     /// Load metadata from `commands.toml` in the given directory.
     ///
-    /// For `config_dir = ~/.local/share/termide/`, reads
-    /// `~/.local/share/termide/commands.toml`.
+    /// For `config_dir = ~/.config/termide/`, reads
+    /// `~/.config/termide/commands.toml`.
     ///
     /// Returns empty metadata if the file does not exist.
     pub fn load(config_dir: &Path) -> Self {
@@ -289,6 +289,48 @@ pub struct CommandGroup {
     pub is_project: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommandMenuKeyKind {
+    Command,
+    Group,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DecodedCommandMenuKey {
+    pub kind: CommandMenuKeyKind,
+    pub is_project: bool,
+    pub name: String,
+}
+
+pub fn encode_command_menu_key(kind: CommandMenuKeyKind, name: &str, is_project: bool) -> String {
+    let kind = match kind {
+        CommandMenuKeyKind::Command => "cmd",
+        CommandMenuKeyKind::Group => "grp",
+    };
+    let scope = if is_project { "p" } else { "g" };
+    format!("{kind}:{scope}:{name}")
+}
+
+pub fn decode_command_menu_key(key: &str) -> Option<DecodedCommandMenuKey> {
+    let mut parts = key.splitn(3, ':');
+    let kind = match parts.next()? {
+        "cmd" => CommandMenuKeyKind::Command,
+        "grp" => CommandMenuKeyKind::Group,
+        _ => return None,
+    };
+    let is_project = match parts.next()? {
+        "p" => true,
+        "g" => false,
+        _ => return None,
+    };
+    let name = parts.next()?.to_string();
+    Some(DecodedCommandMenuKey {
+        kind,
+        is_project,
+        name,
+    })
+}
+
 /// Registry of all available commands.
 #[derive(Debug, Clone, Default)]
 pub struct CommandsRegistry {
@@ -304,6 +346,13 @@ impl CommandsRegistry {
         self.root_items.iter().find(|s| s.name == name)
     }
 
+    /// Find a root-level command by name and source.
+    pub fn find_root_command(&self, name: &str, is_project: bool) -> Option<&CommandItem> {
+        self.root_items
+            .iter()
+            .find(|s| s.name == name && s.is_project == is_project)
+    }
+
     /// Find a command by name across root items and all groups.
     pub fn find_command_anywhere(&self, name: &str) -> Option<&CommandItem> {
         self.root_items.iter().find(|s| s.name == name).or_else(|| {
@@ -312,6 +361,31 @@ impl CommandsRegistry {
                 .flat_map(|g| g.items.iter())
                 .find(|s| s.name == name)
         })
+    }
+
+    /// Find a command by name across root items and all groups, scoped by source.
+    pub fn find_command_anywhere_scoped(
+        &self,
+        name: &str,
+        is_project: bool,
+    ) -> Option<&CommandItem> {
+        self.root_items
+            .iter()
+            .find(|s| s.name == name && s.is_project == is_project)
+            .or_else(|| {
+                self.groups
+                    .iter()
+                    .filter(|g| g.is_project == is_project)
+                    .flat_map(|g| g.items.iter())
+                    .find(|s| s.name == name && s.is_project == is_project)
+            })
+    }
+
+    /// Find a command group by name and source.
+    pub fn find_group(&self, name: &str, is_project: bool) -> Option<&CommandGroup> {
+        self.groups
+            .iter()
+            .find(|g| g.name == name && g.is_project == is_project)
     }
 
     /// Collect all commands that have hotkey bindings defined in metadata.
@@ -336,9 +410,9 @@ impl CommandsRegistry {
         result
     }
 
-    /// Load commands from the global commands.toml.
+    /// Load commands from the global commands.toml in the config directory.
     pub fn load() -> Option<Self> {
-        let config_dir = get_data_dir().ok()?;
+        let config_dir = get_config_dir().ok()?;
         Self::load_from_dir(&config_dir)
     }
 
@@ -491,5 +565,28 @@ key = "Ctrl+T"
     fn test_parse_invalid_toml() {
         let meta = CommandsMetadata::parse("not valid toml [[[[");
         assert!(meta.entries.is_empty());
+    }
+
+    #[test]
+    fn command_menu_keys_encode_scope_and_kind() {
+        let command_key = encode_command_menu_key(CommandMenuKeyKind::Command, "build", true);
+        assert_eq!(
+            decode_command_menu_key(&command_key),
+            Some(DecodedCommandMenuKey {
+                kind: CommandMenuKeyKind::Command,
+                is_project: true,
+                name: "build".to_string(),
+            })
+        );
+
+        let group_key = encode_command_menu_key(CommandMenuKeyKind::Group, "dev", false);
+        assert_eq!(
+            decode_command_menu_key(&group_key),
+            Some(DecodedCommandMenuKey {
+                kind: CommandMenuKeyKind::Group,
+                is_project: false,
+                name: "dev".to_string(),
+            })
+        );
     }
 }

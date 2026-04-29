@@ -268,6 +268,7 @@ impl Translation for RuntimeTranslation {
         command_config_project_checkbox,
         command_config_hotkey_hint,
         command_config_hotkey_invalid,
+        command_config_hotkey_conflict,
         command_config_button_create,
         command_config_button_save,
         command_config_button_edit_file,

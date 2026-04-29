@@ -311,6 +311,7 @@ pub trait Translation: Send + Sync {
     fn command_config_project_checkbox(&self) -> &str;
     fn command_config_hotkey_hint(&self) -> &str;
     fn command_config_hotkey_invalid(&self) -> &str;
+    fn command_config_hotkey_conflict(&self) -> &str;
     fn command_config_button_create(&self) -> &str;
     fn command_config_button_save(&self) -> &str;
     fn command_config_button_edit_file(&self) -> &str;

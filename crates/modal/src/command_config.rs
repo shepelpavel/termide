@@ -1,7 +1,7 @@
 //! Unified modal dialog for creating and editing commands.
 //!
-//! In Create mode: Group, Display Name, Command, Mode, Hotkey, Project checkbox.
-//! In Edit mode: Group/Project are read-only labels; Display Name, Command, Mode, Hotkey are editable.
+//! In both modes the Group, Display Name, Command, Mode, Hotkey, and Project
+//! fields are editable.
 
 use anyhow::Result;
 
@@ -22,6 +22,7 @@ use termide_config::constants::{
     MODAL_BUTTON_SPACING, MODAL_MAX_WIDTH_PERCENTAGE_DEFAULT, MODAL_MIN_WIDTH_WIDE,
     MODAL_PADDING_WITH_DOUBLE_BORDER,
 };
+use termide_config::ParsedKeyBinding;
 use termide_i18n as i18n;
 use termide_theme::Theme;
 use termide_ui::{SuggestionAction, SuggestionInput};
@@ -66,6 +67,11 @@ pub struct CommandConfigResult {
     pub is_edit: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct ReservedHotkey {
+    pub binding: String,
+}
+
 /// Focus area in the modal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FocusArea {
@@ -97,6 +103,8 @@ pub struct CommandConfigModal {
     selected_button: usize,
     // Validation state
     hotkey_error: bool,
+    hotkey_conflict: Option<String>,
+    reserved_hotkeys: Vec<ParsedKeyBinding>,
     // Cached areas for mouse handling
     last_buttons_area: Option<Rect>,
     last_group_field_area: Option<Rect>,
@@ -124,6 +132,8 @@ impl CommandConfigModal {
             is_project: false,
             selected_button: 0,
             hotkey_error: false,
+            hotkey_conflict: None,
+            reserved_hotkeys: Vec::new(),
             last_buttons_area: None,
             last_group_field_area: None,
             last_group_dropdown_area: None,
@@ -139,9 +149,10 @@ impl CommandConfigModal {
     pub fn new_edit(
         title: impl Into<String>,
         command_name: String,
-        _group: Option<String>,
+        group: Option<String>,
         is_project: bool,
         _path: Option<std::path::PathBuf>,
+        existing_groups: Vec<String>,
         metadata: Option<CommandMetadata>,
     ) -> Self {
         let display_name_text = metadata
@@ -173,12 +184,17 @@ impl CommandConfigModal {
             command_input.set_text(&command_text);
         }
 
+        let mut group_suggestion = SuggestionInput::new(existing_groups);
+        if let Some(group) = group {
+            group_suggestion.input_mut().set_text(&group);
+        }
+
         Self {
             title: title.into(),
             mode: CommandConfigMode::Edit,
-            focus: FocusArea::DisplayName,
+            focus: FocusArea::Group,
             command_name,
-            group_suggestion: SuggestionInput::new(vec![]),
+            group_suggestion,
             command_input,
             display_name_input,
             command_mode,
@@ -186,6 +202,8 @@ impl CommandConfigModal {
             is_project,
             selected_button: 0,
             hotkey_error: false,
+            hotkey_conflict: None,
+            reserved_hotkeys: Vec::new(),
             last_buttons_area: None,
             last_group_field_area: None,
             last_group_dropdown_area: None,
@@ -199,6 +217,15 @@ impl CommandConfigModal {
 
     fn is_create(&self) -> bool {
         self.mode == CommandConfigMode::Create
+    }
+
+    pub fn with_reserved_hotkeys(mut self, reserved_hotkeys: Vec<ReservedHotkey>) -> Self {
+        self.reserved_hotkeys = reserved_hotkeys
+            .into_iter()
+            .filter_map(|item| termide_config::parse_keybinding(&item.binding).ok())
+            .collect();
+        self.validate_hotkey();
+        self
     }
 
     fn button_count(&self) -> usize {
@@ -220,6 +247,18 @@ impl CommandConfigModal {
                 _ => "",
             }
         }
+    }
+
+    fn focus_order() -> &'static [FocusArea] {
+        &[
+            FocusArea::Group,
+            FocusArea::DisplayName,
+            FocusArea::Command,
+            FocusArea::Mode,
+            FocusArea::Hotkey,
+            FocusArea::ProjectCheckbox,
+            FocusArea::Buttons,
+        ]
     }
 
     fn calculate_modal_size(&self, screen_width: u16, screen_height: u16) -> (u16, u16) {
@@ -245,20 +284,16 @@ impl CommandConfigModal {
             };
 
         // Create: Border(1) + Group(3) + [Dropdown] + Command(3) + DisplayName(3) + Mode(2) + Hotkey(3) + [HotkeyError(1)] + Checkbox(1) + Empty(1) + Buttons(1) + Border(1)
-        // Edit:   Border(1) + Group(3) + DisplayName(3) + Command(3) + Mode(2) + Hotkey(3) + [HotkeyError(1)] + Project(3) + Empty(1) + Buttons(1) + Border(1)
+        // Edit:   Border(1) + Group(3) + DisplayName(3) + Command(3) + Mode(2) + Hotkey(3) + [HotkeyError(1)] + Checkbox(1) + Empty(1) + Buttons(1) + Border(1)
         let mut height = if self.is_create() {
             1 + 3 + dropdown_height + 3 + 3 + 2 + 3
         } else {
             1 + 3 + 3 + 3 + 2 + 3
         };
-        if self.hotkey_error {
+        if self.hotkey_error || self.hotkey_conflict.is_some() {
             height += 1;
         }
-        height += if self.is_create() {
-            1 + 1 + 1 + 1
-        } else {
-            3 + 1 + 1 + 1
-        };
+        height += 4;
         height = height.min(screen_height);
 
         (width, height)
@@ -266,25 +301,7 @@ impl CommandConfigModal {
 
     fn next_focus(&mut self) {
         self.group_suggestion.collapse();
-        let order: &[FocusArea] = if self.is_create() {
-            &[
-                FocusArea::Group,
-                FocusArea::DisplayName,
-                FocusArea::Command,
-                FocusArea::Mode,
-                FocusArea::Hotkey,
-                FocusArea::ProjectCheckbox,
-                FocusArea::Buttons,
-            ]
-        } else {
-            &[
-                FocusArea::DisplayName,
-                FocusArea::Command,
-                FocusArea::Mode,
-                FocusArea::Hotkey,
-                FocusArea::Buttons,
-            ]
-        };
+        let order = Self::focus_order();
         if let Some(idx) = order.iter().position(|f| *f == self.focus) {
             self.focus = order[(idx + 1) % order.len()];
         }
@@ -292,25 +309,7 @@ impl CommandConfigModal {
 
     fn prev_focus(&mut self) {
         self.group_suggestion.collapse();
-        let order: &[FocusArea] = if self.is_create() {
-            &[
-                FocusArea::Group,
-                FocusArea::DisplayName,
-                FocusArea::Command,
-                FocusArea::Mode,
-                FocusArea::Hotkey,
-                FocusArea::ProjectCheckbox,
-                FocusArea::Buttons,
-            ]
-        } else {
-            &[
-                FocusArea::DisplayName,
-                FocusArea::Command,
-                FocusArea::Mode,
-                FocusArea::Hotkey,
-                FocusArea::Buttons,
-            ]
-        };
+        let order = Self::focus_order();
         if let Some(idx) = order.iter().position(|f| *f == self.focus) {
             self.focus = order[(idx + order.len() - 1) % order.len()];
         }
@@ -366,43 +365,6 @@ impl CommandConfigModal {
             is_focused,
             theme,
         );
-    }
-
-    /// Render a read-only label-value pair (1 row).
-    /// Render a readonly field with border (3 rows), matching input field height.
-    fn render_readonly_field(
-        buf: &mut Buffer,
-        area: Rect,
-        label: &str,
-        value: &str,
-        theme: &Theme,
-    ) {
-        let chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(15), Constraint::Min(1)])
-            .split(area);
-
-        // Label — vertically centered in 3-row area
-        Paragraph::new(label.to_string())
-            .style(Style::default().fg(theme.disabled))
-            .alignment(Alignment::Right)
-            .render(
-                Rect {
-                    x: chunks[0].x,
-                    y: chunks[0].y + 1,
-                    width: chunks[0].width,
-                    height: 1,
-                },
-                buf,
-            );
-
-        // Bordered readonly value
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(theme.disabled));
-        let inner = block.inner(chunks[1]);
-        block.render(chunks[1], buf);
-        Paragraph::new(Span::styled(value, Style::default().fg(theme.disabled))).render(inner, buf);
     }
 
     /// Render group input field with dropdown indicator (create mode).
@@ -479,6 +441,9 @@ impl CommandConfigModal {
     }
 
     fn try_confirm(&self) -> Option<ModalResult<CommandConfigResult>> {
+        if self.hotkey_error || self.hotkey_conflict.is_some() {
+            return None;
+        }
         if self.is_create() {
             let command = {
                 let c = self.command_input.text().trim().to_string();
@@ -545,7 +510,14 @@ impl CommandConfigModal {
                 name: self.command_name.clone(),
                 command,
                 display_name,
-                group: None,
+                group: {
+                    let g = sanitize_filename(self.group_suggestion.text().trim());
+                    if g.is_empty() {
+                        None
+                    } else {
+                        Some(g)
+                    }
+                },
                 mode: self.command_mode,
                 hotkey: self.hotkey_value(),
                 is_project: self.is_project,
@@ -567,6 +539,16 @@ impl CommandConfigModal {
     fn validate_hotkey(&mut self) {
         let text = self.hotkey_input.text().trim();
         self.hotkey_error = !text.is_empty() && !is_valid_hotkey(text);
+        self.hotkey_conflict = None;
+        if self.hotkey_error || text.is_empty() {
+            return;
+        }
+        let Ok(parsed) = termide_config::parse_keybinding(text) else {
+            return;
+        };
+        if self.reserved_hotkeys.contains(&parsed) {
+            self.hotkey_conflict = Some(i18n::t().command_config_hotkey_conflict().to_string());
+        }
     }
 
     fn mode_label(mode: CommandMode) -> &'static str {
@@ -690,22 +672,25 @@ impl Modal for CommandConfigModal {
             constraints.push(Constraint::Length(3)); // display name
             constraints.push(Constraint::Length(2)); // mode selector
             constraints.push(Constraint::Length(3)); // hotkey
-            if self.hotkey_error {
+            if self.hotkey_error || self.hotkey_conflict.is_some() {
                 constraints.push(Constraint::Length(1)); // error hint
             }
             constraints.push(Constraint::Length(1)); // checkbox
             constraints.push(Constraint::Length(1)); // spacer
             constraints.push(Constraint::Length(1)); // buttons
         } else {
-            constraints.push(Constraint::Length(3)); // group label (readonly, bordered)
+            constraints.push(Constraint::Length(3)); // group
+            if dropdown_height > 0 {
+                constraints.push(Constraint::Length(dropdown_height));
+            }
             constraints.push(Constraint::Length(3)); // display name
             constraints.push(Constraint::Length(3)); // command
             constraints.push(Constraint::Length(2)); // mode selector
             constraints.push(Constraint::Length(3)); // hotkey
-            if self.hotkey_error {
+            if self.hotkey_error || self.hotkey_conflict.is_some() {
                 constraints.push(Constraint::Length(1)); // error hint
             }
-            constraints.push(Constraint::Length(3)); // project label (readonly, bordered)
+            constraints.push(Constraint::Length(1)); // checkbox
             constraints.push(Constraint::Length(1)); // spacer
             constraints.push(Constraint::Length(1)); // buttons
         }
@@ -809,15 +794,62 @@ impl Modal for CommandConfigModal {
             self.last_command_area = Some(cmd_chunks[1]);
             chunk_idx += 1;
         } else {
-            // 1. Group field (read-only, bordered)
-            Self::render_readonly_field(
+            // 1. Group field
+            self.render_group_field(
                 buf,
                 chunks[chunk_idx],
                 t.command_config_label_group(),
-                t.command_config_group_root(),
                 theme,
             );
+            let group_chunks = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Length(15), Constraint::Min(1)])
+                .split(chunks[chunk_idx]);
+            self.last_group_field_area = Some(group_chunks[1]);
             chunk_idx += 1;
+
+            if dropdown_height > 0 {
+                let dd_chunks = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([Constraint::Length(15), Constraint::Min(1)])
+                    .split(chunks[chunk_idx]);
+
+                self.last_group_dropdown_area = Some(dd_chunks[1]);
+                let selected_idx = self.group_suggestion.selected_index();
+                let items: Vec<ListItem> = suggestions
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, group)| {
+                        let (prefix, style) = if idx == selected_idx {
+                            (
+                                "\u{25B6} ",
+                                Style::default()
+                                    .fg(theme.selected_fg)
+                                    .bg(theme.selected_bg)
+                                    .add_modifier(Modifier::BOLD),
+                            )
+                        } else {
+                            ("  ", Style::default().fg(theme.fg))
+                        };
+                        ListItem::new(Line::from(Span::styled(
+                            format!("{}{}", prefix, group),
+                            style,
+                        )))
+                    })
+                    .collect();
+
+                List::new(items)
+                    .block(
+                        Block::default()
+                            .borders(Borders::LEFT | Borders::BOTTOM | Borders::RIGHT)
+                            .border_style(Style::default().fg(theme.accented_fg)),
+                    )
+                    .style(Style::default().bg(theme.bg))
+                    .render(dd_chunks[1], buf);
+                chunk_idx += 1;
+            } else {
+                self.last_group_dropdown_area = None;
+            }
 
             // 2. Display name field
             Self::render_labeled_input_field(
@@ -940,59 +972,47 @@ impl Modal for CommandConfigModal {
         chunk_idx += 1;
 
         // Hotkey error hint
-        if self.hotkey_error {
+        if self.hotkey_error || self.hotkey_conflict.is_some() {
             let err_chunks = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([Constraint::Length(15), Constraint::Min(1)])
                 .split(chunks[chunk_idx]);
-            Paragraph::new(Span::styled(
-                t.command_config_hotkey_invalid(),
-                Style::default().fg(theme.error),
-            ))
-            .render(err_chunks[1], buf);
+            let message = self
+                .hotkey_conflict
+                .as_deref()
+                .unwrap_or_else(|| t.command_config_hotkey_invalid());
+            Paragraph::new(Span::styled(message, Style::default().fg(theme.error)))
+                .render(err_chunks[1], buf);
             chunk_idx += 1;
         }
 
         // Hotkey hint (when focused, no error)
-        if self.focus == FocusArea::Hotkey && !self.hotkey_error {
+        if self.focus == FocusArea::Hotkey && !self.hotkey_error && self.hotkey_conflict.is_none() {
             // Could render a hint below the input
         }
 
-        if self.is_create() {
-            // Project checkbox
-            let cb_chunks = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([Constraint::Length(15), Constraint::Min(1)])
-                .split(chunks[chunk_idx]);
+        // Project checkbox
+        let cb_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Length(15), Constraint::Min(1)])
+            .split(chunks[chunk_idx]);
 
-            let checkbox_char = if self.is_project { "x" } else { " " };
-            let checkbox_style = if self.focus == FocusArea::ProjectCheckbox {
-                Style::default().fg(theme.accented_fg)
-            } else {
-                Style::default().fg(theme.fg)
-            };
-            let checkbox_text = format!(
-                " [{}] {}",
-                checkbox_char,
-                t.command_config_project_checkbox()
-            );
-            Paragraph::new(checkbox_text)
-                .style(checkbox_style)
-                .render(cb_chunks[1], buf);
-            self.last_checkbox_area = Some(cb_chunks[1]);
-            chunk_idx += 1;
+        let checkbox_char = if self.is_project { "x" } else { " " };
+        let checkbox_style = if self.focus == FocusArea::ProjectCheckbox {
+            Style::default().fg(theme.accented_fg)
         } else {
-            // Project field (read-only, bordered)
-            let proj_text = if self.is_project { "yes" } else { "no" };
-            Self::render_readonly_field(
-                buf,
-                chunks[chunk_idx],
-                t.command_config_label_project(),
-                proj_text,
-                theme,
-            );
-            chunk_idx += 1;
-        }
+            Style::default().fg(theme.fg)
+        };
+        let checkbox_text = format!(
+            " [{}] {}",
+            checkbox_char,
+            t.command_config_project_checkbox()
+        );
+        Paragraph::new(checkbox_text)
+            .style(checkbox_style)
+            .render(cb_chunks[1], buf);
+        self.last_checkbox_area = Some(cb_chunks[1]);
+        chunk_idx += 1;
 
         // Spacer
         chunk_idx += 1;
@@ -1055,7 +1075,7 @@ impl Modal for CommandConfigModal {
         }
 
         match self.focus {
-            FocusArea::Group if self.is_create() => match self.group_suggestion.handle_key(key) {
+            FocusArea::Group => match self.group_suggestion.handle_key(key) {
                 SuggestionAction::Handled => {}
                 SuggestionAction::Confirmed => {
                     self.group_suggestion.collapse();
@@ -1124,14 +1144,14 @@ impl Modal for CommandConfigModal {
                     KeyCode::Up => self.prev_focus(),
                     KeyCode::Enter => {
                         self.validate_hotkey();
-                        if !self.hotkey_error {
+                        if !self.hotkey_error && self.hotkey_conflict.is_none() {
                             self.next_focus();
                         }
                     }
                     _ => {}
                 },
             },
-            FocusArea::ProjectCheckbox if self.is_create() => match key.code {
+            FocusArea::ProjectCheckbox => match key.code {
                 KeyCode::Char(' ') => self.is_project = !self.is_project,
                 KeyCode::Down | KeyCode::Enter => self.next_focus(),
                 KeyCode::Up => self.prev_focus(),
@@ -1165,12 +1185,6 @@ impl Modal for CommandConfigModal {
                 }
                 _ => {}
             },
-            // Read-only fields in edit mode — navigate away
-            _ => match key.code {
-                KeyCode::Down | KeyCode::Enter => self.next_focus(),
-                KeyCode::Up => self.prev_focus(),
-                _ => {}
-            },
         }
 
         Ok(None)
@@ -1189,38 +1203,38 @@ impl Modal for CommandConfigModal {
             return Ok(None);
         }
 
-        // Group field (create mode)
+        if let Some(area) = self.last_group_field_area {
+            if col >= area.x
+                && col < area.x + area.width
+                && row >= area.y
+                && row < area.y + area.height
+            {
+                self.focus = FocusArea::Group;
+                if !self.group_suggestion.suggestions().is_empty() {
+                    if self.group_suggestion.is_expanded() {
+                        self.group_suggestion.collapse();
+                    } else {
+                        self.group_suggestion.expand();
+                    }
+                }
+                return Ok(None);
+            }
+        }
+        if let Some(area) = self.last_group_dropdown_area {
+            if col >= area.x
+                && col < area.x + area.width
+                && row >= area.y
+                && row < area.y + area.height
+            {
+                let idx = (row - area.y) as usize;
+                if idx < self.group_suggestion.suggestions().len() {
+                    self.group_suggestion.select_and_confirm(idx);
+                }
+                return Ok(None);
+            }
+        }
+
         if self.is_create() {
-            if let Some(area) = self.last_group_field_area {
-                if col >= area.x
-                    && col < area.x + area.width
-                    && row >= area.y
-                    && row < area.y + area.height
-                {
-                    self.focus = FocusArea::Group;
-                    if !self.group_suggestion.suggestions().is_empty() {
-                        if self.group_suggestion.is_expanded() {
-                            self.group_suggestion.collapse();
-                        } else {
-                            self.group_suggestion.expand();
-                        }
-                    }
-                    return Ok(None);
-                }
-            }
-            if let Some(area) = self.last_group_dropdown_area {
-                if col >= area.x
-                    && col < area.x + area.width
-                    && row >= area.y
-                    && row < area.y + area.height
-                {
-                    let idx = (row - area.y) as usize;
-                    if idx < self.group_suggestion.suggestions().len() {
-                        self.group_suggestion.select_and_confirm(idx);
-                    }
-                    return Ok(None);
-                }
-            }
             if let Some(area) = self.last_command_area {
                 if col >= area.x
                     && col < area.x + area.width
@@ -1232,16 +1246,17 @@ impl Modal for CommandConfigModal {
                     return Ok(None);
                 }
             }
-            if let Some(area) = self.last_checkbox_area {
-                if col >= area.x
-                    && col < area.x + area.width
-                    && row >= area.y
-                    && row < area.y + area.height
-                {
-                    self.focus = FocusArea::ProjectCheckbox;
-                    self.is_project = !self.is_project;
-                    return Ok(None);
-                }
+        }
+
+        if let Some(area) = self.last_checkbox_area {
+            if col >= area.x
+                && col < area.x + area.width
+                && row >= area.y
+                && row < area.y + area.height
+            {
+                self.focus = FocusArea::ProjectCheckbox;
+                self.is_project = !self.is_project;
+                return Ok(None);
             }
         }
 
@@ -1356,7 +1371,7 @@ impl Modal for CommandConfigModal {
 
     fn handle_paste(&mut self, text: &str) -> bool {
         match self.focus {
-            FocusArea::Group if self.is_create() => {
+            FocusArea::Group => {
                 self.group_suggestion.input_mut().paste(text);
                 true
             }
@@ -1375,5 +1390,94 @@ impl Modal for CommandConfigModal {
             }
             _ => false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use std::sync::Once;
+
+    static INIT_I18N: Once = Once::new();
+
+    fn setup_i18n() {
+        INIT_I18N.call_once(|| {
+            let _ = i18n::init();
+        });
+    }
+
+    fn edit_modal(is_project: bool) -> CommandConfigModal {
+        CommandConfigModal::new_edit(
+            "Edit command",
+            "build".to_string(),
+            Some("dev".to_string()),
+            is_project,
+            None,
+            vec!["dev".to_string(), "qa".to_string()],
+            None,
+        )
+    }
+
+    #[test]
+    fn edit_mode_focus_includes_project_checkbox() {
+        let mut modal = edit_modal(false);
+        modal.focus = FocusArea::Hotkey;
+        modal.next_focus();
+        assert_eq!(modal.focus, FocusArea::ProjectCheckbox);
+        modal.next_focus();
+        assert_eq!(modal.focus, FocusArea::Buttons);
+    }
+
+    #[test]
+    fn edit_mode_space_toggles_project_checkbox() {
+        let mut modal = edit_modal(false);
+        modal.focus = FocusArea::ProjectCheckbox;
+        let result = modal
+            .handle_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::empty()))
+            .expect("space should be handled");
+        assert!(result.is_none());
+        assert!(modal.is_project);
+    }
+
+    #[test]
+    fn edit_mode_confirm_returns_updated_project_flag() {
+        let mut modal = edit_modal(false);
+        modal.focus = FocusArea::ProjectCheckbox;
+        modal.is_project = true;
+        let result = modal.try_confirm().expect("edit modal should confirm");
+        let ModalResult::Confirmed(result) = result else {
+            panic!("expected confirmed result");
+        };
+        assert!(result.is_project);
+        assert!(result.is_edit);
+    }
+
+    #[test]
+    fn edit_mode_confirm_returns_updated_group() {
+        let mut modal = edit_modal(false);
+        modal.group_suggestion.input_mut().set_text("qa");
+        let result = modal.try_confirm().expect("edit modal should confirm");
+        let ModalResult::Confirmed(result) = result else {
+            panic!("expected confirmed result");
+        };
+        assert_eq!(result.group.as_deref(), Some("qa"));
+    }
+
+    #[test]
+    fn reserved_hotkey_conflict_is_detected() {
+        setup_i18n();
+        let mut modal = CommandConfigModal::new_create("Create command", vec![])
+            .with_reserved_hotkeys(vec![ReservedHotkey {
+                binding: "Ctrl+B".to_string(),
+            }]);
+        modal.hotkey_input.set_text("Ctrl+B");
+        modal.validate_hotkey();
+        assert_eq!(
+            modal.hotkey_conflict.as_deref(),
+            Some(i18n::t().command_config_hotkey_conflict())
+        );
+        modal.command_input.set_text("cargo build");
+        assert!(modal.try_confirm().is_none());
     }
 }

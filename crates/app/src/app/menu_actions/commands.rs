@@ -2,10 +2,93 @@
 
 use anyhow::Result;
 use std::path::PathBuf;
+use termide_config::commands::{decode_command_menu_key, CommandMenuKeyKind};
+use termide_config::{GlobalKeybindings, KeyBinding};
+use termide_modal::ReservedHotkey;
 
 use super::super::App;
 
+fn push_reserved_hotkeys(reserved: &mut Vec<ReservedHotkey>, binding: &Option<KeyBinding>) {
+    let Some(binding) = binding else {
+        return;
+    };
+    match binding {
+        KeyBinding::Single(key) => reserved.push(ReservedHotkey {
+            binding: key.clone(),
+        }),
+        KeyBinding::Multiple(keys) => {
+            for key in keys {
+                reserved.push(ReservedHotkey {
+                    binding: key.clone(),
+                });
+            }
+        }
+    }
+}
+
+fn collect_global_reserved_hotkeys(kb: &GlobalKeybindings) -> Vec<ReservedHotkey> {
+    let mut reserved = Vec::new();
+    push_reserved_hotkeys(&mut reserved, &kb.toggle_menu);
+    push_reserved_hotkeys(&mut reserved, &kb.new_file_manager);
+    push_reserved_hotkeys(&mut reserved, &kb.new_terminal);
+    push_reserved_hotkeys(&mut reserved, &kb.new_editor);
+    push_reserved_hotkeys(&mut reserved, &kb.new_journal);
+    push_reserved_hotkeys(&mut reserved, &kb.open_help);
+    push_reserved_hotkeys(&mut reserved, &kb.open_preferences);
+    push_reserved_hotkeys(&mut reserved, &kb.open_sessions);
+    push_reserved_hotkeys(&mut reserved, &kb.new_session);
+    push_reserved_hotkeys(&mut reserved, &kb.open_git_status);
+    push_reserved_hotkeys(&mut reserved, &kb.open_outline);
+    push_reserved_hotkeys(&mut reserved, &kb.open_diagnostics);
+    push_reserved_hotkeys(&mut reserved, &kb.open_git_log);
+    push_reserved_hotkeys(&mut reserved, &kb.open_bookmark_add);
+    push_reserved_hotkeys(&mut reserved, &kb.open_command_palette);
+    push_reserved_hotkeys(&mut reserved, &kb.prev_group);
+    push_reserved_hotkeys(&mut reserved, &kb.next_group);
+    push_reserved_hotkeys(&mut reserved, &kb.prev_panel);
+    push_reserved_hotkeys(&mut reserved, &kb.next_panel);
+    push_reserved_hotkeys(&mut reserved, &kb.goto_panel_1);
+    push_reserved_hotkeys(&mut reserved, &kb.goto_panel_2);
+    push_reserved_hotkeys(&mut reserved, &kb.goto_panel_3);
+    push_reserved_hotkeys(&mut reserved, &kb.goto_panel_4);
+    push_reserved_hotkeys(&mut reserved, &kb.goto_panel_5);
+    push_reserved_hotkeys(&mut reserved, &kb.goto_panel_6);
+    push_reserved_hotkeys(&mut reserved, &kb.goto_panel_7);
+    push_reserved_hotkeys(&mut reserved, &kb.goto_panel_8);
+    push_reserved_hotkeys(&mut reserved, &kb.goto_panel_9);
+    push_reserved_hotkeys(&mut reserved, &kb.close_panel);
+    push_reserved_hotkeys(&mut reserved, &kb.toggle_stack);
+    push_reserved_hotkeys(&mut reserved, &kb.swap_left);
+    push_reserved_hotkeys(&mut reserved, &kb.swap_right);
+    push_reserved_hotkeys(&mut reserved, &kb.move_first);
+    push_reserved_hotkeys(&mut reserved, &kb.move_last);
+    push_reserved_hotkeys(&mut reserved, &kb.resize_smaller);
+    push_reserved_hotkeys(&mut reserved, &kb.resize_larger);
+    push_reserved_hotkeys(&mut reserved, &kb.panel_action_menu);
+    push_reserved_hotkeys(&mut reserved, &kb.quit);
+    reserved
+}
+
 impl App {
+    fn collect_reserved_command_hotkeys(
+        &self,
+        registry: &termide_config::commands::CommandsRegistry,
+        exclude: Option<(&str, bool)>,
+    ) -> Vec<ReservedHotkey> {
+        let mut reserved = collect_global_reserved_hotkeys(&self.state.config.general.keybindings);
+        for (command, key_str) in registry.commands_with_hotkeys() {
+            if exclude.is_some_and(|(name, is_project)| {
+                command.name == name && command.is_project == is_project
+            }) {
+                continue;
+            }
+            reserved.push(ReservedHotkey {
+                binding: key_str.to_string(),
+            });
+        }
+        reserved
+    }
+
     // =========================================================================
     // Commands submenu handling
     // =========================================================================
@@ -96,22 +179,31 @@ impl App {
             return Ok(());
         }
 
-        // Match by name — root commands
-        if let Some(command) = registry.root_items.iter().find(|s| s.name == *key) {
-            self.state.close_menu();
-            self.run_command(command)?;
+        let Some(decoded) = decode_command_menu_key(key) else {
             return Ok(());
-        }
+        };
 
-        // Match by name — groups (open nested submenu)
-        if registry.groups.iter().any(|g| g.name == *key) {
-            // Toggle: if this nested submenu is already open for this group, close it.
-            if self.state.ui.commands_nested.open
-                && self.state.ui.current_commands_group.as_deref() == Some(key.as_str())
-            {
-                self.state.close_commands_nested_submenu();
-            } else {
-                self.state.open_commands_nested_submenu(key.clone());
+        match decoded.kind {
+            CommandMenuKeyKind::Command => {
+                if let Some(command) = registry.find_root_command(&decoded.name, decoded.is_project)
+                {
+                    self.state.close_menu();
+                    self.run_command(command)?;
+                }
+            }
+            CommandMenuKeyKind::Group => {
+                if registry
+                    .find_group(&decoded.name, decoded.is_project)
+                    .is_some()
+                {
+                    if self.state.ui.commands_nested.open
+                        && self.state.ui.current_commands_group.as_deref() == Some(key.as_str())
+                    {
+                        self.state.close_commands_nested_submenu();
+                    } else {
+                        self.state.open_commands_nested_submenu(key.clone());
+                    }
+                }
             }
         }
 
@@ -133,7 +225,10 @@ impl App {
             .and_then(|r| {
                 group_name
                     .as_ref()
-                    .and_then(|name| r.groups.iter().find(|g| &g.name == name))
+                    .and_then(|name| {
+                        let decoded = decode_command_menu_key(name)?;
+                        r.find_group(&decoded.name, decoded.is_project)
+                    })
                     .map(|g| g.items.len())
             })
             .unwrap_or(0);
@@ -164,7 +259,12 @@ impl App {
             None => return Ok(()),
         };
 
-        let group = match registry.groups.iter().find(|g| g.name == group_name) {
+        let decoded = match decode_command_menu_key(&group_name) {
+            Some(decoded) if decoded.kind == CommandMenuKeyKind::Group => decoded,
+            _ => return Ok(()),
+        };
+
+        let group = match registry.find_group(&decoded.name, decoded.is_project) {
             Some(g) => g,
             None => return Ok(()),
         };
@@ -192,20 +292,36 @@ impl App {
                 if item.is_separator || item.has_submenu {
                     return Ok(());
                 }
-                if let Some(command) = registry.find_command_by_name(&item.key) {
+                let Some(decoded) = decode_command_menu_key(&item.key) else {
+                    return Ok(());
+                };
+                if decoded.kind != CommandMenuKeyKind::Command {
+                    return Ok(());
+                }
+                if let Some(command) = registry.find_root_command(&decoded.name, decoded.is_project)
+                {
                     self.state.close_menu();
+                    let reserved = self.collect_reserved_command_hotkeys(
+                        &registry,
+                        Some((&command.name, command.is_project)),
+                    );
+                    let groups: Vec<String> =
+                        registry.groups.iter().map(|g| g.name.clone()).collect();
                     let title = format!("Edit command: {}", command.name);
                     let modal = termide_modal::CommandConfigModal::new_edit(
                         title,
                         command.name.clone(),
-                        None,
+                        command.metadata.as_ref().and_then(|m| m.group.clone()),
                         command.is_project,
                         None,
+                        groups,
                         command.metadata.clone(),
-                    );
+                    )
+                    .with_reserved_hotkeys(reserved);
                     self.state.set_pending_action(
                         termide_state::PendingAction::EditCommand {
                             command_name: command.name.clone(),
+                            is_project: command.is_project,
                             group: None,
                             selected,
                         },
@@ -227,22 +343,34 @@ impl App {
             Some(name) => name.clone(),
             None => return Ok(()),
         };
-        if let Some(group) = registry.groups.iter().find(|g| g.name == group_name) {
+        let decoded = match decode_command_menu_key(&group_name) {
+            Some(decoded) if decoded.kind == CommandMenuKeyKind::Group => decoded,
+            _ => return Ok(()),
+        };
+        if let Some(group) = registry.find_group(&decoded.name, decoded.is_project) {
             let selected = self.state.ui.commands_nested.selected;
             if let Some(command) = group.items.get(selected) {
                 self.state.close_menu();
+                let reserved = self.collect_reserved_command_hotkeys(
+                    &registry,
+                    Some((&command.name, command.is_project)),
+                );
+                let groups: Vec<String> = registry.groups.iter().map(|g| g.name.clone()).collect();
                 let title = format!("Edit command: {}", command.name);
                 let modal = termide_modal::CommandConfigModal::new_edit(
                     title,
                     command.name.clone(),
-                    Some(group_name.clone()),
+                    command.metadata.as_ref().and_then(|m| m.group.clone()),
                     command.is_project,
                     None,
+                    groups,
                     command.metadata.clone(),
-                );
+                )
+                .with_reserved_hotkeys(reserved);
                 self.state.set_pending_action(
                     termide_state::PendingAction::EditCommand {
                         command_name: command.name.clone(),
+                        is_project: command.is_project,
                         group: Some(group_name),
                         selected,
                     },
@@ -257,11 +385,19 @@ impl App {
     fn handle_add_command(&mut self) -> Result<()> {
         let registry = self.commands_registry();
         let groups: Vec<String> = registry
+            .as_ref()
             .map(|r| r.groups.iter().map(|g| g.name.clone()).collect())
             .unwrap_or_default();
+        let reserved = registry
+            .as_ref()
+            .map(|r| self.collect_reserved_command_hotkeys(r, None))
+            .unwrap_or_else(|| {
+                collect_global_reserved_hotkeys(&self.state.config.general.keybindings)
+            });
 
         let t = termide_i18n::t();
-        let modal = termide_modal::CommandConfigModal::new_create(t.menu_commands_add(), groups);
+        let modal = termide_modal::CommandConfigModal::new_create(t.menu_commands_add(), groups)
+            .with_reserved_hotkeys(reserved);
         self.state.set_pending_action(
             termide_state::PendingAction::CreateCommand,
             crate::state::ActiveModal::CommandConfig(Box::new(modal)),
@@ -278,7 +414,14 @@ impl App {
                 if item.is_separator || item.has_submenu {
                     return Ok(());
                 }
-                if let Some(command) = registry.find_command_by_name(&item.key) {
+                let Some(decoded) = decode_command_menu_key(&item.key) else {
+                    return Ok(());
+                };
+                if decoded.kind != CommandMenuKeyKind::Command {
+                    return Ok(());
+                }
+                if let Some(command) = registry.find_root_command(&decoded.name, decoded.is_project)
+                {
                     self.state.close_menu();
                     let t = termide_i18n::t();
                     let message = format!("{} \"{}\"?", t.help_desc_delete_generic(), command.name);
@@ -307,7 +450,11 @@ impl App {
             Some(name) => name.clone(),
             None => return Ok(()),
         };
-        if let Some(group) = registry.groups.iter().find(|g| g.name == group_name) {
+        let decoded = match decode_command_menu_key(&group_name) {
+            Some(decoded) if decoded.kind == CommandMenuKeyKind::Group => decoded,
+            _ => return Ok(()),
+        };
+        if let Some(group) = registry.find_group(&decoded.name, decoded.is_project) {
             let selected = self.state.ui.commands_nested.selected;
             if let Some(command) = group.items.get(selected) {
                 self.state.close_menu();
@@ -336,7 +483,14 @@ impl App {
                 if item.is_separator || item.has_submenu {
                     return Ok(());
                 }
-                if let Some(command) = registry.find_command_by_name(&item.key) {
+                let Some(decoded) = decode_command_menu_key(&item.key) else {
+                    return Ok(());
+                };
+                if decoded.kind != CommandMenuKeyKind::Command {
+                    return Ok(());
+                }
+                if let Some(command) = registry.find_root_command(&decoded.name, decoded.is_project)
+                {
                     self.state.close_menu();
                     let t = termide_i18n::t();
                     let modal = termide_modal::InputModal::with_default(
@@ -369,7 +523,11 @@ impl App {
             Some(name) => name.clone(),
             None => return Ok(()),
         };
-        if let Some(group) = registry.groups.iter().find(|g| g.name == group_name) {
+        let decoded = match decode_command_menu_key(&group_name) {
+            Some(decoded) if decoded.kind == CommandMenuKeyKind::Group => decoded,
+            _ => return Ok(()),
+        };
+        if let Some(group) = registry.find_group(&decoded.name, decoded.is_project) {
             let selected = self.state.ui.commands_nested.selected;
             if let Some(command) = group.items.get(selected) {
                 self.state.close_menu();
@@ -393,17 +551,22 @@ impl App {
         Ok(())
     }
 
-    /// Run a command by name, searching both global and project registries.
-    /// If the command has parameters, shows a parameter form modal.
-    /// Otherwise runs the command directly.
-    pub(in crate::app) fn run_command_by_name(&mut self, name: &str) -> Result<()> {
+    pub(in crate::app) fn run_command_by_menu_key(&mut self, key: &str) -> Result<()> {
         let registry = match self.commands_registry() {
             Some(r) => r,
             None => return Ok(()),
         };
 
-        let command = match registry.find_command_anywhere(name) {
-            Some(s) => s.clone(),
+        let Some(decoded) = decode_command_menu_key(key) else {
+            return Ok(());
+        };
+        if decoded.kind != CommandMenuKeyKind::Command {
+            return Ok(());
+        }
+
+        let command = match registry.find_command_anywhere_scoped(&decoded.name, decoded.is_project)
+        {
+            Some(command) => command.clone(),
             None => return Ok(()),
         };
 

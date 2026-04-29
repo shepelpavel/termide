@@ -84,6 +84,7 @@ The project includes a pre-commit hook that automatically runs before each commi
 - ✅ Test suite (`cargo test`)
 
 The hook is located at `.git/hooks/pre-commit` and is automatically configured when you clone the repository.
+Use it as a final safety net, not as a replacement for targeted validation while you work. Prefer narrow crate-level `cargo test -p`, `cargo check -p`, and `cargo clippy -p` runs on the code you changed, then let the hook enforce the full repository-wide pass before commit.
 
 ## Code Standards
 

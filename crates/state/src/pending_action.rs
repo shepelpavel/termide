@@ -205,6 +205,8 @@ pub enum PendingAction {
     EditCommand {
         /// Command name / TOML key
         command_name: String,
+        /// Whether the existing command comes from project-local config.
+        is_project: bool,
         /// Group name for nested submenu restoration
         group: Option<String>,
         /// Selected index to restore on return

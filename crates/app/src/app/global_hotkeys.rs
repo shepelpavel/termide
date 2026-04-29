@@ -77,7 +77,12 @@ impl App {
             let mut table = build_global_hotkey_table(&self.state.config.general.keybindings);
             if let Some(registry) = self.commands_registry() {
                 for (command, key_str) in registry.commands_with_hotkeys() {
-                    table.insert_raw(format!("run_command:{}", command.name), key_str);
+                    let command_key = termide_config::commands::encode_command_menu_key(
+                        termide_config::commands::CommandMenuKeyKind::Command,
+                        &command.name,
+                        command.is_project,
+                    );
+                    table.insert_raw(format!("run_command:{command_key}"), key_str);
                 }
             }
             self.state.cache.hotkey_table = Some(table);
@@ -226,8 +231,8 @@ impl App {
         // Command hotkeys (already in cached table as run_command:* entries)
         let matched = table.find_match("run_command:", key);
         if let Some(action) = matched {
-            let name = action.strip_prefix("run_command:").unwrap();
-            self.run_command_by_name(name)?;
+            let key = action.strip_prefix("run_command:").unwrap();
+            self.run_command_by_menu_key(key)?;
             return Ok(true);
         }
 
@@ -269,8 +274,8 @@ impl App {
             "resize_larger" => self.handle_resize_panel(1)?,
             "quit" => self.handle_quit_request()?,
             other => {
-                if let Some(name) = other.strip_prefix("run_command:") {
-                    self.run_command_by_name(name)?;
+                if let Some(key) = other.strip_prefix("run_command:") {
+                    self.run_command_by_menu_key(key)?;
                 } else {
                     return Ok(false);
                 }
