@@ -9,6 +9,8 @@ allowed-tools: Bash(git status), Bash(git diff*), Bash(git log*), Bash(git add *
 
 Collect all uncommitted changes and create a single structured commit.
 
+Platform note: agents that support frontmatter permissions may use `allowed-tools` and `user-invocable`. Other agents should ignore unsupported fields and follow the workflow below.
+
 ## Process
 
 1. Run `git status` (without `-uall`) and `git diff` (staged + unstaged) in parallel to understand changes

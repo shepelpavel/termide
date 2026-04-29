@@ -11,6 +11,8 @@ Full-workspace code quality analysis and incremental refactoring with continuous
 
 This skill is intended for **periodic whole-codebase refactoring passes**, not per-branch or per-diff cleanup. It does not accept `--diff` / `--staged` / `--since` arguments.
 
+Platform note: agents that support frontmatter permissions may use `allowed-tools` and `user-invocable`. Other agents should ignore unsupported fields and follow the workflow below. When platform-specific orchestration or memory features are unavailable, degrade gracefully and continue with the equivalent local workflow.
+
 Arguments (optional):
 - Path or crate: `/refactor crates/app` — limit scope to one directory
 - No arguments — analyze the entire workspace
@@ -19,7 +21,7 @@ Arguments (optional):
 
 ### Phase 1: Exploration
 
-1. Read `CLAUDE.md` and `PRD.md` (if present) for project rules and conventions. Also read `MEMORY.md` under the Claude memory directory for any `intentional_placeholder_*` / `feedback_*` notes that inform what to skip.
+1. Read project instruction and planning files if present, for example `AGENTS.md`, `CLAUDE.md`, and `PRD.md`. Also read any project or agent memory/notes files if present for `intentional_placeholder_*`, `feedback_*`, or similar notes that inform what to skip.
 2. Collect baseline metrics — run in parallel, each one optional (if a tool is absent, emit an info line in the report, do not fail):
    - `cargo clippy --workspace --all-targets 2>&1` — warning count.
    - `cargo test --workspace 2>&1` — green baseline? If tests fail or code doesn't compile, report and stop.
@@ -35,7 +37,7 @@ Arguments (optional):
 
 ### Phase 2: Diagnosis
 
-Analyze code across the categories below. For large scope, dispatch parallel `Task` agents (subagent_type=Explore) — one per category or related group of categories.
+Analyze code across the categories below. For large scope, use parallel subagents or parallel analysis passes if the platform supports them, ideally one per category or related group of categories.
 
 #### Analysis checklist
 
@@ -68,7 +70,7 @@ Legitimate exceptions to "1 file = 1 type": Error+ErrorKind pairs, Builder+Targe
   - `HIGH` — unused private / `pub(crate)` in leaf module, no callers.
   - `MEDIUM` — `pub` in inner crate, no callers found via grep.
   - `LOW` — enum variant, trait impl, or item with `#[allow(dead_code)]` nearby — likely intentional placeholder.
-- Skip items already noted as intentional in `MEMORY.md` (e.g. `ForceSave`, dead enum variants in `vfs_state.rs`/`keyboard.rs`, `format_bytes` x3, `ConflictResolution` x3 across layers).
+- Skip items already noted as intentional in project or agent memory/notes files (e.g. `ForceSave`, dead enum variants in `vfs_state.rs`/`keyboard.rs`, `format_bytes` x3, `ConflictResolution` x3 across layers).
 
 **Performance**
 - [ ] Unnecessary `.clone()` / `.to_string()` / `.to_owned()` where a reference suffices.
@@ -177,12 +179,12 @@ Baseline: X clippy warnings, Y workspace LOC, Z tests passing.
 ```
 
 **Auto-mode:**
-- If auto-mode is detected (by surrounding context), do NOT call `AskUserQuestion`.
+- If auto-mode is detected by surrounding context, do not pause for interactive questions.
 - Auto-execute all `HIGH-SAFE` and `MED-SAFE` findings.
 - Leave `CAREFUL` and `BREAKING` in the report for the user to review.
 
 **Non-auto:**
-- Ask via `AskUserQuestion` which categories to fix, with `SAFE` findings preselected.
+- Ask the user which categories to fix using the platform's interactive prompt mechanism, with `SAFE` findings preselected when supported.
 - Ask for budget: quick cleanup / full refactoring.
 
 ### Phase 4: Execution
@@ -211,10 +213,10 @@ Compare with baseline: warnings removed, LOC deleted/changed, tests still green.
 ## Rules
 
 - Grep for dead code **from the repository root**, not from `crates/`. Binary crate in `src/` is a legitimate caller.
-- Before proposing a dead-code / refactor finding, cross-check `MEMORY.md` for `intentional_placeholder_*` entries and skip those silently.
+- Before proposing a dead-code or refactor finding, cross-check project or agent memory/notes files for `intentional_placeholder_*` entries and skip those silently.
 - If an ecosystem tool (`cargo-machete`, `cargo-mutants`, `cargo-audit`, etc.) is not in PATH, emit an info line and continue — do not fail.
 - `BREAKING` findings are reported but never executed without explicit user consent.
-- In auto-mode, do not call `AskUserQuestion` for `SAFE` actions.
+- In auto-mode, do not interrupt execution for `SAFE` actions.
 - Do not create abstractions "for the future" — only when duplication already exists.
 - Do not change public API without explicit consent.
 - Do not touch files you haven't read.

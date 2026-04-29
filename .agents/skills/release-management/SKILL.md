@@ -1,6 +1,13 @@
+---
+name: release-management
+description: Prepare and publish a project release with version updates, changelog generation, tagging, and validation
+---
+
 # Release Management Skill
 
 Comprehensive release management workflow for TermIDE project that ensures code quality, version consistency, and proper changelog documentation before creating releases.
+
+Platform note: agents that support extra frontmatter fields may add their own permission hints around this skill. Agents that do not support them should ignore unsupported fields and follow the workflow below. When interactive prompts or inline editing are unavailable, use the closest equivalent workflow the platform provides.
 
 ## When to Use This Skill
 
@@ -193,7 +200,7 @@ Which version is correct as the current version?
 3. Other (specify manually)
 ```
 
-Use AskUserQuestion tool for this.
+Use the platform's interactive prompt mechanism for this decision.
 
 ### Step 4: Request New Version
 
@@ -210,7 +217,7 @@ Select release type:
 5. recreate 0.2.0 - Recreate existing tag (for failed CI/CD)
 ```
 
-Use AskUserQuestion tool with options:
+Use the platform's interactive prompt mechanism with options:
 - patch
 - minor
 - major
@@ -349,7 +356,7 @@ Do you want to:
 3. Cancel release (need more work)
 ```
 
-Use AskUserQuestion tool.
+Use the platform's interactive prompt mechanism.
 
 If user selects "Pause", inform them:
 ```
@@ -426,7 +433,7 @@ Do you want to:
 3. Regenerate with different categorization
 ```
 
-Use AskUserQuestion tool or allow inline editing.
+Use the platform's interactive prompt mechanism or allow inline editing when supported.
 
 **Insert into CHANGELOG.md:**
 Find line after `# Changelog` header and first blank line, insert new section.
@@ -605,7 +612,7 @@ Expected workflow duration: ~15-20 minutes
 Do you want to push now? [yes/no]
 ```
 
-Use AskUserQuestion tool.
+Use the platform's interactive prompt mechanism.
 
 **If yes:**
 ```bash
@@ -755,7 +762,7 @@ User invokes skill by saying:
 - `Edit` - Update version strings in files
 - `Bash` - Run git commands and quality checks
 - `Grep` - Find version occurrences
-- `AskUserQuestion` - Interactive prompts for decisions
+- Interactive prompt or input mechanism - Use it for decisions that require user confirmation
 
 ### State Management
 - Track current step in workflow
