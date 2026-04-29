@@ -160,6 +160,68 @@ pub enum PanelDropTarget {
     NewGroup { insert_at: usize },
 }
 
+/// What a header drag should do when the user releases the mouse.
+///
+/// Disambiguation is purely spatial:
+/// - Cursor over the source panel itself → [`Self::ResizeAbove`].
+/// - Cursor over a different panel of the source group, or in another
+///   column, or in a between-groups gutter → [`Self::Move`] with the
+///   target produced by [`compute_drop_target`].
+/// - Cursor outside any panel area (e.g. the menu/status row) →
+///   [`Self::Cancel`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PanelDragIntent {
+    /// Resize the divider above the source panel. The renderer should
+    /// preview a thick horizontal line at `divider_y`; the drag-end
+    /// handler converts that into a delta against the current panel
+    /// boundary.
+    ResizeAbove { divider_y: u16 },
+    /// Apply the existing move semantics (insert into a group or
+    /// create a new one).
+    Move(PanelDropTarget),
+    /// No valid drop position.
+    Cancel,
+}
+
+/// Classify a header drag by cursor position.
+///
+/// The resize zone covers the source panel plus the panel immediately
+/// above it — the divider being dragged sits between them, and the
+/// cursor naturally roams across both bodies as the divider slides up
+/// or down. Anything outside that zone (a non-adjacent panel of the
+/// source group, another column, or a between-groups gutter) falls
+/// through to the move semantics produced by [`compute_drop_target`].
+///
+/// Top-of-group panels (source `panel_idx == 0`) have no divider above
+/// them, so the resize zone is empty and any drop becomes a move.
+pub fn classify_panel_drag(
+    rects: &[(usize, usize, Rect, bool)],
+    src_group_idx: usize,
+    src_panel_idx: usize,
+    cursor_x: u16,
+    cursor_y: u16,
+) -> PanelDragIntent {
+    if src_panel_idx > 0 {
+        let in_resize_zone = rects.iter().any(|(gi, pi, rect, _)| {
+            *gi == src_group_idx
+                && (*pi == src_panel_idx || *pi + 1 == src_panel_idx)
+                && cursor_x >= rect.x
+                && cursor_x < rect.x + rect.width
+                && cursor_y >= rect.y
+                && cursor_y < rect.y + rect.height
+        });
+        if in_resize_zone {
+            return PanelDragIntent::ResizeAbove {
+                divider_y: cursor_y,
+            };
+        }
+    }
+    match compute_drop_target(rects, cursor_x, cursor_y) {
+        Some(target) => PanelDragIntent::Move(target),
+        None => PanelDragIntent::Cancel,
+    }
+}
+
 /// Panel layout manager with accordion support.
 pub struct LayoutManager {
     /// Panel groups (horizontal columns with vertical accordion inside).

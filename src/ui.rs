@@ -361,7 +361,13 @@ fn render_drag_overlay(
     let cursor_y = state.ui.panel_drag.cursor_y;
 
     let rects = termide_layout::calculate_panel_rects(&layout_manager.panel_groups, main_area);
-    let target = termide_layout::compute_drop_target(&rects, cursor_x, cursor_y);
+    let intent = termide_layout::classify_panel_drag(
+        &rects,
+        source.group_idx,
+        source.panel_idx,
+        cursor_x,
+        cursor_y,
+    );
 
     let highlight_style = Style::default()
         .fg(theme.accented_fg)
@@ -370,8 +376,30 @@ fn render_drag_overlay(
 
     let buf = frame.buffer_mut();
 
-    match target {
-        Some(termide_layout::PanelDropTarget::IntoGroup {
+    let mut show_ghost = true;
+
+    match intent {
+        termide_layout::PanelDragIntent::ResizeAbove { divider_y } => {
+            // Thick `━` line spanning the source group's column at the
+            // cursor row — previews where the divider above the source
+            // panel will land on release.
+            let group_spans = termide_layout::group_spans_from_rects(&rects);
+            if let Some(&(_, left, right)) = group_spans
+                .iter()
+                .find(|(gi, _, _)| *gi == source.group_idx)
+            {
+                for col in left..right {
+                    if col >= buf.area.width {
+                        break;
+                    }
+                    if let Some(cell) = buf.cell_mut((col, divider_y)) {
+                        cell.set_symbol("━").set_style(highlight_style);
+                    }
+                }
+            }
+            show_ghost = false;
+        }
+        termide_layout::PanelDragIntent::Move(termide_layout::PanelDropTarget::IntoGroup {
             group_idx,
             at_position,
         }) => {
@@ -396,7 +424,9 @@ fn render_drag_overlay(
                 }
             }
         }
-        Some(termide_layout::PanelDropTarget::NewGroup { insert_at }) => {
+        termide_layout::PanelDragIntent::Move(termide_layout::PanelDropTarget::NewGroup {
+            insert_at,
+        }) => {
             // Find x for the new group boundary.
             let group_spans = termide_layout::group_spans_from_rects(&rects);
 
@@ -425,7 +455,11 @@ fn render_drag_overlay(
                 }
             }
         }
-        None => {}
+        termide_layout::PanelDragIntent::Cancel => {}
+    }
+
+    if !show_ghost {
+        return;
     }
 
     // Ghost icon under cursor: `[icon]` — 5 cells for emoji, 3 for ascii.
