@@ -129,6 +129,13 @@ use termide_config::Config;
 use termide_core::{use_emoji_icons, Panel, PanelConfig, RenderContext, ThemeColors};
 
 /// Get emoji icon for a panel type.
+///
+/// Each icon must be classified as 2-cell wide by the workspace's
+/// `unicode-width` fork; otherwise the title alignment after the icon
+/// drifts by one column and visually swallows the trailing space (the
+/// fork does not yet recognise Emoji_Presentation sequences with
+/// `U+FE0F`, so emoji such as `⚙️` / `⚠️` / `🗂️` / `🖼️` falsely
+/// report width 1 and must be avoided here).
 pub fn panel_icon(name: &str) -> &'static str {
     match name {
         "terminal" => "💻",
@@ -137,10 +144,10 @@ pub fn panel_icon(name: &str) -> &'static str {
         "git_status" => "📊",
         "git_log" => "📜",
         "git_diff" => "🔀",
-        "image" => "🖼️",
-        "diagnostics" => "⚠️",
-        "outline" => "🗂️",
-        "operations" => "⚙️",
+        "image" => "🎨",
+        "diagnostics" => "🚧",
+        "outline" => "📑",
+        "operations" => "🔄",
         _ => "📋",
     }
 }
