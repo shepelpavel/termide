@@ -34,3 +34,5 @@ termide.log
 
 /.claude
 !/.claude/skills
+
+/.codex

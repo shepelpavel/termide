@@ -28,6 +28,8 @@ Resolution rules:
 - Prefer the existing repo vocabulary: `feat`, `fix`, `refactor`, `perf`, `docs`, `test`, `chore`, `style`, `revert`.
 - Keep subjects short and in English.
 - Make each commit one coherent unit: one feature, one fix, or one refactor.
+- Agents must not create commits by default. In non-autonomous work, prepare the diff, report validation status, and wait for an explicit user request before committing.
+- Auto-commit is allowed only when the task is explicitly operating in a fully autonomous execution mode.
 - Include tests and required docs updates in the same commit as the behavior change.
 
 ## Working rules
@@ -69,6 +71,7 @@ Resolution rules:
 - Run the narrowest useful checks first.
 - This repository has a local `pre-commit` hook that runs `cargo fmt --check`, `cargo check`, `cargo clippy -- -D warnings`, and `cargo test`.
 - Do not rely on the hook as a substitute for targeted validation; use narrow crate-level checks to validate the changed area before committing.
+- Treat completed implementation or an internally completed plan as insufficient reason to commit. If human review or local user validation is still expected, stop before commit and report the current state instead.
 - Before finishing broader changes, run:
   - `cargo fmt --all`
   - `cargo test`
