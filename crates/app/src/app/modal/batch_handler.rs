@@ -25,6 +25,58 @@ fn source_name(path: &Path) -> String {
         .unwrap_or_else(|| "file".to_string())
 }
 
+fn relative_path_from(base_dir: &Path, target: &Path) -> Option<PathBuf> {
+    use std::path::Component;
+
+    let base_components: Vec<Component<'_>> = base_dir.components().collect();
+    let target_components: Vec<Component<'_>> = target.components().collect();
+
+    let mut common_len = 0usize;
+    while common_len < base_components.len()
+        && common_len < target_components.len()
+        && base_components[common_len] == target_components[common_len]
+    {
+        common_len += 1;
+    }
+
+    if common_len == 0 && base_dir.is_absolute() != target.is_absolute() {
+        return None;
+    }
+
+    let mut result = PathBuf::new();
+    for component in &base_components[common_len..] {
+        if matches!(component, Component::Normal(_)) {
+            result.push("..");
+        }
+    }
+    for component in &target_components[common_len..] {
+        result.push(component.as_os_str());
+    }
+
+    if result.as_os_str().is_empty() {
+        Some(PathBuf::from("."))
+    } else {
+        Some(result)
+    }
+}
+
+fn symlink_target_path(
+    source: &Path,
+    link_path: &Path,
+    use_relative: bool,
+) -> std::io::Result<PathBuf> {
+    let canonical = std::fs::canonicalize(source)?;
+    if !use_relative {
+        return Ok(canonical);
+    }
+
+    let Some(parent) = link_path.parent() else {
+        return Ok(canonical);
+    };
+    let canonical_parent = std::fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
+    Ok(relative_path_from(&canonical_parent, &canonical).unwrap_or(canonical))
+}
+
 /// Create a copy or move OperationRequest based on operation type.
 fn make_copy_or_move_request(
     source: OperationPath,
@@ -106,6 +158,30 @@ fn format_vfs_path_for_display(vfs_path: &VfsPath, file_path: &Path) -> String {
 }
 
 impl App {
+    fn resolve_local_destination_input(
+        &mut self,
+        target_directory: Option<&PathBuf>,
+        dest_str: &str,
+    ) -> Option<(PathBuf, bool)> {
+        let base_dir = if let Some(target_dir) = target_directory {
+            target_dir.clone()
+        } else if let Some(panel) = self.layout_manager.active_panel_mut() {
+            if let Some(fm) = panel.as_file_manager_mut() {
+                fm.get_current_directory()
+            } else {
+                log::error!("Active panel is not FileManager");
+                return None;
+            }
+        } else {
+            log::error!("No active panel found");
+            return None;
+        };
+
+        Some(path_utils::resolve_local_destination_input(
+            &base_dir, dest_str,
+        ))
+    }
+
     /// Parse a VFS URL, logging and setting error on failure.
     fn parse_remote_url(&mut self, remote_url: &str) -> Option<VfsPath> {
         match termide_vfs::parse_vfs_url(remote_url) {
@@ -290,36 +366,15 @@ impl App {
             return self.start_upload_operation(operation_type, sources, &dest_str);
         }
 
-        // Local destination - determine absolute path
-        let absolute_destination = if let Some(target_dir) = target_directory {
-            let destination = termide_ui::expand_tilde(&dest_str);
-            if destination.is_absolute() {
-                destination
-            } else {
-                target_dir.join(&destination)
-            }
-        } else {
-            // Get active FileManager panel to determine base path
-            if let Some(panel) = self.layout_manager.active_panel_mut() {
-                if let Some(fm) = panel.as_file_manager_mut() {
-                    let destination = termide_ui::expand_tilde(&dest_str);
-                    if destination.is_absolute() {
-                        destination
-                    } else {
-                        fm.get_current_directory().join(&destination)
-                    }
-                } else {
-                    log::error!("Active panel is not FileManager");
-                    return Ok(());
-                }
-            } else {
-                log::error!("No active panel found");
-                return Ok(());
-            }
+        let Some((absolute_destination, destination_is_directory)) =
+            self.resolve_local_destination_input(target_directory.as_ref(), &dest_str)
+        else {
+            return Ok(());
         };
 
         // Create and start batch operation
-        let batch_op = BatchOperation::new(operation_type, sources, absolute_destination);
+        let batch_op = BatchOperation::new(operation_type, sources, absolute_destination)
+            .with_destination_directory(destination_is_directory);
 
         self.process_batch_operation(batch_op);
         Ok(())
@@ -619,10 +674,16 @@ impl App {
         sources: Vec<PathBuf>,
         target_directory: Option<PathBuf>,
         create_symlink: bool,
+        create_relative_symlink: bool,
         value: Box<dyn std::any::Any>,
     ) -> Result<()> {
         if create_symlink {
-            return self.handle_create_symlinks(sources, target_directory, value);
+            return self.handle_create_symlinks(
+                sources,
+                target_directory,
+                create_relative_symlink,
+                value,
+            );
         }
         self.handle_file_operation(BatchOperationType::Copy, sources, target_directory, value)
     }
@@ -632,6 +693,7 @@ impl App {
         &mut self,
         sources: Vec<PathBuf>,
         target_directory: Option<PathBuf>,
+        create_relative_symlink: bool,
         value: Box<dyn std::any::Any>,
     ) -> Result<()> {
         // Extract destination string
@@ -641,65 +703,60 @@ impl App {
             return Ok(());
         };
 
-        // Resolve absolute destination path
-        let absolute_destination = if let Some(target_dir) = target_directory {
-            let destination = termide_ui::expand_tilde(&dest_str);
-            if destination.is_absolute() {
-                destination
-            } else {
-                target_dir.join(&destination)
-            }
-        } else if let Some(panel) = self.layout_manager.active_panel_mut() {
-            if let Some(fm) = panel.as_file_manager_mut() {
-                let destination = termide_ui::expand_tilde(&dest_str);
-                if destination.is_absolute() {
-                    destination
-                } else {
-                    fm.get_current_directory().join(&destination)
-                }
-            } else {
-                return Ok(());
-            }
-        } else {
+        let Some((absolute_destination, destination_is_directory)) =
+            self.resolve_local_destination_input(target_directory.as_ref(), &dest_str)
+        else {
             return Ok(());
         };
-
-        // Create destination directory if needed
-        if let Err(e) = std::fs::create_dir_all(&absolute_destination) {
-            self.show_error_modal(format!("Failed to create directory: {}", e));
-            return Ok(());
-        }
 
         #[allow(unused_mut)]
         let mut success_count = 0usize;
         let mut error_count = 0usize;
+        let is_single_source = sources.len() == 1;
 
         for source in &sources {
-            let file_name = source
-                .file_name()
-                .unwrap_or_else(|| std::ffi::OsStr::new("link"));
+            let link_path = path_utils::resolve_batch_destination_path(
+                source,
+                &absolute_destination,
+                is_single_source,
+                destination_is_directory,
+            );
+
+            if let Some(parent) = link_path.parent() {
+                if let Err(e) = std::fs::create_dir_all(parent) {
+                    log::error!(
+                        "Failed to create parent directory {}: {}",
+                        parent.display(),
+                        e
+                    );
+                    error_count += 1;
+                    continue;
+                }
+            }
 
             #[cfg(unix)]
-            let canonical = match std::fs::canonicalize(source) {
+            let target_path = match symlink_target_path(source, &link_path, create_relative_symlink)
+            {
                 Ok(p) => p,
                 Err(e) => {
-                    log::error!("Failed to canonicalize {}: {}", source.display(), e);
+                    log::error!(
+                        "Failed to resolve symlink target for {}: {}",
+                        source.display(),
+                        e
+                    );
                     error_count += 1;
                     continue;
                 }
             };
 
             #[cfg(unix)]
-            let link_path = absolute_destination.join(file_name);
-
-            #[cfg(unix)]
-            match std::os::unix::fs::symlink(&canonical, &link_path) {
+            match std::os::unix::fs::symlink(&target_path, &link_path) {
                 Ok(()) => success_count += 1,
                 Err(e) => {
                     log::error!(
                         "Failed to create symlink {} -> {}: {}",
                         link_path.display(),
-                        canonical.display(),
+                        target_path.display(),
                         e
                     );
                     error_count += 1;
@@ -794,6 +851,7 @@ impl App {
                                         &source,
                                         &operation.destination,
                                         operation.sources.len() == 1,
+                                        operation.destination_is_directory(),
                                     )
                                 };
                                 let src_name = source_name(&source);
@@ -847,6 +905,7 @@ impl App {
                                 &source,
                                 &operation.destination,
                                 operation.sources.len() == 1,
+                                operation.destination_is_directory(),
                             );
                             let is_move = operation.operation_type == BatchOperationType::Move;
                             let worker_dest = if source.is_dir() && final_dest.is_dir() {
@@ -1182,7 +1241,11 @@ impl App {
                     });
                 base.join(&new_name)
             } else {
-                path_utils::resolve_rename_destination_path(&operation.destination, &new_name)
+                path_utils::resolve_rename_destination_path(
+                    &operation.destination,
+                    &new_name,
+                    operation.destination_is_directory(),
+                )
             }
         } else if is_remote_dest {
             // Remote destination: parse URL path and join filename
@@ -1199,6 +1262,7 @@ impl App {
                 &source,
                 &operation.destination,
                 operation.sources.len() == 1,
+                operation.destination_is_directory(),
             )
         };
 
@@ -1412,6 +1476,7 @@ impl App {
                         path_utils::resolve_rename_destination_path(
                             &operation.destination,
                             &new_name,
+                            operation.destination_is_directory(),
                         )
                     };
 

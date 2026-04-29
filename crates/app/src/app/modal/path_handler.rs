@@ -8,7 +8,7 @@ use crate::panel_ext::PanelExt;
 use crate::state::ActiveModal;
 
 impl App {
-    /// Sync the "create symlink" checkbox state from the active modal into `PendingAction::CopyPath`.
+    /// Sync copy modal checkbox state into `PendingAction::CopyPath`.
     pub(in crate::app) fn sync_copy_symlink_flag(&mut self) {
         if !matches!(
             self.state.pending_action,
@@ -16,17 +16,23 @@ impl App {
         ) {
             return;
         }
-        let checked = match &self.state.active_modal {
-            Some(ActiveModal::Input(m)) => m.is_checkbox_checked(),
-            Some(ActiveModal::EditableSelect(m)) => m.is_checkbox_checked(),
-            _ => false,
-        };
-        if checked {
-            if let Some(termide_state::PendingAction::CopyPath { create_symlink, .. }) =
-                &mut self.state.pending_action
-            {
-                *create_symlink = true;
+        let (create_symlink_checked, create_relative_checked) = match &self.state.active_modal {
+            Some(ActiveModal::Input(m)) => {
+                (m.is_checkbox_checked(), m.is_secondary_checkbox_checked())
             }
+            Some(ActiveModal::EditableSelect(m)) => {
+                (m.is_checkbox_checked(), m.is_secondary_checkbox_checked())
+            }
+            _ => (false, false),
+        };
+        if let Some(termide_state::PendingAction::CopyPath {
+            create_symlink,
+            create_relative_symlink,
+            ..
+        }) = &mut self.state.pending_action
+        {
+            *create_symlink = create_symlink_checked;
+            *create_relative_symlink = create_symlink_checked && create_relative_checked;
         }
     }
 

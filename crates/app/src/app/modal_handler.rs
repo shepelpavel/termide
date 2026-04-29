@@ -94,6 +94,7 @@ impl App {
                                     source,
                                     &operation.destination,
                                     operation.sources.len() == 1,
+                                    operation.destination_is_directory(),
                                 );
 
                                 let remaining_items = operation
@@ -279,8 +280,15 @@ impl App {
                     sources,
                     target_directory,
                     create_symlink,
+                    create_relative_symlink,
                 } => {
-                    self.handle_copy_path(sources, target_directory, create_symlink, value)?;
+                    self.handle_copy_path(
+                        sources,
+                        target_directory,
+                        create_symlink,
+                        create_relative_symlink,
+                        value,
+                    )?;
                 }
                 PendingAction::MovePath {
                     sources,

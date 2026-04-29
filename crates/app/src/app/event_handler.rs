@@ -850,6 +850,7 @@ impl App {
                 sources: sources.clone(),
                 target_directory: None,
                 create_symlink: false,
+                create_relative_symlink: false,
             },
             termide_core::InputAction::MoveTo { sources } => PendingAction::MovePath {
                 sources: sources.clone(),

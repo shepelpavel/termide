@@ -26,6 +26,7 @@ pub enum PendingAction {
         sources: Vec<PathBuf>,
         target_directory: Option<PathBuf>,
         create_symlink: bool,
+        create_relative_symlink: bool,
     },
     /// Move files/directories (one or multiple)
     MovePath {

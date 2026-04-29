@@ -522,6 +522,7 @@ pub trait Translation: Send + Sync {
     // Checkboxes
     fn checkbox_executable(&self) -> &str;
     fn checkbox_create_symlink(&self) -> &str;
+    fn checkbox_relative_symlink(&self) -> &str;
 
     // File size units
     fn size_bytes(&self) -> &str;

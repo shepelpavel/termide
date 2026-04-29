@@ -419,6 +419,8 @@ impl App {
             if is_copy {
                 let t = i18n::t();
                 new_modal = new_modal.with_checkbox(t.checkbox_create_symlink().to_string());
+                new_modal =
+                    new_modal.with_conditional_checkbox(t.checkbox_relative_symlink().to_string());
             }
             ActiveModal::EditableSelect(Box::new(new_modal))
         } else {
@@ -427,6 +429,8 @@ impl App {
             if is_copy {
                 let t = i18n::t();
                 new_modal = new_modal.with_checkbox(t.checkbox_create_symlink().to_string());
+                new_modal =
+                    new_modal.with_conditional_checkbox(t.checkbox_relative_symlink().to_string());
             }
             ActiveModal::Input(Box::new(new_modal))
         }

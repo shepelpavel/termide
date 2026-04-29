@@ -377,6 +377,7 @@ impl Translation for RuntimeTranslation {
         ui_hint_separator,
         checkbox_executable,
         checkbox_create_symlink,
+        checkbox_relative_symlink,
         size_bytes,
         size_kilobytes,
         size_megabytes,

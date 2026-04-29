@@ -46,8 +46,15 @@ pub struct SelectOption {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FocusArea {
     Input,
-    Checkbox,
+    Checkbox(usize),
     Buttons,
+}
+
+#[derive(Debug, Clone)]
+struct ModalCheckbox {
+    label: String,
+    checked: bool,
+    visible_when_primary_checked: bool,
 }
 
 /// Editable select modal - combobox with editable input
@@ -64,9 +71,8 @@ pub struct EditableSelectModal {
     last_input_area: Option<Rect>,
     last_dropdown_area: Option<Rect>,
     last_buttons_area: Option<Rect>,
-    checkbox_label: Option<String>,
-    checkbox_checked: bool,
-    last_checkbox_area: Option<Rect>,
+    checkboxes: Vec<ModalCheckbox>,
+    last_checkbox_areas: Vec<(usize, Rect)>,
 }
 
 impl EditableSelectModal {
@@ -92,26 +98,75 @@ impl EditableSelectModal {
             last_input_area: None,
             last_dropdown_area: None,
             last_buttons_area: None,
-            checkbox_label: None,
-            checkbox_checked: false,
-            last_checkbox_area: None,
+            checkboxes: Vec::new(),
+            last_checkbox_areas: Vec::new(),
         }
     }
 
     /// Add an optional checkbox to the modal
     pub fn with_checkbox(mut self, label: String) -> Self {
-        self.checkbox_label = Some(label);
+        self.checkboxes.push(ModalCheckbox {
+            label,
+            checked: false,
+            visible_when_primary_checked: false,
+        });
+        self
+    }
+
+    pub fn with_conditional_checkbox(mut self, label: String) -> Self {
+        self.checkboxes.push(ModalCheckbox {
+            label,
+            checked: false,
+            visible_when_primary_checked: true,
+        });
         self
     }
 
     /// Whether the checkbox is checked
     pub fn is_checkbox_checked(&self) -> bool {
-        self.checkbox_checked
+        self.checkboxes.first().is_some_and(|c| c.checked)
     }
 
-    /// Whether this modal has a checkbox
-    fn has_checkbox(&self) -> bool {
-        self.checkbox_label.is_some()
+    pub fn is_secondary_checkbox_checked(&self) -> bool {
+        self.checkboxes.get(1).is_some_and(|c| c.checked)
+    }
+
+    fn visible_checkbox_indices(&self) -> Vec<usize> {
+        self.checkboxes
+            .iter()
+            .enumerate()
+            .filter(|(idx, checkbox)| {
+                if *idx == 0 {
+                    true
+                } else {
+                    !checkbox.visible_when_primary_checked || self.is_checkbox_checked()
+                }
+            })
+            .map(|(idx, _)| idx)
+            .collect()
+    }
+
+    fn first_visible_checkbox(&self) -> Option<usize> {
+        self.visible_checkbox_indices().into_iter().next()
+    }
+
+    fn next_visible_checkbox_after(&self, current: usize) -> Option<usize> {
+        let visible = self.visible_checkbox_indices();
+        visible
+            .iter()
+            .position(|idx| *idx == current)
+            .and_then(|pos| visible.get(pos + 1).copied())
+    }
+
+    fn previous_visible_checkbox_before(&self, current: usize) -> Option<usize> {
+        let visible = self.visible_checkbox_indices();
+        visible
+            .iter()
+            .position(|idx| *idx == current)
+            .and_then(|pos| {
+                pos.checked_sub(1)
+                    .and_then(|prev| visible.get(prev).copied())
+            })
     }
 
     /// Calculate dynamic modal width and height
@@ -177,7 +232,7 @@ impl EditableSelectModal {
         };
 
         // 1 (top border) + prompt_lines + 3 (input) + list + checkbox(0 or 1) + 1 (buttons) + 1 (bottom border)
-        let checkbox_height = if self.checkbox_label.is_some() { 1 } else { 0 };
+        let checkbox_height = self.visible_checkbox_indices().len() as u16;
         let height =
             (1 + prompt_lines + 3 + list_height + checkbox_height + 1 + 1).min(screen_height);
 
@@ -214,7 +269,6 @@ impl Modal for EditableSelectModal {
         } else {
             0
         };
-
         let mut constraints = Vec::new();
         if has_prompt {
             constraints.push(Constraint::Length(prompt_lines));
@@ -223,8 +277,9 @@ impl Modal for EditableSelectModal {
         if has_list {
             constraints.push(Constraint::Length(list_height));
         }
-        if self.checkbox_label.is_some() {
-            constraints.push(Constraint::Length(1)); // Checkbox
+        let visible_checkboxes = self.visible_checkbox_indices();
+        for _ in &visible_checkboxes {
+            constraints.push(Constraint::Length(1));
         }
         constraints.push(Constraint::Length(1)); // Buttons
 
@@ -353,22 +408,23 @@ impl Modal for EditableSelectModal {
         }
 
         // Render checkbox if present
-        if let Some(label) = &self.checkbox_label {
-            let checkbox_char = if self.checkbox_checked { "x" } else { " " };
-            let checkbox_style = if self.focus == FocusArea::Checkbox {
+        self.last_checkbox_areas.clear();
+        for checkbox_idx in visible_checkboxes {
+            let checkbox = &self.checkboxes[checkbox_idx];
+            let checkbox_char = if checkbox.checked { "x" } else { " " };
+            let checkbox_style = if self.focus == FocusArea::Checkbox(checkbox_idx) {
                 Style::default().fg(theme.accented_fg).bg(theme.bg)
             } else {
                 Style::default().fg(theme.fg).bg(theme.bg)
             };
-            let checkbox_text = format!("[{}] {}", checkbox_char, label);
+            let checkbox_text = format!("[{}] {}", checkbox_char, checkbox.label);
             let checkbox = Paragraph::new(checkbox_text)
                 .style(checkbox_style)
                 .alignment(Alignment::Left);
             checkbox.render(chunks[chunk_idx], buf);
-            self.last_checkbox_area = Some(chunks[chunk_idx]);
+            self.last_checkbox_areas
+                .push((checkbox_idx, chunks[chunk_idx]));
             chunk_idx += 1;
-        } else {
-            self.last_checkbox_area = None;
         }
 
         // Render buttons
@@ -433,16 +489,16 @@ impl Modal for EditableSelectModal {
                 match key.code {
                     KeyCode::Down => {
                         // Move focus down (only when collapsed)
-                        if self.has_checkbox() {
-                            self.focus = FocusArea::Checkbox;
+                        if let Some(idx) = self.first_visible_checkbox() {
+                            self.focus = FocusArea::Checkbox(idx);
                         } else {
                             self.focus = FocusArea::Buttons;
                         }
                         Ok(None)
                     }
                     KeyCode::Tab => {
-                        if self.has_checkbox() {
-                            self.focus = FocusArea::Checkbox;
+                        if let Some(idx) = self.first_visible_checkbox() {
+                            self.focus = FocusArea::Checkbox(idx);
                         } else {
                             self.focus = FocusArea::Buttons;
                         }
@@ -460,10 +516,12 @@ impl Modal for EditableSelectModal {
                     _ => Ok(None),
                 }
             }
-            FocusArea::Checkbox => {
+            FocusArea::Checkbox(checkbox_idx) => {
                 // Space toggles checkbox — must come before handle_input_key which would eat it
                 if key.code == KeyCode::Char(' ') {
-                    self.checkbox_checked = !self.checkbox_checked;
+                    if let Some(checkbox) = self.checkboxes.get_mut(checkbox_idx) {
+                        checkbox.checked = !checkbox.checked;
+                    }
                     return Ok(None);
                 }
 
@@ -478,11 +536,17 @@ impl Modal for EditableSelectModal {
 
                 match key.code {
                     KeyCode::Up | KeyCode::BackTab => {
-                        self.focus = FocusArea::Input;
+                        self.focus = self
+                            .previous_visible_checkbox_before(checkbox_idx)
+                            .map(FocusArea::Checkbox)
+                            .unwrap_or(FocusArea::Input);
                         Ok(None)
                     }
                     KeyCode::Down | KeyCode::Tab => {
-                        self.focus = FocusArea::Buttons;
+                        self.focus = self
+                            .next_visible_checkbox_after(checkbox_idx)
+                            .map(FocusArea::Checkbox)
+                            .unwrap_or(FocusArea::Buttons);
                         Ok(None)
                     }
                     KeyCode::Enter => {
@@ -519,8 +583,8 @@ impl Modal for EditableSelectModal {
                         Ok(None)
                     }
                     KeyCode::Up | KeyCode::BackTab => {
-                        if self.has_checkbox() {
-                            self.focus = FocusArea::Checkbox;
+                        if let Some(idx) = self.visible_checkbox_indices().into_iter().last() {
+                            self.focus = FocusArea::Checkbox(idx);
                         } else {
                             self.focus = FocusArea::Input;
                         }
@@ -618,14 +682,16 @@ impl Modal for EditableSelectModal {
         }
 
         // Check for click on checkbox
-        if let Some(checkbox_area) = self.last_checkbox_area {
+        for (checkbox_idx, checkbox_area) in &self.last_checkbox_areas {
             if mouse.row >= checkbox_area.y
                 && mouse.row < checkbox_area.y + checkbox_area.height
                 && mouse.column >= checkbox_area.x
                 && mouse.column < checkbox_area.x + checkbox_area.width
             {
-                self.focus = FocusArea::Checkbox;
-                self.checkbox_checked = !self.checkbox_checked;
+                self.focus = FocusArea::Checkbox(*checkbox_idx);
+                if let Some(checkbox) = self.checkboxes.get_mut(*checkbox_idx) {
+                    checkbox.checked = !checkbox.checked;
+                }
                 return Ok(None);
             }
         }
@@ -675,5 +741,33 @@ impl Modal for EditableSelectModal {
         }
 
         Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn conditional_checkbox_is_hidden_until_primary_is_checked() {
+        let mut modal = EditableSelectModal::new("Copy", "Prompt", "dest", vec![])
+            .with_checkbox("Create symlink".to_string())
+            .with_conditional_checkbox("Use relative target".to_string());
+
+        assert_eq!(modal.visible_checkbox_indices(), vec![0]);
+        modal.checkboxes[0].checked = true;
+        assert_eq!(modal.visible_checkbox_indices(), vec![0, 1]);
+    }
+
+    #[test]
+    fn secondary_checkbox_state_is_reported() {
+        let mut modal = EditableSelectModal::new("Copy", "Prompt", "dest", vec![])
+            .with_checkbox("Create symlink".to_string())
+            .with_conditional_checkbox("Use relative target".to_string());
+
+        modal.checkboxes[0].checked = true;
+        modal.checkboxes[1].checked = true;
+        assert!(modal.is_checkbox_checked());
+        assert!(modal.is_secondary_checkbox_checked());
     }
 }

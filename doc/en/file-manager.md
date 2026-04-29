@@ -150,6 +150,7 @@ Files are displayed in groups, each sorted alphabetically:
 ### Symlinks
 
 - Copy modal includes a "Create symlink" checkbox — creates a symbolic link instead of copying
+- When "Create symlink" is enabled, a "Use relative target" checkbox appears and makes the new link point to a relative path instead of an absolute one
 - Navigating into a symlink directory follows the link to the target
 - Pressing `Space` on a symlink opens the properties modal with a **Target** row that shows the raw link contents (as stored in the link, not resolved through `canonicalize`) with `~` shortening for the home directory
 - The status bar shows `→ target` after the file name for the currently selected symlink; this also works for symlinks nested inside expanded subdirectories of the tree view

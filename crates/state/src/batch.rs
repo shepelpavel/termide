@@ -128,6 +128,8 @@ pub struct BatchOperation {
     pub sources: Vec<PathBuf>,
     /// Target directory
     pub destination: PathBuf,
+    /// Whether the original user input explicitly marked destination as a directory
+    pub destination_is_directory: bool,
     /// Current index of file being processed
     pub current_index: usize,
     /// Conflict resolution mode
@@ -167,6 +169,7 @@ impl BatchOperation {
             operation_type,
             sources,
             destination,
+            destination_is_directory: false,
             current_index: 0,
             conflict_mode: ConflictMode::Ask,
             rename_pattern: None,
@@ -181,6 +184,12 @@ impl BatchOperation {
             cumulative_total_files: 0,
             cumulative_total_bytes: 0,
         }
+    }
+
+    /// Mark that the original destination input explicitly referred to a directory.
+    pub fn with_destination_directory(mut self, destination_is_directory: bool) -> Self {
+        self.destination_is_directory = destination_is_directory;
+        self
     }
 
     /// Add a successfully completed destination path
@@ -259,6 +268,11 @@ impl BatchOperation {
     pub fn destination_path(&self) -> &PathBuf {
         &self.destination
     }
+
+    /// Whether the destination should be treated as a directory.
+    pub fn destination_is_directory(&self) -> bool {
+        self.destination_is_directory
+    }
 }
 
 #[cfg(test)]
@@ -319,6 +333,7 @@ mod tests {
         );
         assert_eq!(op.total_count(), 2);
         assert!(!op.is_complete());
+        assert!(!op.destination_is_directory());
     }
 
     #[test]
@@ -404,6 +419,17 @@ mod tests {
             PathBuf::from("/dest"),
         );
         assert_eq!(op.pause_state, PauseState::Running);
+    }
+
+    #[test]
+    fn test_batch_operation_destination_directory_intent() {
+        let op = BatchOperation::new(
+            BatchOperationType::Copy,
+            vec![PathBuf::from("/a")],
+            PathBuf::from("/dest"),
+        )
+        .with_destination_directory(true);
+        assert!(op.destination_is_directory());
     }
 
     #[test]
