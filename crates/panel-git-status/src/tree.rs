@@ -147,7 +147,7 @@ pub fn compute_visible_nodes(tree: &[TreeNode]) -> Vec<usize> {
 }
 
 /// Collect all file paths under a directory node (recursively).
-pub fn collect_files_under(tree: &[TreeNode], dir_index: usize) -> Vec<PathBuf> {
+pub(crate) fn collect_files_under(tree: &[TreeNode], dir_index: usize) -> Vec<PathBuf> {
     let dir_depth = tree[dir_index].depth;
     let mut files = Vec::new();
 
@@ -224,7 +224,7 @@ pub fn compute_tree_prefixes(tree: &[TreeNode], visible: &[usize]) -> Vec<String
 
 /// Get the aggregate status for files under a directory.
 /// Counts files per status and picks the majority. Ties broken by: M > D > A/R > ?
-pub fn aggregate_dir_status(tree: &[TreeNode], dir_index: usize) -> (char, bool) {
+pub(crate) fn aggregate_dir_status(tree: &[TreeNode], dir_index: usize) -> (char, bool) {
     let dir_depth = tree[dir_index].depth;
     let mut deleted = 0u32;
     let mut modified = 0u32;

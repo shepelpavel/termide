@@ -404,6 +404,25 @@ impl VfsManager {
 
     // === Convenience methods for common operations ===
 
+    /// Dispatch an operation to the connected remote provider keyed by `path`.
+    ///
+    /// Returns `on_not_connected()` if no provider is registered for that connection
+    /// or if the read lock is poisoned. The read guard is held while `on_remote`
+    /// runs, matching the existing per-method behaviour.
+    fn dispatch_remote<R, F, E>(&self, path: &VfsPath, on_remote: F, on_not_connected: E) -> R
+    where
+        F: FnOnce(&dyn VfsProvider) -> R,
+        E: FnOnce() -> R,
+    {
+        let key = path.connection_key();
+        if let Ok(providers) = self.remote_providers.read() {
+            if let Some(provider) = providers.get(&key) {
+                return on_remote(&**provider);
+            }
+        }
+        on_not_connected()
+    }
+
     /// List directory contents with caching.
     pub fn list_dir(&self, path: &VfsPath) -> VfsOperation<Vec<VfsEntry>> {
         // Check cache first
@@ -413,20 +432,15 @@ impl VfsManager {
 
         // Use local provider for local paths
         if path.is_local() {
-            let result = self.local.list_dir(path);
             // Cache will be updated when result is received by caller
-            return result;
+            return self.local.list_dir(path);
         }
 
-        // For remote paths, use connected provider
-        let key = path.connection_key();
-        if let Ok(providers) = self.remote_providers.read() {
-            if let Some(provider) = providers.get(&key) {
-                return provider.list_dir(path);
-            }
-        }
-
-        VfsOperation::error(VfsError::NotConnected)
+        self.dispatch_remote(
+            path,
+            |p| p.list_dir(path),
+            || VfsOperation::error(VfsError::NotConnected),
+        )
     }
 
     /// Read a file.
@@ -435,15 +449,11 @@ impl VfsManager {
             return self.local.read_file(path);
         }
 
-        // For remote paths, use connected provider
-        let key = path.connection_key();
-        if let Ok(providers) = self.remote_providers.read() {
-            if let Some(provider) = providers.get(&key) {
-                return provider.read_file(path);
-            }
-        }
-
-        VfsOperation::error(VfsError::NotConnected)
+        self.dispatch_remote(
+            path,
+            |p| p.read_file(path),
+            || VfsOperation::error(VfsError::NotConnected),
+        )
     }
 
     /// Write a file.
@@ -453,16 +463,14 @@ impl VfsManager {
             return self.local.write_file(path, data);
         }
 
-        // For remote paths, use connected provider
-        let key = path.connection_key();
-        if let Ok(providers) = self.remote_providers.read() {
-            if let Some(provider) = providers.get(&key) {
+        self.dispatch_remote(
+            path,
+            |p| {
                 self.cache.invalidate_with_parent(path);
-                return provider.write_file(path, data);
-            }
-        }
-
-        VfsOperation::error(VfsError::NotConnected)
+                p.write_file(path, data)
+            },
+            || VfsOperation::error(VfsError::NotConnected),
+        )
     }
 
     /// Create a directory.
@@ -472,16 +480,14 @@ impl VfsManager {
             return self.local.create_dir(path);
         }
 
-        // For remote paths, use connected provider
-        let key = path.connection_key();
-        if let Ok(providers) = self.remote_providers.read() {
-            if let Some(provider) = providers.get(&key) {
+        self.dispatch_remote(
+            path,
+            |p| {
                 self.cache.invalidate_with_parent(path);
-                return provider.create_dir(path);
-            }
-        }
-
-        VfsOperation::error(VfsError::NotConnected)
+                p.create_dir(path)
+            },
+            || VfsOperation::error(VfsError::NotConnected),
+        )
     }
 
     /// Check if a path exists.
@@ -490,14 +496,11 @@ impl VfsManager {
             return self.local.exists(path);
         }
 
-        let key = path.connection_key();
-        if let Ok(providers) = self.remote_providers.read() {
-            if let Some(provider) = providers.get(&key) {
-                return provider.exists(path);
-            }
-        }
-
-        VfsOperation::error(VfsError::NotConnected)
+        self.dispatch_remote(
+            path,
+            |p| p.exists(path),
+            || VfsOperation::error(VfsError::NotConnected),
+        )
     }
 
     /// Get metadata for a path.
@@ -506,14 +509,11 @@ impl VfsManager {
             return self.local.metadata(path);
         }
 
-        let key = path.connection_key();
-        if let Ok(providers) = self.remote_providers.read() {
-            if let Some(provider) = providers.get(&key) {
-                return provider.metadata(path);
-            }
-        }
-
-        VfsOperation::error(VfsError::NotConnected)
+        self.dispatch_remote(
+            path,
+            |p| p.metadata(path),
+            || VfsOperation::error(VfsError::NotConnected),
+        )
     }
 
     /// Delete a file or directory.
@@ -523,16 +523,14 @@ impl VfsManager {
             return self.local.delete(path);
         }
 
-        // For remote paths, use connected provider
-        let key = path.connection_key();
-        if let Ok(providers) = self.remote_providers.read() {
-            if let Some(provider) = providers.get(&key) {
+        self.dispatch_remote(
+            path,
+            |p| {
                 self.cache.invalidate_with_parent(path);
-                return provider.delete(path);
-            }
-        }
-
-        VfsOperation::error(VfsError::NotConnected)
+                p.delete(path)
+            },
+            || VfsOperation::error(VfsError::NotConnected),
+        )
     }
 
     /// Download a remote file to a local path.
@@ -544,15 +542,11 @@ impl VfsManager {
             return self.local.download(remote, local);
         }
 
-        // For remote paths, use connected provider
-        let key = remote.connection_key();
-        if let Ok(providers) = self.remote_providers.read() {
-            if let Some(provider) = providers.get(&key) {
-                return provider.download(remote, local);
-            }
-        }
-
-        VfsOperation::error(VfsError::NotConnected)
+        self.dispatch_remote(
+            remote,
+            |p| p.download(remote, local),
+            || VfsOperation::error(VfsError::NotConnected),
+        )
     }
 
     /// Download a remote file to local temp directory.
@@ -587,16 +581,14 @@ impl VfsManager {
             return self.local.upload(local, remote);
         }
 
-        // For remote paths, use connected provider
-        let key = remote.connection_key();
-        if let Ok(providers) = self.remote_providers.read() {
-            if let Some(provider) = providers.get(&key) {
+        self.dispatch_remote(
+            remote,
+            |p| {
                 self.cache.invalidate_with_parent(remote);
-                return provider.upload(local, remote);
-            }
-        }
-
-        VfsOperation::error(VfsError::NotConnected)
+                p.upload(local, remote)
+            },
+            || VfsOperation::error(VfsError::NotConnected),
+        )
     }
 
     /// Upload a local file to remote path with progress reporting.
@@ -606,16 +598,14 @@ impl VfsManager {
             return self.local.upload_with_progress(local, remote);
         }
 
-        // For remote paths, use connected provider
-        let key = remote.connection_key();
-        if let Ok(providers) = self.remote_providers.read() {
-            if let Some(provider) = providers.get(&key) {
+        self.dispatch_remote(
+            remote,
+            |p| {
                 self.cache.invalidate_with_parent(remote);
-                return provider.upload_with_progress(local, remote);
-            }
-        }
-
-        VfsUploadOperation::error(VfsError::NotConnected)
+                p.upload_with_progress(local, remote)
+            },
+            || VfsUploadOperation::error(VfsError::NotConnected),
+        )
     }
 
     /// Download a remote file/directory to local path with progress and pause/cancel support.
@@ -625,15 +615,11 @@ impl VfsManager {
             return self.local.download_with_progress(remote, local);
         }
 
-        // For remote paths, use connected provider
-        let key = remote.connection_key();
-        if let Ok(providers) = self.remote_providers.read() {
-            if let Some(provider) = providers.get(&key) {
-                return provider.download_with_progress(remote, local);
-            }
-        }
-
-        VfsDownloadOperation::error(VfsError::NotConnected)
+        self.dispatch_remote(
+            remote,
+            |p| p.download_with_progress(remote, local),
+            || VfsDownloadOperation::error(VfsError::NotConnected),
+        )
     }
 
     /// Copy a file/directory with progress and pause/cancel support.
