@@ -765,7 +765,7 @@ impl App {
 
             #[cfg(not(unix))]
             {
-                let _ = file_name;
+                let _ = create_relative_symlink;
                 log::error!("Symlink creation is only supported on Unix");
                 error_count += 1;
             }
