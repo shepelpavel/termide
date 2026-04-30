@@ -134,11 +134,6 @@ pub const SUPPORTED_LANGUAGES: &[&str] = &[
     "markdown",
 ];
 
-/// Check if language is supported.
-pub fn is_language_supported(lang: &str) -> bool {
-    SUPPORTED_LANGUAGES.contains(&lang)
-}
-
 /// Syntax highlighter manager based on tree-sitter
 pub struct TreeSitterHighlighter {
     /// Configurations for each supported language

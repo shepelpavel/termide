@@ -793,11 +793,13 @@ mod tests {
         }
     }
 
-    fn performer() -> (
+    type PerformerHarness = (
         VtPerformer,
         Arc<Mutex<Vec<u8>>>,
         Arc<RwLock<TerminalScreen>>,
-    ) {
+    );
+
+    fn performer() -> PerformerHarness {
         let capture = Arc::new(Mutex::new(Vec::new()));
         let screen = Arc::new(RwLock::new(TerminalScreen::new(24, 80)));
         let performer = VtPerformer {

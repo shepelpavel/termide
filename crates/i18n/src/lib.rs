@@ -789,8 +789,3 @@ pub fn get_language_name(code: &str) -> Option<&'static str> {
         .find(|(c, _)| *c == code)
         .map(|(_, name)| *name)
 }
-
-/// Check if a language is supported.
-pub fn is_supported(lang: &str) -> bool {
-    SUPPORTED_LANGUAGES.iter().any(|(code, _)| *code == lang)
-}

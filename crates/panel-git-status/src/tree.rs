@@ -276,21 +276,6 @@ pub fn aggregate_dir_status(tree: &[TreeNode], dir_index: usize) -> (char, bool)
     }
 }
 
-/// Count the number of file nodes under a directory.
-pub fn count_files_under(tree: &[TreeNode], dir_index: usize) -> usize {
-    let dir_depth = tree[dir_index].depth;
-    let mut count = 0;
-    for node in &tree[dir_index + 1..] {
-        if node.depth <= dir_depth {
-            break;
-        }
-        if matches!(node.kind, TreeNodeKind::File { .. }) {
-            count += 1;
-        }
-    }
-    count
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -2447,6 +2447,15 @@ impl Panel for Terminal {
     }
 }
 
+impl Drop for Terminal {
+    fn drop(&mut self) {
+        // Properly terminate processes when dropping terminal
+        if self.is_alive() {
+            self.kill_processes();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2567,14 +2576,5 @@ mod tests {
             modern_key_bytes(&shifted_a, KeyboardProtocolMode::ModifyOtherKeys2),
             Some(b"\x1b[65;2u".to_vec())
         );
-    }
-}
-
-impl Drop for Terminal {
-    fn drop(&mut self) {
-        // Properly terminate processes when dropping terminal
-        if self.is_alive() {
-            self.kill_processes();
-        }
     }
 }
