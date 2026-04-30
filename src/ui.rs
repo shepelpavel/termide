@@ -16,9 +16,9 @@ use termide_ui_render::{
     get_bookmarks_group_items, get_bookmarks_items, get_commands_group_items, get_commands_items,
     get_menu_item_x_position, get_options_items, get_sessions_items, get_shell_items,
     get_tools_items, render_collapsed_panel, render_dividers, render_expanded_panel, render_menu,
-    Dropdown, ExpandedPanelParams, LanguageDropdown, MenuRenderParams, ThemeDropdown,
-    BOOKMARKS_MENU_INDEX, COMMANDS_MENU_INDEX, OPTIONS_MENU_INDEX, SESSIONS_MENU_INDEX,
-    WINDOWS_MENU_INDEX,
+    render_v_divider_ghost, Dropdown, ExpandedPanelParams, LanguageDropdown, MenuRenderParams,
+    ThemeDropdown, BOOKMARKS_MENU_INDEX, COMMANDS_MENU_INDEX, OPTIONS_MENU_INDEX,
+    SESSIONS_MENU_INDEX, WINDOWS_MENU_INDEX,
 };
 
 use termide_ui_render::{StatusBar, StatusBarParams};
@@ -356,7 +356,6 @@ fn render_drag_overlay(
         return;
     };
 
-    let theme = state.theme;
     let cursor_x = state.ui.panel_drag.cursor_x;
     let cursor_y = state.ui.panel_drag.cursor_y;
 
@@ -369,14 +368,14 @@ fn render_drag_overlay(
         cursor_y,
     );
 
+    let theme = state.theme;
+
     let highlight_style = Style::default()
         .fg(theme.accented_fg)
         .bg(theme.bg)
         .add_modifier(ratatui::style::Modifier::BOLD);
 
     let buf = frame.buffer_mut();
-
-    let mut show_ghost = true;
 
     match intent {
         termide_layout::PanelDragIntent::ResizeAbove { divider_y } => {
@@ -397,36 +396,41 @@ fn render_drag_overlay(
                     }
                 }
             }
-            show_ghost = false;
         }
-        termide_layout::PanelDragIntent::Move(termide_layout::PanelDropTarget::IntoGroup {
-            group_idx,
-            at_position,
-        }) => {
-            if let Some((_, _, rect, _)) = rects.iter().find(|(gi, pi, _, _)| {
-                *gi == group_idx
-                    && *pi
-                        == at_position.min(
-                            layout_manager
-                                .panel_groups
-                                .get(group_idx)
-                                .map(|g| g.len().saturating_sub(1))
-                                .unwrap_or(0),
-                        )
-            }) {
-                for col in rect.x..rect.x + rect.width {
+        termide_layout::PanelDragIntent::Move {
+            target: termide_layout::PanelDropTarget::IntoGroup { group_idx, .. },
+            drop_y,
+        } => {
+            // Thick `━` line at the cursor's row, clamped to the target
+            // panel's body — previews where the dropped panel's title
+            // row will land. The drag-end handler splits the target at
+            // exactly this row.
+            if let Some((target_rect, span)) = rects
+                .iter()
+                .find(|(gi, _, r, _)| *gi == group_idx && drop_y >= r.y && drop_y < r.y + r.height)
+                .map(|(_, _, r, _)| *r)
+                .zip(
+                    termide_layout::group_spans_from_rects(&rects)
+                        .into_iter()
+                        .find(|(gi, _, _)| *gi == group_idx),
+                )
+            {
+                let _ = target_rect;
+                let (_, left, right) = span;
+                for col in left..right {
                     if col >= buf.area.width {
                         break;
                     }
-                    if let Some(cell) = buf.cell_mut((col, rect.y)) {
+                    if let Some(cell) = buf.cell_mut((col, drop_y)) {
                         cell.set_symbol("━").set_style(highlight_style);
                     }
                 }
             }
         }
-        termide_layout::PanelDragIntent::Move(termide_layout::PanelDropTarget::NewGroup {
-            insert_at,
-        }) => {
+        termide_layout::PanelDragIntent::Move {
+            target: termide_layout::PanelDropTarget::NewGroup { insert_at },
+            ..
+        } => {
             // Find x for the new group boundary.
             let group_spans = termide_layout::group_spans_from_rects(&rects);
 
@@ -456,41 +460,6 @@ fn render_drag_overlay(
             }
         }
         termide_layout::PanelDragIntent::Cancel => {}
-    }
-
-    if !show_ghost {
-        return;
-    }
-
-    // Ghost icon under cursor: `[icon]` — 5 cells for emoji, 3 for ascii.
-    let name = layout_manager
-        .panel_groups
-        .get(source.group_idx)
-        .and_then(|g| g.panels().get(source.panel_idx))
-        .map(|p| p.name());
-    if let Some(name) = name {
-        let icon = termide_ui_render::panel_icon(name);
-        let ghost_label: std::borrow::Cow<'_, str> = if termide_core::use_emoji_icons() {
-            format!("[{}]", icon).into()
-        } else {
-            std::borrow::Cow::Borrowed("[≡]")
-        };
-        let ghost_style = Style::default()
-            .fg(theme.accented_fg)
-            .bg(theme.selected_bg)
-            .add_modifier(ratatui::style::Modifier::BOLD);
-        let mut col = cursor_x.saturating_add(1);
-        let row = cursor_y;
-        for ch in ghost_label.chars() {
-            if col >= buf.area.width || row >= buf.area.height {
-                break;
-            }
-            if let Some(cell) = buf.cell_mut((col, row)) {
-                cell.set_symbol(&ch.to_string()).set_style(ghost_style);
-            }
-            col =
-                col.saturating_add(unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1) as u16);
-        }
     }
 }
 
@@ -548,6 +517,26 @@ fn render_main_area_with_accordion(
             state.terminal.height,
             state.theme,
         );
+
+        // Vertical-divider drag (in-group panel resize) ghost line.
+        if let (Some((group_idx, _upper_idx)), Some(ghost_y)) =
+            (state.ui.vdrag.active, state.ui.vdrag.last_applied_y)
+        {
+            // Span the dragged group horizontally so the line covers
+            // exactly that column.
+            let mut start_x = area.x;
+            let mut end_x = area.x + area.width;
+            for (gi, _, rect, _) in
+                termide_layout::calculate_panel_rects(&layout_manager.panel_groups, area)
+            {
+                if gi == group_idx {
+                    start_x = rect.x;
+                    end_x = rect.x + rect.width;
+                    break;
+                }
+            }
+            render_v_divider_ghost(frame.buffer_mut(), ghost_y, start_x, end_x, state.theme);
+        }
     }
 }
 
@@ -580,11 +569,29 @@ fn render_panel_group(
 
     // Render each panel in the group.
     //
-    // In Accordion mode the focused panel gets `area.height >= 2` (Min(0))
-    // and others get exactly 1 row (header). In Split mode every panel
-    // gets at least 1 row from its cached height. The render branch is
-    // driven by the actual area height, not the focus flag, so in Split
-    // every panel above min draws its full contents.
+    // Border policy:
+    // - `panel_area.height >= 2` panels draw their own bottom border
+    //   (`Block::borders(ALL)`) — every panel becomes a self-contained
+    //   box. Two adjacent panels show two consecutive border rows
+    //   (bottom of upper + top of lower), which lets the focused
+    //   panel be highlighted as a complete coloured rectangle on all
+    //   four sides.
+    // - `panel_area.height == 1` (accordion / fullscreen-preset
+    //   collapsed) keeps top-only borders — `Block::ALL` cannot fit
+    //   in a single row.
+    //
+    // Top-row corners (`left_corner`, `right_corner`) are chosen so
+    // the group looks coherent regardless of how each panel is sized:
+    // 1. First panel in the group → plain `┌┐`.
+    // 2. Last panel in the group AND it's collapsed (h==1) → `└┘`,
+    //    so the group closes off visually even when the bottom panel
+    //    is just a header row.
+    // 3. Both current panel and previous panel are accordions (h==1)
+    //    → `├┤` T-junctions, continuing the accordion run.
+    // 4. Otherwise → `┌┐`. An expanded panel always starts a fresh
+    //    box (no T-junction with the accordion run above), and after
+    //    an expanded panel the next box starts cleanly too.
+    let mut prev_was_accordion = false;
     for (panel_idx, panel) in group.panels_mut().iter_mut().enumerate() {
         let panel_area = vertical_chunks[panel_idx];
         let is_focused_panel = panel_idx == expanded_idx;
@@ -594,19 +601,27 @@ fn render_panel_group(
         // (не используется сейчас, но может понадобиться для совместимости)
         let global_panel_index = group_idx * 100 + panel_idx;
 
-        if panel_area.height >= 2 {
-            // Every non-last panel above the minimum height skips its
-            // bottom border so the next panel's titled top border acts
-            // as the divider — saves one row per gap. The last panel
-            // keeps its full border to close the group cleanly.
-            let omit_bottom_border = panel_idx + 1 < group_size;
-            // Render full panel with border + content.
+        let is_last = panel_idx + 1 == group_size;
+        let is_accordion = panel_area.height < 2;
+        let collapsed_last = is_last && is_accordion;
+
+        let (left_corner, right_corner) = if collapsed_last {
+            ("└", "┘")
+        } else if panel_idx > 0 && prev_was_accordion && is_accordion {
+            ("├", "┤")
+        } else {
+            ("┌", "┐")
+        };
+
+        if !is_accordion {
             let params = ExpandedPanelParams {
                 tab_size: state.config.editor.tab_size,
                 word_wrap: state.config.editor.word_wrap,
                 terminal_width: state.terminal.width,
                 terminal_height: state.terminal.height,
-                omit_bottom_border,
+                // Bottom border is only skipped when there's no room
+                // for it; expanded panels always render `Block::ALL`.
+                omit_bottom_border: false,
             };
             render_expanded_panel(
                 panel,
@@ -620,22 +635,19 @@ fn render_panel_group(
                 group_size,
             );
 
-            // The upper panel's `│` walls continue down to the boundary
-            // row, where the lower panel draws `┌─Title─┐`. Replace its
-            // top corners with T-junctions so the box-drawing characters
-            // meet cleanly. Skip for the first panel (no panel above)
-            // and when there's no full second column (single-column).
-            if panel_idx > 0 && panel_area.width >= 2 {
+            // Patch the top corners — ratatui drew `┌`/`┐` and we
+            // override them only when the chosen corner differs.
+            if panel_area.width >= 2 && (left_corner != "┌" || right_corner != "┐") {
                 let buf = frame.buffer_mut();
                 let right_x = panel_area.x + panel_area.width - 1;
                 if let Some(cell) = buf.cell_mut((panel_area.x, panel_area.y)) {
                     if cell.symbol() == "┌" {
-                        cell.set_symbol("├");
+                        cell.set_symbol(left_corner);
                     }
                 }
                 if let Some(cell) = buf.cell_mut((right_x, panel_area.y)) {
                     if cell.symbol() == "┐" {
-                        cell.set_symbol("┤");
+                        cell.set_symbol(right_corner);
                     }
                 }
             }
@@ -650,33 +662,26 @@ fn render_panel_group(
                 group_size,
             );
 
-            // Patch the `─` end-caps of the title row so the box-drawing
-            // characters meet the neighbouring panels' side walls. The
-            // shape depends on whether this collapsed panel has another
-            // panel above and/or below it in the group.
+            // The collapsed renderer draws plain `─` end-caps; replace
+            // them with the corner pair chosen above so the title row
+            // ties into the neighbouring panels correctly.
             if panel_area.width >= 2 {
                 let buf = frame.buffer_mut();
                 let right_x = panel_area.x + panel_area.width - 1;
-                let has_above = panel_idx > 0;
-                let has_below = panel_idx + 1 < group_size;
-                let (left_char, right_char) = match (has_above, has_below) {
-                    (true, true) => ("├", "┤"),
-                    (true, false) => ("└", "┘"),
-                    (false, true) => ("┌", "┐"),
-                    (false, false) => ("─", "─"),
-                };
                 if let Some(cell) = buf.cell_mut((panel_area.x, panel_area.y)) {
                     if cell.symbol() == "─" {
-                        cell.set_symbol(left_char);
+                        cell.set_symbol(left_corner);
                     }
                 }
                 if let Some(cell) = buf.cell_mut((right_x, panel_area.y)) {
                     if cell.symbol() == "─" {
-                        cell.set_symbol(right_char);
+                        cell.set_symbol(right_corner);
                     }
                 }
             }
         }
+
+        prev_was_accordion = is_accordion;
     }
 }
 

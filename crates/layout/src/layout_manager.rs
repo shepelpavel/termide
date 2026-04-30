@@ -191,12 +191,18 @@ pub enum PanelDragIntent {
 
 /// Classify a header drag by cursor position.
 ///
-/// The resize zone covers the source panel plus the panel immediately
-/// above it — the divider being dragged sits between them, and the
-/// cursor naturally roams across both bodies as the divider slides up
-/// or down. Anything outside that zone (a non-adjacent panel of the
-/// source group, another column, or a between-groups gutter) falls
-/// through to the move semantics produced by [`compute_drop_target`].
+/// The resize zone covers the **bodies** of the source panel and the
+/// panel immediately above it — the divider being dragged sits between
+/// them, and the cursor naturally roams across both interiors as the
+/// divider slides up or down. The **top row** of either panel (its
+/// titled header) is intentionally excluded so that dropping the
+/// dragged header onto another panel's header reorders panels (a
+/// `Move`), not resizes the divider.
+///
+/// Anything outside that body zone (a non-adjacent panel of the source
+/// group, another column, a between-groups gutter, or any panel's
+/// header row) falls through to the move semantics produced by
+/// [`compute_drop_target`].
 ///
 /// Top-of-group panels (source `panel_idx == 0`) have no divider above
 /// them, so the resize zone is empty and any drop becomes a move.
@@ -213,7 +219,9 @@ pub fn classify_panel_drag(
                 && (*pi == src_panel_idx || *pi + 1 == src_panel_idx)
                 && cursor_x >= rect.x
                 && cursor_x < rect.x + rect.width
-                && cursor_y >= rect.y
+                // Strict `>` excludes the header row from the resize
+                // zone — drops there reorder via `Move` instead.
+                && cursor_y > rect.y
                 && cursor_y < rect.y + rect.height
         });
         if in_resize_zone {
@@ -1087,7 +1095,6 @@ impl Default for LayoutManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crossterm::event::KeyEvent;
     use ratatui::{buffer::Buffer, layout::Rect};
     use std::any::Any;
     use termide_core::{PanelEvent, RenderContext, WidthPreference};
@@ -1463,5 +1470,61 @@ mod tests {
         lm.add_panel(panel("a"), &config, 200);
         lm.set_focus(100); // out of bounds
         assert_eq!(lm.focus, 0); // unchanged
+    }
+
+    fn drag_rects() -> Vec<(usize, usize, Rect, bool)> {
+        // Two panels stacked vertically in one group. Header rows
+        // sit at y=0 (panel 0) and y=10 (panel 1).
+        vec![
+            (0, 0, Rect::new(0, 0, 80, 10), true),
+            (0, 1, Rect::new(0, 10, 80, 10), false),
+        ]
+    }
+
+    #[test]
+    fn classify_drop_on_neighbour_header_is_move() {
+        // Dragging panel 1's header onto panel 0's header (y=0)
+        // must reorder, not resize.
+        let rects = drag_rects();
+        let intent = classify_panel_drag(&rects, 0, 1, 40, 0);
+        assert!(
+            matches!(intent, PanelDragIntent::Move { .. }),
+            "expected Move when dropping on the upper neighbour's \
+             header, got {intent:?}"
+        );
+    }
+
+    #[test]
+    fn classify_drop_in_neighbour_body_is_resize() {
+        // Cursor inside panel 0's body (y=5) — divider drag.
+        let rects = drag_rects();
+        let intent = classify_panel_drag(&rects, 0, 1, 40, 5);
+        assert!(
+            matches!(intent, PanelDragIntent::ResizeAbove { .. }),
+            "expected ResizeAbove for body drop, got {intent:?}"
+        );
+    }
+
+    #[test]
+    fn classify_drop_in_source_body_is_resize() {
+        // Cursor inside source's own body (y=15, panel 1 spans 10..20).
+        let rects = drag_rects();
+        let intent = classify_panel_drag(&rects, 0, 1, 40, 15);
+        assert!(
+            matches!(intent, PanelDragIntent::ResizeAbove { .. }),
+            "expected ResizeAbove for source body drop, got {intent:?}"
+        );
+    }
+
+    #[test]
+    fn classify_drop_on_source_header_is_not_resize() {
+        // Cursor on source's own header (y=10) — should not be a
+        // resize, and falls through to compute_drop_target / Move.
+        let rects = drag_rects();
+        let intent = classify_panel_drag(&rects, 0, 1, 40, 10);
+        assert!(
+            !matches!(intent, PanelDragIntent::ResizeAbove { .. }),
+            "drop on source header should not resize, got {intent:?}"
+        );
     }
 }

@@ -128,6 +128,39 @@ impl DragState {
     }
 }
 
+/// State for vertical-divider drag (resize between two panels of the
+/// same group).
+///
+/// `active = (group_idx, upper_panel_idx)` identifies the divider
+/// between `panels[upper_panel_idx]` and `panels[upper_panel_idx + 1]`.
+/// `start_y` is the row where mouse-down landed (= upper panel's
+/// bottom-border row at drag start). `last_applied_y` tracks the
+/// current cursor row for the ghost preview; the actual panel-height
+/// delta is applied on drag-end.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct VerticalDividerDragState {
+    pub active: Option<(usize, usize)>,
+    pub start_y: u16,
+    pub last_applied_y: Option<u16>,
+}
+
+impl VerticalDividerDragState {
+    pub fn start(&mut self, group_idx: usize, upper_panel_idx: usize, y: u16) {
+        self.active = Some((group_idx, upper_panel_idx));
+        self.start_y = y;
+        self.last_applied_y = Some(y);
+    }
+
+    pub fn end(&mut self) {
+        self.active = None;
+        self.last_applied_y = None;
+    }
+
+    pub fn is_dragging(&self) -> bool {
+        self.active.is_some()
+    }
+}
+
 /// Source panel being dragged by its top border.
 #[derive(Debug, Clone, Copy)]
 pub struct PanelDragSource {
@@ -225,6 +258,8 @@ pub struct UiState {
     pub language_preview_original: Option<String>,
     /// Divider drag state for panel-group resize (horizontal).
     pub drag: DragState,
+    /// Divider drag state for in-group panel resize (vertical).
+    pub vdrag: VerticalDividerDragState,
     /// Sessions submenu state
     pub sessions_submenu: SubmenuState,
     /// Tools submenu state

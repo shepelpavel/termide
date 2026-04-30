@@ -665,7 +665,6 @@ fn redistribute_proportionally(values: &mut [u16], target_sum: u16, min: u16) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crossterm::event::KeyEvent;
     use ratatui::buffer::Buffer;
     use ratatui::layout::Rect;
     use std::any::Any;

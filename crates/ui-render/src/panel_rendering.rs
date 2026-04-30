@@ -300,6 +300,27 @@ pub fn render_dividers(
     }
 }
 
+/// Render a horizontal ghost line for an in-group vertical-divider drag.
+///
+/// Draws a single accent-coloured `━` row at `ghost_y` spanning
+/// `[start_x, end_x)`. Lightweight overlay — actual panel-height
+/// resize is applied on drag-end.
+pub fn render_v_divider_ghost(
+    buf: &mut Buffer,
+    ghost_y: u16,
+    start_x: u16,
+    end_x: u16,
+    theme: &Theme,
+) {
+    let style = Style::default().fg(theme.accented_fg);
+    for x in start_x..end_x {
+        if let Some(cell) = buf.cell_mut((x, ghost_y)) {
+            cell.set_symbol("━");
+            cell.set_style(style);
+        }
+    }
+}
+
 /// Parameters for rendering expanded panels.
 #[derive(Clone, Copy)]
 pub struct ExpandedPanelParams {

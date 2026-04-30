@@ -88,6 +88,84 @@ impl App {
         Ok(())
     }
 
+    /// Hit-test a vertical divider (the bottom border of an expanded
+    /// panel that has another panel below it within the same group).
+    ///
+    /// Returns `(group_idx, upper_panel_idx)` when `(x, y)` lands on
+    /// such a divider row. Skips the last panel of every group (no
+    /// neighbour below) and accordion-collapsed panels (no bottom
+    /// border row at all).
+    pub(in crate::app) fn find_vertical_divider_at(
+        &self,
+        x: u16,
+        y: u16,
+    ) -> Option<(usize, usize)> {
+        let rects = self.calculate_panel_rects();
+        // Group panels by group_idx so we know which is last.
+        let mut last_panel_idx: std::collections::HashMap<usize, usize> =
+            std::collections::HashMap::new();
+        for (gi, pi, _, _) in &rects {
+            let entry = last_panel_idx.entry(*gi).or_insert(*pi);
+            if *pi > *entry {
+                *entry = *pi;
+            }
+        }
+        for (gi, pi, rect, _) in &rects {
+            if last_panel_idx.get(gi).copied() == Some(*pi) {
+                continue; // last in group → no divider below
+            }
+            if rect.height < 2 {
+                continue; // accordion → no own bottom border
+            }
+            let bottom_y = rect.y + rect.height - 1;
+            if y == bottom_y && x >= rect.x && x < rect.x + rect.width {
+                return Some((*gi, *pi));
+            }
+        }
+        None
+    }
+
+    /// Begin a vertical-divider drag rooted at the given panel-pair.
+    pub(in crate::app) fn handle_v_divider_click(&mut self, x: u16, y: u16) -> Result<bool> {
+        if let Some((group_idx, upper_panel_idx)) = self.find_vertical_divider_at(x, y) {
+            let _ = x;
+            self.state.ui.vdrag.start(group_idx, upper_panel_idx, y);
+            self.state.needs_redraw = true;
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    /// Track the cursor row during a v-divider drag (ghost preview).
+    pub(in crate::app) fn handle_v_divider_drag(&mut self, current_y: u16) -> Result<()> {
+        if self.state.ui.vdrag.last_applied_y == Some(current_y) {
+            return Ok(());
+        }
+        self.state.ui.vdrag.last_applied_y = Some(current_y);
+        self.state.needs_redraw = true;
+        Ok(())
+    }
+
+    /// Apply the accumulated drag delta on release.
+    pub(in crate::app) fn handle_v_divider_drag_end(&mut self) -> Result<()> {
+        if let (Some((group_idx, upper_panel_idx)), Some(final_y)) = (
+            self.state.ui.vdrag.active,
+            self.state.ui.vdrag.last_applied_y,
+        ) {
+            let delta = final_y as i32 - self.state.ui.vdrag.start_y as i32;
+            if delta != 0 {
+                let area_height = self.state.terminal.height.saturating_sub(2);
+                if let Some(group) = self.layout_manager.panel_groups.get_mut(group_idx) {
+                    group.resize_panel_divider(upper_panel_idx, delta, area_height);
+                }
+                self.auto_save_session();
+            }
+        }
+        self.state.ui.vdrag.end();
+        self.state.needs_redraw = true;
+        Ok(())
+    }
+
     /// Find the panel directly under `(x, y)` regardless of focus state.
     ///
     /// Returns `(group_idx, panel_idx, rect)`. Use this when an event

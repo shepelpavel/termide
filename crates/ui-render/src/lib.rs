@@ -35,7 +35,8 @@ pub use menu::{
     OPTIONS_MENU_INDEX, SESSIONS_MENU_INDEX, WINDOWS_MENU_INDEX,
 };
 pub use panel_rendering::{
-    panel_icon, render_collapsed_panel, render_dividers, render_expanded_panel, ExpandedPanelParams,
+    panel_icon, render_collapsed_panel, render_dividers, render_expanded_panel,
+    render_v_divider_ghost, ExpandedPanelParams,
 };
 pub use simple_dropdown::render_simple_dropdown;
 pub use status_bar::{BackgroundOpsSummary, StatusBar, StatusBarParams};

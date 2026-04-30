@@ -32,6 +32,21 @@ impl App {
             }
         }
 
+        // Vertical divider drag (between two panels of the same group).
+        if self.state.ui.vdrag.is_dragging() {
+            match mouse.kind {
+                MouseEventKind::Drag(MouseButton::Left) => {
+                    self.handle_v_divider_drag(mouse.row)?;
+                    return Ok(());
+                }
+                MouseEventKind::Up(MouseButton::Left) => {
+                    self.handle_v_divider_drag_end()?;
+                    return Ok(());
+                }
+                _ => {}
+            }
+        }
+
         // Handle panel drag (grab by top border) — drag & drop of whole panels
         if self.state.ui.panel_drag.is_pending_or_active() {
             match mouse.kind {
@@ -164,6 +179,14 @@ impl App {
         // Check click on divider for resize (before panel click handling)
         if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
             && self.handle_divider_click(mouse.column, mouse.row)?
+        {
+            return Ok(());
+        }
+
+        // Check click on a vertical divider (bottom border between two
+        // panels of the same group) for in-group resize.
+        if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
+            && self.handle_v_divider_click(mouse.column, mouse.row)?
         {
             return Ok(());
         }
