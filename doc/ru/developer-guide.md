@@ -150,7 +150,7 @@ termide/
 - `split_heights: Option<Vec<u16>>` — кеш per-panel высот, пропорционально пересчитывается при ресайзе
 - `fullscreen_cache: Option<Vec<u16>>` — высоты для restore при выключении fullscreen-пресета (`Alt+F11`)
 - `next_panel`/`prev_panel`/`set_expanded` перемещают фокус и переприменяют пресет, если он активен
-- `grow_focused`/`shrink_focused` увеличивают/уменьшают фокусную панель (шаг 3 строки), каскадно через соседей
+- `grow_focused`/`shrink_focused` увеличивают/уменьшают фокусную панель (шаг 1 строка), каскадно через соседей
 - `resize_panel_divider` применяет дельту к разделителю над указанной панелью (используется обработчиком mouse drag)
 
 ### 3. Трейт Panel (`crates/core/src/lib.rs`)

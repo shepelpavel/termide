@@ -151,7 +151,7 @@ A column of vertically stacked panels with adjustable heights:
 - `split_heights: Option<Vec<u16>>` — cached per-panel heights, rescaled proportionally on resize
 - `fullscreen_cache: Option<Vec<u16>>` — heights to restore when the fullscreen preset toggles off (`Alt+F11`)
 - `next_panel`/`prev_panel`/`set_expanded` move focus and re-apply the preset when active
-- `grow_focused`/`shrink_focused` add or remove rows from the focused panel (3-row step), cascading through neighbours
+- `grow_focused`/`shrink_focused` add or remove rows from the focused panel (1-row step), cascading through neighbours
 - `resize_panel_divider` applies a delta to the divider above a given panel (used by the mouse drag handler)
 
 ### 3. Panel Trait (`crates/core/src/lib.rs`)

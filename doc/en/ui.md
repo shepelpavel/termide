@@ -130,7 +130,7 @@ The layout adapts to the terminal width, showing more panel groups on wider scre
 - Have `[≡]` action button in panel title (click to open context menu with Close / Split / Merge / Move)
 - Can be closed with Escape, Alt+X, or F10
 - Column width adjustable with `Alt+=` / `Alt+-`
-- Per-panel height adjustable inside a stacked column with `Ctrl+Alt+=` / `Ctrl+Alt+-` (3-row step) or by dragging the panel header up/down within the column
+- Per-panel height adjustable inside a stacked column with `Alt+Shift+=` / `Alt+Shift+-` (1-row step), by dragging the panel's bottom border with the mouse, or by dragging the panel header up/down within the column
 - `Alt+F11` toggles the "fullscreen current panel" preset (one panel fills the column, others collapse to one row); pressing it again restores the previous heights
 - Can be dragged by the top border to another position (see Mouse Interaction below)
 
@@ -146,13 +146,25 @@ Items are filtered by context: e.g. *Split/Merge* is hidden when there is only o
 
 **Mouse Interaction:**
 - Click on the title area activates the panel; double-click on a file-manager title opens the directory picker.
-- **Drag a panel by its top border (title area)** to either resize the column or move the panel:
-  - Release inside the source group's column → vertical resize: the divider above the dragged panel snaps to the cursor (top panel of a group has no divider above and falls through to the move logic).
-  - Release over another panel's header → insert before that panel in its group.
-  - Release over another panel's body → insert after that panel.
-  - Release in the 2-cell gutter between two groups → create a new group at that position.
+- **Drag a panel's bottom border** within a stacked column to resize its
+  height (live `━` ghost line previews the new divider position, the
+  resize is applied on release).
+- **Drag a panel by its top border (title area)** to either resize or
+  reorder the panel:
+  - Release inside the source panel's body or the upper neighbour's
+    body → vertical resize: the divider above the dragged panel snaps
+    to the cursor (top panel of a group has no divider above and falls
+    through to the move logic).
+  - Release on another panel's header row in the same group → reorder:
+    insert before / after the target depending on the source position.
+  - Release over another panel's body in a different column → move the
+    panel into that group, splitting the target panel at the drop row.
+  - Release in the 2-cell gutter between two groups → create a new
+    group at that position.
   - Release past the rightmost group → append as a new last group.
-  - A ghost icon follows the cursor; the target drop zone is highlighted in the accent colour.
+  - During the drag, a thick `━` line marks horizontal drop zones
+    (resize / split inside a column) and a thick `┃` line marks
+    vertical drop zones (new column between groups).
   - Press `Escape` during a drag to cancel.
 
 ## Status Bar
@@ -208,13 +220,13 @@ The device name is automatically detected from the filesystem:
 | `Alt+End`         | Move panel to last group                   |
 | `Alt+Plus (=)`    | Increase active group width                |
 | `Alt+Minus (-)`   | Decrease active group width                |
-| `Ctrl+Alt+=`      | Grow focused panel height (3 rows)         |
-| `Ctrl+Alt+-`      | Shrink focused panel height (3 rows)       |
+| `Alt+Shift+=`     | Grow focused panel height (1 row)          |
+| `Alt+Shift+-`     | Shrink focused panel height (1 row)        |
 | `Alt+F11`         | Toggle fullscreen for the focused panel    |
 | `Alt+Backspace`   | Toggle panel stacking (merge/unstack)      |
 | `Alt+K`           | Open panel action menu (`[≡]` dropdown)    |
 | `Shift+F10`       | Open panel action menu (alternative)       |
-| `Alt+/`           | Open sessions menu                         |
+| `Alt+\`           | Open sessions menu                         |
 | `Alt+N`           | Create new session                         |
 | `Alt+B`           | Add bookmark                               |
 | `Ctrl+P`          | Open command palette                       |

@@ -74,7 +74,7 @@ pub struct PanelGroup {
 - `split_heights` is the per-panel height cache. `None` means "no cache — derive equal distribution on first use". Heights are rescaled proportionally whenever the column height changes.
 - Pressing `Alt+F11` (or the bound `toggle_fullscreen_panel` action) toggles a fullscreen preset: the focused panel takes the column's full height, the others collapse to one row each. The pre-toggle heights are stashed in `fullscreen_cache` so a second press restores them.
 - While the preset is active, switching focus with `Alt+Up` / `Alt+Down` (`prev_panel` / `next_panel`) re-applies the preset to the new focus — visually identical to a classic accordion view.
-- `Ctrl+Alt+=` / `Ctrl+Alt+-` (`panel_grow_vertical` / `panel_shrink_vertical`) grow / shrink the focused panel by 3 rows, taking from a neighbour with available room (cascade).
+- `Alt+Shift+=` / `Alt+Shift+-` (`panel_grow_vertical` / `panel_shrink_vertical`) grow / shrink the focused panel by 1 row, taking from / giving to a neighbour with available room (cascade).
 
 **Key Operations:**
 - `add_panel()` / `insert_panel()` / `remove_panel()` - mutate panels and rebalance the height caches.
@@ -330,15 +330,23 @@ fn render_main_area(frame, layout_manager, state) {
             termide_layout::compute_vertical_constraints(group, area_height);
 
         // 3. Render each panel. Panels with height >= 2 render their
-        //    full content + border; panels clamped to a single row
-        //    fall back to header-only rendering.
+        //    full content + complete border (top, sides, AND bottom);
+        //    height==1 panels fall back to header-only rendering.
+        let mut prev_was_accordion = false;
         for (idx, panel) in group.panels().enumerate() {
-            if vertical_chunks[idx].height >= 2 {
-                let omit_bottom_border = idx + 1 < group.len();
+            let area = vertical_chunks[idx];
+            let omit_bottom_border = area.height < 2;
+            if !omit_bottom_border {
                 render_expanded_panel(panel, area, omit_bottom_border, ...);
             } else {
                 render_collapsed_panel(panel, area, ...);
             }
+            // Top-row corners chosen by context: └┘ for the last
+            // panel when collapsed (group closes off visually),
+            // ├┤ when both this and the previous panel are
+            // accordions (continuity), otherwise ┌┐.
+            patch_top_corners(area, idx, prev_was_accordion, &group);
+            prev_was_accordion = area.height < 2;
         }
     }
 
@@ -349,7 +357,7 @@ fn render_main_area(frame, layout_manager, state) {
 }
 ```
 
-Every non-last panel skips its bottom border so the next panel's titled top border doubles as the divider — saves a row per gap. The lower panel's top corners are post-processed from `┌`/`┐` to `├`/`┤` so the box-drawing characters meet cleanly with the upper panel's `│` walls.
+Every panel with `height >= 2` draws its own complete border; two adjacent panels show two consecutive border rows (bottom of upper + top of lower) so the focused panel is fully framed in its accent colour on all four sides. Accordion-collapsed `height == 1` panels keep top-only borders, with their top corners switching between `┌┐`, `├┤`, and `└┘` depending on what sits above and whether they are the last panel in the group.
 
 #### 4.2 Panel Rendering
 
@@ -359,12 +367,12 @@ Every non-last panel skips its bottom border so the next panel's titled top bord
 - Border with the `[≡]` action button and emoji + title (e.g. `[≡] 📁 Files`)
 - Full content area
 - Scrollable if content exceeds area
-- The bottom border is dropped when another panel sits below in the same group; the next panel's titled top border serves as the divider
+- The bottom border is always rendered for `height >= 2` panels; between two adjacent panels you see two consecutive border rows so the focused panel is fully framed in its accent colour on all four sides
 
 **Collapsed panel (height = 1 row, only when shrunk to the minimum):**
 - Title bar only: `─[≡] 📁 Files ─────`
 - Takes one row
-- Click the title to focus the panel; press `Alt+F11` or `Ctrl+Alt+=` to grow it
+- Click the title to focus the panel; press `Alt+F11` or `Alt+Shift+=` to grow it
 
 **Icon Mode:**
 Panel titles show emoji icons based on panel type (📁 file manager, 💻 terminal, 📝 editor, 🔄 operations, 🚧 diagnostics, 📑 outline, 🎨 image, etc.). All icons are chosen to be reliably 2-cells wide in modern terminals so the title alignment after the icon stays stable. Icon mode is configured via `icon_mode` in `[general]` settings:
@@ -373,7 +381,7 @@ Panel titles show emoji icons based on panel type (📁 file manager, 💻 termi
 - `unicode` — no icons, no arrows, just `[≡]`
 
 **Drag Overlay:**
-When a panel is being dragged by its top border, `render_drag_overlay()` (in `src/ui.rs`) runs after the main panel render and before dropdowns/modals. It highlights the drop target (header bar for `IntoGroup`, vertical divider for `NewGroup`) and draws a ghost icon under the cursor. Hit-testing reuses the `calculate_panel_rects` / `compute_drop_target` free functions from `termide_layout` so the mouse handler and the renderer agree on geometry.
+When a panel is being dragged by its top border, `render_drag_overlay()` (in `src/ui.rs`) runs after the main panel render and before dropdowns/modals. The intent (`PanelDragIntent::ResizeAbove`, `PanelDragIntent::Move { target: IntoGroup, drop_y }`, or `PanelDragIntent::Move { target: NewGroup, .. }`) drives what is drawn: a thick `━` line at `drop_y` for `ResizeAbove` and `IntoGroup` (the prospective divider / split row), or a thick `┃` line at the gutter column for `NewGroup`. No ghost icon — the user reads the operation from the line shape and position. Hit-testing reuses `calculate_panel_rects` / `classify_panel_drag` / `compute_drop_target` from `termide_layout` so the mouse handler and the renderer agree on geometry. A separate `render_v_divider_ghost` overlay handles the in-group bottom-border drag (`Vertical­Divider­Drag­State`), drawing a `━` line across the affected group's width.
 
 **Border Rendering:**
 Borders and buttons are drawn by `panel_rendering.rs`, then panel's `render()` method draws content in the inner area.
@@ -527,7 +535,7 @@ crates/i18n/
 **Problem:** Terminal space is limited and multi-panel IDEs often feel cramped, but binary "one-expanded, rest collapsed" layouts also throw away cases where the user wants to see two or three panels at adjusted heights at once.
 
 **Solution:** Adjustable split layout per group, plus a one-key fullscreen preset:
-- Every panel in a group is visible by default; the user picks heights via mouse drag, `Ctrl+Alt+=` / `Ctrl+Alt+-`, or by simply dragging a panel header up/down.
+- Every panel in a group is visible by default; the user picks heights via mouse drag (the panel's bottom border or its title bar), `Alt+Shift+=` / `Alt+Shift+-`, or any combination thereof.
 - `Alt+F11` toggles a "fullscreen current panel" preset that mirrors the legacy accordion view (one panel takes the full column, others collapse to one row), with the previous heights stashed for instant restore.
 - Heights are cached and rescaled proportionally when the terminal resizes.
 - Automatic stacking still kicks in when the terminal is too narrow (`min_panel_width`).
@@ -560,7 +568,7 @@ crates/i18n/
 
 **Rendering:** O(n) where n = number of panels in visible groups
 - Panels with height ≥ 2 render their full content; panels collapsed to one row render only the title bar
-- Bottom borders between stacked panels are merged with the next panel's title row to save a line per gap
+- Each `height >= 2` panel draws its own bottom border so adjacent panels show two consecutive border rows — the focused panel is framed in its accent colour on all four sides
 
 **Event Handling:** O(1) for most operations
 - Direct index access to focused panel

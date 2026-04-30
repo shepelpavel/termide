@@ -73,7 +73,7 @@ pub struct PanelGroup {
 - `split_heights` 是按面板缓存的高度。`None` 表示「无缓存——首次使用时按等量分配」。终端列高变化时高度按比例重缩放。
 - 按下 `Alt+F11`（或绑定 `toggle_fullscreen_panel`）切换全屏预设：聚焦面板占满整列高度，其他面板各自缩为一行。预设前的高度保存到 `fullscreen_cache`，再次按下即可恢复。
 - 预设激活时，通过 `Alt+Up` / `Alt+Down`（`prev_panel` / `next_panel`）切换焦点会把预设重新应用到新焦点 —— 视觉上等同于经典的手风琴视图。
-- `Ctrl+Alt+=` / `Ctrl+Alt+-`（`panel_grow_vertical` / `panel_shrink_vertical`）以 3 行为步长增大/缩小聚焦面板，向有空闲的相邻面板回填行数（级联）。
+- `Alt+Shift+=` / `Alt+Shift+-`（`panel_grow_vertical` / `panel_shrink_vertical`）以 1 行为步长增大/缩小聚焦面板，向有空闲的相邻面板让出/获取行数（级联）。
 
 **关键操作：**
 - `add_panel()` / `insert_panel()` / `remove_panel()` - 修改面板列表并重新平衡高度缓存。
@@ -328,15 +328,23 @@ fn render_main_area(frame, layout_manager, state) {
         let vertical_chunks =
             termide_layout::compute_vertical_constraints(group, area_height);
 
-        // 3. 渲染每个面板。height >= 2 的面板渲染完整内容和边框；
-        //    被压到 1 行的面板回退为仅渲染标题。
+        // 3. 渲染每个面板。height >= 2 的面板渲染完整内容和边框
+        //    （包含底部）；被压到 1 行的面板回退为仅渲染标题。
+        let mut prev_was_accordion = false;
         for (idx, panel) in group.panels().enumerate() {
-            if vertical_chunks[idx].height >= 2 {
-                let omit_bottom_border = idx + 1 < group.len();
+            let area = vertical_chunks[idx];
+            let omit_bottom_border = area.height < 2;
+            if !omit_bottom_border {
                 render_expanded_panel(panel, area, omit_bottom_border, ...);
             } else {
                 render_collapsed_panel(panel, area, ...);
             }
+            // 顶部行的角字符根据上下文选择：└┘ 用于
+            // accordion 形式的最后一个面板（视觉上封闭组），
+            // ├┤ 当当前与上一个均为 accordion（连贯性），
+            // 否则使用普通的 ┌┐。
+            patch_top_corners(area, idx, prev_was_accordion, &group);
+            prev_was_accordion = area.height < 2;
         }
     }
 
@@ -347,7 +355,7 @@ fn render_main_area(frame, layout_manager, state) {
 }
 ```
 
-每个非末尾面板都会跳过自己的底部边框，由下一个面板带标题的顶部边框充当分隔线，每个连接处节省一行。下方面板的 `┌`/`┐` 角字符会被 post-process 为 `├`/`┤`，与上方面板的 `│` 干净地相接。
+`height >= 2` 的每个面板都绘制**完整**边框；两个相邻面板之间显示两行连续的边框（上方面板底部 + 下方面板顶部）—— 聚焦面板因此在所有四边都被强调色完整地框住。`height == 1` 的 accordion 面板仍只绘制顶部边框，其顶部角字符根据上方内容以及它是否为组内最后一个面板，在 `┌┐`、`├┤` 和 `└┘` 之间切换。
 
 #### 4.2 面板渲染
 
@@ -357,12 +365,12 @@ fn render_main_area(frame, layout_manager, state) {
 - 带 `[≡]` 操作按钮、emoji 与标题的边框（例如 `[≡] 📁 文件`）
 - 完整的内容区域
 - 内容超出区域时可滚动
-- 当下方在同一组中还有面板时，底部边框被省略；下面板带标题的顶部边框作为分隔线
+- `height >= 2` 的面板始终渲染底部边框；两个相邻面板之间出现两行连续的边框，使聚焦面板被强调色完整框住
 
 **折叠面板（height = 1 行，仅在压到最小时）：**
 - 仅标题栏：`─[≡] 📁 文件 ─────`
 - 占用 1 行
-- 点击标题以聚焦面板；`Alt+F11` 或 `Ctrl+Alt+=` 可放大它
+- 点击标题以聚焦面板；`Alt+F11` 或 `Alt+Shift+=` 可放大它
 
 **图标模式：**
 面板标题根据面板类型显示 emoji 图标（📁 文件管理器、💻 终端、📝 编辑器等）。通过 `[general]` 中的 `icon_mode` 配置：
@@ -525,7 +533,7 @@ crates/i18n/
 **问题：** 终端空间有限，多面板 IDE 常常显得拥挤；但「一个展开、其余折叠」的二元布局又会丢掉用户希望同时看到两三个面板（且高度可调）的场景。
 
 **解决方案：** 每组面板高度可调，并提供一键全屏预设：
-- 默认每个面板都可见；用户通过鼠标拖动、`Ctrl+Alt+=` / `Ctrl+Alt+-`，或在列内上下拖动面板标题来调整高度。
+- 默认每个面板都可见；用户通过鼠标拖动（面板下边框或标题栏）、`Alt+Shift+=` / `Alt+Shift+-` 或它们的任意组合来调整高度。
 - `Alt+F11` 切换「聚焦面板全屏」预设，模拟旧的手风琴视图（一个面板占满整列，其余缩为一行），先前的高度被保存以便瞬间恢复。
 - 高度被缓存，并在终端尺寸变化时按比例重缩放。
 - 终端过窄时（`min_panel_width`）仍会自动堆叠到同一组中。
@@ -558,7 +566,7 @@ crates/i18n/
 
 **渲染：** O(n)，n = 可见组中的面板数量
 - height ≥ 2 的面板渲染完整内容；被压到 1 行的面板仅渲染标题栏
-- 相邻面板的底部边框与下一个面板的标题行合并 —— 每个连接处节省一行
+- 每个 height ≥ 2 的面板都绘制自己的底部边框；连接处显示两行连续的边框，让聚焦面板被强调色完整框住
 
 **事件处理：** 大多数操作 O(1)
 - 直接索引访问聚焦面板

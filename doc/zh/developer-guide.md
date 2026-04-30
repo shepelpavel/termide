@@ -151,7 +151,7 @@ termide/
 - `split_heights: Option<Vec<u16>>` — 缓存的每面板高度，终端尺寸变化时按比例重缩放
 - `fullscreen_cache: Option<Vec<u16>>` — `Alt+F11` 关闭全屏预设时恢复的高度
 - `next_panel`/`prev_panel`/`set_expanded` 移动焦点；预设激活时重新应用预设
-- `grow_focused`/`shrink_focused` 以 3 行为步长调整聚焦面板的高度，向相邻面板级联回填
+- `grow_focused`/`shrink_focused` 以 1 行为步长调整聚焦面板的高度，向相邻面板级联回填
 - `resize_panel_divider` 把增量应用到给定面板上方的分隔线（鼠标拖动处理器使用）
 
 ### 3. Panel Trait (`crates/core/src/lib.rs`)
