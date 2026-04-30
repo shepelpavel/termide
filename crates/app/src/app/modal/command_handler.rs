@@ -63,10 +63,19 @@ impl App {
             let mut target_metadata = CommandsMetadata::load(&target_dir);
             target_metadata.entries.insert(old_key, entry);
             target_metadata.save(&target_dir)?;
-            return Ok(());
+        } else {
+            self.write_command_entry(result, &target_dir, old_key)?;
         }
 
-        self.write_command_entry(result, &target_dir, old_key)
+        // Invalidate caches so the new hotkey/binding takes effect on the next
+        // keypress. Without this, `state.cache.hotkey_table` keeps the previous
+        // entry — a press of the new chord will be matched against the old
+        // ParsedKeyBinding, producing the symptom where the rebind appears to
+        // work in-session but reverts after restart (the on-disk value is
+        // re-parsed on the next cold start).
+        self.state.cache.commands_registry = None;
+        self.state.cache.hotkey_table = None;
+        Ok(())
     }
 
     fn write_command_entry(
