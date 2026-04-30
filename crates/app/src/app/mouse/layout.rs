@@ -88,19 +88,16 @@ impl App {
         Ok(())
     }
 
-    /// Find the expanded panel group at the given screen coordinates.
-    /// Returns `(group_idx, rect)` if an expanded panel contains the point.
-    pub(in crate::app) fn find_expanded_panel_group_at(
-        &self,
-        x: u16,
-        y: u16,
-    ) -> Option<(usize, Rect)> {
-        for (group_idx, _panel_idx, rect, is_expanded) in self.calculate_panel_rects() {
-            if !is_expanded {
-                continue;
-            }
+    /// Find the panel directly under `(x, y)` regardless of focus state.
+    ///
+    /// Returns `(group_idx, panel_idx, rect)`. Use this when an event
+    /// should be routed to whatever panel the cursor is over (mouse
+    /// scroll, click hit-testing on a non-focused panel) rather than
+    /// to the focused panel within the group.
+    pub(in crate::app) fn find_panel_at(&self, x: u16, y: u16) -> Option<(usize, usize, Rect)> {
+        for (group_idx, panel_idx, rect, _is_expanded) in self.calculate_panel_rects() {
             if x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height {
-                return Some((group_idx, rect));
+                return Some((group_idx, panel_idx, rect));
             }
         }
         None
@@ -165,15 +162,16 @@ impl App {
     }
 
     /// Forward coalesced scroll to the panel under the mouse cursor.
+    /// The cursor's panel — not the focused one — receives the wheel,
+    /// so scrolling an unfocused panel works without first clicking it.
     fn forward_coalesced_scroll_to_panel(
         &mut self,
         mouse: crossterm::event::MouseEvent,
         delta: i32,
     ) -> Result<()> {
-        if let Some((group_idx, rect)) = self.find_expanded_panel_group_at(mouse.column, mouse.row)
-        {
+        if let Some((group_idx, panel_idx, rect)) = self.find_panel_at(mouse.column, mouse.row) {
             if let Some(group) = self.layout_manager.panel_groups.get_mut(group_idx) {
-                if let Some(panel) = group.expanded_panel_mut() {
+                if let Some(panel) = group.panels_mut().get_mut(panel_idx) {
                     let events = panel.handle_scroll(delta, rect);
                     self.process_panel_events(events)?;
                 }

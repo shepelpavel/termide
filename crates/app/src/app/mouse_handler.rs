@@ -231,15 +231,17 @@ impl App {
         Ok(())
     }
 
-    /// Forward scroll to panel under mouse cursor
+    /// Forward scroll to the panel under the mouse cursor — including
+    /// unfocused panels. Without this, a wheel notch over a non-focused
+    /// split-mode neighbour would be silently delivered to the focused
+    /// panel instead, surprising the user.
     fn forward_scroll_to_panel_at_cursor(
         &mut self,
         mouse: crossterm::event::MouseEvent,
     ) -> Result<()> {
-        if let Some((group_idx, rect)) = self.find_expanded_panel_group_at(mouse.column, mouse.row)
-        {
+        if let Some((group_idx, panel_idx, rect)) = self.find_panel_at(mouse.column, mouse.row) {
             if let Some(group) = self.layout_manager.panel_groups.get_mut(group_idx) {
-                if let Some(panel) = group.expanded_panel_mut() {
+                if let Some(panel) = group.panels_mut().get_mut(panel_idx) {
                     let events = panel.handle_mouse(mouse, rect);
                     self.process_panel_events(events)?;
                 }
