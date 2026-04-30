@@ -396,6 +396,13 @@ impl App {
         self.state.project_bookmarks =
             termide_config::BookmarksConfig::load_from_project(&self.project_root);
 
+        // Invalidate caches that depend on the project root: project-local
+        // commands.toml lives under `<project_root>/.termide/`, so both the
+        // commands registry and the global hotkey table (which folds
+        // command hotkeys in) must rebuild for the new project.
+        self.state.cache.commands_registry = None;
+        self.state.cache.hotkey_table = None;
+
         // 4. Load new session
         self.load_session()?;
 
@@ -464,6 +471,10 @@ impl App {
         self.state.project_root = self.project_root.clone();
         self.state.project_bookmarks =
             termide_config::BookmarksConfig::load_from_project(&self.project_root);
+
+        // Invalidate project-root-dependent caches (see switch_to_session).
+        self.state.cache.commands_registry = None;
+        self.state.cache.hotkey_table = None;
 
         // 5. Create fresh layout with default panels (2 FileManagers)
         self.layout_manager = termide_layout::LayoutManager::new();
@@ -572,6 +583,10 @@ impl App {
         self.state.project_root = self.project_root.clone();
         self.state.project_bookmarks =
             termide_config::BookmarksConfig::load_from_project(&self.project_root);
+
+        // Invalidate project-root-dependent caches (see switch_to_session).
+        self.state.cache.commands_registry = None;
+        self.state.cache.hotkey_table = None;
 
         // 5. Save session in new location
         self.auto_save_session();
