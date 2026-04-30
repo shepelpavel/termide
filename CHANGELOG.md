@@ -5,6 +5,34 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.0] - 2026-04-30
+
+### Added
+- **Layout**: Unified accordion + split layout model with three-mode header drag and live vertical-divider resize (#18)
+- **Layout**: Split-mode borders and `Alt+Shift+=` / `Alt+Shift+-` step resize for the focused panel
+
+### Changed
+- **Hotkeys**: Single end-to-end canonicalization at the matcher boundary — Cyrillic→Latin, shifted-glyph undo, Caps-Lock strip on letters, and VTE-only legacy quirks (`Ctrl+7→Ctrl+/`, `Ctrl+4→Ctrl+\`); inline conflict warnings in the keybinding picker; startup warnings for chords that require Kitty proto
+- **Hotkeys defaults**: Tighter punctuation defaults — `panel_grow_vertical`/`panel_shrink_vertical` → `Alt+Shift+=`/`Alt+Shift+-`; `open_sessions` → `Alt+\`; `*.switch_directory` → `Ctrl+\`; `editor.toggle_comment` → `["Ctrl+/", "Ctrl+."]`; `editor.replace_all` → `["Ctrl+Alt+R", "Alt+R"]`; `editor.trigger_completion` → `["Ctrl+J", "Ctrl+Space"]`
+- **Layout**: Accordion and split modes share one layout model; resize, drag, and keyboard-resize behaviour now identical in both
+- **VFS**: `VfsManager` provider dispatch deduplicated via a closure-based `dispatch_remote` helper; semantics preserved (read-guard scope, cache invalidation)
+- **Cleanup**: Dead helpers pruned across `i18n`/`highlight`/`panel-git-status`; two `clippy --all-targets` lints (test-only) silenced; visibility tightened on tree helpers in `panel-git-status`
+
+### Fixed
+- **Commands**: Editing a command via the modal now invalidates the cached hotkey table, so the rebind takes effect immediately and survives a restart
+- **Commands**: Project-local `commands.toml` is honoured after a session switch — `commands_registry` and `hotkey_table` are reset on `project_root` change in `switch_to_session` / `create_new_session` / `move_session_to`
+- **Commands**: Refined command-config editing flow and local-definition handling
+- **Mouse**: Wheel events route to the panel under the cursor instead of the active panel
+- **Operations panel**: Status icons normalised to match the rest of the UI
+- **File ops**: Symlink destination handling unified across copy paths
+- **Panel terminal**: Input passthrough compatibility with more shells / TUIs
+
+### Documentation
+- Hotkeys reference (`doc/{en,ru,zh}/keybindings.md`) refreshed; new panel-resize step documented; drag-overlay copy updated
+- Shared project skills generalised so non-Anthropic agents can run them
+
+[0.22.0]: https://github.com/termide/termide/releases/tag/0.22.0
+
 ## [0.21.0] - 2026-04-27
 
 ### Added
