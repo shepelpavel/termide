@@ -87,10 +87,11 @@ impl App {
         // `pending_status` carries a (message, is_error) pair to be applied to AppState
         // after the mutable panel borrow is released below.
         let mut pending_status: Option<(String, bool)> = None;
+        let chord = termide_core::KeyChord::new(key, &self.normalizer);
         let (events, modal_request, config_update, escape_close) = if let Some(panel) =
             self.layout_manager.active_panel_mut()
         {
-            let mut events = panel.handle_key(key);
+            let mut events = panel.handle_key(chord);
 
             // Escape: if panel didn't capture it, request close with confirmation
             let escape_close = key.code == crossterm::event::KeyCode::Esc

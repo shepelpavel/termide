@@ -10,8 +10,7 @@ use crossterm::{
     },
     execute,
     terminal::{
-        disable_raw_mode, enable_raw_mode, supports_keyboard_enhancement, EnterAlternateScreen,
-        LeaveAlternateScreen, SetTitle,
+        disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen, SetTitle,
     },
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
@@ -118,12 +117,8 @@ fn main() -> Result<()> {
     // This enables proper Alt+Cyrillic handling in modern terminals like Ghostty, Kitty, WezTerm.
     // Skip on SSH: the detection sends escape sequences and waits for a response,
     // which can hang indefinitely if the SSH terminal doesn't reply.
-    let keyboard_enhanced =
-        if std::env::var_os("SSH_CONNECTION").is_some() || std::env::var_os("SSH_TTY").is_some() {
-            false
-        } else {
-            supports_keyboard_enhancement().unwrap_or(false)
-        };
+    let keyboard_caps = termide_keyboard::KeyboardCaps::detect();
+    let keyboard_enhanced = keyboard_caps.kitty_full;
 
     let title = format!(
         "Termide: {}",
@@ -173,7 +168,7 @@ fn main() -> Result<()> {
     let height = size.height.max(5);
 
     // Create application with pre-loaded config (avoids double config loading)
-    let mut app = App::new_with_config(config, width, height);
+    let mut app = App::new_with_config(config, width, height, keyboard_caps);
 
     // Log git availability to journal (not to stderr)
     app.log_git_status(git_available);

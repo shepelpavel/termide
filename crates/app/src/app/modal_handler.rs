@@ -58,10 +58,13 @@ impl App {
             }
         }
 
+        // Build canonical+raw chord once for the modal handler.
+        let chord = termide_core::KeyChord::new(key, &self.normalizer);
+
         // Get mutable reference to active modal window
         if let Some(modal) = self.state.get_active_modal_mut() {
             // Handle event in corresponding modal window
-            let modal_result = modal.handle_key_erased(key)?;
+            let modal_result = modal.handle_key_erased(chord)?;
 
             // If modal window returned result, handle it
             if let Some(result) = modal_result {

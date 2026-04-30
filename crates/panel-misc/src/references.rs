@@ -8,7 +8,7 @@ use std::io::BufRead;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -211,7 +211,8 @@ impl termide_core::Panel for ReferencesPanel {
         }
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
+    fn handle_key(&mut self, chord: termide_core::KeyChord) -> Vec<PanelEvent> {
+        let key = chord.raw;
         match (key.code, key.modifiers) {
             (KeyCode::Down, KeyModifiers::NONE) | (KeyCode::Char('j'), KeyModifiers::NONE) => {
                 self.select_next();

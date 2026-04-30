@@ -63,10 +63,23 @@ pub(super) fn kb_binding_names(section: usize) -> &'static [&'static str] {
             "move_last",
             "resize_smaller",
             "resize_larger",
+            "toggle_fullscreen_panel",
+            "panel_grow_vertical",
+            "panel_shrink_vertical",
+            "panel_action_menu",
             "prev_group",
             "next_group",
             "prev_panel",
             "next_panel",
+            "goto_panel_1",
+            "goto_panel_2",
+            "goto_panel_3",
+            "goto_panel_4",
+            "goto_panel_5",
+            "goto_panel_6",
+            "goto_panel_7",
+            "goto_panel_8",
+            "goto_panel_9",
             "quit",
             "open_command_palette",
         ],
@@ -173,10 +186,23 @@ pub(super) fn get_kb_value(config: &Config, section: usize, name: &str) -> Strin
             move_last,
             resize_smaller,
             resize_larger,
+            toggle_fullscreen_panel,
+            panel_grow_vertical,
+            panel_shrink_vertical,
+            panel_action_menu,
             prev_group,
             next_group,
             prev_panel,
             next_panel,
+            goto_panel_1,
+            goto_panel_2,
+            goto_panel_3,
+            goto_panel_4,
+            goto_panel_5,
+            goto_panel_6,
+            goto_panel_7,
+            goto_panel_8,
+            goto_panel_9,
             quit,
             open_command_palette
         ),
@@ -307,10 +333,23 @@ pub(super) fn set_kb_value(config: &mut Config, section: usize, name: &str, valu
             move_last,
             resize_smaller,
             resize_larger,
+            toggle_fullscreen_panel,
+            panel_grow_vertical,
+            panel_shrink_vertical,
+            panel_action_menu,
             prev_group,
             next_group,
             prev_panel,
             next_panel,
+            goto_panel_1,
+            goto_panel_2,
+            goto_panel_3,
+            goto_panel_4,
+            goto_panel_5,
+            goto_panel_6,
+            goto_panel_7,
+            goto_panel_8,
+            goto_panel_9,
             quit,
             open_command_palette
         ),
@@ -419,7 +458,16 @@ pub(super) fn set_kb_value(config: &mut Config, section: usize, name: &str, valu
 }
 
 /// Format a `KeyEvent` into a keybinding string like "Ctrl+S".
-pub(super) fn format_key_event(key: &KeyEvent) -> String {
+///
+/// The event is canonicalized first (Cyrillic→Latin, shifted-glyph
+/// punctuation → `Shift+<unshifted>`, VTE Ctrl+7→Ctrl+/, caps-lock
+/// strip when reported). That keeps the string the picker stores in
+/// the same canonical form as defaults — picker on a Russian layout
+/// records `"Alt+M"`, not `"Alt+Ь"`.
+pub(super) fn format_key_event(raw: &KeyEvent) -> String {
+    let normalizer = termide_keyboard::KeyNormalizer::default();
+    let canon = normalizer.canonicalize(*raw);
+    let key = &canon;
     let mut parts = Vec::new();
     if key.modifiers.contains(KeyModifiers::CONTROL) {
         parts.push("Ctrl");

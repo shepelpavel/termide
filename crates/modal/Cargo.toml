@@ -24,5 +24,6 @@ termide-git = { path = "../git" }
 termide-ui = { path = "../ui" }
 termide-theme = { path = "../theme" }
 termide-i18n = { path = "../i18n" }
+termide-keyboard = { path = "../keyboard" }
 termide-config = { path = "../config" }
 termide-state = { path = "../state" }

@@ -5,7 +5,7 @@
 //! - Full-width pseudo-graphic tables
 //! - Simple scroll navigation
 
-use crossterm::event::{KeyCode, KeyEvent, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyCode, MouseEvent, MouseEventKind};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -149,7 +149,8 @@ impl Panel for HelpPanel {
         }
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
+    fn handle_key(&mut self, chord: termide_core::KeyChord) -> Vec<PanelEvent> {
+        let key = chord.raw;
         // Use a reasonable default for visible height
         let visible_height = 20;
 

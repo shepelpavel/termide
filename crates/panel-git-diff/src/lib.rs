@@ -6,7 +6,7 @@ use std::any::Any;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyCode, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -1004,7 +1004,8 @@ impl Panel for GitDiffPanel {
         self.render_content(area, buf, ctx.is_focused, ctx.border_right_x);
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
+    fn handle_key(&mut self, chord: termide_core::KeyChord) -> Vec<PanelEvent> {
+        let key = chord.raw;
         self.status_message = None;
 
         // Configurable actions via HotkeyTable

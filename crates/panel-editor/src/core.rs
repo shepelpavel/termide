@@ -1,5 +1,4 @@
 use anyhow::Result;
-use crossterm::event::KeyEvent;
 use ratatui::{buffer::Buffer, layout::Rect};
 use std::any::Any;
 use std::path::PathBuf;
@@ -1728,7 +1727,8 @@ impl Panel for Editor {
         );
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
+    fn handle_key(&mut self, chord: termide_core::KeyChord) -> Vec<PanelEvent> {
+        let key = chord.raw;
         // Any keyboard input should make viewport follow cursor again
         self.scroll_follows_cursor = true;
 

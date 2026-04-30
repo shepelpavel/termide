@@ -1,7 +1,7 @@
 //! Vim key event handling.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use termide_config::cyrillic_to_latin;
+use termide_keyboard::cyrillic_to_latin_opt;
 
 use super::mode::VimMode;
 use super::motions::VimMotion;
@@ -12,7 +12,7 @@ use super::PanelDirection;
 /// Translate Cyrillic characters to Latin for vim commands.
 fn translate_cyrillic_key(key: KeyEvent) -> KeyEvent {
     if let KeyCode::Char(c) = key.code {
-        if let Some(latin) = cyrillic_to_latin(c) {
+        if let Some(latin) = cyrillic_to_latin_opt(c) {
             return KeyEvent::new(KeyCode::Char(latin), key.modifiers);
         }
     }

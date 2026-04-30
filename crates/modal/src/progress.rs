@@ -1,7 +1,7 @@
 //! Progress display modal for long-running operations.
 
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::KeyCode;
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -991,7 +991,11 @@ impl Modal for ProgressModal {
         } // end of else block for original layout
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Option<ModalResult<Self::Result>>> {
+    fn handle_key(
+        &mut self,
+        chord: termide_core::KeyChord,
+    ) -> Result<Option<ModalResult<Self::Result>>> {
+        let key = chord.raw;
         match key.code {
             KeyCode::Esc if self.can_cancel => {
                 // User cancelled

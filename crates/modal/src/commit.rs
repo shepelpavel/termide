@@ -1,7 +1,7 @@
 //! Git commit modal dialog with multi-line text area.
 
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -267,7 +267,11 @@ impl Modal for CommitModal {
         self.last_buttons_area = Some(chunks[1]);
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Option<ModalResult<Self::Result>>> {
+    fn handle_key(
+        &mut self,
+        chord: termide_core::KeyChord,
+    ) -> Result<Option<ModalResult<Self::Result>>> {
+        let key = chord.raw;
         // Any keyboard input means user is interacting - follow cursor again
         self.scroll_follows_cursor = true;
 

@@ -4,7 +4,57 @@
 //! including translation between keyboard layouts (e.g., Cyrillic → Latin)
 //! to ensure hotkeys work correctly regardless of active keyboard layout.
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+mod normalize;
+
+pub use normalize::{KeyNormalizer, KeyboardCaps};
+
+/// US-QWERTY shifted-punctuation → unshifted equivalent.
+///
+/// Returns `Some(unshifted)` when `c` is a shifted glyph that lives on
+/// the same physical key as its unshifted counterpart on a US QWERTY
+/// layout, otherwise `None`. Used by `ParsedKeyBinding::matches` so a
+/// single binding like `Ctrl+Alt+=` fires whether the terminal reports
+/// the event as `Char('=')` (unshifted) or as `Char('+')` (the Kitty
+/// keyboard protocol's `REPORT_ALTERNATE_KEYS` mode rewrites events
+/// like `Shift+Ctrl+Alt+=` to `Char('+') + Ctrl|Alt`, dropping the
+/// Shift modifier and emitting the shifted glyph).
+pub fn unshifted_punctuation(c: char) -> Option<char> {
+    Some(match c {
+        '+' => '=',
+        '_' => '-',
+        '!' => '1',
+        '@' => '2',
+        '#' => '3',
+        '$' => '4',
+        '%' => '5',
+        '^' => '6',
+        '&' => '7',
+        '*' => '8',
+        '(' => '9',
+        ')' => '0',
+        '~' => '`',
+        '{' => '[',
+        '}' => ']',
+        '|' => '\\',
+        ':' => ';',
+        '"' => '\'',
+        '<' => ',',
+        '>' => '.',
+        '?' => '/',
+        _ => return None,
+    })
+}
+
+/// `Some(latin)` if `ch` is a Cyrillic character that lives on the
+/// same physical key as `latin` on QWERTY, otherwise `None`.
+///
+/// Use this in callers that branch on whether a translation happened
+/// (e.g. `is_move_up`, `KeyNormalizer::canonicalize`); use
+/// `cyrillic_to_latin` when you want a fall-through translator.
+pub fn cyrillic_to_latin_opt(ch: char) -> Option<char> {
+    let translated = cyrillic_to_latin(ch);
+    (translated != ch).then_some(translated)
+}
 
 /// Cyrillic to Latin mapping table (ЙЦУКЕН → QWERTY)
 ///
@@ -88,83 +138,18 @@ pub fn cyrillic_to_latin(ch: char) -> char {
         'Б' => '<',
         'Ю' => '>',
 
-        // Punctuation keys that differ between ЙЦУКЕН and QWERTY
-        // (physical key position mapping, not character translation)
-        '.' => '/', // Точка (рус) → Slash (eng) — key next to right Shift
-        ',' => '.', // Запятая (рус) → Period (eng)
-        'ё' => '`', // Ё → backtick (top-left key)
-        'Ё' => '~', // Ё + Shift → tilde
+        // Russian Ё / ё (top-left key on ru-layout) maps to backtick /
+        // tilde on en-QWERTY.
+        'ё' => '`',
+        'Ё' => '~',
+        // NOTE: do NOT map en-punctuation `.`→`/` or `,`→`.`. Those
+        // are not Cyrillic → Latin translations; they would
+        // accidentally collapse en-QWERTY chords (`Alt+.` matching
+        // `Alt+/`, etc.).
 
         // No change for other characters
         _ => ch,
     }
-}
-
-/// Translate KeyEvent for hotkeys
-///
-/// Applies Cyrillic → Latin translation only when modifier
-/// (Ctrl or Alt) is pressed, to not affect regular text input.
-pub fn translate_hotkey(key: KeyEvent) -> KeyEvent {
-    // Normalize Ctrl+/ — legacy terminals send it as 0x1F (Unit Separator)
-    if key.code == KeyCode::Char('\x1f') {
-        return KeyEvent::new(KeyCode::Char('/'), key.modifiers | KeyModifiers::CONTROL);
-    }
-
-    // Apply only if modifier is present (Ctrl or Alt)
-    if key
-        .modifiers
-        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
-    {
-        if let KeyCode::Char(ch) = key.code {
-            let translated = cyrillic_to_latin(ch);
-            if translated != ch {
-                // Create new KeyEvent with translated character
-                return KeyEvent::new(KeyCode::Char(translated), key.modifiers);
-            }
-        }
-    }
-    key
-}
-
-/// Translate Cyrillic characters to Latin regardless of modifiers.
-///
-/// Use in panel hotkey handlers where all input is treated as commands,
-/// not as text input. This ensures hotkeys like `o`, `d`, `r`, `v` etc.
-/// work correctly when the user's keyboard layout is set to Cyrillic.
-pub fn translate_all_chars(key: KeyEvent) -> KeyEvent {
-    if let KeyCode::Char(ch) = key.code {
-        let translated = cyrillic_to_latin(ch);
-        if translated != ch {
-            return KeyEvent::new(KeyCode::Char(translated), key.modifiers);
-        }
-    }
-    key
-}
-
-/// Normalize key for hotkey matching: Cyrillic → Latin QWERTY.
-///
-/// Applied to ALL character keys regardless of modifiers.
-/// Does NOT replace the original KeyEvent — used as an **alternative**
-/// for matching. HotkeyTable.matches() checks both raw and normalized.
-///
-/// Also fixes legacy Ctrl+/ (0x1F) terminal encoding.
-pub fn normalize_for_matching(key: &KeyEvent) -> KeyEvent {
-    // Normalize Ctrl+/ — legacy terminals send it as 0x1F (Unit Separator)
-    if key.code == KeyCode::Char('\x1f') {
-        return KeyEvent::new(KeyCode::Char('/'), key.modifiers | KeyModifiers::CONTROL);
-    }
-    // Normalize Ctrl+7 → Ctrl+/ — VTE terminals (GNOME Terminal) send Ctrl+/ as Ctrl+7
-    if key.code == KeyCode::Char('7') && key.modifiers.contains(KeyModifiers::CONTROL) {
-        return KeyEvent::new(KeyCode::Char('/'), key.modifiers);
-    }
-    // Cyrillic → Latin for any char key (with or without modifiers)
-    if let KeyCode::Char(ch) = key.code {
-        let translated = cyrillic_to_latin(ch);
-        if translated != ch {
-            return KeyEvent::new(KeyCode::Char(translated), key.modifiers);
-        }
-    }
-    *key
 }
 
 #[cfg(test)]
@@ -187,47 +172,15 @@ mod tests {
     }
 
     #[test]
-    fn test_translate_hotkey_with_alt() {
-        let key = KeyEvent::new(KeyCode::Char('й'), KeyModifiers::ALT);
-        let translated = translate_hotkey(key);
-        assert_eq!(translated.code, KeyCode::Char('q'));
-        assert_eq!(translated.modifiers, KeyModifiers::ALT);
+    fn test_cyrillic_to_latin_opt() {
+        assert_eq!(cyrillic_to_latin_opt('й'), Some('q'));
+        assert_eq!(cyrillic_to_latin_opt('Я'), Some('Z'));
+        assert_eq!(cyrillic_to_latin_opt('a'), None);
+        assert_eq!(cyrillic_to_latin_opt('1'), None);
     }
 
-    #[test]
-    fn test_translate_hotkey_with_ctrl() {
-        let key = KeyEvent::new(KeyCode::Char('ы'), KeyModifiers::CONTROL);
-        let translated = translate_hotkey(key);
-        assert_eq!(translated.code, KeyCode::Char('s'));
-        assert_eq!(translated.modifiers, KeyModifiers::CONTROL);
-    }
-
-    #[test]
-    fn test_no_translate_without_modifier() {
-        let key = KeyEvent::new(KeyCode::Char('й'), KeyModifiers::NONE);
-        let translated = translate_hotkey(key);
-        assert_eq!(translated.code, KeyCode::Char('й')); // Unchanged
-    }
-
-    #[test]
-    fn test_no_translate_shift_only() {
-        let key = KeyEvent::new(KeyCode::Char('Й'), KeyModifiers::SHIFT);
-        let translated = translate_hotkey(key);
-        assert_eq!(translated.code, KeyCode::Char('Й')); // Unchanged
-    }
-
-    #[test]
-    fn test_translate_ctrl_slash() {
-        // Legacy terminal: sends 0x1F without modifiers
-        let key = KeyEvent::new(KeyCode::Char('\x1f'), KeyModifiers::NONE);
-        let translated = translate_hotkey(key);
-        assert_eq!(translated.code, KeyCode::Char('/'));
-        assert_eq!(translated.modifiers, KeyModifiers::CONTROL);
-
-        // Some terminals: sends 0x1F with CONTROL
-        let key = KeyEvent::new(KeyCode::Char('\x1f'), KeyModifiers::CONTROL);
-        let translated = translate_hotkey(key);
-        assert_eq!(translated.code, KeyCode::Char('/'));
-        assert_eq!(translated.modifiers, KeyModifiers::CONTROL);
-    }
+    // Tests for old `translate_hotkey` / `translate_all_chars` /
+    // `normalize_for_matching` were removed along with those functions.
+    // Equivalent coverage now lives in `normalize::tests` for
+    // `KeyNormalizer::canonicalize`.
 }

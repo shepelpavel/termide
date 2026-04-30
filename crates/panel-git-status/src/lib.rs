@@ -16,7 +16,7 @@ use std::any::Any;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyCode, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -993,7 +993,8 @@ impl Panel for GitStatusPanel {
         }
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
+    fn handle_key(&mut self, chord: termide_core::KeyChord) -> Vec<PanelEvent> {
+        let key = chord.raw;
         // Clear status message on any key
         self.status_message = None;
 

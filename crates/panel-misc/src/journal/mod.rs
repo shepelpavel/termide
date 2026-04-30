@@ -8,7 +8,7 @@
 
 pub mod highlighting;
 
-use crossterm::event::{KeyEvent, MouseEvent, MouseEventKind};
+use crossterm::event::{MouseEvent, MouseEventKind};
 use ratatui::{buffer::Buffer, layout::Rect};
 use std::any::Any;
 
@@ -152,8 +152,8 @@ impl Panel for JournalPanel {
         );
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
-        let events = self.editor.handle_key(key);
+    fn handle_key(&mut self, chord: termide_core::KeyChord) -> Vec<PanelEvent> {
+        let events = self.editor.handle_key(chord);
 
         // Auto-scroll when cursor is on the last content line (skip trailing empty line)
         let last_line = self.editor.buffer().line_count().saturating_sub(2);

@@ -66,6 +66,11 @@ pub struct App {
     title_click_tracker: ClickTracker<(u16, u16)>,
     /// Cached command list for Command Palette (index → action name).
     command_palette_actions: Option<Vec<String>>,
+    /// Capability-aware key normalizer. Used to build a `KeyChord` from
+    /// raw `KeyEvent`s on the dispatch boundary so that all matchers
+    /// downstream see canonical keys while text-input and PTY paths
+    /// keep the original raw event.
+    normalizer: termide_keyboard::KeyNormalizer,
 }
 
 impl App {
@@ -137,6 +142,7 @@ impl App {
             outline_last_edit_time: None,
             title_click_tracker: ClickTracker::new(),
             command_palette_actions: None,
+            normalizer: termide_keyboard::KeyNormalizer::default(),
         }
     }
 
@@ -151,7 +157,17 @@ impl App {
 
     /// Create a new application with a pre-loaded config and specified terminal size.
     /// This avoids double config loading by accepting an already-configured Config.
-    pub fn new_with_config(config: Config, width: u16, height: u16) -> Self {
+    ///
+    /// `caps` carries the keyboard-protocol capabilities detected at
+    /// startup (Kitty enhancement flags). The `KeyNormalizer` reads
+    /// them so quirk fixes (VTE Ctrl+7, caps-lock strip) apply only on
+    /// terminals where they make sense.
+    pub fn new_with_config(
+        config: Config,
+        width: u16,
+        height: u16,
+        caps: termide_keyboard::KeyboardCaps,
+    ) -> Self {
         let theme = Theme::get_by_name(&config.general.theme);
         let mut state = AppState::with_config_and_theme(config, theme);
         state.update_terminal_size(width, height);
@@ -200,6 +216,11 @@ impl App {
             log::warn!("Failed to cleanup old sessions: {}", e);
         }
 
+        // Warn about same-section conflicts and bindings that need
+        // Kitty keyboard protocol (when this terminal does not advertise
+        // it). Logs only — config is left as-is per user choice.
+        Self::log_keybinding_warnings(&state.config, caps);
+
         Self {
             state,
             layout_manager: LayoutManager::new(),
@@ -212,6 +233,52 @@ impl App {
             outline_last_edit_time: None,
             title_click_tracker: ClickTracker::new(),
             command_palette_actions: None,
+            normalizer: termide_keyboard::KeyNormalizer::new(caps),
+        }
+    }
+
+    /// Log same-section conflicts and bindings that need Kitty
+    /// keyboard protocol on terminals that don't advertise it.
+    fn log_keybinding_warnings(config: &Config, caps: termide_keyboard::KeyboardCaps) {
+        let conflicts = termide_config::find_conflicts(config);
+        for c in conflicts
+            .iter()
+            .filter(|c| c.kind == termide_config::ConflictKind::SameSection)
+        {
+            let where_str = c
+                .locations
+                .iter()
+                .map(|l| l.display())
+                .collect::<Vec<_>>()
+                .join(", ");
+            log::warn!(
+                "Keybinding {} is assigned to multiple actions in the same section: {}",
+                c.binding,
+                where_str,
+            );
+        }
+
+        if !caps.kitty_full {
+            let problematic: Vec<_> = termide_config::enumerate_bindings(config)
+                .into_iter()
+                .filter(|(_, parsed, _)| termide_config::binding_requires_kitty(parsed))
+                .collect();
+            if !problematic.is_empty() {
+                let mut sample: Vec<String> = problematic
+                    .iter()
+                    .take(5)
+                    .map(|(loc, _, raw)| format!("{} ({})", raw, loc.display()))
+                    .collect();
+                if problematic.len() > sample.len() {
+                    sample.push(format!("…and {} more", problematic.len() - sample.len()));
+                }
+                log::warn!(
+                    "{} keybinding(s) require Kitty keyboard protocol; this terminal \
+                     does not advertise it. Affected: {}",
+                    problematic.len(),
+                    sample.join(", "),
+                );
+            }
         }
     }
 

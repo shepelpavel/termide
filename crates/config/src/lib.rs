@@ -5,17 +5,21 @@
 
 pub mod bookmarks;
 pub mod commands;
+pub mod conflicts;
 pub mod constants;
 pub mod keybindings;
 mod settings;
 mod xdg;
 
 pub use bookmarks::{Bookmark, BookmarkType, BookmarksConfig};
+pub use conflicts::{
+    binding_requires_kitty, enumerate_bindings, find_conflicts, BindingLocation, ConflictKind,
+    HotkeyConflict,
+};
 pub use keybindings::{
-    cyrillic_to_latin, is_go_end, is_go_home, is_move_down, is_move_up, latin_to_cyrillic,
-    parse_keybinding, EditorKeybindings, FileManagerKeybindings, GitDiffKeybindings,
-    GitLogKeybindings, GitStatusKeybindings, GlobalKeybindings, KeyBinding, ParsedKeyBinding,
-    TerminalKeybindings,
+    is_go_end, is_go_home, is_move_down, is_move_up, parse_keybinding, EditorKeybindings,
+    FileManagerKeybindings, GitDiffKeybindings, GitLogKeybindings, GitStatusKeybindings,
+    GlobalKeybindings, KeyBinding, ParsedKeyBinding, TerminalKeybindings,
 };
 pub use settings::{
     Config, EditorSettings, FileManagerSettings, GeneralSettings, GitDiffSettings, GitLogSettings,

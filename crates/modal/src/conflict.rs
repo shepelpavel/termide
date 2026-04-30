@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::KeyCode;
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -256,7 +256,11 @@ impl Modal for ConflictModal {
         }
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Option<ModalResult<Self::Result>>> {
+    fn handle_key(
+        &mut self,
+        chord: termide_core::KeyChord,
+    ) -> Result<Option<ModalResult<Self::Result>>> {
+        let key = chord.raw;
         // Calculate max index based on number of options
         let max_index = if self.remaining_items == 0 {
             2 // Only 3 options: Overwrite, Skip, Rename

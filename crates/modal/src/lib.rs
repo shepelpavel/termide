@@ -4,7 +4,6 @@
 //! Uses termide-ui for base utilities and termide-theme for styling.
 
 use anyhow::Result;
-use crossterm::event::KeyEvent;
 use ratatui::{buffer::Buffer, layout::Rect};
 
 use termide_theme::Theme;
@@ -203,9 +202,9 @@ impl ActiveModal {
     /// Handle keyboard event, returning type-erased result.
     pub fn handle_key_erased(
         &mut self,
-        key: KeyEvent,
+        chord: termide_core::KeyChord,
     ) -> Result<Option<ModalResult<Box<dyn std::any::Any>>>> {
-        Ok(dispatch_modal_erased!(self, handle_key, key))
+        Ok(dispatch_modal_erased!(self, handle_key, chord))
     }
 
     /// Handle mouse event, returning type-erased result.
@@ -245,7 +244,10 @@ pub trait Modal {
 
     /// Handle keyboard event.
     /// Returns Some(result) if the modal window should close.
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Option<ModalResult<Self::Result>>>;
+    fn handle_key(
+        &mut self,
+        chord: termide_core::KeyChord,
+    ) -> Result<Option<ModalResult<Self::Result>>>;
 
     /// Handle mouse event.
     /// Returns Some(result) if the modal window should close.

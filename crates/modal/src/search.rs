@@ -328,7 +328,11 @@ impl Modal for SearchModal {
         }
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Option<ModalResult<Self::Result>>> {
+    fn handle_key(
+        &mut self,
+        chord: termide_core::KeyChord,
+    ) -> Result<Option<ModalResult<Self::Result>>> {
+        let key = chord.raw;
         match self.focus {
             FocusArea::Input | FocusArea::ContentInput => self.handle_input_focus_key(key),
             FocusArea::Buttons => self.handle_buttons_focus_key(key),

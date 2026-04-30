@@ -1,7 +1,7 @@
 //! Choice modal with horizontal buttons.
 
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyCode, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -125,7 +125,11 @@ impl Modal for ChoiceModal {
         }
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Option<ModalResult<Self::Result>>> {
+    fn handle_key(
+        &mut self,
+        chord: termide_core::KeyChord,
+    ) -> Result<Option<ModalResult<Self::Result>>> {
+        let key = chord.raw;
         match key.code {
             KeyCode::Left => {
                 if self.selected > 0 {

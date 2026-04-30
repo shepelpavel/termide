@@ -1,7 +1,7 @@
 //! Information display modal dialog.
 
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::KeyCode;
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -484,7 +484,11 @@ impl Modal for InfoModal {
         }
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Option<ModalResult<Self::Result>>> {
+    fn handle_key(
+        &mut self,
+        chord: termide_core::KeyChord,
+    ) -> Result<Option<ModalResult<Self::Result>>> {
+        let key = chord.raw;
         let max_scroll = self.cached_total_lines.saturating_sub(self.cached_visible);
         let page = self.cached_visible.max(1);
 
@@ -582,7 +586,7 @@ impl Modal for InfoModal {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crossterm::event::{KeyEventKind, KeyEventState, KeyModifiers, MouseEvent};
+    use crossterm::event::{KeyEvent, KeyEventKind, KeyEventState, KeyModifiers, MouseEvent};
     use ratatui::buffer::Buffer;
     use ratatui::layout::Rect;
     use std::sync::Once;
@@ -610,13 +614,14 @@ mod tests {
         }
     }
 
-    fn press(code: KeyCode) -> KeyEvent {
-        KeyEvent {
+    fn press(code: KeyCode) -> termide_core::KeyChord {
+        let ev = KeyEvent {
             code,
             modifiers: KeyModifiers::empty(),
             kind: KeyEventKind::Press,
             state: KeyEventState::NONE,
-        }
+        };
+        termide_core::KeyChord::identity(ev)
     }
 
     #[test]

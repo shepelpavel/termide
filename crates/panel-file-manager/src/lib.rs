@@ -101,7 +101,6 @@ fn sort_entries(entries: &mut [FileEntry]) {
 }
 
 use anyhow::Result;
-use crossterm::event::KeyEvent;
 use ratatui::{buffer::Buffer, layout::Rect, prelude::Widget, widgets::Paragraph};
 use std::any::Any;
 use std::collections::{HashSet, VecDeque};
@@ -1391,7 +1390,8 @@ impl Panel for FileManager {
         }
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
+    fn handle_key(&mut self, chord: termide_core::KeyChord) -> Vec<PanelEvent> {
+        let key = chord.raw;
         use keyboard::FmCommand;
 
         // Raw key — HotkeyTable.matches() handles Cyrillic normalization internally.

@@ -1,7 +1,7 @@
 //! Save As modal dialog with executable checkbox.
 
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -207,7 +207,11 @@ impl Modal for SaveAsModal {
         self.last_buttons_area = Some(chunks[2]);
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Option<ModalResult<Self::Result>>> {
+    fn handle_key(
+        &mut self,
+        chord: termide_core::KeyChord,
+    ) -> Result<Option<ModalResult<Self::Result>>> {
+        let key = chord.raw;
         // Escape always cancels
         if key.code == KeyCode::Esc {
             return Ok(Some(ModalResult::Cancelled));

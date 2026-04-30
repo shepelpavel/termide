@@ -443,7 +443,6 @@ impl App {
 }
 
 /// Number of lines added/removed per `panel_grow_vertical` /
-/// `panel_shrink_vertical` press. Hardcoded — single-line steps make the
-/// hotkey feel broken, larger steps overshoot. Mirrors the rationale for
-/// keeping horizontal resize step hardcoded.
-const PANEL_VERTICAL_RESIZE_STEP: u16 = 3;
+/// `panel_shrink_vertical` press. Mirrors horizontal resize which
+/// also moves by a single unit per chord.
+const PANEL_VERTICAL_RESIZE_STEP: u16 = 1;

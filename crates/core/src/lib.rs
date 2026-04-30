@@ -6,6 +6,7 @@
 pub mod command;
 pub mod event;
 pub mod hotkey_table;
+pub mod key_chord;
 pub mod panel;
 pub mod terminal_caps;
 pub mod util;
@@ -16,6 +17,7 @@ pub use event::{
     PanelEvent, ReferenceLocation, SearchMode, SelectAction, SplitDirection, VimPanelDirection,
 };
 pub use hotkey_table::HotkeyTable;
+pub use key_chord::KeyChord;
 pub use panel::{
     Panel, PanelConfig, RenderContext, Searchable, SessionPanel, ThemeColors, WidthPreference,
 };
@@ -23,6 +25,9 @@ pub use terminal_caps::{
     get_terminal_caps, init_icon_mode, init_terminal_caps, use_emoji_icons, ColorDepth,
     TerminalCaps,
 };
+// Re-export keyboard primitives so panels can stay on `termide_core` as
+// their dependency surface.
+pub use termide_keyboard::{KeyNormalizer, KeyboardCaps};
 
 // Re-export theme and config for convenience
 pub use termide_config::Config;

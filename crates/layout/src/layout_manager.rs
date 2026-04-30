@@ -177,8 +177,14 @@ pub enum PanelDragIntent {
     /// boundary.
     ResizeAbove { divider_y: u16 },
     /// Apply the existing move semantics (insert into a group or
-    /// create a new one).
-    Move(PanelDropTarget),
+    /// create a new one). `drop_y` is the cursor's row at release;
+    /// for `IntoGroup` drops the drag-end handler uses it to split
+    /// the target panel — the upper part keeps the rows above
+    /// `drop_y`, the dragged panel takes the rest.
+    Move {
+        target: PanelDropTarget,
+        drop_y: u16,
+    },
     /// No valid drop position.
     Cancel,
 }
@@ -217,7 +223,10 @@ pub fn classify_panel_drag(
         }
     }
     match compute_drop_target(rects, cursor_x, cursor_y) {
-        Some(target) => PanelDragIntent::Move(target),
+        Some(target) => PanelDragIntent::Move {
+            target,
+            drop_y: cursor_y,
+        },
         None => PanelDragIntent::Cancel,
     }
 }
@@ -1114,7 +1123,7 @@ mod tests {
             self.name.to_string()
         }
         fn render(&mut self, _area: Rect, _buf: &mut Buffer, _ctx: &RenderContext) {}
-        fn handle_key(&mut self, _key: KeyEvent) -> Vec<PanelEvent> {
+        fn handle_key(&mut self, _chord: termide_core::KeyChord) -> Vec<PanelEvent> {
             vec![]
         }
         fn as_any(&self) -> &dyn Any {

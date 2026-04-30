@@ -11,7 +11,7 @@ use std::any::Any;
 use std::path::Path;
 use std::time::Instant;
 
-use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyCode, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::{buffer::Buffer, layout::Rect, widgets::Widget};
 
 use termide_config::Config;
@@ -285,7 +285,8 @@ impl Panel for OperationsPanel {
         self.card_areas = card_areas;
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
+    fn handle_key(&mut self, chord: termide_core::KeyChord) -> Vec<PanelEvent> {
+        let key = chord.raw;
         let total = self.operations.len();
         let mut events = vec![];
 

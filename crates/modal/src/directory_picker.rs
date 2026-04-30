@@ -4,7 +4,7 @@
 //! cursor rendering matching the file manager panel style.
 
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -433,7 +433,11 @@ impl Modal for DirectoryPickerModal {
         );
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Option<ModalResult<Self::Result>>> {
+    fn handle_key(
+        &mut self,
+        chord: termide_core::KeyChord,
+    ) -> Result<Option<ModalResult<Self::Result>>> {
+        let key = chord.raw;
         match key.code {
             KeyCode::Esc => Ok(Some(ModalResult::Cancelled)),
             KeyCode::Tab | KeyCode::BackTab => {

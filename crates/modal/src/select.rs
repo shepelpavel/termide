@@ -1,7 +1,7 @@
 //! Selection modal dialog (single selection).
 
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::KeyCode;
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -127,7 +127,11 @@ impl Modal for SelectModal {
         self.last_list_area = Some(chunks[1]);
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Option<ModalResult<Self::Result>>> {
+    fn handle_key(
+        &mut self,
+        chord: termide_core::KeyChord,
+    ) -> Result<Option<ModalResult<Self::Result>>> {
+        let key = chord.raw;
         match key.code {
             KeyCode::Esc => Ok(Some(ModalResult::Cancelled)),
             KeyCode::Up => {

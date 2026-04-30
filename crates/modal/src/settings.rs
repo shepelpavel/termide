@@ -197,6 +197,9 @@ pub struct SettingsModal {
     kb_cursor: usize,
     /// Scroll offset for binding list.
     kb_scroll: usize,
+    /// Inline message shown after capturing a keybinding (e.g. conflict
+    /// warning). Cleared on the next user action.
+    kb_capture_message: Option<String>,
 
     // --- Buttons ---
     selected_button: usize,
@@ -232,6 +235,7 @@ impl SettingsModal {
             kb_section: 0,
             kb_cursor: 0,
             kb_scroll: 0,
+            kb_capture_message: None,
             selected_button: BUTTON_APPLY,
             dirty: false,
             last_modal_area: None,
@@ -1066,7 +1070,11 @@ impl Modal for SettingsModal {
         self.render_buttons(buttons, buf, theme);
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Option<ModalResult<SettingsResult>>> {
+    fn handle_key(
+        &mut self,
+        chord: termide_core::KeyChord,
+    ) -> Result<Option<ModalResult<SettingsResult>>> {
+        let key = chord.raw;
         // If editing a text/number field, intercept all keys
         if self.editing {
             return self.handle_edit_key(key);
@@ -1617,19 +1625,54 @@ impl SettingsModal {
             }
         }
 
-        // Hint line at the bottom of the area.
+        // Hint line at the bottom of the area. If there is a fresh
+        // capture message (e.g. conflict warning), show it instead of
+        // the static hint — it's more actionable.
         let hint_y = area.y + area.height - 1;
         let it = i18n::t();
-        let hint = match self.kb_mode {
-            KbMode::Bindings => it.settings_kb_hint_bindings(),
-            KbMode::Capturing => it.settings_kb_hint_capturing(),
-        };
-        buf.set_string(
-            area.x + 2,
-            hint_y,
-            hint,
-            Style::default().fg(theme.disabled),
-        );
+        if let Some(msg) = &self.kb_capture_message {
+            buf.set_string(area.x + 2, hint_y, msg, Style::default().fg(theme.warning));
+        } else {
+            let hint = match self.kb_mode {
+                KbMode::Bindings => it.settings_kb_hint_bindings(),
+                KbMode::Capturing => it.settings_kb_hint_capturing(),
+            };
+            buf.set_string(
+                area.x + 2,
+                hint_y,
+                hint,
+                Style::default().fg(theme.disabled),
+            );
+        }
+    }
+
+    /// Look up an existing binding string in `self.config` to warn the
+    /// user about a same-section / cross-section clash before the new
+    /// assignment overwrites it. The check is intentionally string-based
+    /// (not parsed) so it matches what the user sees in the picker;
+    /// canonicalization at parse time means logically-equivalent strings
+    /// (`"Alt++"` vs `"Alt+Shift+="`) reach this function in the same
+    /// canonical form because the picker always produces the canonical
+    /// shape through `format_key_event`.
+    fn find_conflict_for_binding(
+        &self,
+        new_binding: &str,
+        new_section: &str,
+        new_action: &str,
+    ) -> Option<String> {
+        for (loc, _, display) in termide_config::enumerate_bindings(&self.config) {
+            if display != new_binding {
+                continue;
+            }
+            if loc.section == new_section && loc.action == new_action {
+                continue;
+            }
+            return Some(format!(
+                "{} is also bound to {}.{}",
+                new_binding, loc.section, loc.action
+            ));
+        }
+        None
     }
 
     fn handle_keybindings_key(
@@ -1681,19 +1724,32 @@ impl SettingsModal {
             KbMode::Capturing => {
                 if key.code == KeyCode::Esc || key.code == KeyCode::Tab {
                     self.kb_mode = KbMode::Bindings;
+                    self.kb_capture_message = None;
                     return Ok(None);
                 }
                 let binding_str = format_key_event(&key);
                 if !binding_str.is_empty() {
                     let names = kb_binding_names(self.kb_section);
                     if self.kb_cursor < names.len() {
+                        let action = names[self.kb_cursor];
+                        let section_name = KB_SECTIONS
+                            .get(self.kb_section)
+                            .copied()
+                            .unwrap_or("")
+                            .to_lowercase();
+                        // Pre-check for an existing binding so the user
+                        // sees a warning and the conflict resolver gets a
+                        // chance to inform them.
+                        let conflict_msg =
+                            self.find_conflict_for_binding(&binding_str, &section_name, action);
                         set_kb_value(
                             &mut self.config,
                             self.kb_section,
-                            names[self.kb_cursor],
-                            KeyBinding::Single(binding_str),
+                            action,
+                            KeyBinding::Single(binding_str.clone()),
                         );
                         self.dirty = true;
+                        self.kb_capture_message = conflict_msg;
                     }
                 }
                 self.kb_mode = KbMode::Bindings;

@@ -54,23 +54,26 @@ impl HotkeyTable {
 
     /// Check if a key event matches the given action name.
     ///
-    /// Checks both the raw key and its Cyrillic→Latin normalized alternative,
-    /// so hotkeys work regardless of keyboard layout.
+    /// Convenience wrapper: canonicalizes `key` with a default
+    /// (no-caps) `KeyNormalizer` before strict comparison. Callers
+    /// holding a `KeyChord` should use `matches_canonical` directly so
+    /// the active terminal capabilities are honoured.
     pub fn matches(&self, action: &str, key: &KeyEvent) -> bool {
-        if let Some(bindings) = self.bindings.get(action) {
-            // Check raw key first
-            if bindings.iter().any(|b| b.matches(key)) {
-                return true;
-            }
-            // Check normalized (Cyrillic → Latin QWERTY) alternative
-            let normalized = termide_keyboard::normalize_for_matching(key);
-            if normalized != *key {
-                return bindings.iter().any(|b| b.matches(&normalized));
-            }
-            false
-        } else {
-            false
-        }
+        let normalizer = termide_keyboard::KeyNormalizer::default();
+        let canonical = normalizer.canonicalize(*key);
+        self.matches_canonical(action, &canonical)
+    }
+
+    /// Strict match against an already-canonical event.
+    ///
+    /// Single pass — both the binding (canonicalized at parse time)
+    /// and the event (canonicalized by the dispatcher) are in canonical
+    /// form, so no alternative-paths are needed.
+    pub fn matches_canonical(&self, action: &str, canonical: &KeyEvent) -> bool {
+        let Some(bindings) = self.bindings.get(action) else {
+            return false;
+        };
+        bindings.iter().any(|b| b.matches(canonical))
     }
 
     /// Find the first action whose name starts with `prefix` that matches the key.

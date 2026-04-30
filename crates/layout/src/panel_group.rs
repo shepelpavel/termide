@@ -272,9 +272,33 @@ impl PanelGroup {
     /// Replace the split-heights cache directly. The caller is
     /// responsible for length and sum invariants — for normalisation,
     /// chase with [`Self::redistribute_heights_proportionally`].
+    ///
+    /// Implicitly exits the fullscreen preset (clears
+    /// `fullscreen_cache`): an explicit heights override is a free-
+    /// resize action, and leaving the preset cache in place would let
+    /// a later toggle restore stale heights.
     pub fn set_split_heights(&mut self, heights: Vec<u16>) {
         if heights.len() == self.panels.len() {
+            self.fullscreen_cache = None;
             self.split_heights = Some(heights);
+        }
+    }
+
+    /// Exit the fullscreen preset if it is active, restoring the
+    /// cached pre-fullscreen heights as the new free-resize state
+    /// (rescaled to `area_height`). No-op when not in fullscreen.
+    ///
+    /// Used before any operation that takes manual control of heights
+    /// (mouse divider drag, header-drag resize, header-drag drop into
+    /// the group, `Ctrl+Alt+=/-`) so the preset's `[1, …, big, …, 1]`
+    /// shape doesn't interfere.
+    pub fn exit_fullscreen_preset(&mut self, area_height: u16) {
+        if let Some(cached) = self.fullscreen_cache.take() {
+            if cached.len() == self.panels.len() {
+                let mut restored = cached;
+                redistribute_proportionally(&mut restored, area_height, MIN_PANEL_HEIGHT);
+                self.split_heights = Some(restored);
+            }
         }
     }
 
@@ -351,13 +375,14 @@ impl PanelGroup {
     /// Cascades downward first (next, next+1, …); falls back upward
     /// when every panel below is at [`MIN_PANEL_HEIGHT`].
     ///
-    /// In the fullscreen preset all neighbours sit at `MIN_PANEL_HEIGHT`
-    /// already, so a grow request is a no-op (the focused panel already
-    /// owns every spare row).
+    /// Manual heights operation — exits the fullscreen preset when
+    /// active so the user's adjustment lands on the cached free-resize
+    /// state instead of the preset's `[1, …, big, …, 1]` shape.
     pub fn grow_focused(&mut self, lines: u16, area_height: u16) {
         if self.panels.len() < 2 || lines == 0 {
             return;
         }
+        self.exit_fullscreen_preset(area_height);
         let n = self.panels.len();
         let mut heights = self
             .split_heights
@@ -390,10 +415,14 @@ impl PanelGroup {
     /// Shrink the focused panel by `lines`, giving the freed space to
     /// the next neighbour below (or above when focused is the last
     /// panel).
+    ///
+    /// Manual heights operation — exits the fullscreen preset when
+    /// active.
     pub fn shrink_focused(&mut self, lines: u16, area_height: u16) {
         if self.panels.len() < 2 || lines == 0 {
             return;
         }
+        self.exit_fullscreen_preset(area_height);
         let n = self.panels.len();
         let mut heights = self
             .split_heights
@@ -423,11 +452,15 @@ impl PanelGroup {
     /// Apply a drag delta to the divider between panels `upper_idx` and
     /// `upper_idx + 1`. Positive `delta_lines` grows the upper panel,
     /// negative grows the lower. Heights clamp to [`MIN_PANEL_HEIGHT`].
+    ///
+    /// Manual heights operation — exits the fullscreen preset when
+    /// active so the resize lands on the user's free-resize layout.
     pub fn resize_panel_divider(&mut self, upper_idx: usize, delta_lines: i32, area_height: u16) {
         let n = self.panels.len();
         if upper_idx + 1 >= n {
             return;
         }
+        self.exit_fullscreen_preset(area_height);
         let mut heights = self
             .split_heights
             .clone()
@@ -648,7 +681,7 @@ mod tests {
             self.0.to_string()
         }
         fn render(&mut self, _area: Rect, _buf: &mut Buffer, _ctx: &RenderContext) {}
-        fn handle_key(&mut self, _key: KeyEvent) -> Vec<PanelEvent> {
+        fn handle_key(&mut self, _chord: termide_core::KeyChord) -> Vec<PanelEvent> {
             vec![]
         }
         fn as_any(&self) -> &dyn Any {

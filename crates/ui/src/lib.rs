@@ -31,7 +31,7 @@ pub use termide_clipboard as clipboard;
 pub use termide_config::constants;
 
 use anyhow::Result;
-use crossterm::event::{KeyEvent, MouseEvent};
+use crossterm::event::MouseEvent;
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction as LayoutDirection, Layout, Rect},
@@ -70,8 +70,18 @@ pub trait Modal {
     fn render(&mut self, area: Rect, buf: &mut Buffer);
 
     /// Handle keyboard event.
+    ///
+    /// `chord` carries both the raw `KeyEvent` from crossterm and its
+    /// canonical form. Use `chord.canonical` for shortcut matching
+    /// (Esc, Enter, Tab, modifier-key chords) and `chord.raw` for
+    /// text-input fields where Cyrillic/shifted glyphs must reach the
+    /// buffer untouched.
+    ///
     /// Returns Some(result) if the modal window should close.
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Option<ModalResult<Self::Result>>>;
+    fn handle_key(
+        &mut self,
+        chord: termide_core::KeyChord,
+    ) -> Result<Option<ModalResult<Self::Result>>>;
 
     /// Handle mouse event.
     /// Returns Some(result) if the modal window should close.

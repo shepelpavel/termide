@@ -11,8 +11,9 @@
 //! copy_files = ["C", "F5"]  # multiple bindings
 //! ```
 
-use crossterm::event::{KeyCode, KeyEvent, KeyEventState, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use serde::{Deserialize, Serialize};
+use termide_keyboard::{cyrillic_to_latin_opt, unshifted_punctuation, KeyNormalizer};
 
 /// A keybinding that can be either a single key or multiple alternatives.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -26,21 +27,28 @@ pub enum KeyBinding {
 
 impl KeyBinding {
     /// Check if a key event matches this binding.
+    ///
+    /// **Convenience wrapper**: canonicalizes `event` with a default
+    /// (no-caps) `KeyNormalizer` before strict comparison. Callers that
+    /// already hold a `KeyChord` should compare against `chord.canonical`
+    /// directly via [`ParsedKeyBinding::matches`] for clarity and to
+    /// honour the active terminal capabilities.
     pub fn matches(&self, event: &KeyEvent) -> bool {
+        let normalizer = KeyNormalizer::default();
+        let canonical = normalizer.canonicalize(*event);
+        self.matches_canonical(&canonical)
+    }
+
+    /// Strict match against an already-canonical event.
+    pub fn matches_canonical(&self, canonical: &KeyEvent) -> bool {
         match self {
-            KeyBinding::Single(s) => {
-                if let Ok(parsed) = parse_keybinding(s) {
-                    parsed.matches(event)
-                } else {
-                    false
-                }
-            }
+            KeyBinding::Single(s) => parse_keybinding(s)
+                .map(|p| p.matches(canonical))
+                .unwrap_or(false),
             KeyBinding::Multiple(bindings) => bindings.iter().any(|s| {
-                if let Ok(parsed) = parse_keybinding(s) {
-                    parsed.matches(event)
-                } else {
-                    false
-                }
+                parse_keybinding(s)
+                    .map(|p| p.matches(canonical))
+                    .unwrap_or(false)
             }),
         }
     }
@@ -66,6 +74,11 @@ impl KeyBinding {
 }
 
 /// A parsed keybinding ready for runtime matching.
+///
+/// Always stored in canonical form: parse-time normalization rewrites
+/// shifted punctuation glyphs (`+`, `_`, `?`, …) into `Shift+<unshifted>`
+/// and Cyrillic letters into Latin. This keeps matching a strict
+/// equality check with no alternative-paths.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ParsedKeyBinding {
     pub key: KeyCode,
@@ -73,63 +86,91 @@ pub struct ParsedKeyBinding {
 }
 
 impl ParsedKeyBinding {
-    /// Check if a key event matches this parsed binding.
+    /// Strict canonical equality. Both operands must be canonical
+    /// (parse-time normalization for `self`, `KeyNormalizer::canonicalize`
+    /// for `event`).
     pub fn matches(&self, event: &KeyEvent) -> bool {
-        // Normalize character case for matching
-        let key_matches = match (&self.key, &event.code) {
+        let key_eq = match (&self.key, &event.code) {
             (KeyCode::Char(a), KeyCode::Char(b)) => a.eq_ignore_ascii_case(b),
             (a, b) => a == b,
         };
-
-        // Caps Lock on Linux/X11 attaches Shift to every letter event. The
-        // Kitty keyboard protocol (REPORT_EVENT_TYPES) surfaces that via
-        // `KeyEventState::CAPS_LOCK`, so when *that* bit is set we can safely
-        // strip the spurious Shift from the event before comparing modifiers
-        // — only for Char bindings that don't explicitly ask for Shift. This
-        // leaves intentional `Ctrl+Shift+F` / `Shift+Tab` bindings untouched.
-        let caps_lock_shift = event.state.contains(KeyEventState::CAPS_LOCK)
-            && matches!(self.key, KeyCode::Char(_))
-            && !self.modifiers.contains(KeyModifiers::SHIFT);
-        let event_modifiers = if caps_lock_shift {
-            event.modifiers - KeyModifiers::SHIFT
-        } else {
-            event.modifiers
-        };
-
-        key_matches && self.modifiers == event_modifiers
+        key_eq && self.modifiers == event.modifiers
     }
 }
 
-/// Parse a keybinding string like "Ctrl+Shift+S" into a ParsedKeyBinding.
+/// Parse a keybinding string like "Ctrl+Shift+S" into a canonical
+/// `ParsedKeyBinding`.
+///
+/// Canonicalization rules applied at parse time (mirroring
+/// `KeyNormalizer::canonicalize` for `KeyEvent`):
+/// - Cyrillic letter → Latin equivalent on the same physical key.
+/// - Shifted-glyph punctuation (`+`, `_`, `!`, …) → `Shift+<unshifted>`.
+///
+/// As a result, two strings that name the same physical chord parse to
+/// the same `ParsedKeyBinding`: e.g. `"Alt++"` ≡ `"Alt+Shift+="`,
+/// `"Ctrl+Й"` ≡ `"Ctrl+Q"`.
 pub fn parse_keybinding(s: &str) -> Result<ParsedKeyBinding, String> {
     let s = s.trim();
     if s.is_empty() {
         return Err("Empty keybinding".to_string());
     }
 
-    let parts: Vec<&str> = s.split('+').collect();
-    if parts.is_empty() {
-        return Err("Invalid keybinding format".to_string());
-    }
+    // The literal `+` key is awkward because `+` is also our modifier
+    // separator. Split off the key first by looking at the trailing
+    // characters:
+    //   "+"         → key='+', no modifiers.
+    //   "Alt++"     → key='+', mods="Alt".
+    //   "Ctrl+S"    → key='S', mods="Ctrl".
+    //   "Alt+"      → invalid (legacy behaviour).
+    let (mods_part, key_part) = if s == "+" {
+        ("", "+")
+    } else if let Some(stripped) = s.strip_suffix('+') {
+        if let Some(prefix) = stripped.strip_suffix('+') {
+            (prefix, "+")
+        } else {
+            return Err("Empty keybinding".to_string());
+        }
+    } else if let Some(idx) = s.rfind('+') {
+        (&s[..idx], &s[idx + 1..])
+    } else {
+        ("", s)
+    };
 
     let mut modifiers = KeyModifiers::empty();
-    let key_str = parts.last().ok_or("Empty keybinding")?.trim();
-
-    // Parse modifiers (all parts except the last one)
-    for part in &parts[..parts.len().saturating_sub(1)] {
-        let part = part.trim().to_lowercase();
-        match part.as_str() {
-            "ctrl" | "control" => modifiers |= KeyModifiers::CONTROL,
-            "alt" => modifiers |= KeyModifiers::ALT,
-            "shift" => modifiers |= KeyModifiers::SHIFT,
-            _ => return Err(format!("Unknown modifier: {}", part)),
+    if !mods_part.is_empty() {
+        for part in mods_part.split('+') {
+            let lower = part.trim().to_lowercase();
+            match lower.as_str() {
+                "" => {} // Tolerate empty segments like in "Alt++Ctrl".
+                "ctrl" | "control" => modifiers |= KeyModifiers::CONTROL,
+                "alt" => modifiers |= KeyModifiers::ALT,
+                "shift" => modifiers |= KeyModifiers::SHIFT,
+                other => return Err(format!("Unknown modifier: {}", other)),
+            }
         }
     }
 
-    // Parse the key
-    let key = parse_key(key_str)?;
+    let key = parse_key(key_part.trim())?;
 
-    Ok(ParsedKeyBinding { key, modifiers })
+    let mut parsed = ParsedKeyBinding { key, modifiers };
+    canonicalize_parsed(&mut parsed);
+    Ok(parsed)
+}
+
+/// Apply parse-time canonicalization in-place: Cyrillic→Latin and
+/// shifted-glyph punctuation → `Shift+<unshifted>`.
+fn canonicalize_parsed(parsed: &mut ParsedKeyBinding) {
+    if let KeyCode::Char(c) = parsed.key {
+        if let Some(latin) = cyrillic_to_latin_opt(c) {
+            parsed.key = KeyCode::Char(latin);
+        }
+    }
+    if let KeyCode::Char(c) = parsed.key {
+        if let Some(unshifted) = unshifted_punctuation(c) {
+            parsed.key = KeyCode::Char(unshifted);
+            parsed.modifiers |= KeyModifiers::SHIFT;
+        }
+    }
 }
 
 /// Parse a key name into a KeyCode.
@@ -465,6 +506,14 @@ impl GlobalKeybindings {
             };
         }
 
+        macro_rules! set_default_multiple {
+            ($field:ident, $($default:expr),+) => {
+                if self.$field.is_none() {
+                    self.$field = Some(KeyBinding::Multiple(vec![$($default.into()),+]));
+                }
+            };
+        }
+
         // Menu & UI (toggle_menu uses set_default_multiple, defined below)
 
         // Panel creation
@@ -474,7 +523,7 @@ impl GlobalKeybindings {
         set_default!(new_journal, "Alt+L");
         // open_help gets F1 alternative below (needs set_default_multiple)
         set_default!(open_preferences, "Alt+P");
-        set_default!(open_sessions, "Alt+/");
+        set_default!(open_sessions, "Alt+\\");
         set_default!(new_session, "Alt+N");
         set_default!(open_git_status, "Alt+G");
         set_default!(open_bookmark_add, "Alt+B");
@@ -490,18 +539,23 @@ impl GlobalKeybindings {
         set_default!(resize_smaller, "Alt+-");
         set_default!(resize_larger, "Alt+=");
         set_default!(toggle_fullscreen_panel, "Alt+F11");
-        set_default!(panel_grow_vertical, "Ctrl+Alt+=");
-        set_default!(panel_shrink_vertical, "Ctrl+Alt+-");
+        // Vertical resize: `Alt+Shift+=` / `Alt+Shift+-`. Parallel to
+        // horizontal `Alt+=` / `Alt+-` with Shift as the dimension
+        // discriminator.
+        //
+        // Why these work in VTE despite Phase 12's failed
+        // `Alt+Shift+Up/Down` attempt: VTE encodes a Shift+punctuation
+        // chord by sending the *shifted glyph* (`+` for `Shift+=`,
+        // `_` for `Shift+-`) without the Shift modifier. With Alt
+        // prefix it becomes `\e+` / `\e_`, which crossterm parses as
+        // `Char('+') + Alt` / `Char('_') + Alt`. `KeyNormalizer`
+        // (canonicalize step b) reverses that — `'+' → '=' + Shift`,
+        // `'_' → '-' + Shift` — yielding `Char('=') + Alt|Shift` /
+        // `Char('-') + Alt|Shift`, which match these bindings strictly.
+        set_default!(panel_grow_vertical, "Alt+Shift+=");
+        set_default!(panel_shrink_vertical, "Alt+Shift+-");
 
         // Navigation (with WASD alternatives)
-        macro_rules! set_default_multiple {
-            ($field:ident, $($default:expr),+) => {
-                if self.$field.is_none() {
-                    self.$field = Some(KeyBinding::Multiple(vec![$($default.into()),+]));
-                }
-            };
-        }
-
         set_default_multiple!(toggle_menu, "Alt+M", "F9");
         set_default_multiple!(open_help, "Alt+H", "F1");
         set_default_multiple!(close_panel, "Alt+X", "F10");
@@ -556,7 +610,10 @@ impl EditorKeybindings {
         set_default!(undo, "Ctrl+Z");
         set_default_multiple!(redo, "Ctrl+Y", "Ctrl+Shift+Z");
         set_default!(duplicate_line, "Ctrl+D");
-        set_default!(toggle_comment, "Ctrl+/");
+        // De-facto editor standards: `Ctrl+/` and `Ctrl+.`. On VTE
+        // legacy terminals `Ctrl+/` reaches us via the `Ctrl+7→Ctrl+/`
+        // quirk in `KeyNormalizer`. `Ctrl+.` requires Kitty proto.
+        set_default_multiple!(toggle_comment, "Ctrl+/", "Ctrl+.");
 
         // Search & Replace
         set_default!(search, "Ctrl+F");
@@ -564,7 +621,9 @@ impl EditorKeybindings {
         set_default!(search_prev, "Shift+F3");
         set_default!(replace, "Ctrl+H");
         set_default!(replace_current, "Ctrl+R");
-        set_default!(replace_all, "Ctrl+Alt+R");
+        // `Ctrl+Alt+R` is the de-facto IDE standard; `Alt+R` is the
+        // universal-tier fallback for terminals that drop Ctrl+Alt.
+        set_default_multiple!(replace_all, "Ctrl+Alt+R", "Alt+R");
 
         // Selection
         set_default!(select_all, "Ctrl+A");
@@ -575,7 +634,14 @@ impl EditorKeybindings {
         set_default_multiple!(paste, "Ctrl+V", "Shift+Insert", "Ctrl+Shift+V");
 
         // LSP
-        set_default!(trigger_completion, "Ctrl+.");
+        // - `Ctrl+J` (`\x0A`, control char): universal — always reaches
+        //   termide, does not collide with the `Enter` byte (`\r`).
+        // - `Ctrl+Space`: convenient where IBus / window manager does
+        //   not intercept it as the layout-switch shortcut.
+        //
+        // `Ctrl+.` is intentionally NOT a fallback here: it is bound to
+        // `toggle_comment` in the same section.
+        set_default_multiple!(trigger_completion, "Ctrl+J", "Ctrl+Space");
         set_default!(show_hover, "Ctrl+K");
         set_default!(goto_definition, "F12");
         set_default!(rename_symbol, "F4");
@@ -631,7 +697,10 @@ impl FileManagerKeybindings {
         set_default!(refresh, "Ctrl+R");
         set_default!(go_parent, "Backspace");
         set_default!(go_home, "~");
-        set_default!(switch_directory, "Ctrl+/");
+        // Parallel to global `open_sessions = "Alt+\\"`: `Ctrl+\\` for
+        // the analogous "switch directory" action. Reaches VTE via
+        // the `Ctrl+4→Ctrl+\\` quirk in `KeyNormalizer`.
+        set_default!(switch_directory, "Ctrl+\\");
         set_default!(go_to_path, "Ctrl+G");
 
         // Selection
@@ -667,125 +736,7 @@ impl TerminalKeybindings {
         set_default!(scroll_top, "Shift+Home");
         set_default!(scroll_bottom, "Shift+End");
         set_default!(search, "Ctrl+F");
-        set_default!(switch_directory, "Ctrl+/");
-    }
-}
-
-// =============================================================================
-// Latin to Cyrillic mapping for keyboard layout support
-// =============================================================================
-
-/// Map Cyrillic character to Latin equivalent (ЙЦУКЕН → QWERTY layout).
-///
-/// This allows Vim commands to work regardless of the current keyboard layout.
-/// For example, 'о' (Cyrillic) maps to 'j' for Vim down motion.
-pub fn cyrillic_to_latin(c: char) -> Option<char> {
-    match c {
-        // Lowercase
-        'ф' => Some('a'),
-        'и' => Some('b'),
-        'с' => Some('c'),
-        'в' => Some('d'),
-        'у' => Some('e'),
-        'а' => Some('f'),
-        'п' => Some('g'),
-        'р' => Some('h'),
-        'ш' => Some('i'),
-        'о' => Some('j'),
-        'л' => Some('k'),
-        'д' => Some('l'),
-        'ь' => Some('m'),
-        'т' => Some('n'),
-        'щ' => Some('o'),
-        'з' => Some('p'),
-        'й' => Some('q'),
-        'к' => Some('r'),
-        'ы' => Some('s'),
-        'е' => Some('t'),
-        'г' => Some('u'),
-        'м' => Some('v'),
-        'ц' => Some('w'),
-        'ч' => Some('x'),
-        'н' => Some('y'),
-        'я' => Some('z'),
-        // Uppercase
-        'Ф' => Some('A'),
-        'И' => Some('B'),
-        'С' => Some('C'),
-        'В' => Some('D'),
-        'У' => Some('E'),
-        'А' => Some('F'),
-        'П' => Some('G'),
-        'Р' => Some('H'),
-        'Ш' => Some('I'),
-        'О' => Some('J'),
-        'Л' => Some('K'),
-        'Д' => Some('L'),
-        'Ь' => Some('M'),
-        'Т' => Some('N'),
-        'Щ' => Some('O'),
-        'З' => Some('P'),
-        'Й' => Some('Q'),
-        'К' => Some('R'),
-        'Ы' => Some('S'),
-        'Е' => Some('T'),
-        'Г' => Some('U'),
-        'М' => Some('V'),
-        'Ц' => Some('W'),
-        'Ч' => Some('X'),
-        'Н' => Some('Y'),
-        'Я' => Some('Z'),
-        // Punctuation (for Vim commands like $ ; ^)
-        'х' => Some('['),
-        'ъ' => Some(']'),
-        'ж' => Some(';'),
-        'э' => Some('\''),
-        'б' => Some(','),
-        'ю' => Some('.'),
-        _ => None,
-    }
-}
-
-/// Map Latin character to Cyrillic equivalent (QWERTY → ЙЦУКЕН layout).
-///
-/// This allows hotkeys to work regardless of the current keyboard layout.
-/// For example, Alt+M will also work as Alt+Ь when in Russian layout.
-pub fn latin_to_cyrillic(c: char) -> Option<char> {
-    match c.to_ascii_lowercase() {
-        'a' => Some('ф'),
-        'b' => Some('и'),
-        'c' => Some('с'),
-        'd' => Some('в'),
-        'e' => Some('у'),
-        'f' => Some('а'),
-        'g' => Some('п'),
-        'h' => Some('р'),
-        'i' => Some('ш'),
-        'j' => Some('о'),
-        'k' => Some('л'),
-        'l' => Some('д'),
-        'm' => Some('ь'),
-        'n' => Some('т'),
-        'o' => Some('щ'),
-        'p' => Some('з'),
-        'q' => Some('й'),
-        'r' => Some('к'),
-        's' => Some('ы'),
-        't' => Some('е'),
-        'u' => Some('г'),
-        'v' => Some('м'),
-        'w' => Some('ц'),
-        'x' => Some('ч'),
-        'y' => Some('н'),
-        'z' => Some('я'),
-        '[' => Some('х'),
-        ']' => Some('ъ'),
-        ';' => Some('ж'),
-        '\'' => Some('э'),
-        ',' => Some('б'),
-        '.' => Some('ю'),
-        '/' => Some('.'),
-        _ => None,
+        set_default!(switch_directory, "Ctrl+\\");
     }
 }
 
@@ -793,17 +744,22 @@ pub fn latin_to_cyrillic(c: char) -> Option<char> {
 // Vim-aware navigation helpers for list panels
 // =============================================================================
 
+/// Resolve the effective character for vim navigation: maps Cyrillic
+/// glyphs that share a physical key with Latin letters back to Latin.
+fn vim_char(key: &KeyEvent) -> Option<char> {
+    match key.code {
+        KeyCode::Char(c) => Some(termide_keyboard::cyrillic_to_latin(c)),
+        _ => None,
+    }
+}
+
 /// Check if key event is a "move up" action.
 /// Returns true for Up arrow (without modifiers), or 'k'/'л' when vim_mode is enabled.
 pub fn is_move_up(key: &KeyEvent, vim_mode: bool) -> bool {
     if key.code == KeyCode::Up && key.modifiers.is_empty() {
         return true;
     }
-    if vim_mode && key.modifiers.is_empty() {
-        let normalized = termide_keyboard::normalize_for_matching(key);
-        return matches!(normalized.code, KeyCode::Char('k'));
-    }
-    false
+    vim_mode && key.modifiers.is_empty() && vim_char(key) == Some('k')
 }
 
 /// Check if key event is a "move down" action.
@@ -812,11 +768,7 @@ pub fn is_move_down(key: &KeyEvent, vim_mode: bool) -> bool {
     if key.code == KeyCode::Down && key.modifiers.is_empty() {
         return true;
     }
-    if vim_mode && key.modifiers.is_empty() {
-        let normalized = termide_keyboard::normalize_for_matching(key);
-        return matches!(normalized.code, KeyCode::Char('j'));
-    }
-    false
+    vim_mode && key.modifiers.is_empty() && vim_char(key) == Some('j')
 }
 
 /// Check if key event is a "go to start/home" action.
@@ -825,11 +777,7 @@ pub fn is_go_home(key: &KeyEvent, vim_mode: bool) -> bool {
     if key.code == KeyCode::Home && key.modifiers.is_empty() {
         return true;
     }
-    if vim_mode && key.modifiers.is_empty() {
-        let normalized = termide_keyboard::normalize_for_matching(key);
-        return matches!(normalized.code, KeyCode::Char('g'));
-    }
-    false
+    vim_mode && key.modifiers.is_empty() && vim_char(key) == Some('g')
 }
 
 /// Check if key event is a "go to end" action.
@@ -838,11 +786,7 @@ pub fn is_go_end(key: &KeyEvent, vim_mode: bool) -> bool {
     if key.code == KeyCode::End && key.modifiers.is_empty() {
         return true;
     }
-    if vim_mode && key.modifiers == KeyModifiers::SHIFT {
-        let normalized = termide_keyboard::normalize_for_matching(key);
-        return matches!(normalized.code, KeyCode::Char('G'));
-    }
-    false
+    vim_mode && key.modifiers == KeyModifiers::SHIFT && vim_char(key) == Some('G')
 }
 
 #[cfg(test)]
@@ -974,14 +918,29 @@ mod tests {
             KeyEventState::NONE,
         )));
 
-        // With Caps Lock reported: Ctrl+F (no Shift binding) matches even
-        // when the event carries Shift, Ctrl+Shift+F keeps its own match.
-        assert!(search.matches(&make_event(
+        // With Caps Lock reported: matching only honours the bit when
+        // the active terminal advertises REPORT_EVENT_TYPES. The
+        // convenience `KeyBinding::matches` defaults to a no-caps
+        // normalizer, so the Shift attached to the letter is **not**
+        // dropped — `Ctrl+F` does not match `Char('F') + Ctrl|Shift`
+        // unless the caller canonicalizes with `event_types: true` first.
+        let normalizer = KeyNormalizer::new(termide_keyboard::KeyboardCaps {
+            event_types: true,
+            ..Default::default()
+        });
+        let canon = |code, mods, state| normalizer.canonicalize(make_event(code, mods, state));
+        // After canonicalize: spurious Shift dropped, so only the no-Shift
+        // binding (`Ctrl+F`) matches. Caps Lock is inherently ambiguous
+        // with intentional Shift; we resolve in favour of the no-Shift
+        // binding (the common case for hotkey use during caps-lock-on
+        // typing) and accept that the Shift variant cannot fire while
+        // caps lock is engaged on the terminal that reported the bit.
+        assert!(search.matches_canonical(&canon(
             KeyCode::Char('F'),
             KeyModifiers::CONTROL | KeyModifiers::SHIFT,
             KeyEventState::CAPS_LOCK,
         )));
-        assert!(search_content.matches(&make_event(
+        assert!(!search_content.matches_canonical(&canon(
             KeyCode::Char('F'),
             KeyModifiers::CONTROL | KeyModifiers::SHIFT,
             KeyEventState::CAPS_LOCK,
@@ -1002,23 +961,99 @@ mod tests {
     }
 
     #[test]
-    fn test_latin_to_cyrillic() {
-        // Common keys used in hotkeys
-        assert_eq!(latin_to_cyrillic('m'), Some('ь'));
-        assert_eq!(latin_to_cyrillic('M'), Some('ь')); // uppercase input → lowercase cyrillic
-        assert_eq!(latin_to_cyrillic('f'), Some('а'));
-        assert_eq!(latin_to_cyrillic('t'), Some('е'));
-        assert_eq!(latin_to_cyrillic('g'), Some('п'));
-        assert_eq!(latin_to_cyrillic('q'), Some('й'));
+    fn test_keybinding_matches_shifted_punctuation() {
+        use crossterm::event::{KeyEventKind, KeyEventState};
 
-        // WASD keys
-        assert_eq!(latin_to_cyrillic('w'), Some('ц'));
-        assert_eq!(latin_to_cyrillic('a'), Some('ф'));
-        assert_eq!(latin_to_cyrillic('s'), Some('ы'));
-        assert_eq!(latin_to_cyrillic('d'), Some('в'));
+        let make_event = |code, mods| KeyEvent {
+            code,
+            modifiers: mods,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        };
 
-        // Non-letter keys
-        assert_eq!(latin_to_cyrillic('1'), None);
-        assert_eq!(latin_to_cyrillic('-'), None);
+        // After Phase 3, the canon distinguishes physical-`=` and
+        // physical-`+` (Shift+=) presses. The convenience matcher
+        // canonicalizes the event before comparing, and parse-time
+        // canonicalization rewrites shifted-glyph strings, so these
+        // pairs are equivalent:
+        //   "Ctrl+Alt+="  ≡  Char('=') + Ctrl|Alt
+        //   "Ctrl+Alt++"  ≡  "Ctrl+Alt+Shift+="  ≡  Char('+') + Ctrl|Alt
+        //                                          (canonicalized to
+        //                                           Char('=') + Ctrl|Alt|Shift)
+        let grow_unshifted = KeyBinding::Single("Ctrl+Alt+=".to_string());
+        let grow_shifted = KeyBinding::Single("Ctrl+Alt+Shift+=".to_string());
+        let grow_literal_plus = KeyBinding::Single("Ctrl+Alt++".to_string());
+
+        // Unshifted binding matches unshifted event only.
+        assert!(grow_unshifted.matches(&make_event(
+            KeyCode::Char('='),
+            KeyModifiers::CONTROL | KeyModifiers::ALT,
+        )));
+        assert!(!grow_unshifted.matches(&make_event(
+            KeyCode::Char('+'),
+            KeyModifiers::CONTROL | KeyModifiers::ALT,
+        )));
+
+        // Shifted binding (`Ctrl+Alt+Shift+=`) matches the physical
+        // `Shift+=` press, however the terminal reported the chord:
+        // - `Char('+') + Ctrl|Alt` (REPORT_ALTERNATE_KEYS path);
+        // - `Char('+') + Ctrl|Alt|Shift` (terminals that don't strip);
+        // - `Char('=') + Ctrl|Alt|Shift` (already-canonical form).
+        for ev in [
+            make_event(
+                KeyCode::Char('+'),
+                KeyModifiers::CONTROL | KeyModifiers::ALT,
+            ),
+            make_event(
+                KeyCode::Char('+'),
+                KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SHIFT,
+            ),
+            make_event(
+                KeyCode::Char('='),
+                KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SHIFT,
+            ),
+        ] {
+            assert!(
+                grow_shifted.matches(&ev),
+                "Ctrl+Alt+Shift+= should match {ev:?}"
+            );
+        }
+
+        // `Ctrl+Alt++` parses to the same canonical form as `Ctrl+Alt+Shift+=`.
+        assert!(grow_literal_plus.matches(&make_event(
+            KeyCode::Char('+'),
+            KeyModifiers::CONTROL | KeyModifiers::ALT,
+        )));
+
+        // Non-matching modifier set: no false positives.
+        assert!(!grow_unshifted.matches(&make_event(KeyCode::Char('+'), KeyModifiers::ALT,)));
+        assert!(!grow_unshifted.matches(&make_event(KeyCode::Char('+'), KeyModifiers::CONTROL,)));
+
+        // Bindings that explicitly request Shift are unaffected: the
+        // shifted-equivalent path doesn't fire for letters, and it
+        // doesn't strip Shift when the binding asks for it.
+        let ctrl_shift_f = KeyBinding::Single("Ctrl+Shift+F".to_string());
+        assert!(ctrl_shift_f.matches(&make_event(
+            KeyCode::Char('F'),
+            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+        )));
+        assert!(!ctrl_shift_f.matches(&make_event(KeyCode::Char('f'), KeyModifiers::CONTROL,)));
+        assert!(!ctrl_shift_f.matches(&make_event(
+            KeyCode::Char('f'),
+            KeyModifiers::CONTROL | KeyModifiers::ALT,
+        )));
+    }
+
+    #[test]
+    fn test_cyrillic_to_latin_for_vim() {
+        // Vim navigation chars on ru-layout map back to Latin via the
+        // shared keyboard helper.
+        assert_eq!(termide_keyboard::cyrillic_to_latin_opt('л'), Some('k'));
+        assert_eq!(termide_keyboard::cyrillic_to_latin_opt('о'), Some('j'));
+        assert_eq!(termide_keyboard::cyrillic_to_latin_opt('п'), Some('g'));
+        assert_eq!(termide_keyboard::cyrillic_to_latin_opt('Н'), Some('Y'));
+        // Latin letters are pass-through.
+        assert_eq!(termide_keyboard::cyrillic_to_latin_opt('a'), None);
+        assert_eq!(termide_keyboard::cyrillic_to_latin_opt('1'), None);
     }
 }

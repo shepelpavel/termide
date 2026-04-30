@@ -11,7 +11,7 @@ mod treesitter;
 use std::any::Any;
 use std::path::PathBuf;
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::{buffer::Buffer, layout::Rect, style::Style};
 use termide_config::{is_go_end, is_go_home, is_move_down, is_move_up};
 use unicode_width::UnicodeWidthStr;
@@ -475,7 +475,8 @@ impl Panel for OutlinePanel {
         }
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
+    fn handle_key(&mut self, chord: termide_core::KeyChord) -> Vec<PanelEvent> {
+        let key = chord.raw;
         // Ctrl+C: copy selected symbol name to clipboard
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
             if let Some(symbol) = self.symbols.get(self.selected_index) {

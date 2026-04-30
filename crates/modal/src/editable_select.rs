@@ -10,7 +10,7 @@
 //! - Tab completion support
 
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::KeyCode;
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -452,7 +452,11 @@ impl Modal for EditableSelectModal {
         self.last_buttons_area = Some(chunks[chunk_idx]);
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Option<ModalResult<Self::Result>>> {
+    fn handle_key(
+        &mut self,
+        chord: termide_core::KeyChord,
+    ) -> Result<Option<ModalResult<Self::Result>>> {
+        let key = chord.raw;
         // Escape handling depends on state
         if key.code == KeyCode::Esc {
             if self.suggestion_input.is_expanded() {

@@ -7,7 +7,7 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use lsp_types::{Diagnostic, DiagnosticSeverity};
 use ratatui::{
     buffer::Buffer,
@@ -519,7 +519,8 @@ impl Panel for DiagnosticsPanel {
         }
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
+    fn handle_key(&mut self, chord: termide_core::KeyChord) -> Vec<PanelEvent> {
+        let key = chord.raw;
         // Ctrl+C: copy selected diagnostic to clipboard
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
             if let Some(entry) = self.selected_entry() {

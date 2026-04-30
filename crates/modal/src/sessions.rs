@@ -1,7 +1,7 @@
 //! Sessions selection modal dialog.
 
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyCode, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -300,7 +300,11 @@ impl Modal for SessionsModal {
         self.last_list_area = Some(list_area);
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Option<ModalResult<Self::Result>>> {
+    fn handle_key(
+        &mut self,
+        chord: termide_core::KeyChord,
+    ) -> Result<Option<ModalResult<Self::Result>>> {
+        let key = chord.raw;
         match key.code {
             KeyCode::Esc => Ok(Some(ModalResult::Cancelled)),
 

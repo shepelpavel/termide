@@ -7,7 +7,7 @@ use std::any::Any;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crossterm::event::{KeyEvent, MouseEvent};
+use crossterm::event::MouseEvent;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -17,7 +17,7 @@ use ratatui::{
 use termide_config::Config;
 use termide_theme::Theme;
 
-use crate::{CommandResult, PanelCommand, PanelEvent};
+use crate::{CommandResult, KeyChord, PanelCommand, PanelEvent};
 
 // Re-export SessionPanel from termide-session for unified type
 pub use termide_session::SessionPanel;
@@ -209,10 +209,17 @@ pub trait Panel: Any {
     /// * `ctx` - Render context with theme and focus info
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext);
 
-    /// Handle raw keyboard input.
+    /// Handle a keyboard input event.
+    ///
+    /// `chord` carries both the raw `KeyEvent` from crossterm and the
+    /// canonical form for hotkey matching. Use `chord.canonical` when
+    /// comparing against bindings (`HotkeyTable::matches_canonical`,
+    /// vim command interpretation); use `chord.raw` for text input
+    /// (`InsertChar`), PTY passthrough (`modern_key_bytes`), and
+    /// search-buffer typing.
     ///
     /// Returns a list of events to be processed by the application.
-    fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent>;
+    fn handle_key(&mut self, chord: KeyChord) -> Vec<PanelEvent>;
 
     /// Handle mouse input.
     ///

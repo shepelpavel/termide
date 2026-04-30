@@ -7,7 +7,7 @@ use std::any::Any;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::KeyCode;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -144,7 +144,8 @@ impl Panel for ImagePanel {
         }
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
+    fn handle_key(&mut self, chord: termide_core::KeyChord) -> Vec<PanelEvent> {
+        let key = chord.raw;
         match key.code {
             KeyCode::Char('q') => vec![PanelEvent::ClosePanel],
             _ => vec![],

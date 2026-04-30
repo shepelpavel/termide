@@ -5,7 +5,7 @@
 
 use anyhow::Result;
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -1041,7 +1041,11 @@ impl Modal for CommandConfigModal {
             .render(buttons_area, buf);
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Option<ModalResult<Self::Result>>> {
+    fn handle_key(
+        &mut self,
+        chord: termide_core::KeyChord,
+    ) -> Result<Option<ModalResult<Self::Result>>> {
+        let key = chord.raw;
         // Escape
         if key.code == KeyCode::Esc && key.modifiers.is_empty() {
             if self.is_create() && self.group_suggestion.is_expanded() {
@@ -1434,7 +1438,10 @@ mod tests {
         let mut modal = edit_modal(false);
         modal.focus = FocusArea::ProjectCheckbox;
         let result = modal
-            .handle_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::empty()))
+            .handle_key(termide_core::KeyChord::identity(KeyEvent::new(
+                KeyCode::Char(' '),
+                KeyModifiers::empty(),
+            )))
             .expect("space should be handled");
         assert!(result.is_none());
         assert!(modal.is_project);

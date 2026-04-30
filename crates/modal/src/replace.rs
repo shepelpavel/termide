@@ -232,7 +232,11 @@ impl Modal for ReplaceModal {
         }
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Option<ModalResult<Self::Result>>> {
+    fn handle_key(
+        &mut self,
+        chord: termide_core::KeyChord,
+    ) -> Result<Option<ModalResult<Self::Result>>> {
+        let key = chord.raw;
         match self.focus {
             FocusArea::FindInput => self.handle_find_input_key(key),
             FocusArea::ReplaceInput => self.handle_replace_input_key(key),

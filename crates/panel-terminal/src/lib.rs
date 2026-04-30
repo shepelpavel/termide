@@ -1723,7 +1723,8 @@ impl Panel for Terminal {
         }
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
+    fn handle_key(&mut self, chord: termide_core::KeyChord) -> Vec<PanelEvent> {
+        let key = chord.raw;
         // If process exited, don't handle input
         if !self.is_alive() {
             return vec![];
