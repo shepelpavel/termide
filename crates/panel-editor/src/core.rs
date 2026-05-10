@@ -1150,8 +1150,16 @@ impl Editor {
 
     /// Render inline blame annotation on the cursor line (VS Code style).
     ///
-    /// Draws dim text after the code content on the active line only.
-    /// Does nothing if blame is disabled, data is not loaded, or there is no room.
+    /// In word-wrap mode the annotation is anchored to the **last**
+    /// wrap-row of `cursor.line`, not the row the cursor happens to be
+    /// on. The last wrap-row is the natural remainder of the wrap and
+    /// is almost always the shortest fragment, so the annotation has
+    /// the most room to fit. When the cursor moves inside the same
+    /// logical line the annotation stays put — easier to read than a
+    /// label that hops with each cursor step.
+    ///
+    /// In no-wrap mode there is only one row per logical line, so this
+    /// reduces to the obvious thing.
     ///
     /// `use_smart_wrap` must mirror the value used by the main render
     /// pass — the wrap-row arithmetic below recomputes wrap points for
@@ -1170,22 +1178,23 @@ impl Editor {
             None => return,
         };
 
-        // Compute the cursor's actual screen row. Earlier versions used
-        // `line_visual - top_visual` directly, which dropped two
-        // contributions and put the annotation on the wrong row whenever
-        // word-wrap was active:
-        //   1. `cursor_wrap_row_in_line` — the wrap-row offset of the
-        //      cursor inside its own logical line. Without it the
-        //      annotation always sticks to the line's first wrap-row,
-        //      one row above the cursor when the cursor sits on a
-        //      later wrap-row of a long line.
-        //   2. `viewport.top_visual_row_offset` — the wrap-rows hidden
-        //      above the visible area when the viewport is scrolled
-        //      mid-line. Without it the annotation drifts down by that
-        //      amount.
-        // The no-wrap branch keeps the simple form because both
-        // contributions are zero by construction.
-        let cursor_screen_row: u16 = if self.config.word_wrap {
+        // Each branch returns `(screen_row, visible_code_width)`. The
+        // visible_code_width is the column where the line's content
+        // ends on `screen_row` — that's where the annotation starts.
+        let (anchor_row, visible_code_width): (u16, usize) = if self.config.word_wrap {
+            let line_cow = match self.buffer.line_cow(self.cursor.line) {
+                Some(s) => s,
+                None => return,
+            };
+            let line_text = line_cow.trim_end_matches('\n');
+            let (_, wrap_points) =
+                word_wrap::get_line_wrap_points(line_text, content_width, use_smart_wrap);
+
+            // Last wrap-row index inside the logical line. With N wrap
+            // points the line spans N+1 visual rows, so the last one is
+            // at index N. For an unwrapped line N == 0.
+            let last_wrap_row_in_line = wrap_points.len();
+
             let top_visual = self
                 .render_cache
                 .get_visual_row_for_line(self.viewport.top_line)
@@ -1195,62 +1204,62 @@ impl Editor {
                 .get_visual_row_for_line(self.cursor.line)
                 .unwrap_or(0);
 
-            // wrap_points[i] is the grapheme index where wrap-row i+1 starts;
-            // counting wrap_points <= cursor.column gives the wrap-row index
-            // the cursor is on (0 for the first wrap-row).
-            let cursor_wrap_row_in_line = match self.buffer.line_cow(self.cursor.line) {
-                Some(line_text) => {
-                    let line_text = line_text.trim_end_matches('\n');
-                    let (_, wrap_points) =
-                        word_wrap::get_line_wrap_points(line_text, content_width, use_smart_wrap);
-                    wrap_points
-                        .iter()
-                        .take_while(|&&p| p <= self.cursor.column)
-                        .count()
-                }
-                None => 0,
-            };
-
-            let cursor_absolute = line_visual + cursor_wrap_row_in_line;
+            let last_row_absolute = line_visual + last_wrap_row_in_line;
             let viewport_top_absolute = top_visual + self.viewport.top_visual_row_offset;
-            if cursor_absolute < viewport_top_absolute {
+            if last_row_absolute < viewport_top_absolute {
                 return;
             }
-            let row = cursor_absolute - viewport_top_absolute;
+            let row = last_row_absolute - viewport_top_absolute;
             if row >= content_height {
                 return;
             }
-            row as u16
+
+            // Width of just the last wrap-row's content (display columns).
+            // `viewport.left_column` is always 0 in word-wrap mode, so
+            // there's no horizontal scroll to subtract here.
+            let last_chunk_start = wrap_points.last().copied().unwrap_or(0);
+            let last_chunk_width: usize = {
+                use unicode_segmentation::UnicodeSegmentation;
+                use unicode_width::UnicodeWidthChar;
+                line_text
+                    .graphemes(true)
+                    .skip(last_chunk_start)
+                    .flat_map(|g| g.chars())
+                    .map(|c| c.width().unwrap_or(0))
+                    .sum()
+            };
+
+            (row as u16, last_chunk_width.min(content_width))
         } else {
             if self.cursor.line < self.viewport.top_line
                 || self.cursor.line >= self.viewport.top_line + content_height
             {
                 return;
             }
-            (self.cursor.line - self.viewport.top_line) as u16
+            let row = (self.cursor.line - self.viewport.top_line) as u16;
+
+            let line_visual_width: usize = self
+                .buffer
+                .line(self.cursor.line)
+                .map(|l| {
+                    use unicode_width::UnicodeWidthChar;
+                    l.chars().map(|c| c.width().unwrap_or(0)).sum::<usize>()
+                })
+                .unwrap_or(0);
+            let visible = line_visual_width
+                .saturating_sub(self.viewport.left_column)
+                .min(content_width);
+            (row, visible)
         };
 
         let line_number_width = rendering::LINE_NUMBER_WIDTH as u16;
         // area is already the inner rect (borders stripped by the app layer before calling render)
         let content_x = area.x + line_number_width;
-        let line_y = area.y + cursor_screen_row;
-
-        // Compute the visual width of the cursor line's content that is visible
-        let line_visual_width: usize = self
-            .buffer
-            .line(self.cursor.line)
-            .map(|l| {
-                use unicode_width::UnicodeWidthChar;
-                l.chars().map(|c| c.width().unwrap_or(0)).sum::<usize>()
-            })
-            .unwrap_or(0);
-        let visible_code_width = line_visual_width
-            .saturating_sub(self.viewport.left_column)
-            .min(content_width);
+        let line_y = area.y + anchor_row;
         let ann_x = content_x + visible_code_width as u16;
 
-        // Need at least 12 columns for the annotation to be useful
-        let right_edge = area.x + area.width; // area is inner rect, no border to subtract
+        // Need at least 12 columns for the annotation to be useful.
+        let right_edge = area.x + area.width;
         let available = right_edge.saturating_sub(ann_x) as usize;
         if available < 12 {
             return;
