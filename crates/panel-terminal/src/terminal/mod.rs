@@ -439,6 +439,20 @@ impl TerminalScreen {
                 if self.scrollback_wrapped.len() > self.max_scrollback {
                     self.scrollback_wrapped.pop_front();
                 }
+
+                // Preserve the user's scrollback view when they're scrolled
+                // away from the live tail. The renderer derives the visible
+                // window from `scrollback.len() + visible_rows - scroll_offset`;
+                // pushing a line into scrollback shifts that window forward by
+                // one (or, when capped at `max_scrollback`, the absolute index
+                // of every kept line drops by one), so the same scroll_offset
+                // would point at later content on the next render. Bumping
+                // scroll_offset by one keeps the on-screen content stable.
+                // At the tail (`scroll_offset == 0`) we leave it alone so the
+                // natural follow-tail behaviour stays intact.
+                if self.scroll_offset > 0 {
+                    self.scroll_offset = (self.scroll_offset + 1).min(self.scrollback.len());
+                }
             }
 
             let buffer = self.active_buffer_mut();
@@ -651,5 +665,77 @@ impl TerminalScreen {
         } else {
             &self.lines_wrapped
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Pump enough lines through `scroll_up` to fill the scrollback to `n`.
+    fn fill_scrollback(screen: &mut TerminalScreen, n: usize) {
+        for _ in 0..n {
+            screen.scroll_up();
+        }
+    }
+
+    #[test]
+    fn scroll_up_preserves_user_view_when_in_history() {
+        let mut screen = TerminalScreen::new(10, 80);
+        // Build some history first.
+        fill_scrollback(&mut screen, 30);
+        // Pretend the user scrolled up 5 lines from the tail.
+        screen.scroll_offset = 5;
+        let scrollback_before = screen.scrollback.len();
+        let view_top_before = screen.visual_to_absolute(0);
+
+        // Three new output lines push into scrollback.
+        for _ in 0..3 {
+            screen.scroll_up();
+        }
+
+        // scroll_offset must follow so the same content stays under the view.
+        assert_eq!(screen.scroll_offset, 8);
+        assert_eq!(screen.scrollback.len(), scrollback_before + 3);
+        assert_eq!(screen.visual_to_absolute(0), view_top_before);
+    }
+
+    #[test]
+    fn scroll_up_at_tail_stays_at_tail() {
+        let mut screen = TerminalScreen::new(10, 80);
+        fill_scrollback(&mut screen, 5);
+        assert_eq!(screen.scroll_offset, 0);
+        screen.scroll_up();
+        assert_eq!(screen.scroll_offset, 0, "follow-tail must be preserved");
+    }
+
+    #[test]
+    fn scroll_up_caps_at_scrollback_len() {
+        let mut screen = TerminalScreen::new(10, 80);
+        screen.max_scrollback = 8; // Tight cap to make the test fast.
+        fill_scrollback(&mut screen, 8);
+        assert_eq!(screen.scrollback.len(), 8);
+        // Scroll all the way up — user is at the very top of history.
+        screen.scroll_offset = 8;
+
+        // One more push triggers pop_front (we're at the cap). scroll_offset
+        // must not exceed scrollback.len(); otherwise visual_to_absolute would
+        // saturate-subtract to an invalid index.
+        screen.scroll_up();
+        assert_eq!(screen.scrollback.len(), 8);
+        assert_eq!(screen.scroll_offset, 8);
+    }
+
+    #[test]
+    fn scroll_up_in_alt_screen_does_not_bump_offset() {
+        let mut screen = TerminalScreen::new(10, 80);
+        fill_scrollback(&mut screen, 5);
+        screen.scroll_offset = 3;
+        screen.switch_to_alt_screen();
+        let before = screen.scroll_offset;
+
+        // Alt-screen scroll_up does not feed into scrollback.
+        screen.scroll_up();
+        assert_eq!(screen.scroll_offset, before);
     }
 }
