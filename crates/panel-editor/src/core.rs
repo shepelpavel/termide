@@ -23,6 +23,7 @@ use crate::{
     constants, file_io, git, keyboard, rendering,
     state::{FileState, GitIntegration, InputState, LspState, RenderingCache, SearchController},
     vim::VimState,
+    word_wrap,
 };
 
 // Re-export LspManager for use in app integration
@@ -1113,7 +1114,14 @@ impl Editor {
         );
 
         // Blame annotation overlay on the cursor line
-        self.render_blame_annotation(buf, area, content_width, content_height, theme);
+        self.render_blame_annotation(
+            buf,
+            area,
+            content_width,
+            content_height,
+            use_smart_wrap,
+            theme,
+        );
     }
 
     /// Convert syntax language name to human-readable display name.
@@ -1144,12 +1152,17 @@ impl Editor {
     ///
     /// Draws dim text after the code content on the active line only.
     /// Does nothing if blame is disabled, data is not loaded, or there is no room.
+    ///
+    /// `use_smart_wrap` must mirror the value used by the main render
+    /// pass — the wrap-row arithmetic below recomputes wrap points for
+    /// `cursor.line` and the result has to match the actual layout.
     fn render_blame_annotation(
         &self,
         buf: &mut Buffer,
         area: Rect,
         content_width: usize,
         content_height: usize,
+        use_smart_wrap: bool,
         theme: &Theme,
     ) {
         let entry = match self.git.blame_for_line(self.cursor.line) {
@@ -1157,15 +1170,22 @@ impl Editor {
             None => return,
         };
 
-        // Check cursor line is in the visible viewport
-        if self.cursor.line < self.viewport.top_line
-            || self.cursor.line >= self.viewport.top_line + content_height
-        {
-            return;
-        }
-
-        // Compute cursor screen row
-        let cursor_screen_row = if self.config.word_wrap {
+        // Compute the cursor's actual screen row. Earlier versions used
+        // `line_visual - top_visual` directly, which dropped two
+        // contributions and put the annotation on the wrong row whenever
+        // word-wrap was active:
+        //   1. `cursor_wrap_row_in_line` — the wrap-row offset of the
+        //      cursor inside its own logical line. Without it the
+        //      annotation always sticks to the line's first wrap-row,
+        //      one row above the cursor when the cursor sits on a
+        //      later wrap-row of a long line.
+        //   2. `viewport.top_visual_row_offset` — the wrap-rows hidden
+        //      above the visible area when the viewport is scrolled
+        //      mid-line. Without it the annotation drifts down by that
+        //      amount.
+        // The no-wrap branch keeps the simple form because both
+        // contributions are zero by construction.
+        let cursor_screen_row: u16 = if self.config.word_wrap {
             let top_visual = self
                 .render_cache
                 .get_visual_row_for_line(self.viewport.top_line)
@@ -1174,15 +1194,46 @@ impl Editor {
                 .render_cache
                 .get_visual_row_for_line(self.cursor.line)
                 .unwrap_or(0);
-            line_visual.saturating_sub(top_visual)
+
+            // wrap_points[i] is the grapheme index where wrap-row i+1 starts;
+            // counting wrap_points <= cursor.column gives the wrap-row index
+            // the cursor is on (0 for the first wrap-row).
+            let cursor_wrap_row_in_line = match self.buffer.line_cow(self.cursor.line) {
+                Some(line_text) => {
+                    let line_text = line_text.trim_end_matches('\n');
+                    let (_, wrap_points) =
+                        word_wrap::get_line_wrap_points(line_text, content_width, use_smart_wrap);
+                    wrap_points
+                        .iter()
+                        .take_while(|&&p| p <= self.cursor.column)
+                        .count()
+                }
+                None => 0,
+            };
+
+            let cursor_absolute = line_visual + cursor_wrap_row_in_line;
+            let viewport_top_absolute = top_visual + self.viewport.top_visual_row_offset;
+            if cursor_absolute < viewport_top_absolute {
+                return;
+            }
+            let row = cursor_absolute - viewport_top_absolute;
+            if row >= content_height {
+                return;
+            }
+            row as u16
         } else {
-            self.cursor.line - self.viewport.top_line
+            if self.cursor.line < self.viewport.top_line
+                || self.cursor.line >= self.viewport.top_line + content_height
+            {
+                return;
+            }
+            (self.cursor.line - self.viewport.top_line) as u16
         };
 
         let line_number_width = rendering::LINE_NUMBER_WIDTH as u16;
         // area is already the inner rect (borders stripped by the app layer before calling render)
         let content_x = area.x + line_number_width;
-        let line_y = area.y + cursor_screen_row as u16;
+        let line_y = area.y + cursor_screen_row;
 
         // Compute the visual width of the cursor line's content that is visible
         let line_visual_width: usize = self
@@ -1282,7 +1333,14 @@ impl Editor {
         );
 
         // Blame annotation overlay on the cursor line
-        self.render_blame_annotation(buf, area, content_width, content_height, theme);
+        self.render_blame_annotation(
+            buf,
+            area,
+            content_width,
+            content_height,
+            use_smart_wrap,
+            theme,
+        );
 
         // Render scrollbar on the right border
         if let Some(border_x) = border_right_x {
