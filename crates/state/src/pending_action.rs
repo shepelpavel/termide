@@ -247,4 +247,7 @@ pub enum PendingAction {
     },
     /// Apply settings from the Settings modal
     Settings,
+    /// Confirm-modal result for "Remove project override". On `true` the
+    /// `<project>/.termide/config.toml` file is deleted.
+    RemoveProjectOverride,
 }

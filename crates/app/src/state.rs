@@ -293,8 +293,14 @@ pub struct AppState {
     pub watcher: Option<UnifiedWatcher>,
     /// Current theme
     pub theme: &'static Theme,
-    /// Application configuration
+    /// Application configuration (effective: built-in defaults + global file
+    /// + per-project override). Mutated as the user changes settings.
     pub config: Arc<Config>,
+    /// Snapshot of `defaults + global file` taken at startup, *without* the
+    /// per-project overlay. Used as the diff baseline when saving the
+    /// per-project override file so only project-specific deltas are
+    /// recorded.
+    pub global_baseline: Arc<Config>,
     /// System resource monitor (CPU, RAM)
     pub system_monitor: SystemMonitor,
     /// Last time system resources were updated
@@ -367,11 +373,20 @@ impl AppState {
             Config::default()
         });
         let theme = Theme::get_by_name(&config.general.theme);
-        Self::with_config_and_theme(config, theme)
+        let baseline = config.clone();
+        Self::with_config_and_theme(config, baseline, theme)
     }
 
-    /// Create new application state with given config and theme
-    pub fn with_config_and_theme(config: Config, theme: &'static Theme) -> Self {
+    /// Create new application state with given config, project-overlay
+    /// baseline, and theme. `global_baseline` should be the `Config`
+    /// produced by overlaying the global file on `Config::default()` —
+    /// what `Config::load_layered` returns as its second tuple element.
+    /// When no project file exists this baseline equals `config`.
+    pub fn with_config_and_theme(
+        config: Config,
+        global_baseline: Config,
+        theme: &'static Theme,
+    ) -> Self {
         let layout_info = LayoutInfo {
             mode: LayoutMode::Single,
             main_panels_count: 1,
@@ -410,6 +425,7 @@ impl AppState {
             watcher: None,
             theme,
             config: Arc::new(config),
+            global_baseline: Arc::new(global_baseline),
             system_monitor: SystemMonitor::new(),
             last_resource_update: std::time::Instant::now(),
             resource_modal_kind: None,

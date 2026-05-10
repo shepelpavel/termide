@@ -51,12 +51,14 @@ impl App {
         Ok(())
     }
 
-    /// Save shell preference to config file
-    pub(super) fn save_shell_preference(&self, shell_path: &str) -> Result<()> {
-        let mut config = termide_config::Config::load()?;
+    /// Save shell preference to the active config target (project file
+    /// when one exists, global otherwise). The in-memory `state.config`
+    /// is updated so newly-spawned terminals see the new default shell
+    /// without a restart.
+    pub(super) fn save_shell_preference(&mut self, shell_path: &str) -> Result<()> {
+        let mut config = (*self.state.config).clone();
         config.terminal.default_shell = Some(shell_path.to_string());
-        config.save()?;
-        Ok(())
+        self.save_config_to_active_target(config)
     }
 
     /// Create new file manager
@@ -169,13 +171,20 @@ impl App {
         Ok(())
     }
 
-    /// Open Settings modal with tabbed interface
+    /// Open Settings modal with tabbed interface.
+    ///
+    /// The modal is seeded from `state.config` (the in-memory effective
+    /// config — defaults + global + project) so any uncommitted edits
+    /// from the current session are visible in the form. The third
+    /// footer button label is derived from the existence of the
+    /// per-project override file at modal-open time.
     pub(super) fn open_settings_modal(&mut self) {
-        use termide_config::Config;
         use termide_modal::{ActiveModal, SettingsModal};
 
-        let config = Config::load().unwrap_or_default();
-        let modal = SettingsModal::new(config);
+        let config = (*self.state.config).clone();
+        let project_override_active =
+            termide_config::project_config_path(&self.project_root).exists();
+        let modal = SettingsModal::new(config, project_override_active);
         self.state.set_pending_action(
             crate::state::PendingAction::Settings,
             ActiveModal::Settings(Box::new(modal)),

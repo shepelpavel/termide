@@ -3261,6 +3261,7 @@ dependencies = [
  "dirs",
  "log",
  "serde",
+ "tempfile",
  "termide-keyboard",
  "toml",
 ]

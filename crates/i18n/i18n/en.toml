@@ -241,6 +241,10 @@ settings_tab_keybindings = "Keybindings"
 settings_btn_apply = "Apply & Save"
 settings_btn_reset = "Reset to Defaults"
 settings_btn_cancel = "Cancel"
+settings_btn_create_project_override = "Create project override"
+settings_btn_remove_project_override = "Remove project override"
+settings_remove_project_override_title = "Remove project override?"
+settings_remove_project_override_message = "Project-specific settings will be lost. The .termide/config.toml file will be deleted."
 
 # Settings modal — General fields
 settings_general_vim_mode = "Vim mode"

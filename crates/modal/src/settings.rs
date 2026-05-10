@@ -120,26 +120,47 @@ enum KbMode {
 
 /// Result returned when the settings modal closes.
 ///
-/// `Apply` boxes `Config` because it's large (~3.6 KB) and infrequent —
-/// keeping the enum small avoids bloating every `ModalResult` carrier.
+/// `Apply` and `CreateProjectOverride` box `Config` because it's large
+/// (~3.6 KB) and infrequent — keeping the enum small avoids bloating
+/// every `ModalResult` carrier.
 #[derive(Debug)]
 pub enum SettingsResult {
-    /// User clicked "Apply & Save" — apply and persist the config.
+    /// User clicked "Apply & Save" — apply and persist the config to the
+    /// currently-active target (project file if it exists, global
+    /// otherwise).
     Apply(Box<Config>),
+    /// User clicked "Create project override" — write the current config
+    /// as a per-project diff against `defaults + global`.
+    CreateProjectOverride(Box<Config>),
+    /// User clicked "Remove project override" — delete the project file
+    /// (with a confirmation step handled by the caller).
+    RemoveProjectOverride,
     /// User clicked "Cancel" (or Esc from tab bar).
     Cancel,
 }
 
-/// Bottom buttons.
+/// Bottom buttons. The third slot toggles between
+/// "Create / Remove project override" depending on
+/// `SettingsModal::project_override_active`. The trailing slot is
+/// Cancel and is matched as the catch-all in `execute_selected_button`.
 const BUTTON_APPLY: usize = 0;
 const BUTTON_RESET: usize = 1;
+const BUTTON_PROJECT_OVERRIDE: usize = 2;
+const BUTTON_COUNT: usize = 4;
 
-/// Get localized button labels.
-fn button_labels() -> [String; 3] {
+/// Get localized button labels. The third label depends on whether the
+/// per-project override file currently exists.
+fn button_labels(project_override_active: bool) -> [String; BUTTON_COUNT] {
     let t = i18n::t();
+    let project_label = if project_override_active {
+        t.settings_btn_remove_project_override()
+    } else {
+        t.settings_btn_create_project_override()
+    };
     [
         t.settings_btn_apply().to_string(),
         t.settings_btn_reset().to_string(),
+        project_label.to_string(),
         t.settings_btn_cancel().to_string(),
     ]
 }
@@ -204,6 +225,10 @@ pub struct SettingsModal {
     // --- Buttons ---
     selected_button: usize,
     dirty: bool,
+    /// Whether `<project>/.termide/config.toml` exists. Drives the
+    /// "Create / Remove project override" button label and decides how
+    /// the modal result handler routes the third-button click.
+    project_override_active: bool,
 
     // --- Area caches (for mouse hit-testing) ---
     last_modal_area: Option<Rect>,
@@ -213,7 +238,11 @@ pub struct SettingsModal {
 }
 
 impl SettingsModal {
-    pub fn new(config: Config) -> Self {
+    /// Build the modal. `project_override_active` reflects the existence
+    /// of `<project>/.termide/config.toml` at modal-open time and is used
+    /// purely for the third button's label and routing — the modal
+    /// itself never touches the filesystem.
+    pub fn new(config: Config, project_override_active: bool) -> Self {
         let lsp_server_keys = Self::sorted_server_keys(&config);
         let mut m = Self {
             config,
@@ -238,6 +267,7 @@ impl SettingsModal {
             kb_capture_message: None,
             selected_button: BUTTON_APPLY,
             dirty: false,
+            project_override_active,
             last_modal_area: None,
             last_sidebar_area: None,
             last_content_area: None,
@@ -719,7 +749,7 @@ impl SettingsModal {
         }
 
         let spacing = 4;
-        let labels = button_labels();
+        let labels = button_labels(self.project_override_active);
         let total_label_len: usize = labels.iter().map(|l| l.len() + 4).sum::<usize>() // "[ label ]"
             + spacing * (labels.len().saturating_sub(1));
         let mut x = area.x as usize + (area.width as usize).saturating_sub(total_label_len) / 2;
@@ -1166,7 +1196,7 @@ impl Modal for SettingsModal {
                 self.focus = FocusArea::Buttons;
                 // Calculate button positions to determine which one was clicked
                 let spacing = 4;
-                let labels = button_labels();
+                let labels = button_labels(self.project_override_active);
                 let total_label_len: usize = labels.iter().map(|l| l.len() + 4).sum::<usize>()
                     + spacing * (labels.len().saturating_sub(1));
                 let mut x = btn_area.x as usize
@@ -1508,7 +1538,7 @@ impl SettingsModal {
                 }
             }
             KeyCode::Right => {
-                if self.selected_button < button_labels().len() - 1 {
+                if self.selected_button < button_labels(self.project_override_active).len() - 1 {
                     self.selected_button += 1;
                 }
             }
@@ -1542,6 +1572,17 @@ impl SettingsModal {
                 self.content_scroll = 0;
                 self.editing = false;
                 Ok(None)
+            }
+            BUTTON_PROJECT_OVERRIDE => {
+                if self.project_override_active {
+                    Ok(Some(ModalResult::Confirmed(
+                        SettingsResult::RemoveProjectOverride,
+                    )))
+                } else {
+                    Ok(Some(ModalResult::Confirmed(
+                        SettingsResult::CreateProjectOverride(Box::new(self.config.clone())),
+                    )))
+                }
             }
             _ => Ok(Some(ModalResult::Cancelled)),
         }

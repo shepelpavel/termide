@@ -3,7 +3,6 @@
 use anyhow::Result;
 
 use super::super::App;
-use termide_config::Config;
 use termide_i18n as i18n;
 use termide_theme::Theme;
 
@@ -123,12 +122,11 @@ impl App {
         Ok(())
     }
 
-    /// Save language preference to config file
-    fn save_language_preference(&self, lang_code: &str) -> Result<()> {
-        let mut config = Config::load()?;
+    /// Save language preference to the active config target.
+    fn save_language_preference(&mut self, lang_code: &str) -> Result<()> {
+        let mut config = (*self.state.config).clone();
         config.general.language = lang_code.to_string();
-        config.save()?;
-        Ok(())
+        self.save_config_to_active_target(config)
     }
 
     /// Apply theme by name and save preference
@@ -147,11 +145,10 @@ impl App {
         Ok(())
     }
 
-    /// Save theme preference to config file
-    fn save_theme_preference(&self, theme_name: &str) -> Result<()> {
-        let mut config = Config::load()?;
+    /// Save theme preference to the active config target.
+    fn save_theme_preference(&mut self, theme_name: &str) -> Result<()> {
+        let mut config = (*self.state.config).clone();
         config.general.theme = theme_name.to_string();
-        config.save()?;
-        Ok(())
+        self.save_config_to_active_target(config)
     }
 }

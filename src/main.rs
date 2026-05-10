@@ -75,19 +75,35 @@ fn main() -> Result<()> {
         set_ansi16_mode(true);
     }
 
-    // Load config: from custom path if specified, otherwise default
-    let mut config = if let Some(ref path) = cli.config {
-        Config::load_from(path)?
+    // Resolve project root early so the layered config loader can pick up
+    // a `<project>/.termide/config.toml` overlay.
+    let project_root = std::env::current_dir()
+        .unwrap_or_else(|_| dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("/")));
+
+    // Layered load: defaults → global file → project overlay (if any).
+    // `--config <PATH>` bypasses layering and treats the file as the whole
+    // effective config (historical semantics). The second tuple element is
+    // the `defaults + global` snapshot used later as the diff baseline for
+    // the per-project override file.
+    let (mut config, mut global_baseline) = if let Some(ref path) = cli.config {
+        let cfg = Config::load_from(path)?;
+        (cfg.clone(), cfg)
     } else {
-        Config::load().unwrap_or_default()
+        Config::load_layered(None, &project_root).unwrap_or_else(|e| {
+            eprintln!("Could not load config: {}. Using defaults.", e);
+            (Config::default(), Config::default())
+        })
     };
 
-    // Apply CLI overrides
+    // Apply CLI overrides on top of the layered config. These are runtime-only
+    // — they do NOT propagate into the diff-against-baseline saves.
     if let Some(ref level) = cli.log_level {
         config.logging.min_level = level.clone();
+        global_baseline.logging.min_level = config.logging.min_level.clone();
     }
     if cli.no_lsp {
         config.lsp.enabled = false;
+        global_baseline.lsp.enabled = false;
     }
 
     // On Linux VT, use norton-commander theme by default (better for 16-color)
@@ -168,7 +184,7 @@ fn main() -> Result<()> {
     let height = size.height.max(5);
 
     // Create application with pre-loaded config (avoids double config loading)
-    let mut app = App::new_with_config(config, width, height, keyboard_caps);
+    let mut app = App::new_with_config(config, global_baseline, width, height, keyboard_caps);
 
     // Log git availability to journal (not to stderr)
     app.log_git_status(git_available);

@@ -164,12 +164,13 @@ impl App {
     /// terminals where they make sense.
     pub fn new_with_config(
         config: Config,
+        global_baseline: Config,
         width: u16,
         height: u16,
         caps: termide_keyboard::KeyboardCaps,
     ) -> Self {
         let theme = Theme::get_by_name(&config.general.theme);
-        let mut state = AppState::with_config_and_theme(config, theme);
+        let mut state = AppState::with_config_and_theme(config, global_baseline, theme);
         state.update_terminal_size(width, height);
 
         // Get project root from current working directory
@@ -280,6 +281,30 @@ impl App {
                 );
             }
         }
+    }
+
+    /// Persist `config` to the currently-active config target.
+    ///
+    /// Active target is derived from the existence of
+    /// `<project_root>/.termide/config.toml`:
+    /// - **Exists** → save the project-level diff against
+    ///   `state.global_baseline`. Only fields that differ from
+    ///   `defaults + global` survive in the project file.
+    /// - **Absent** → save the global-level diff against
+    ///   `Config::default()`. The user's `~/.config/termide/config.toml`
+    ///   keeps only fields they have explicitly changed.
+    ///
+    /// On success the in-memory `state.config` is replaced with the
+    /// new value so callers and panels see the change immediately.
+    pub fn save_config_to_active_target(&mut self, config: Config) -> anyhow::Result<()> {
+        let project_path = termide_config::project_config_path(&self.project_root);
+        if project_path.exists() {
+            config.save_project(&self.project_root, &self.state.global_baseline)?;
+        } else {
+            config.save_global()?;
+        }
+        self.state.config = std::sync::Arc::new(config);
+        Ok(())
     }
 
     /// Log git availability status to journal

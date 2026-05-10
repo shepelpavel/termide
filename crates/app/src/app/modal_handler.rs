@@ -661,7 +661,9 @@ impl App {
                     if let Some(result) = value.downcast_ref::<SettingsResult>() {
                         match result {
                             SettingsResult::Apply(config) => {
-                                if let Err(e) = config.save() {
+                                if let Err(e) =
+                                    self.save_config_to_active_target((**config).clone())
+                                {
                                     log::error!("Failed to save settings: {}", e);
                                     self.show_error_modal(format!(
                                         "Failed to save settings: {}",
@@ -681,7 +683,57 @@ impl App {
                                     self.state.set_info("Settings saved".to_string());
                                 }
                             }
+                            SettingsResult::CreateProjectOverride(config) => {
+                                let cfg = (**config).clone();
+                                if let Err(e) = cfg
+                                    .save_project(&self.project_root, &self.state.global_baseline)
+                                {
+                                    log::error!("Failed to create project override: {}", e);
+                                    self.show_error_modal(format!(
+                                        "Failed to create project override: {}",
+                                        e
+                                    ));
+                                } else {
+                                    self.state.config = std::sync::Arc::new(cfg);
+                                    log::info!(
+                                        "Created project override at {}",
+                                        termide_config::project_config_path(&self.project_root)
+                                            .display()
+                                    );
+                                }
+                            }
+                            SettingsResult::RemoveProjectOverride => {
+                                let t = termide_i18n::t();
+                                let modal = termide_modal::ConfirmModal::new(
+                                    t.settings_remove_project_override_title(),
+                                    t.settings_remove_project_override_message(),
+                                );
+                                self.state.set_pending_action(
+                                    crate::state::PendingAction::RemoveProjectOverride,
+                                    crate::state::ActiveModal::Confirm(Box::new(modal)),
+                                );
+                            }
                             SettingsResult::Cancel => {}
+                        }
+                    }
+                }
+                PendingAction::RemoveProjectOverride => {
+                    if value.downcast_ref::<bool>().copied().unwrap_or(false) {
+                        let path = termide_config::project_config_path(&self.project_root);
+                        match std::fs::remove_file(&path) {
+                            Ok(()) => {
+                                log::info!("Removed project override at {}", path.display());
+                                // Effective config falls back to defaults+global.
+                                self.state.config =
+                                    std::sync::Arc::clone(&self.state.global_baseline);
+                            }
+                            Err(e) => {
+                                log::error!("Failed to remove project override: {}", e);
+                                self.show_error_modal(format!(
+                                    "Failed to remove project override: {}",
+                                    e
+                                ));
+                            }
                         }
                     }
                 }

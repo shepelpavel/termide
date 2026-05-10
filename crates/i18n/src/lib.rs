@@ -423,6 +423,10 @@ pub trait Translation: Send + Sync {
     fn settings_btn_apply(&self) -> &str;
     fn settings_btn_reset(&self) -> &str;
     fn settings_btn_cancel(&self) -> &str;
+    fn settings_btn_create_project_override(&self) -> &str;
+    fn settings_btn_remove_project_override(&self) -> &str;
+    fn settings_remove_project_override_title(&self) -> &str;
+    fn settings_remove_project_override_message(&self) -> &str;
 
     // Settings modal — General fields
     fn settings_general_vim_mode(&self) -> &str;
