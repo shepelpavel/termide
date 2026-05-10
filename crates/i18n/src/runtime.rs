@@ -186,6 +186,7 @@ impl Translation for RuntimeTranslation {
         help_desc_save_as,
         help_desc_reload,
         help_desc_duplicate_line,
+        help_desc_delete_line,
         help_desc_toggle_comment,
         help_desc_search_next,
         help_desc_search_prev,

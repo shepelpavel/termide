@@ -299,6 +299,21 @@ impl Editor {
         Ok(())
     }
 
+    /// Delete the line under the cursor, or every line touched by the
+    /// active selection. Pure deletion — clipboard is untouched.
+    pub(crate) fn delete_line(&mut self) -> Result<()> {
+        let result =
+            text_editing::delete_line(&mut self.buffer, &self.cursor, self.selection.as_ref())?;
+
+        self.cursor = result.new_cursor;
+        self.input.preferred_column = None;
+        self.clamp_cursor();
+        self.selection = None;
+        self.invalidate_cache_after_edit(result.start_line, result.is_multiline);
+
+        Ok(())
+    }
+
     /// Indent selected lines (or current line if no selection)
     pub(crate) fn indent_lines(&mut self) -> Result<()> {
         // Close search mode when editing begins

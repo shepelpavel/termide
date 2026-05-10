@@ -294,6 +294,7 @@ pub struct EditorKeybindings {
     pub undo: Option<KeyBinding>,
     pub redo: Option<KeyBinding>,
     pub duplicate_line: Option<KeyBinding>,
+    pub delete_line: Option<KeyBinding>,
     pub toggle_comment: Option<KeyBinding>,
 
     // Search & Replace
@@ -610,6 +611,11 @@ impl EditorKeybindings {
         set_default!(undo, "Ctrl+Z");
         set_default_multiple!(redo, "Ctrl+Y", "Ctrl+Shift+Z");
         set_default!(duplicate_line, "Ctrl+D");
+        // F8 mirrors the FileManager "delete" binding — both are
+        // "delete the thing under the cursor", and the editor and
+        // FM hotkey tables are isolated at runtime, so the clash is
+        // semantic, not functional.
+        set_default!(delete_line, "F8");
         // De-facto editor standards: `Ctrl+/` and `Ctrl+.`. On VTE
         // legacy terminals `Ctrl+/` reaches us via the `Ctrl+7→Ctrl+/`
         // quirk in `KeyNormalizer`. `Ctrl+.` requires Kitty proto.

@@ -2225,6 +2225,7 @@ pub(crate) fn build_editor_hotkey_table(config: &Config) -> HotkeyTable {
 
     // Advanced editing
     t.insert("duplicate_line", &kb.duplicate_line);
+    t.insert("delete_line", &kb.delete_line);
     t.insert("toggle_comment", &kb.toggle_comment);
 
     // LSP

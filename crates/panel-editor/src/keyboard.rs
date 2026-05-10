@@ -85,6 +85,7 @@ pub enum EditorCommand {
 
     // Advanced editing
     DuplicateLine,
+    DeleteLine,
     ToggleComment,
 
     // Search
@@ -251,6 +252,9 @@ impl EditorCommand {
         // Advanced editing
         if !read_only && hotkeys.matches("duplicate_line", &key) {
             return Self::DuplicateLine;
+        }
+        if !read_only && hotkeys.matches("delete_line", &key) {
+            return Self::DeleteLine;
         }
         if !read_only && hotkeys.matches("toggle_comment", &key) {
             return Self::ToggleComment;
@@ -617,6 +621,7 @@ impl EditorCommand {
 
             // Advanced editing
             Self::DuplicateLine => editor.duplicate_line(),
+            Self::DeleteLine => editor.delete_line(),
             Self::ToggleComment => editor.toggle_comment(),
 
             // Search

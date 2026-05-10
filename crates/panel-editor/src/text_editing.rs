@@ -213,3 +213,149 @@ pub fn duplicate_line(
         is_multiline: true,
     })
 }
+
+/// Delete the line under the cursor (or every line touched by `selection`).
+///
+/// Lines are removed whole — both the text and the trailing newline. After
+/// deletion the cursor lands at the start of whatever line replaced the
+/// deleted region. If the last logical line was part of the deletion, the
+/// cursor falls back to the end of the previous line (or `(0, 0)` when the
+/// buffer becomes a single empty line).
+///
+/// Mirrors the line-deletion path of vim's `dd` (`vim/operators.rs`)
+/// without touching vim registers — clipboard semantics are deliberately
+/// out of scope; users who want cut-line use `Ctrl+X` on a selection.
+pub fn delete_line(
+    buffer: &mut TextBuffer,
+    cursor: &Cursor,
+    selection: Option<&Selection>,
+) -> Result<EditResult> {
+    let line_count = buffer.line_count();
+    if line_count == 0 {
+        return Ok(EditResult {
+            new_cursor: Cursor { line: 0, column: 0 },
+            start_line: 0,
+            is_multiline: false,
+        });
+    }
+
+    let (start_line, end_line) = if let Some(sel) = selection {
+        let s = sel.start();
+        let e = sel.end();
+        (s.line.min(line_count - 1), e.line.min(line_count - 1))
+    } else {
+        let l = cursor.line.min(line_count - 1);
+        (l, l)
+    };
+
+    let is_multiline = end_line > start_line;
+    let last_line_after_region = end_line + 1 < line_count;
+
+    // Build the delete range. When the region ends before the last line we
+    // chew through `(end_line+1, 0)` so the trailing newline of `end_line`
+    // is consumed too. When it reaches through the last line we either
+    // collapse the buffer to one empty line (start_line == 0) or merge
+    // with the previous line by starting from its end-of-line position.
+    let (range_start, range_end, new_cursor) = if last_line_after_region {
+        let start = Cursor::at(start_line, 0);
+        let end = Cursor::at(end_line + 1, 0);
+        let new_cursor = Cursor::at(start_line, 0);
+        (start, end, new_cursor)
+    } else if start_line == 0 {
+        let last_len = buffer.line_len_graphemes(end_line);
+        let start = Cursor::at(0, 0);
+        let end = Cursor::at(end_line, last_len);
+        let new_cursor = Cursor { line: 0, column: 0 };
+        (start, end, new_cursor)
+    } else {
+        let prev = start_line - 1;
+        let prev_len = buffer.line_len_graphemes(prev);
+        let last_len = buffer.line_len_graphemes(end_line);
+        let start = Cursor::at(prev, prev_len);
+        let end = Cursor::at(end_line, last_len);
+        let new_cursor = Cursor::at(prev, prev_len);
+        (start, end, new_cursor)
+    };
+
+    buffer.delete_range(&range_start, &range_end)?;
+
+    Ok(EditResult {
+        new_cursor,
+        start_line,
+        is_multiline,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn buf(content: &str) -> TextBuffer {
+        TextBuffer::from_text(content)
+    }
+
+    #[test]
+    fn delete_line_middle_keeps_others() {
+        let mut buffer = buf("alpha\nbeta\ngamma");
+        let cursor = Cursor::at(1, 2);
+        let r = delete_line(&mut buffer, &cursor, None).unwrap();
+        assert_eq!(buffer.text(), "alpha\ngamma");
+        assert_eq!(r.new_cursor, Cursor::at(1, 0));
+        assert_eq!(r.start_line, 1);
+        assert!(!r.is_multiline);
+    }
+
+    #[test]
+    fn delete_line_first_keeps_rest() {
+        let mut buffer = buf("alpha\nbeta\ngamma");
+        let cursor = Cursor::at(0, 0);
+        let r = delete_line(&mut buffer, &cursor, None).unwrap();
+        assert_eq!(buffer.text(), "beta\ngamma");
+        assert_eq!(r.new_cursor, Cursor::at(0, 0));
+    }
+
+    #[test]
+    fn delete_line_last_falls_back_to_prev() {
+        let mut buffer = buf("alpha\nbeta\ngamma");
+        let cursor = Cursor::at(2, 4);
+        let r = delete_line(&mut buffer, &cursor, None).unwrap();
+        assert_eq!(buffer.text(), "alpha\nbeta");
+        // Cursor parks at end of the new last line.
+        assert_eq!(r.new_cursor.line, 1);
+        assert_eq!(r.new_cursor.column, "beta".chars().count());
+    }
+
+    #[test]
+    fn delete_line_only_line_clears_buffer() {
+        let mut buffer = buf("solo");
+        let cursor = Cursor::at(0, 2);
+        let r = delete_line(&mut buffer, &cursor, None).unwrap();
+        assert_eq!(buffer.text(), "");
+        assert_eq!(r.new_cursor, Cursor::at(0, 0));
+    }
+
+    #[test]
+    fn delete_line_with_multiline_selection() {
+        let mut buffer = buf("alpha\nbeta\ngamma\ndelta");
+        let cursor = Cursor::at(2, 0);
+        let selection = Selection::new(Cursor::at(1, 1), Cursor::at(2, 3));
+        let r = delete_line(&mut buffer, &cursor, Some(&selection)).unwrap();
+        // Lines 1 and 2 (beta, gamma) gone; alpha and delta survive.
+        assert_eq!(buffer.text(), "alpha\ndelta");
+        assert_eq!(r.new_cursor, Cursor::at(1, 0));
+        assert!(r.is_multiline);
+    }
+
+    #[test]
+    fn delete_line_selection_through_last_line() {
+        let mut buffer = buf("alpha\nbeta\ngamma");
+        let cursor = Cursor::at(1, 0);
+        let selection = Selection::new(Cursor::at(1, 0), Cursor::at(2, 5));
+        let r = delete_line(&mut buffer, &cursor, Some(&selection)).unwrap();
+        // Both beta and gamma vanish; cursor parks at end of alpha.
+        assert_eq!(buffer.text(), "alpha");
+        assert_eq!(r.new_cursor.line, 0);
+        assert_eq!(r.new_cursor.column, "alpha".chars().count());
+        assert!(r.is_multiline);
+    }
+}
