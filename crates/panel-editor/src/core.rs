@@ -13,7 +13,7 @@ use termide_vfs::VfsManager;
 
 use crate::{
     config::*,
-    constants, file_io, git,
+    constants, file_io,
     state::{FileState, GitIntegration, InputState, LspState, RenderingCache, SearchController},
     vim::VimState,
 };
@@ -45,6 +45,9 @@ mod editor_panel;
 
 #[path = "editor_rendering.rs"]
 mod editor_rendering;
+
+#[path = "editor_git.rs"]
+mod editor_git;
 
 /// Editor panel with syntax highlighting
 pub struct Editor {
@@ -527,25 +530,6 @@ impl Editor {
         }
     }
 
-    /// Get cached git repository root (returns None if not yet cached)
-    pub fn cached_repo_root(&self) -> Option<Option<&PathBuf>> {
-        self.git.cached_repo_root.as_ref().map(|opt| opt.as_ref())
-    }
-
-    /// Get or compute git repository root for this file
-    /// Returns Some(path) if in a git repo, None otherwise
-    pub fn get_or_compute_repo_root(&mut self) -> Option<&PathBuf> {
-        if self.git.cached_repo_root.is_none() {
-            // Compute and cache
-            let repo_root = self.file_path().and_then(termide_git::find_repo_root);
-            self.git.cached_repo_root = Some(repo_root);
-        }
-        self.git
-            .cached_repo_root
-            .as_ref()
-            .and_then(|opt| opt.as_ref())
-    }
-
     /// Get unsaved buffer filename (if this is a temporary unsaved buffer)
     pub fn unsaved_buffer_file(&self) -> Option<&str> {
         self.file_state.unsaved_buffer_file.as_deref()
@@ -795,64 +779,6 @@ impl Editor {
             self.file_state.unsaved_buffer_file =
                 Some(termide_session::generate_unsaved_filename());
         }
-    }
-
-    /// Update git diff cache for this file (async - non-blocking)
-    ///
-    /// Spawns a background thread to load original content from HEAD.
-    /// The result will be applied on next tick via check_git_diff_receiver().
-    pub fn update_git_diff(&mut self) {
-        // Clone file path to avoid borrow conflict with git_diff_cache
-        let file_path = self.file_path().map(|p| p.to_path_buf());
-        if let Some(rx) = git::update_git_diff_async(&mut self.git.diff_cache, file_path.as_deref())
-        {
-            self.git.diff_receiver = Some(rx);
-        }
-    }
-
-    /// Check and apply async git diff result if ready (called on each tick)
-    ///
-    /// Returns true if result was applied and needs_redraw should be set.
-    pub fn check_git_diff_receiver(&mut self) -> bool {
-        git::check_git_diff_receiver(&mut self.git.diff_receiver, &mut self.git.diff_cache)
-    }
-
-    /// Schedule git diff update with debounce (300ms delay)
-    pub fn schedule_git_diff_update(&mut self) {
-        if let Some(instant) = git::schedule_git_diff_update(&self.git.diff_cache) {
-            self.git.update_pending = Some(instant);
-        }
-    }
-
-    /// Check and apply pending git diff update if debounce time has passed
-    pub fn check_pending_git_diff_update(&mut self) {
-        let (updated, new_pending) = git::check_pending_git_diff_update(
-            self.git.update_pending,
-            &mut self.git.diff_cache,
-            &self.buffer,
-        );
-        if updated {
-            self.git.update_pending = new_pending;
-        }
-    }
-
-    /// Check if the file was modified externally (outside of this editor)
-    pub fn check_external_modification(&mut self) {
-        // Skip check for remote files - temp file changes don't indicate external edits
-        if self.file_state.is_remote() {
-            return;
-        }
-
-        if let Some(file_path) = self.buffer.file_path() {
-            if file_io::was_modified_externally(file_path, self.file_state.mtime) {
-                self.file_state.external_change_detected = true;
-            }
-        }
-    }
-
-    /// Check if external modification was detected
-    pub fn has_external_change(&self) -> bool {
-        self.file_state.external_change_detected
     }
 
     /// Check if buffer has unsaved modifications
