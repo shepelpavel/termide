@@ -213,6 +213,32 @@ cargo build --release
 
 </details>
 
+<details>
+<summary><b>📦 Portable static binary (Alpine / any Linux)</b></summary>
+
+A fully static musl build is provided as a separate flake output.
+It links no shared libraries and runs on any Linux distribution,
+including Alpine and minimal containers. The whole workspace is
+pure-Rust (rustls + russh + russh-sftp — no OpenSSL, no libssh2),
+so this is the same code, just compiled against musl.
+
+```bash
+# Build a self-contained binary
+nix build github:termide/termide#termide-static
+
+# Run it
+./result/bin/termide
+
+# Verify there are no dynamic dependencies
+ldd ./result/bin/termide   # → "not a dynamic executable"
+```
+
+You can also copy the binary anywhere — into a container, a stripped
+Alpine image, an embedded box — and it will work without needing
+musl-dev or glibc installed.
+
+</details>
+
 ## Requirements
 
 - For pre-built binaries: No additional requirements
