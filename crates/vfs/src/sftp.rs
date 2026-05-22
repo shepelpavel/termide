@@ -153,6 +153,26 @@ enum SftpCommand {
         remote: PathBuf,
         reply: Reply<()>,
     },
+    /// Download with chunk-level progress and pause/cancel support.
+    /// `remote` may be a file or directory; the actor walks recursively.
+    DownloadWithProgress {
+        remote: PathBuf,
+        local: PathBuf,
+        pause: Arc<AtomicBool>,
+        cancel: Arc<AtomicBool>,
+        progress_tx: std_mpsc::Sender<DownloadProgress>,
+        reply: Reply<()>,
+    },
+    /// Upload with chunk-level progress and pause/cancel support.
+    /// `local` may be a file or directory; the actor walks recursively.
+    UploadWithProgress {
+        local: PathBuf,
+        remote: PathBuf,
+        pause: Arc<AtomicBool>,
+        cancel: Arc<AtomicBool>,
+        progress_tx: std_mpsc::Sender<UploadProgress>,
+        reply: Reply<()>,
+    },
     /// Tear down the actor cleanly.
     Shutdown,
 }
@@ -249,6 +269,46 @@ async fn sftp_actor(sftp: SftpSession, mut rx: async_mpsc::Receiver<SftpCommand>
                 reply,
             } => {
                 let _ = reply.send(actor_upload_dir(&sftp, &local, &remote).await);
+            }
+            SftpCommand::DownloadWithProgress {
+                remote,
+                local,
+                pause,
+                cancel,
+                progress_tx,
+                reply,
+            } => {
+                let _ = reply.send(
+                    actor_download_with_progress(
+                        &sftp,
+                        &remote,
+                        &local,
+                        &pause,
+                        &cancel,
+                        &progress_tx,
+                    )
+                    .await,
+                );
+            }
+            SftpCommand::UploadWithProgress {
+                local,
+                remote,
+                pause,
+                cancel,
+                progress_tx,
+                reply,
+            } => {
+                let _ = reply.send(
+                    actor_upload_with_progress(
+                        &sftp,
+                        &local,
+                        &remote,
+                        &pause,
+                        &cancel,
+                        &progress_tx,
+                    )
+                    .await,
+                );
             }
             SftpCommand::Shutdown => break,
         }
@@ -538,6 +598,382 @@ async fn actor_upload_dir(sftp: &SftpSession, local: &Path, remote: &Path) -> Vf
             actor_upload_file(sftp, &local_child, &remote_child).await?;
         }
     }
+    Ok(())
+}
+
+// ============================================================================
+// Chunk-level progress + pause/cancel for download and upload
+// ============================================================================
+
+/// Rolling state shared between top-level and recursive helpers so the
+/// progress reports reflect the whole transfer, not just the current file.
+struct DlState {
+    total_files: usize,
+    total_bytes: u64,
+    files_done: usize,
+    bytes_done: u64,
+}
+
+struct UlState {
+    total_files: usize,
+    total_bytes: u64,
+    files_done: usize,
+    bytes_done: u64,
+}
+
+/// Bail out if cancel was requested; otherwise block while pause is set.
+async fn wait_or_cancel(pause: &Arc<AtomicBool>, cancel: &Arc<AtomicBool>) -> VfsResult<()> {
+    if cancel.load(Ordering::Relaxed) {
+        return Err(VfsError::Cancelled);
+    }
+    while pause.load(Ordering::Relaxed) {
+        if cancel.load(Ordering::Relaxed) {
+            return Err(VfsError::Cancelled);
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    Ok(())
+}
+
+async fn actor_count_remote_files(
+    sftp: &SftpSession,
+    path: &Path,
+    cancel: &Arc<AtomicBool>,
+) -> VfsResult<(usize, u64)> {
+    if cancel.load(Ordering::Relaxed) {
+        return Err(VfsError::Cancelled);
+    }
+    let attrs = sftp
+        .metadata(path_to_string(path))
+        .await
+        .map_err(map_sftp_err)?;
+    if !matches!(attrs.file_type(), SftpFileType::Dir) {
+        return Ok((1, attrs.size.unwrap_or(0)));
+    }
+    let entries = sftp
+        .read_dir(path_to_string(path))
+        .await
+        .map_err(map_sftp_err)?;
+    let mut count = 0;
+    let mut bytes = 0u64;
+    for entry in entries {
+        let name = entry.file_name();
+        if name == "." || name == ".." {
+            continue;
+        }
+        let child = path.join(&name);
+        let (c, b) = Box::pin(actor_count_remote_files(sftp, &child, cancel)).await?;
+        count += c;
+        bytes += b;
+    }
+    Ok((count, bytes))
+}
+
+fn count_local_files_sync(path: &Path, cancel: &Arc<AtomicBool>) -> VfsResult<(usize, u64)> {
+    if cancel.load(Ordering::Relaxed) {
+        return Err(VfsError::Cancelled);
+    }
+    let meta = std::fs::metadata(path).map_err(VfsError::Io)?;
+    if !meta.is_dir() {
+        return Ok((1, meta.len()));
+    }
+    let mut count = 0;
+    let mut bytes = 0u64;
+    for entry in std::fs::read_dir(path).map_err(VfsError::Io)? {
+        let entry = entry.map_err(VfsError::Io)?;
+        let (c, b) = count_local_files_sync(&entry.path(), cancel)?;
+        count += c;
+        bytes += b;
+    }
+    Ok((count, bytes))
+}
+
+async fn actor_download_with_progress(
+    sftp: &SftpSession,
+    remote: &Path,
+    local: &Path,
+    pause: &Arc<AtomicBool>,
+    cancel: &Arc<AtomicBool>,
+    progress_tx: &std_mpsc::Sender<DownloadProgress>,
+) -> VfsResult<()> {
+    wait_or_cancel(pause, cancel).await?;
+    let attrs = sftp
+        .metadata(path_to_string(remote))
+        .await
+        .map_err(map_sftp_err)?;
+    let is_dir = matches!(attrs.file_type(), SftpFileType::Dir);
+    let (total_files, total_bytes) = if is_dir {
+        actor_count_remote_files(sftp, remote, cancel).await?
+    } else {
+        (1usize, attrs.size.unwrap_or(0))
+    };
+    let mut state = DlState {
+        total_files,
+        total_bytes,
+        files_done: 0,
+        bytes_done: 0,
+    };
+    if is_dir {
+        actor_dl_dir_with_progress(sftp, remote, local, pause, cancel, progress_tx, &mut state)
+            .await?;
+    } else {
+        actor_dl_file_with_progress(sftp, remote, local, pause, cancel, progress_tx, &mut state)
+            .await?;
+    }
+    Ok(())
+}
+
+async fn actor_dl_dir_with_progress(
+    sftp: &SftpSession,
+    remote: &Path,
+    local: &Path,
+    pause: &Arc<AtomicBool>,
+    cancel: &Arc<AtomicBool>,
+    progress_tx: &std_mpsc::Sender<DownloadProgress>,
+    state: &mut DlState,
+) -> VfsResult<()> {
+    tokio::fs::create_dir_all(local)
+        .await
+        .map_err(VfsError::Io)?;
+    let entries = sftp
+        .read_dir(path_to_string(remote))
+        .await
+        .map_err(map_sftp_err)?;
+    for entry in entries {
+        let name = entry.file_name();
+        if name == "." || name == ".." {
+            continue;
+        }
+        let remote_child = remote.join(&name);
+        let local_child = local.join(&name);
+        match entry.metadata().file_type() {
+            SftpFileType::Dir => {
+                Box::pin(actor_dl_dir_with_progress(
+                    sftp,
+                    &remote_child,
+                    &local_child,
+                    pause,
+                    cancel,
+                    progress_tx,
+                    state,
+                ))
+                .await?;
+            }
+            _ => {
+                actor_dl_file_with_progress(
+                    sftp,
+                    &remote_child,
+                    &local_child,
+                    pause,
+                    cancel,
+                    progress_tx,
+                    state,
+                )
+                .await?;
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn actor_dl_file_with_progress(
+    sftp: &SftpSession,
+    remote: &Path,
+    local: &Path,
+    pause: &Arc<AtomicBool>,
+    cancel: &Arc<AtomicBool>,
+    progress_tx: &std_mpsc::Sender<DownloadProgress>,
+    state: &mut DlState,
+) -> VfsResult<()> {
+    if let Some(parent) = local.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(VfsError::Io)?;
+    }
+    let file_total = sftp
+        .metadata(path_to_string(remote))
+        .await
+        .map_err(map_sftp_err)?
+        .size
+        .unwrap_or(0);
+    let mut src = sftp
+        .open(path_to_string(remote))
+        .await
+        .map_err(map_sftp_err)?;
+    let mut dst = tokio::fs::File::create(local).await.map_err(VfsError::Io)?;
+    let mut buf = vec![0u8; CHUNK_SIZE];
+    let mut current_bytes = 0u64;
+    let current_name = remote.file_name().map(|s| s.to_string_lossy().into_owned());
+
+    // Emit an initial progress event so the UI knows we started.
+    let _ = progress_tx.send(DownloadProgress {
+        bytes_downloaded: state.bytes_done,
+        total_bytes: state.total_bytes,
+        current_file: current_name.clone(),
+        files_downloaded: state.files_done,
+        total_files: state.total_files,
+        current_file_bytes: 0,
+        current_file_total: file_total,
+    });
+
+    loop {
+        wait_or_cancel(pause, cancel).await?;
+        let n = src.read(&mut buf).await.map_err(map_sftp_err)?;
+        if n == 0 {
+            break;
+        }
+        dst.write_all(&buf[..n]).await.map_err(VfsError::Io)?;
+        current_bytes += n as u64;
+        state.bytes_done += n as u64;
+        let _ = progress_tx.send(DownloadProgress {
+            bytes_downloaded: state.bytes_done,
+            total_bytes: state.total_bytes,
+            current_file: current_name.clone(),
+            files_downloaded: state.files_done,
+            total_files: state.total_files,
+            current_file_bytes: current_bytes,
+            current_file_total: file_total,
+        });
+    }
+    dst.flush().await.map_err(VfsError::Io)?;
+    state.files_done += 1;
+    Ok(())
+}
+
+async fn actor_upload_with_progress(
+    sftp: &SftpSession,
+    local: &Path,
+    remote: &Path,
+    pause: &Arc<AtomicBool>,
+    cancel: &Arc<AtomicBool>,
+    progress_tx: &std_mpsc::Sender<UploadProgress>,
+) -> VfsResult<()> {
+    wait_or_cancel(pause, cancel).await?;
+    let meta = std::fs::metadata(local).map_err(VfsError::Io)?;
+    let is_dir = meta.is_dir();
+    let (total_files, total_bytes) = if is_dir {
+        count_local_files_sync(local, cancel)?
+    } else {
+        (1usize, meta.len())
+    };
+    let mut state = UlState {
+        total_files,
+        total_bytes,
+        files_done: 0,
+        bytes_done: 0,
+    };
+    if is_dir {
+        actor_ul_dir_with_progress(sftp, local, remote, pause, cancel, progress_tx, &mut state)
+            .await?;
+    } else {
+        actor_ul_file_with_progress(sftp, local, remote, pause, cancel, progress_tx, &mut state)
+            .await?;
+    }
+    Ok(())
+}
+
+async fn actor_ul_dir_with_progress(
+    sftp: &SftpSession,
+    local: &Path,
+    remote: &Path,
+    pause: &Arc<AtomicBool>,
+    cancel: &Arc<AtomicBool>,
+    progress_tx: &std_mpsc::Sender<UploadProgress>,
+    state: &mut UlState,
+) -> VfsResult<()> {
+    actor_mkdir_recursive(sftp, remote).await?;
+    let mut entries = tokio::fs::read_dir(local).await.map_err(VfsError::Io)?;
+    while let Some(entry) = entries.next_entry().await.map_err(VfsError::Io)? {
+        let name = entry.file_name();
+        let local_child = entry.path();
+        let remote_child = remote.join(&name);
+        let ft = entry.file_type().await.map_err(VfsError::Io)?;
+        if ft.is_dir() {
+            Box::pin(actor_ul_dir_with_progress(
+                sftp,
+                &local_child,
+                &remote_child,
+                pause,
+                cancel,
+                progress_tx,
+                state,
+            ))
+            .await?;
+        } else if ft.is_file() {
+            actor_ul_file_with_progress(
+                sftp,
+                &local_child,
+                &remote_child,
+                pause,
+                cancel,
+                progress_tx,
+                state,
+            )
+            .await?;
+        }
+    }
+    Ok(())
+}
+
+async fn actor_ul_file_with_progress(
+    sftp: &SftpSession,
+    local: &Path,
+    remote: &Path,
+    pause: &Arc<AtomicBool>,
+    cancel: &Arc<AtomicBool>,
+    progress_tx: &std_mpsc::Sender<UploadProgress>,
+    state: &mut UlState,
+) -> VfsResult<()> {
+    if let Some(parent) = remote.parent() {
+        if parent.as_os_str() != "" && parent.as_os_str() != "/" {
+            actor_mkdir_recursive(sftp, parent).await?;
+        }
+    }
+    let file_total = std::fs::metadata(local).map(|m| m.len()).unwrap_or(0);
+    let mut src = tokio::fs::File::open(local).await.map_err(VfsError::Io)?;
+    let mut dst = sftp
+        .open_with_flags(
+            path_to_string(remote),
+            OpenFlags::CREATE | OpenFlags::WRITE | OpenFlags::TRUNCATE,
+        )
+        .await
+        .map_err(map_sftp_err)?;
+    let mut buf = vec![0u8; CHUNK_SIZE];
+    let mut current_bytes = 0u64;
+    let current_name = local.file_name().map(|s| s.to_string_lossy().into_owned());
+
+    let _ = progress_tx.send(UploadProgress {
+        bytes_uploaded: state.bytes_done,
+        total_bytes: state.total_bytes,
+        current_file: current_name.clone(),
+        files_uploaded: state.files_done,
+        total_files: state.total_files,
+        current_file_bytes: 0,
+        current_file_total: file_total,
+    });
+
+    loop {
+        wait_or_cancel(pause, cancel).await?;
+        let n = src.read(&mut buf).await.map_err(VfsError::Io)?;
+        if n == 0 {
+            break;
+        }
+        dst.write_all(&buf[..n]).await.map_err(map_sftp_err)?;
+        current_bytes += n as u64;
+        state.bytes_done += n as u64;
+        let _ = progress_tx.send(UploadProgress {
+            bytes_uploaded: state.bytes_done,
+            total_bytes: state.total_bytes,
+            current_file: current_name.clone(),
+            files_uploaded: state.files_done,
+            total_files: state.total_files,
+            current_file_bytes: current_bytes,
+            current_file_total: file_total,
+        });
+    }
+    dst.flush().await.map_err(map_sftp_err)?;
+    dst.shutdown().await.map_err(map_sftp_err)?;
+    state.files_done += 1;
     Ok(())
 }
 
@@ -1265,9 +1701,6 @@ impl VfsProvider for SftpProvider {
     }
 
     fn upload_with_progress(&self, local: &Path, remote: &VfsPath) -> VfsUploadOperation {
-        // Phase 2a: no live progress yet — perform a plain upload and
-        // report a single 100% UploadProgress on completion. Phase 2d
-        // will wire in chunk-level progress through a dedicated command.
         let remote_p = match Self::to_remote_path(remote) {
             Ok(p) => p,
             Err(e) => return VfsUploadOperation::error(e),
@@ -1281,44 +1714,18 @@ impl VfsProvider for SftpProvider {
         let (progress_tx, progress_rx) = std_mpsc::channel();
         let pause_flag = Arc::new(AtomicBool::new(false));
         let cancel_flag = Arc::new(AtomicBool::new(false));
-        let cancel_flag_thread = Arc::clone(&cancel_flag);
+        let pause_for_actor = Arc::clone(&pause_flag);
+        let cancel_for_actor = Arc::clone(&cancel_flag);
 
         thread::spawn(move || {
-            if cancel_flag_thread.load(Ordering::Relaxed) {
-                let _ = completion_tx.send(Err(VfsError::Cancelled));
-                return;
-            }
-            let result: VfsResult<()> = (|| -> VfsResult<()> {
-                let is_dir = std::fs::metadata(&local_path)
-                    .map(|m| m.is_dir())
-                    .unwrap_or(false);
-                if is_dir {
-                    handle.dispatch(|reply| SftpCommand::UploadDir {
-                        local: local_path.clone(),
-                        remote: remote_p.clone(),
-                        reply,
-                    })?;
-                } else {
-                    handle.dispatch(|reply| SftpCommand::UploadFile {
-                        local: local_path.clone(),
-                        remote: remote_p.clone(),
-                        reply,
-                    })?;
-                }
-                let total = std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(0);
-                let _ = progress_tx.send(UploadProgress {
-                    bytes_uploaded: total,
-                    total_bytes: total,
-                    current_file: local_path
-                        .file_name()
-                        .map(|s| s.to_string_lossy().into_owned()),
-                    files_uploaded: 1,
-                    total_files: 1,
-                    current_file_bytes: total,
-                    current_file_total: total,
-                });
-                Ok(())
-            })();
+            let result = handle.dispatch(move |reply| SftpCommand::UploadWithProgress {
+                local: local_path,
+                remote: remote_p,
+                pause: pause_for_actor,
+                cancel: cancel_for_actor,
+                progress_tx,
+                reply,
+            });
             let _ = completion_tx.send(result);
         });
 
@@ -1326,7 +1733,6 @@ impl VfsProvider for SftpProvider {
     }
 
     fn download_with_progress(&self, remote: &VfsPath, local: &Path) -> VfsDownloadOperation {
-        // Phase 2a: plain download, single completion progress.
         let remote_p = match Self::to_remote_path(remote) {
             Ok(p) => p,
             Err(e) => return VfsDownloadOperation::error(e),
@@ -1341,46 +1747,21 @@ impl VfsProvider for SftpProvider {
         let (progress_tx, progress_rx) = std_mpsc::channel();
         let pause_flag = Arc::new(AtomicBool::new(false));
         let cancel_flag = Arc::new(AtomicBool::new(false));
-        let cancel_flag_thread = Arc::clone(&cancel_flag);
+        let pause_for_actor = Arc::clone(&pause_flag);
+        let cancel_for_actor = Arc::clone(&cancel_flag);
 
         thread::spawn(move || {
-            if cancel_flag_thread.load(Ordering::Relaxed) {
-                let _ = completion_tx.send(Err(VfsError::Cancelled));
-                return;
-            }
-            let result: VfsResult<PathBuf> = (|| -> VfsResult<PathBuf> {
-                let meta = handle.dispatch(|reply| SftpCommand::Stat {
-                    path: remote_p.clone(),
+            let res: VfsResult<PathBuf> = handle
+                .dispatch(move |reply| SftpCommand::DownloadWithProgress {
+                    remote: remote_p,
+                    local: local_path,
+                    pause: pause_for_actor,
+                    cancel: cancel_for_actor,
+                    progress_tx,
                     reply,
-                })?;
-                let total = meta.size;
-                if meta.file_type.is_dir() {
-                    handle.dispatch(|reply| SftpCommand::DownloadDir {
-                        remote: remote_p.clone(),
-                        local: local_path.clone(),
-                        reply,
-                    })?;
-                } else {
-                    handle.dispatch(|reply| SftpCommand::DownloadFile {
-                        remote: remote_p.clone(),
-                        local: local_path.clone(),
-                        reply,
-                    })?;
-                }
-                let _ = progress_tx.send(DownloadProgress {
-                    bytes_downloaded: total,
-                    total_bytes: total,
-                    current_file: remote_p
-                        .file_name()
-                        .map(|s| s.to_string_lossy().into_owned()),
-                    files_downloaded: 1,
-                    total_files: 1,
-                    current_file_bytes: total,
-                    current_file_total: total,
-                });
-                Ok(result_local)
-            })();
-            let _ = completion_tx.send(result);
+                })
+                .map(|()| result_local);
+            let _ = completion_tx.send(res);
         });
 
         VfsDownloadOperation::new(completion_rx, progress_rx, pause_flag, cancel_flag)
