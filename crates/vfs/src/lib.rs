@@ -533,6 +533,30 @@ impl VfsManager {
         )
     }
 
+    /// Rename / move a file or directory within the same provider.
+    ///
+    /// On SFTP and FTP this is an atomic server-side operation (no
+    /// data is transferred), so this should be preferred over
+    /// download+upload whenever source and destination share the same
+    /// connection.
+    pub fn rename(&self, from: &VfsPath, to: &VfsPath) -> VfsOperation<()> {
+        if from.is_local() && to.is_local() {
+            self.cache.invalidate_with_parent(from);
+            self.cache.invalidate_with_parent(to);
+            return self.local.rename(from, to);
+        }
+
+        self.dispatch_remote(
+            from,
+            |p| {
+                self.cache.invalidate_with_parent(from);
+                self.cache.invalidate_with_parent(to);
+                p.rename(from, to)
+            },
+            || VfsOperation::error(VfsError::NotConnected),
+        )
+    }
+
     /// Download a remote file to a local path.
     ///
     /// Returns the path to the downloaded local file.

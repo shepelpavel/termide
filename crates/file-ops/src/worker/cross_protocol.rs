@@ -210,6 +210,40 @@ impl CrossProtocolWorker {
             _ => return OperationResult::Failed("Destination must be remote".to_string()),
         };
 
+        // Fast path: same connection move = server-side rename, no
+        // bytes transferred. Renaming a 5 GB file shouldn't take any
+        // longer than renaming a 5-byte one, so try this first whenever
+        // it applies — fall back to download+upload only on error.
+        if self.is_move
+            && source_path.protocol == dest_path.protocol
+            && source_path.host == dest_path.host
+            && source_path.port == dest_path.port
+            && source_path.username == dest_path.username
+        {
+            let _ = progress_tx.send(OperationProgress {
+                phase: OperationPhase::Transferring,
+                current_item: Some(format!(
+                    "Renaming {}",
+                    source_path
+                        .path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("")
+                )),
+                ..Default::default()
+            });
+            match self.vfs_manager.rename(&source_path, &dest_path).recv() {
+                Ok(()) => return OperationResult::Success,
+                Err(e) => {
+                    log::warn!(
+                        "Server-side rename failed ({}), falling back to copy+delete",
+                        e
+                    );
+                    // fall through to download+upload+delete path
+                }
+            }
+        }
+
         // Create temp directory for intermediate file.
         // Use a RAII guard to ensure cleanup on panic or early return.
         let temp_dir = std::env::temp_dir().join(format!("termide_xfer_{}", std::process::id()));
