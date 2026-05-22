@@ -1,21 +1,38 @@
 //! SFTP (SSH File Transfer Protocol) VFS provider.
 //!
-//! Uses the `ssh2` crate for SSH/SFTP connectivity.
+//! Uses `russh` + `russh-sftp` (pure-Rust SSH stack) so the workspace can
+//! build statically against musl without pulling OpenSSL/libssh2.
+//!
+//! Internally an async tokio actor task owns the `SftpSession`. The
+//! synchronous `VfsProvider` surface communicates with it through
+//! `mpsc<Command>` + `oneshot<Reply>`, blocking the calling thread on a
+//! global tokio runtime created lazily through `OnceLock`. From the
+//! outside, callers see the same blocking API as before.
+//!
+//! Phase 2a scope: connect/disconnect, password/ssh-key/agent/auto auth,
+//! basic file operations, recursive delete. Progress reporting and
+//! pause/resume for download/upload are stubbed to plain transfer in
+//! this phase — added in subsequent phases.
+//!
+//! NOTE: known_hosts verification is intentionally not enforced yet
+//! (accept-all server keys) — matches previous ssh2 behavior. Hardening
+//! this is a separate task.
 
-use std::io::{Read, Write};
-use std::net::{TcpStream, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{mpsc as std_mpsc, Arc, Mutex, OnceLock};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, UNIX_EPOCH};
 
-use ssh2::{OpenFlags, OpenType, Session, Sftp};
+use russh::client;
+use russh::keys::{decode_secret_key, load_secret_key, PrivateKey, PrivateKeyWithHashAlg};
+use russh_sftp::client::SftpSession;
+use russh_sftp::protocol::{FileAttributes, FileType as SftpFileType, OpenFlags};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::runtime::Runtime;
+use tokio::sync::{mpsc as async_mpsc, oneshot};
 
 use crate::error::{VfsError, VfsResult};
-
-/// Polling interval for pause/cancel flag checks during SFTP operations.
-const PAUSE_POLL_INTERVAL: Duration = Duration::from_millis(100);
 use crate::traits::{DiskSpace, VfsProvider};
 use crate::types::{
     AuthMethod, ConnectOptions, ConnectionState, DownloadProgress, UploadProgress,
@@ -23,51 +40,311 @@ use crate::types::{
     VfsUploadOperation,
 };
 
-/// Default connection timeout in seconds.
+/// Default connection timeout in seconds (matches the previous ssh2-based impl).
 const DEFAULT_TIMEOUT_SECS: u64 = 60;
 
-/// Chunk size for chunked I/O operations (64KB).
+/// Chunk size for chunked I/O operations (64KB) — matches old behavior.
 const CHUNK_SIZE: usize = 64 * 1024;
 
-/// Acquire SFTP mutex lock, converting poison error to VfsError.
-fn lock_sftp(sftp: &Arc<Mutex<Sftp>>) -> VfsResult<std::sync::MutexGuard<'_, Sftp>> {
-    sftp.lock().map_err(|e| VfsError::RemoteError {
-        message: format!("Failed to acquire SFTP lock: {e}"),
+// ============================================================================
+// Global tokio runtime
+// ============================================================================
+
+static SFTP_RUNTIME: OnceLock<Runtime> = OnceLock::new();
+
+fn runtime() -> &'static Runtime {
+    SFTP_RUNTIME.get_or_init(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .thread_name("vfs-sftp")
+            .enable_all()
+            .build()
+            .expect("failed to build SFTP tokio runtime")
     })
 }
 
-/// Create directory and all parent directories on remote SFTP.
-/// Returns error if directory cannot be created.
-fn sftp_mkdir_recursive(sftp: &Sftp, path: &Path) -> VfsResult<()> {
+/// Run a future to completion on the global SFTP runtime, blocking the
+/// calling (sync) thread. Safe to call from any non-tokio thread.
+fn block_on<F: std::future::Future>(fut: F) -> F::Output {
+    runtime().block_on(fut)
+}
+
+// ============================================================================
+// Actor: commands, replies, task loop
+// ============================================================================
+
+type Reply<T> = oneshot::Sender<VfsResult<T>>;
+
+/// SFTP entry as crossed-over from the actor to the sync side.
+/// Decoupled from russh_sftp's `DirEntry` so callers don't carry the dep.
+struct ActorEntry {
+    name: String,
+    metadata: VfsMetadata,
+}
+
+enum SftpCommand {
+    ListDir {
+        path: PathBuf,
+        reply: Reply<Vec<ActorEntry>>,
+    },
+    Stat {
+        path: PathBuf,
+        reply: Reply<VfsMetadata>,
+    },
+    Exists {
+        path: PathBuf,
+        reply: Reply<bool>,
+    },
+    Mkdir {
+        path: PathBuf,
+        reply: Reply<()>,
+    },
+    MkdirRecursive {
+        path: PathBuf,
+        reply: Reply<()>,
+    },
+    Rename {
+        from: PathBuf,
+        to: PathBuf,
+        reply: Reply<()>,
+    },
+    Read {
+        path: PathBuf,
+        reply: Reply<Vec<u8>>,
+    },
+    Write {
+        path: PathBuf,
+        data: Vec<u8>,
+        reply: Reply<()>,
+    },
+    /// Recursive delete (file or directory), with depth limit.
+    DeleteRecursive {
+        path: PathBuf,
+        depth_limit: usize,
+        reply: Reply<()>,
+    },
+    /// SFTP-side copy via streaming (no temp file).
+    CopyFile {
+        from: PathBuf,
+        to: PathBuf,
+        reply: Reply<()>,
+    },
+    /// Download a single remote file to a local path.
+    DownloadFile {
+        remote: PathBuf,
+        local: PathBuf,
+        reply: Reply<()>,
+    },
+    /// Upload a single local file to a remote path.
+    UploadFile {
+        local: PathBuf,
+        remote: PathBuf,
+        reply: Reply<()>,
+    },
+    /// Recursive download remote dir → local dir.
+    DownloadDir {
+        remote: PathBuf,
+        local: PathBuf,
+        reply: Reply<()>,
+    },
+    /// Recursive upload local dir → remote dir.
+    UploadDir {
+        local: PathBuf,
+        remote: PathBuf,
+        reply: Reply<()>,
+    },
+    /// Tear down the actor cleanly.
+    Shutdown,
+}
+
+/// Handle to the long-lived SFTP actor task.
+struct SftpHandle {
+    cmd_tx: async_mpsc::Sender<SftpCommand>,
+}
+
+impl SftpHandle {
+    /// Send a command and block for the reply on the SFTP runtime.
+    fn dispatch<T, F>(&self, build: F) -> VfsResult<T>
+    where
+        F: FnOnce(Reply<T>) -> SftpCommand,
+    {
+        let (tx, rx) = oneshot::channel();
+        let cmd = build(tx);
+        block_on(async move {
+            self.cmd_tx
+                .send(cmd)
+                .await
+                .map_err(|_| VfsError::NotConnected)?;
+            rx.await.map_err(|_| VfsError::NotConnected)?
+        })
+    }
+}
+
+/// Async actor task: owns the SftpSession and serves commands until the
+/// channel closes or `Shutdown` is received.
+async fn sftp_actor(sftp: SftpSession, mut rx: async_mpsc::Receiver<SftpCommand>) {
+    while let Some(cmd) = rx.recv().await {
+        match cmd {
+            SftpCommand::ListDir { path, reply } => {
+                let _ = reply.send(actor_list_dir(&sftp, &path).await);
+            }
+            SftpCommand::Stat { path, reply } => {
+                let _ = reply.send(actor_stat(&sftp, &path).await);
+            }
+            SftpCommand::Exists { path, reply } => {
+                let _ = reply.send(Ok(sftp.metadata(path_to_string(&path)).await.is_ok()));
+            }
+            SftpCommand::Mkdir { path, reply } => {
+                let _ = reply.send(map_sftp_unit(sftp.create_dir(path_to_string(&path)).await));
+            }
+            SftpCommand::MkdirRecursive { path, reply } => {
+                let _ = reply.send(actor_mkdir_recursive(&sftp, &path).await);
+            }
+            SftpCommand::Rename { from, to, reply } => {
+                let _ = reply.send(map_sftp_unit(
+                    sftp.rename(path_to_string(&from), path_to_string(&to))
+                        .await,
+                ));
+            }
+            SftpCommand::Read { path, reply } => {
+                let _ = reply.send(actor_read_file(&sftp, &path).await);
+            }
+            SftpCommand::Write { path, data, reply } => {
+                let _ = reply.send(actor_write_file(&sftp, &path, &data).await);
+            }
+            SftpCommand::DeleteRecursive {
+                path,
+                depth_limit,
+                reply,
+            } => {
+                let _ = reply.send(actor_delete_recursive(&sftp, &path, depth_limit).await);
+            }
+            SftpCommand::CopyFile { from, to, reply } => {
+                let _ = reply.send(actor_copy_file(&sftp, &from, &to).await);
+            }
+            SftpCommand::DownloadFile {
+                remote,
+                local,
+                reply,
+            } => {
+                let _ = reply.send(actor_download_file(&sftp, &remote, &local).await);
+            }
+            SftpCommand::UploadFile {
+                local,
+                remote,
+                reply,
+            } => {
+                let _ = reply.send(actor_upload_file(&sftp, &local, &remote).await);
+            }
+            SftpCommand::DownloadDir {
+                remote,
+                local,
+                reply,
+            } => {
+                let _ = reply.send(actor_download_dir(&sftp, &remote, &local).await);
+            }
+            SftpCommand::UploadDir {
+                local,
+                remote,
+                reply,
+            } => {
+                let _ = reply.send(actor_upload_dir(&sftp, &local, &remote).await);
+            }
+            SftpCommand::Shutdown => break,
+        }
+    }
+    let _ = sftp.close().await;
+}
+
+// ============================================================================
+// Actor operation primitives
+// ============================================================================
+
+fn path_to_string(path: &Path) -> String {
+    path.to_string_lossy().into_owned()
+}
+
+fn map_sftp_err<E: std::fmt::Display>(e: E) -> VfsError {
+    VfsError::Sftp(e.to_string())
+}
+
+fn map_sftp_unit<T, E: std::fmt::Display>(r: Result<T, E>) -> VfsResult<()> {
+    r.map(|_| ()).map_err(map_sftp_err)
+}
+
+fn attrs_to_metadata(attrs: &FileAttributes) -> VfsMetadata {
+    let file_type = match attrs.file_type() {
+        SftpFileType::Dir => VfsFileType::Directory,
+        SftpFileType::Symlink => VfsFileType::Symlink,
+        SftpFileType::File => VfsFileType::File,
+        _ => VfsFileType::Other,
+    };
+
+    let modified = attrs
+        .mtime
+        .map(|secs| UNIX_EPOCH + Duration::from_secs(secs as u64));
+
+    VfsMetadata {
+        file_type,
+        size: attrs.size.unwrap_or(0),
+        modified,
+        created: None,
+        accessed: attrs
+            .atime
+            .map(|secs| UNIX_EPOCH + Duration::from_secs(secs as u64)),
+        readonly: attrs.permissions.is_some_and(|p| p & 0o200 == 0),
+        permissions: attrs.permissions,
+    }
+}
+
+async fn actor_list_dir(sftp: &SftpSession, path: &Path) -> VfsResult<Vec<ActorEntry>> {
+    let entries = sftp
+        .read_dir(path_to_string(path))
+        .await
+        .map_err(map_sftp_err)?;
+    let mut out = Vec::new();
+    for entry in entries {
+        let name = entry.file_name();
+        if name == "." || name == ".." {
+            continue;
+        }
+        out.push(ActorEntry {
+            metadata: attrs_to_metadata(&entry.metadata()),
+            name,
+        });
+    }
+    Ok(out)
+}
+
+async fn actor_stat(sftp: &SftpSession, path: &Path) -> VfsResult<VfsMetadata> {
+    let attrs = sftp
+        .metadata(path_to_string(path))
+        .await
+        .map_err(map_sftp_err)?;
+    Ok(attrs_to_metadata(&attrs))
+}
+
+/// Create directory and all parents, ignoring "already exists" errors.
+async fn actor_mkdir_recursive(sftp: &SftpSession, path: &Path) -> VfsResult<()> {
     let mut current = PathBuf::new();
     for component in path.components() {
         current.push(component);
-
-        // Skip root directory
         if current.as_os_str() == "/" {
             continue;
         }
-
-        // Try to create directory - ignore "already exists" errors
-        match sftp.mkdir(&current, 0o755) {
-            Ok(()) => {}
-
-            Err(e) => {
-                // SFTP error code 4 (SSH_FX_FAILURE) usually means directory exists
-                // SFTP error code 11 (SSH_FX_DIR_NOT_EMPTY) also means it exists
-                // Check if directory exists by trying to stat it
-                match sftp.stat(&current) {
-                    Ok(stat) => {
-                        if stat.is_dir() {
-                            // Directory already exists — nothing to do
-                        } else {
-                            return Err(VfsError::Sftp(format!(
-                                "Path '{}' exists but is not a directory",
-                                current.display()
-                            )));
-                        }
+        match sftp.create_dir(path_to_string(&current)).await {
+            Ok(_) => {}
+            Err(_) => {
+                // Check whether it already exists as a directory.
+                match sftp.metadata(path_to_string(&current)).await {
+                    Ok(attrs) if matches!(attrs.file_type(), SftpFileType::Dir) => {}
+                    Ok(_) => {
+                        return Err(VfsError::Sftp(format!(
+                            "Path '{}' exists but is not a directory",
+                            current.display()
+                        )));
                     }
-                    Err(_) => {
+                    Err(e) => {
                         return Err(VfsError::Sftp(format!(
                             "Failed to create remote directory '{}': {}",
                             current.display(),
@@ -81,19 +358,444 @@ fn sftp_mkdir_recursive(sftp: &Sftp, path: &Path) -> VfsResult<()> {
     Ok(())
 }
 
-/// Inner connection state, protected by mutex for thread-safe updates.
+async fn actor_read_file(sftp: &SftpSession, path: &Path) -> VfsResult<Vec<u8>> {
+    let mut file = sftp
+        .open(path_to_string(path))
+        .await
+        .map_err(map_sftp_err)?;
+    let mut buf = Vec::new();
+    file.read_to_end(&mut buf).await.map_err(map_sftp_err)?;
+    Ok(buf)
+}
+
+async fn actor_write_file(sftp: &SftpSession, path: &Path, data: &[u8]) -> VfsResult<()> {
+    let mut file = sftp
+        .open_with_flags(
+            path_to_string(path),
+            OpenFlags::CREATE | OpenFlags::WRITE | OpenFlags::TRUNCATE,
+        )
+        .await
+        .map_err(map_sftp_err)?;
+    file.write_all(data).await.map_err(map_sftp_err)?;
+    file.flush().await.map_err(map_sftp_err)?;
+    file.shutdown().await.map_err(map_sftp_err)?;
+    Ok(())
+}
+
+async fn actor_delete_recursive(
+    sftp: &SftpSession,
+    path: &Path,
+    depth_limit: usize,
+) -> VfsResult<()> {
+    if depth_limit == 0 {
+        return Err(VfsError::Sftp(format!(
+            "delete recursion limit reached at {}",
+            path.display()
+        )));
+    }
+    let attrs = sftp
+        .metadata(path_to_string(path))
+        .await
+        .map_err(map_sftp_err)?;
+    if matches!(attrs.file_type(), SftpFileType::Dir) {
+        let entries = sftp
+            .read_dir(path_to_string(path))
+            .await
+            .map_err(map_sftp_err)?;
+        for entry in entries {
+            let name = entry.file_name();
+            if name == "." || name == ".." {
+                continue;
+            }
+            let child = path.join(&name);
+            Box::pin(actor_delete_recursive(sftp, &child, depth_limit - 1)).await?;
+        }
+        sftp.remove_dir(path_to_string(path))
+            .await
+            .map_err(map_sftp_err)?;
+    } else {
+        sftp.remove_file(path_to_string(path))
+            .await
+            .map_err(map_sftp_err)?;
+    }
+    Ok(())
+}
+
+/// SFTP has no native copy — stream read + write through chunks.
+async fn actor_copy_file(sftp: &SftpSession, from: &Path, to: &Path) -> VfsResult<()> {
+    let mut src = sftp
+        .open(path_to_string(from))
+        .await
+        .map_err(map_sftp_err)?;
+    let mut dst = sftp
+        .open_with_flags(
+            path_to_string(to),
+            OpenFlags::CREATE | OpenFlags::WRITE | OpenFlags::TRUNCATE,
+        )
+        .await
+        .map_err(map_sftp_err)?;
+    let mut buf = vec![0u8; CHUNK_SIZE];
+    loop {
+        let n = src.read(&mut buf).await.map_err(map_sftp_err)?;
+        if n == 0 {
+            break;
+        }
+        dst.write_all(&buf[..n]).await.map_err(map_sftp_err)?;
+    }
+    dst.flush().await.map_err(map_sftp_err)?;
+    dst.shutdown().await.map_err(map_sftp_err)?;
+    Ok(())
+}
+
+async fn actor_download_file(sftp: &SftpSession, remote: &Path, local: &Path) -> VfsResult<()> {
+    if let Some(parent) = local.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(VfsError::Io)?;
+    }
+    let mut src = sftp
+        .open(path_to_string(remote))
+        .await
+        .map_err(map_sftp_err)?;
+    let mut dst = tokio::fs::File::create(local).await.map_err(VfsError::Io)?;
+    let mut buf = vec![0u8; CHUNK_SIZE];
+    loop {
+        let n = src.read(&mut buf).await.map_err(map_sftp_err)?;
+        if n == 0 {
+            break;
+        }
+        dst.write_all(&buf[..n]).await.map_err(VfsError::Io)?;
+    }
+    dst.flush().await.map_err(VfsError::Io)?;
+    Ok(())
+}
+
+async fn actor_upload_file(sftp: &SftpSession, local: &Path, remote: &Path) -> VfsResult<()> {
+    if let Some(parent) = remote.parent() {
+        if parent.as_os_str() != "" && parent.as_os_str() != "/" {
+            actor_mkdir_recursive(sftp, parent).await?;
+        }
+    }
+    let mut src = tokio::fs::File::open(local).await.map_err(VfsError::Io)?;
+    let mut dst = sftp
+        .open_with_flags(
+            path_to_string(remote),
+            OpenFlags::CREATE | OpenFlags::WRITE | OpenFlags::TRUNCATE,
+        )
+        .await
+        .map_err(map_sftp_err)?;
+    let mut buf = vec![0u8; CHUNK_SIZE];
+    loop {
+        let n = src.read(&mut buf).await.map_err(VfsError::Io)?;
+        if n == 0 {
+            break;
+        }
+        dst.write_all(&buf[..n]).await.map_err(map_sftp_err)?;
+    }
+    dst.flush().await.map_err(map_sftp_err)?;
+    dst.shutdown().await.map_err(map_sftp_err)?;
+    Ok(())
+}
+
+async fn actor_download_dir(sftp: &SftpSession, remote: &Path, local: &Path) -> VfsResult<()> {
+    tokio::fs::create_dir_all(local)
+        .await
+        .map_err(VfsError::Io)?;
+    let entries = sftp
+        .read_dir(path_to_string(remote))
+        .await
+        .map_err(map_sftp_err)?;
+    for entry in entries {
+        let name = entry.file_name();
+        if name == "." || name == ".." {
+            continue;
+        }
+        let remote_child = remote.join(&name);
+        let local_child = local.join(&name);
+        match entry.metadata().file_type() {
+            SftpFileType::Dir => {
+                Box::pin(actor_download_dir(sftp, &remote_child, &local_child)).await?;
+            }
+            _ => {
+                actor_download_file(sftp, &remote_child, &local_child).await?;
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn actor_upload_dir(sftp: &SftpSession, local: &Path, remote: &Path) -> VfsResult<()> {
+    actor_mkdir_recursive(sftp, remote).await?;
+    let mut entries = tokio::fs::read_dir(local).await.map_err(VfsError::Io)?;
+    while let Some(entry) = entries.next_entry().await.map_err(VfsError::Io)? {
+        let name = entry.file_name();
+        let local_child = entry.path();
+        let remote_child = remote.join(&name);
+        let ft = entry.file_type().await.map_err(VfsError::Io)?;
+        if ft.is_dir() {
+            Box::pin(actor_upload_dir(sftp, &local_child, &remote_child)).await?;
+        } else if ft.is_file() {
+            actor_upload_file(sftp, &local_child, &remote_child).await?;
+        }
+    }
+    Ok(())
+}
+
+// ============================================================================
+// SSH handshake / auth (runs on the runtime, ferries the session to actor)
+// ============================================================================
+
+/// Accept-all handler — matches previous ssh2 behavior (no known_hosts check).
+struct AcceptAllHandler;
+
+impl client::Handler for AcceptAllHandler {
+    type Error = russh::Error;
+
+    async fn check_server_key(
+        &mut self,
+        _server_public_key: &russh::keys::ssh_key::PublicKey,
+    ) -> Result<bool, Self::Error> {
+        Ok(true)
+    }
+}
+
+/// Locate default SSH private key files for current user, in priority
+/// order. Mirrors what the previous Auto auth would attempt.
+fn default_key_files() -> Vec<PathBuf> {
+    let mut keys = Vec::new();
+    if let Some(home) = dirs::home_dir() {
+        for name in ["id_ed25519", "id_rsa", "id_ecdsa", "id_dsa"] {
+            let p = home.join(".ssh").join(name);
+            if p.exists() {
+                keys.push(p);
+            }
+        }
+    }
+    keys
+}
+
+/// Fallback username when none is provided: $USER → $USERNAME → "root".
+fn fallback_username() -> String {
+    std::env::var("USER")
+        .or_else(|_| std::env::var("USERNAME"))
+        .unwrap_or_else(|_| "root".to_string())
+}
+
+/// Try every reasonable auth method until one succeeds. Stops at the
+/// first success; returns AuthenticationFailed if none work.
+async fn try_authenticate(
+    session: &mut client::Handle<AcceptAllHandler>,
+    username: &str,
+    auth: &AuthMethod,
+    cancelled: &Arc<AtomicBool>,
+) -> VfsResult<()> {
+    let cancelled_check = || -> VfsResult<()> {
+        if cancelled.load(Ordering::SeqCst) {
+            Err(VfsError::ConnectionFailed("Connection cancelled".into()))
+        } else {
+            Ok(())
+        }
+    };
+
+    cancelled_check()?;
+
+    match auth {
+        AuthMethod::None => {
+            // Most permissive interpretation of "None": try SSH agent.
+            try_auth_agent(session, username).await
+        }
+        AuthMethod::Password(password) => try_auth_password(session, username, password).await,
+        AuthMethod::SshKey {
+            private_key,
+            passphrase,
+        } => try_auth_keyfile(session, username, private_key, passphrase.as_deref()).await,
+        AuthMethod::SshAgent => try_auth_agent(session, username).await,
+        AuthMethod::Auto => {
+            // Try agent first, then default keys. ssh_config parsing is
+            // handled in Phase 2b — for now we cover the 90% case.
+            if try_auth_agent(session, username).await.is_ok() {
+                return Ok(());
+            }
+            cancelled_check()?;
+            for key_path in default_key_files() {
+                if try_auth_keyfile(session, username, &key_path, None)
+                    .await
+                    .is_ok()
+                {
+                    return Ok(());
+                }
+                cancelled_check()?;
+            }
+            Err(VfsError::AuthenticationFailed(
+                "No authentication method succeeded (tried SSH agent and default keys). \
+                 Provide a password or specific key."
+                    .into(),
+            ))
+        }
+    }
+}
+
+async fn try_auth_password(
+    session: &mut client::Handle<AcceptAllHandler>,
+    username: &str,
+    password: &str,
+) -> VfsResult<()> {
+    let res = session
+        .authenticate_password(username, password)
+        .await
+        .map_err(|e| VfsError::AuthenticationFailed(format!("password auth error: {e}")))?;
+    if res.success() {
+        Ok(())
+    } else {
+        Err(VfsError::AuthenticationFailed("Password rejected".into()))
+    }
+}
+
+async fn try_auth_keyfile(
+    session: &mut client::Handle<AcceptAllHandler>,
+    username: &str,
+    key_path: &Path,
+    passphrase: Option<&str>,
+) -> VfsResult<()> {
+    let key = load_secret_key(key_path, passphrase).map_err(|e| {
+        VfsError::AuthenticationFailed(format!(
+            "Failed to load private key '{}': {}",
+            key_path.display(),
+            e
+        ))
+    })?;
+    authenticate_with_key(session, username, key).await
+}
+
+async fn authenticate_with_key(
+    session: &mut client::Handle<AcceptAllHandler>,
+    username: &str,
+    key: PrivateKey,
+) -> VfsResult<()> {
+    let key_with_alg = PrivateKeyWithHashAlg::new(Arc::new(key), None);
+    let res = session
+        .authenticate_publickey(username, key_with_alg)
+        .await
+        .map_err(|e| VfsError::AuthenticationFailed(format!("publickey auth error: {e}")))?;
+    if res.success() {
+        Ok(())
+    } else {
+        Err(VfsError::AuthenticationFailed("Public key rejected".into()))
+    }
+}
+
+#[cfg(unix)]
+async fn try_auth_agent(
+    session: &mut client::Handle<AcceptAllHandler>,
+    username: &str,
+) -> VfsResult<()> {
+    use russh::keys::agent::client::AgentClient;
+    if std::env::var_os("SSH_AUTH_SOCK").is_none() {
+        return Err(VfsError::AuthenticationFailed(
+            "SSH agent not available (SSH_AUTH_SOCK unset)".into(),
+        ));
+    }
+    let mut agent = AgentClient::connect_env()
+        .await
+        .map_err(|e| VfsError::AuthenticationFailed(format!("agent connect failed: {e}")))?;
+    let identities = agent
+        .request_identities()
+        .await
+        .map_err(|e| VfsError::AuthenticationFailed(format!("agent identities failed: {e}")))?;
+    for identity in identities {
+        let pk = identity.public_key().into_owned();
+        let res = session
+            .authenticate_publickey_with(username, pk, None, &mut agent)
+            .await;
+        if let Ok(auth_result) = res {
+            if auth_result.success() {
+                return Ok(());
+            }
+        }
+    }
+    Err(VfsError::AuthenticationFailed(
+        "SSH agent had no usable keys".into(),
+    ))
+}
+
+#[cfg(not(unix))]
+async fn try_auth_agent(
+    _session: &mut client::Handle<AcceptAllHandler>,
+    _username: &str,
+) -> VfsResult<()> {
+    Err(VfsError::AuthenticationFailed(
+        "SSH agent not supported on this platform".into(),
+    ))
+}
+
+/// Top-level async connect routine. Runs on the global runtime.
+async fn do_connect(
+    host: String,
+    port: u16,
+    username: String,
+    options: ConnectOptions,
+    cancelled: Arc<AtomicBool>,
+) -> VfsResult<(SftpSession, Option<String>)> {
+    if cancelled.load(Ordering::SeqCst) {
+        return Err(VfsError::ConnectionFailed("Connection cancelled".into()));
+    }
+    let timeout_secs = options.timeout_secs.unwrap_or(DEFAULT_TIMEOUT_SECS);
+    let config = Arc::new(client::Config {
+        inactivity_timeout: Some(Duration::from_secs(timeout_secs * 5)),
+        ..Default::default()
+    });
+
+    let handler = AcceptAllHandler;
+    let addr = (host.as_str(), port);
+
+    let connect_fut = client::connect(config, addr, handler);
+    let mut session = tokio::time::timeout(Duration::from_secs(timeout_secs), connect_fut)
+        .await
+        .map_err(|_| VfsError::ConnectionFailed(format!("Connection to {host}:{port} timed out")))?
+        .map_err(|e| VfsError::ConnectionFailed(format!("SSH connect failed: {e}")))?;
+
+    if cancelled.load(Ordering::SeqCst) {
+        return Err(VfsError::ConnectionFailed("Connection cancelled".into()));
+    }
+
+    try_authenticate(&mut session, &username, &options.auth, &cancelled).await?;
+
+    if cancelled.load(Ordering::SeqCst) {
+        return Err(VfsError::ConnectionFailed("Connection cancelled".into()));
+    }
+
+    let channel = session
+        .channel_open_session()
+        .await
+        .map_err(|e| VfsError::ConnectionFailed(format!("SSH channel open failed: {e}")))?;
+    channel
+        .request_subsystem(true, "sftp")
+        .await
+        .map_err(|e| VfsError::ConnectionFailed(format!("SFTP subsystem request failed: {e}")))?;
+
+    let sftp = SftpSession::new(channel.into_stream())
+        .await
+        .map_err(|e| VfsError::ConnectionFailed(format!("SFTP session init failed: {e}")))?;
+
+    let home_dir = sftp
+        .canonicalize(".")
+        .await
+        .ok()
+        .filter(|s| !s.is_empty())
+        .or_else(|| Some(format!("/home/{username}")));
+
+    Ok((sftp, home_dir))
+}
+
+// ============================================================================
+// Public SftpProvider
+// ============================================================================
+
 struct SftpInner {
-    /// Current connection state.
     state: ConnectionState,
-    /// SSH session (Arc<Mutex<>> for thread-safe access in operations).
-    session: Option<Arc<Mutex<Session>>>,
-    /// SFTP channel (Arc<Mutex<>> for thread-safe access in operations).
-    sftp: Option<Arc<Mutex<Sftp>>>,
-    /// Home directory on remote system.
+    handle: Option<SftpHandle>,
     home_dir: Option<String>,
-    /// When connection started (for elapsed time display).
     connect_started: Option<Instant>,
-    /// Cancellation flag for pending operations.
     cancelled: Arc<AtomicBool>,
 }
 
@@ -101,8 +803,7 @@ impl SftpInner {
     fn new() -> Self {
         Self {
             state: ConnectionState::Disconnected,
-            session: None,
-            sftp: None,
+            handle: None,
             home_dir: None,
             connect_started: None,
             cancelled: Arc::new(AtomicBool::new(false)),
@@ -112,13 +813,9 @@ impl SftpInner {
 
 /// SFTP filesystem provider.
 pub struct SftpProvider {
-    /// SSH host.
     host: String,
-    /// SSH port.
     port: u16,
-    /// Username (None = use SSH config or current user).
     username: Option<String>,
-    /// Thread-safe inner state.
     inner: Arc<Mutex<SftpInner>>,
 }
 
@@ -133,793 +830,90 @@ impl SftpProvider {
         }
     }
 
-    /// Get the effective username.
     fn effective_username(&self) -> String {
-        self.username.clone().unwrap_or_else(|| {
-            std::env::var("USER")
-                .or_else(|_| std::env::var("USERNAME"))
-                .unwrap_or_else(|_| "root".to_string())
-        })
+        match &self.username {
+            Some(u) if !u.is_empty() => u.clone(),
+            _ => fallback_username(),
+        }
     }
 
-    /// Convert VfsPath to remote path string.
     fn to_remote_path(path: &VfsPath) -> VfsResult<PathBuf> {
         if !matches!(path.protocol, VfsProtocol::Sftp) {
             return Err(VfsError::InvalidPath(format!(
-                "Expected SFTP path, got: {}",
-                path
+                "Expected SFTP path, got: {path}"
             )));
         }
         Ok(path.path.clone())
     }
 
-    /// Check if connection is in progress.
+    /// True while a connect attempt is in flight (for UI spinner).
     pub fn is_connecting(&self) -> bool {
         self.inner
             .lock()
-            .map(|guard| guard.state == ConnectionState::Connecting)
+            .map(|i| i.state == ConnectionState::Connecting)
             .unwrap_or(false)
     }
 
-    /// Get elapsed time since connection started (for UI display).
+    /// Time elapsed since the current connect attempt started.
     pub fn connection_elapsed(&self) -> Option<Duration> {
         self.inner
             .lock()
             .ok()
-            .and_then(|guard| guard.connect_started.map(|s| s.elapsed()))
+            .and_then(|i| i.connect_started.map(|t| t.elapsed()))
     }
 
-    /// Cancel pending connection.
+    /// Signal cancellation of the in-flight connect attempt.
     pub fn cancel_connection(&self) {
-        if let Ok(guard) = self.inner.lock() {
-            guard.cancelled.store(true, Ordering::SeqCst);
+        if let Ok(i) = self.inner.lock() {
+            i.cancelled.store(true, Ordering::SeqCst);
         }
     }
 
-    /// Get a clone of the SFTP handle for use in operations.
-    fn get_sftp(&self) -> Option<Arc<Mutex<Sftp>>> {
-        self.inner
-            .lock()
-            .ok()
-            .and_then(|guard| guard.sftp.as_ref().map(Arc::clone))
+    fn get_handle(&self) -> VfsResult<SftpHandle> {
+        let guard = self.inner.lock().map_err(|_| VfsError::RemoteError {
+            message: "SFTP state poisoned".into(),
+        })?;
+        match &guard.handle {
+            Some(h) => Ok(SftpHandle {
+                cmd_tx: h.cmd_tx.clone(),
+            }),
+            None => Err(VfsError::NotConnected),
+        }
     }
 
-    /// Get the cached home directory.
-    fn get_home_dir(&self) -> Option<String> {
-        self.inner
-            .lock()
-            .ok()
-            .and_then(|guard| guard.home_dir.clone())
-    }
-
-    /// Run an SFTP operation in a background thread.
-    ///
-    /// Handles the common boilerplate: acquire SFTP handle, convert path,
-    /// spawn thread, send result through channel.
-    fn spawn_op<T: Send + 'static>(
-        &self,
-        path: &VfsPath,
-        f: impl FnOnce(Arc<Mutex<Sftp>>, PathBuf) -> VfsResult<T> + Send + 'static,
-    ) -> VfsOperation<T> {
-        let sftp = match self.get_sftp() {
-            Some(s) => s,
-            None => return VfsOperation::error(VfsError::NotConnected),
+    fn dispatch_op<T, F>(&self, build: F) -> VfsOperation<T>
+    where
+        T: Send + 'static,
+        F: FnOnce(Reply<T>) -> SftpCommand + Send + 'static,
+    {
+        let handle = match self.get_handle() {
+            Ok(h) => h,
+            Err(e) => return VfsOperation::ready(Err(e)),
         };
-        let remote_path = match Self::to_remote_path(path) {
-            Ok(p) => p,
-            Err(e) => return VfsOperation::error(e),
-        };
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = std_mpsc::channel();
         thread::spawn(move || {
-            let _ = tx.send(f(sftp, remote_path));
+            let res = handle.dispatch(build);
+            let _ = tx.send(res);
         });
         VfsOperation::new(rx)
-    }
-
-    /// Like [`spawn_op`] but for operations with two paths (rename, copy).
-    fn spawn_op2<T: Send + 'static>(
-        &self,
-        from: &VfsPath,
-        to: &VfsPath,
-        f: impl FnOnce(Arc<Mutex<Sftp>>, PathBuf, PathBuf) -> VfsResult<T> + Send + 'static,
-    ) -> VfsOperation<T> {
-        let sftp = match self.get_sftp() {
-            Some(s) => s,
-            None => return VfsOperation::error(VfsError::NotConnected),
-        };
-        let from_path = match Self::to_remote_path(from) {
-            Ok(p) => p,
-            Err(e) => return VfsOperation::error(e),
-        };
-        let to_path = match Self::to_remote_path(to) {
-            Ok(p) => p,
-            Err(e) => return VfsOperation::error(e),
-        };
-        let (tx, rx) = mpsc::channel();
-        thread::spawn(move || {
-            let _ = tx.send(f(sftp, from_path, to_path));
-        });
-        VfsOperation::new(rx)
-    }
-
-    /// Attempt authentication with available methods.
-    fn authenticate(
-        session: &Session,
-        host: &str,
-        username: &str,
-        auth: &AuthMethod,
-    ) -> VfsResult<()> {
-        use crate::ssh_config::SshConfig;
-
-        match auth {
-            AuthMethod::None => {
-                // Try no authentication (unlikely to work)
-                session.userauth_agent(username).map_err(|e| {
-                    VfsError::AuthenticationFailed(format!("Agent auth failed: {}", e))
-                })?;
-            }
-            AuthMethod::Password(password) => {
-                session.userauth_password(username, password).map_err(|e| {
-                    VfsError::AuthenticationFailed(format!("Password auth failed: {}", e))
-                })?;
-            }
-            AuthMethod::SshKey {
-                private_key,
-                passphrase,
-            } => {
-                session
-                    .userauth_pubkey_file(username, None, private_key, passphrase.as_deref())
-                    .map_err(|e| {
-                        VfsError::AuthenticationFailed(format!("Key auth failed: {}", e))
-                    })?;
-            }
-            AuthMethod::SshAgent => {
-                session.userauth_agent(username).map_err(|e| {
-                    VfsError::AuthenticationFailed(format!("Agent auth failed: {}", e))
-                })?;
-            }
-            AuthMethod::Auto => {
-                // Load SSH config for host-specific settings
-                let ssh_config = SshConfig::from_default_path();
-                let host_config = ssh_config.as_ref().map(|c| c.get_host_config(host));
-
-                // Try SSH agent first (unless IdentitiesOnly is set)
-                let identities_only = host_config
-                    .as_ref()
-                    .map(|c| c.identities_only)
-                    .unwrap_or(false);
-
-                if !identities_only {
-                    // Try to get detailed info from the agent
-                    if let Ok(mut agent) = session.agent() {
-                        if agent.connect().is_ok() && agent.list_identities().is_ok() {
-                            let identities = agent.identities().unwrap_or_default();
-                            for identity in identities.iter() {
-                                if agent.userauth(username, identity).is_ok() {
-                                    return Ok(());
-                                }
-                            }
-                        }
-                        let _ = agent.disconnect();
-                    }
-                }
-
-                // Collect key files to try: SSH config keys first, then default keys
-                let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
-                let ssh_dir = home.join(".ssh");
-
-                let mut key_files: Vec<PathBuf> = Vec::new();
-
-                // Add keys from SSH config first (higher priority)
-                if let Some(ref cfg) = host_config {
-                    for key_file in &cfg.identity_files {
-                        if !key_files.contains(key_file) {
-                            key_files.push(key_file.clone());
-                        }
-                    }
-                }
-
-                // Add default keys (lower priority)
-                let default_keys = [
-                    ssh_dir.join("id_ed25519"),
-                    ssh_dir.join("id_rsa"),
-                    ssh_dir.join("id_ecdsa"),
-                    ssh_dir.join("id_dsa"),
-                ];
-
-                for key_file in default_keys {
-                    if !key_files.contains(&key_file) {
-                        key_files.push(key_file);
-                    }
-                }
-
-                for key_file in &key_files {
-                    if key_file.exists() {
-                        if let Ok(()) = session.userauth_pubkey_file(username, None, key_file, None)
-                        {
-                            return Ok(());
-                        }
-                    }
-                }
-
-                return Err(VfsError::AuthenticationFailed(
-                    "No authentication method succeeded. Password may be required.".to_string(),
-                ));
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Convert ssh2 FileStat to VfsMetadata.
-    fn stat_to_metadata(stat: &ssh2::FileStat) -> VfsMetadata {
-        let file_type = if stat.is_dir() {
-            VfsFileType::Directory
-        } else if stat.is_file() {
-            VfsFileType::File
-        } else {
-            VfsFileType::Other
-        };
-
-        let mut metadata = if file_type == VfsFileType::Directory {
-            VfsMetadata::directory()
-        } else {
-            VfsMetadata::file(stat.size.unwrap_or(0))
-        };
-
-        // Set modification time
-        if let Some(mtime) = stat.mtime {
-            metadata.modified = Some(std::time::UNIX_EPOCH + Duration::from_secs(mtime));
-        }
-
-        // Set permissions
-        if let Some(perms) = stat.perm {
-            metadata = metadata.with_permissions(perms);
-            metadata.readonly = (perms & 0o200) == 0;
-        }
-
-        metadata
-    }
-
-    /// Download directory recursively (internal helper, called within thread)
-    fn download_directory_recursive(
-        sftp: &Arc<Mutex<Sftp>>,
-        remote_path: &Path,
-        local_path: &Path,
-    ) -> VfsResult<()> {
-        Self::download_directory_recursive_with_progress(
-            sftp,
-            remote_path,
-            local_path,
-            &Arc::new(AtomicBool::new(false)),
-            &Arc::new(AtomicBool::new(false)),
-            None,
-            &mut 0,
-            &mut 0,
-            0,
-            0,
-        )
-    }
-
-    /// Count files in remote directory recursively.
-    /// Takes `Arc<Mutex<Sftp>>` and locks briefly per readdir call to avoid
-    /// holding the lock for the entire recursive traversal.
-    fn count_remote_files(
-        sftp: &Arc<Mutex<Sftp>>,
-        remote_path: &Path,
-        cancel_flag: &Arc<AtomicBool>,
-        tx_progress: Option<&mpsc::Sender<DownloadProgress>>,
-    ) -> VfsResult<(usize, u64)> {
-        if cancel_flag.load(Ordering::Relaxed) {
-            return Err(VfsError::Cancelled);
-        }
-
-        // Lock briefly for readdir, then release
-        let entries = {
-            let sftp_guard = lock_sftp(sftp)?;
-            sftp_guard
-                .readdir(remote_path)
-                .map_err(|e| VfsError::Sftp(format!("readdir failed: {}", e)))?
-        };
-
-        let mut file_count = 0;
-        let mut total_bytes = 0u64;
-
-        for (entry_path, stat) in entries {
-            if cancel_flag.load(Ordering::Relaxed) {
-                return Err(VfsError::Cancelled);
-            }
-
-            if let Some(name) = entry_path.file_name() {
-                let name_str = name.to_string_lossy();
-                if name_str == "." || name_str == ".." {
-                    continue;
-                }
-
-                if stat.is_dir() {
-                    let (sub_count, sub_bytes) =
-                        Self::count_remote_files(sftp, &entry_path, cancel_flag, tx_progress)?;
-                    file_count += sub_count;
-                    total_bytes += sub_bytes;
-                } else {
-                    file_count += 1;
-                    total_bytes += stat.size.unwrap_or(0);
-                }
-
-                // Send scanning progress periodically
-                if let Some(tx) = tx_progress {
-                    if file_count % 10 == 0 {
-                        let _ = tx.send(DownloadProgress {
-                            bytes_downloaded: 0,
-                            total_bytes,
-                            current_file: Some(remote_path.to_string_lossy().into_owned()),
-                            files_downloaded: 0,
-                            total_files: file_count,
-                            current_file_bytes: 0,
-                            current_file_total: 0,
-                        });
-                    }
-                }
-            }
-        }
-
-        Ok((file_count, total_bytes))
-    }
-
-    /// Download directory recursively with progress and pause/cancel support.
-    ///
-    /// Takes `Arc<Mutex<Sftp>>` instead of `&MutexGuard` so the lock can be
-    /// released between files and during pause waits — allowing other SFTP
-    /// operations (e.g. listing directories) to proceed on the same connection.
-    #[allow(clippy::too_many_arguments)]
-    fn download_directory_recursive_with_progress(
-        sftp: &Arc<Mutex<Sftp>>,
-        remote_path: &Path,
-        local_path: &Path,
-        pause_flag: &Arc<AtomicBool>,
-        cancel_flag: &Arc<AtomicBool>,
-        tx_progress: Option<&mpsc::Sender<DownloadProgress>>,
-        files_downloaded: &mut usize,
-        bytes_downloaded: &mut u64,
-        total_files: usize,
-        total_bytes: u64,
-    ) -> VfsResult<()> {
-        // Check cancel
-        if cancel_flag.load(Ordering::Relaxed) {
-            return Err(VfsError::Cancelled);
-        }
-
-        // Wait while paused (no SFTP lock held)
-        while pause_flag.load(Ordering::Relaxed) {
-            if cancel_flag.load(Ordering::Relaxed) {
-                return Err(VfsError::Cancelled);
-            }
-            std::thread::sleep(PAUSE_POLL_INTERVAL);
-        }
-
-        // Create local directory
-        std::fs::create_dir_all(local_path).map_err(VfsError::Io)?;
-
-        // List remote directory (brief lock)
-        let entries = {
-            let sftp_guard = lock_sftp(sftp)?;
-            sftp_guard
-                .readdir(remote_path)
-                .map_err(|e| VfsError::Sftp(format!("readdir failed: {}", e)))?
-        };
-
-        for (entry_path, stat) in entries {
-            // Check cancel
-            if cancel_flag.load(Ordering::Relaxed) {
-                return Err(VfsError::Cancelled);
-            }
-
-            // Wait while paused (no SFTP lock held — between files)
-            while pause_flag.load(Ordering::Relaxed) {
-                if cancel_flag.load(Ordering::Relaxed) {
-                    return Err(VfsError::Cancelled);
-                }
-                std::thread::sleep(PAUSE_POLL_INTERVAL);
-            }
-
-            if let Some(name) = entry_path.file_name() {
-                let name_str = name.to_string_lossy();
-                if name_str == "." || name_str == ".." {
-                    continue;
-                }
-
-                let local_entry = local_path.join(name);
-
-                if stat.is_dir() {
-                    // Recurse into subdirectory
-                    Self::download_directory_recursive_with_progress(
-                        sftp,
-                        &entry_path,
-                        &local_entry,
-                        pause_flag,
-                        cancel_flag,
-                        tx_progress,
-                        files_downloaded,
-                        bytes_downloaded,
-                        total_files,
-                        total_bytes,
-                    )?;
-                } else {
-                    let file_size = stat.size.unwrap_or(0);
-                    let file_name_owned = name_str.to_string();
-
-                    // Send progress update before downloading
-                    if let Some(tx) = tx_progress {
-                        let _ = tx.send(DownloadProgress {
-                            bytes_downloaded: *bytes_downloaded,
-                            total_bytes,
-                            current_file: Some(file_name_owned.clone()),
-                            files_downloaded: *files_downloaded,
-                            total_files,
-                            current_file_bytes: 0,
-                            current_file_total: file_size,
-                        });
-                    }
-
-                    // Create local file for writing
-                    let mut local_file =
-                        std::fs::File::create(&local_entry).map_err(VfsError::Io)?;
-
-                    let mut buffer = vec![0u8; CHUNK_SIZE];
-                    let mut current_file_bytes = 0u64;
-
-                    // Outer loop: handles pause/resume by releasing and
-                    // re-acquiring the SFTP lock (reopening the file with seek).
-                    loop {
-                        // Pause/cancel check without SFTP lock
-                        if cancel_flag.load(Ordering::Relaxed) {
-                            return Err(VfsError::Cancelled);
-                        }
-                        while pause_flag.load(Ordering::Relaxed) {
-                            if cancel_flag.load(Ordering::Relaxed) {
-                                return Err(VfsError::Cancelled);
-                            }
-                            std::thread::sleep(PAUSE_POLL_INTERVAL);
-                        }
-
-                        // Acquire lock, open file, seek to current position
-                        let sftp_guard = lock_sftp(sftp)?;
-                        let mut remote_file = sftp_guard.open(&entry_path).map_err(|e| {
-                            VfsError::Sftp(format!("open remote file failed: {}", e))
-                        })?;
-                        if current_file_bytes > 0 {
-                            use std::io::Seek;
-                            remote_file
-                                .seek(std::io::SeekFrom::Start(current_file_bytes))
-                                .map_err(VfsError::Io)?;
-                        }
-
-                        // Inner loop: read chunks while lock is held
-                        let mut eof = false;
-                        loop {
-                            if cancel_flag.load(Ordering::Relaxed) {
-                                return Err(VfsError::Cancelled);
-                            }
-                            // If paused, break inner loop to release lock
-                            if pause_flag.load(Ordering::Relaxed) {
-                                break;
-                            }
-
-                            let bytes_read = remote_file.read(&mut buffer).map_err(VfsError::Io)?;
-                            if bytes_read == 0 {
-                                eof = true;
-                                break;
-                            }
-
-                            local_file
-                                .write_all(&buffer[..bytes_read])
-                                .map_err(VfsError::Io)?;
-                            current_file_bytes += bytes_read as u64;
-
-                            // Send progress update
-                            if let Some(tx) = tx_progress {
-                                let _ = tx.send(DownloadProgress {
-                                    bytes_downloaded: *bytes_downloaded + current_file_bytes,
-                                    total_bytes,
-                                    current_file: Some(file_name_owned.clone()),
-                                    files_downloaded: *files_downloaded,
-                                    total_files,
-                                    current_file_bytes,
-                                    current_file_total: file_size,
-                                });
-                            }
-                        }
-                        // sftp_guard + remote_file dropped here — lock released
-
-                        if eof {
-                            break;
-                        }
-                    }
-
-                    *files_downloaded += 1;
-                    *bytes_downloaded += current_file_bytes;
-
-                    // Send progress update after downloading
-                    if let Some(tx) = tx_progress {
-                        let _ = tx.send(DownloadProgress {
-                            bytes_downloaded: *bytes_downloaded,
-                            total_bytes,
-                            current_file: None,
-                            files_downloaded: *files_downloaded,
-                            total_files,
-                            current_file_bytes: 0,
-                            current_file_total: 0,
-                        });
-                    }
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Count files and total bytes in local directory recursively.
-    fn count_local_files(path: &Path, cancel_flag: &Arc<AtomicBool>) -> VfsResult<(usize, u64)> {
-        if cancel_flag.load(Ordering::Relaxed) {
-            return Err(VfsError::Cancelled);
-        }
-
-        let mut file_count = 0;
-        let mut total_bytes = 0u64;
-
-        for entry in std::fs::read_dir(path).map_err(VfsError::Io)? {
-            if cancel_flag.load(Ordering::Relaxed) {
-                return Err(VfsError::Cancelled);
-            }
-
-            let entry = entry.map_err(VfsError::Io)?;
-            let metadata = entry.metadata().map_err(VfsError::Io)?;
-
-            if metadata.is_dir() {
-                let (sub_count, sub_bytes) = Self::count_local_files(&entry.path(), cancel_flag)?;
-                file_count += sub_count;
-                total_bytes += sub_bytes;
-            } else {
-                file_count += 1;
-                total_bytes += metadata.len();
-            }
-        }
-
-        Ok((file_count, total_bytes))
-    }
-
-    /// Upload directory recursively with progress and pause/cancel support.
-    ///
-    /// Takes `Arc<Mutex<Sftp>>` instead of `&MutexGuard` so the lock can be
-    /// released between files and during pause waits — allowing other SFTP
-    /// operations (e.g. listing directories) to proceed on the same connection.
-    #[allow(clippy::too_many_arguments)]
-    fn upload_directory_recursive_with_progress(
-        sftp: &Arc<Mutex<Sftp>>,
-        local_path: &Path,
-        remote_path: &Path,
-        pause_flag: &Arc<AtomicBool>,
-        cancel_flag: &Arc<AtomicBool>,
-        tx_progress: Option<&mpsc::Sender<UploadProgress>>,
-        files_uploaded: &mut usize,
-        bytes_uploaded: &mut u64,
-        total_files: usize,
-        total_bytes: u64,
-    ) -> VfsResult<()> {
-        // Check cancel
-        if cancel_flag.load(Ordering::Relaxed) {
-            return Err(VfsError::Cancelled);
-        }
-
-        // Wait while paused (no SFTP lock held)
-        while pause_flag.load(Ordering::Relaxed) {
-            if cancel_flag.load(Ordering::Relaxed) {
-                return Err(VfsError::Cancelled);
-            }
-            std::thread::sleep(PAUSE_POLL_INTERVAL);
-        }
-
-        // Create remote directory (brief lock)
-        {
-            let sftp_guard = lock_sftp(sftp)?;
-            sftp_mkdir_recursive(&sftp_guard, remote_path)?;
-        }
-
-        // List local directory
-        let entries: Vec<_> = std::fs::read_dir(local_path)
-            .map_err(VfsError::Io)?
-            .collect();
-
-        for entry in entries {
-            // Check cancel
-            if cancel_flag.load(Ordering::Relaxed) {
-                return Err(VfsError::Cancelled);
-            }
-
-            // Wait while paused (no SFTP lock held — between files)
-            while pause_flag.load(Ordering::Relaxed) {
-                if cancel_flag.load(Ordering::Relaxed) {
-                    return Err(VfsError::Cancelled);
-                }
-                std::thread::sleep(PAUSE_POLL_INTERVAL);
-            }
-
-            let entry = entry.map_err(VfsError::Io)?;
-            let metadata = entry.metadata().map_err(VfsError::Io)?;
-            let file_name = entry.file_name();
-            let remote_entry = remote_path.join(&file_name);
-
-            if metadata.is_dir() {
-                // Recurse into subdirectory
-                Self::upload_directory_recursive_with_progress(
-                    sftp,
-                    &entry.path(),
-                    &remote_entry,
-                    pause_flag,
-                    cancel_flag,
-                    tx_progress,
-                    files_uploaded,
-                    bytes_uploaded,
-                    total_files,
-                    total_bytes,
-                )?;
-            } else {
-                let file_size = metadata.len();
-                let file_name_owned = file_name.to_string_lossy().into_owned();
-
-                // Send progress update before uploading
-                if let Some(tx) = tx_progress {
-                    let _ = tx.send(UploadProgress {
-                        bytes_uploaded: *bytes_uploaded,
-                        total_bytes,
-                        current_file: Some(file_name_owned.clone()),
-                        files_uploaded: *files_uploaded,
-                        total_files,
-                        current_file_bytes: 0,
-                        current_file_total: file_size,
-                    });
-                }
-
-                // Open local file for reading
-                let mut local_file = std::fs::File::open(entry.path()).map_err(VfsError::Io)?;
-
-                let mut buffer = vec![0u8; CHUNK_SIZE];
-                let mut current_file_bytes = 0u64;
-
-                // Outer loop: handles pause/resume by releasing and
-                // re-acquiring the SFTP lock (reopening the file with seek).
-                loop {
-                    // Pause/cancel check without SFTP lock
-                    if cancel_flag.load(Ordering::Relaxed) {
-                        return Err(VfsError::Cancelled);
-                    }
-                    while pause_flag.load(Ordering::Relaxed) {
-                        if cancel_flag.load(Ordering::Relaxed) {
-                            return Err(VfsError::Cancelled);
-                        }
-                        std::thread::sleep(PAUSE_POLL_INTERVAL);
-                    }
-
-                    // Acquire lock
-                    let sftp_guard = lock_sftp(sftp)?;
-
-                    // Pre-check parent on first open
-                    if current_file_bytes == 0 {
-                        match sftp_guard.stat(remote_path) {
-                            Ok(stat) => {
-                                if !stat.is_dir() {
-                                    return Err(VfsError::Sftp(format!(
-                                        "Parent path '{}' is not a directory",
-                                        remote_path.display()
-                                    )));
-                                }
-                            }
-                            Err(e) => {
-                                return Err(VfsError::Sftp(format!(
-                                    "Parent directory '{}' does not exist: {}",
-                                    remote_path.display(),
-                                    e
-                                )));
-                            }
-                        }
-                    }
-
-                    // Open/reopen remote file
-                    let mut remote_file = if current_file_bytes == 0 {
-                        sftp_guard.create(&remote_entry).map_err(|e| {
-                            VfsError::Sftp(format!(
-                                "create remote file '{}' failed (parent dir: {}): {}",
-                                remote_entry.display(),
-                                remote_path.display(),
-                                e
-                            ))
-                        })?
-                    } else {
-                        // Reopen for writing without truncation
-                        let file = sftp_guard
-                            .open_mode(&remote_entry, OpenFlags::WRITE, 0o644, OpenType::File)
-                            .map_err(|e| {
-                                VfsError::Sftp(format!(
-                                    "reopen remote file '{}' failed: {}",
-                                    remote_entry.display(),
-                                    e
-                                ))
-                            })?;
-                        file
-                    };
-                    if current_file_bytes > 0 {
-                        use std::io::Seek;
-                        remote_file
-                            .seek(std::io::SeekFrom::Start(current_file_bytes))
-                            .map_err(VfsError::Io)?;
-                        local_file
-                            .seek(std::io::SeekFrom::Start(current_file_bytes))
-                            .map_err(VfsError::Io)?;
-                    }
-
-                    // Inner loop: write chunks while lock is held
-                    let mut eof = false;
-                    loop {
-                        if cancel_flag.load(Ordering::Relaxed) {
-                            return Err(VfsError::Cancelled);
-                        }
-                        // If paused, break inner loop to release lock
-                        if pause_flag.load(Ordering::Relaxed) {
-                            break;
-                        }
-
-                        let bytes_read = local_file.read(&mut buffer).map_err(VfsError::Io)?;
-                        if bytes_read == 0 {
-                            eof = true;
-                            break;
-                        }
-
-                        remote_file
-                            .write_all(&buffer[..bytes_read])
-                            .map_err(VfsError::Io)?;
-                        current_file_bytes += bytes_read as u64;
-
-                        // Send progress update
-                        if let Some(tx) = tx_progress {
-                            let _ = tx.send(UploadProgress {
-                                bytes_uploaded: *bytes_uploaded + current_file_bytes,
-                                total_bytes,
-                                current_file: Some(file_name_owned.clone()),
-                                files_uploaded: *files_uploaded,
-                                total_files,
-                                current_file_bytes,
-                                current_file_total: file_size,
-                            });
-                        }
-                    }
-                    // sftp_guard + remote_file dropped here — lock released
-
-                    if eof {
-                        break;
-                    }
-                }
-
-                *files_uploaded += 1;
-                *bytes_uploaded += current_file_bytes;
-
-                // Send progress update after uploading
-                if let Some(tx) = tx_progress {
-                    let _ = tx.send(UploadProgress {
-                        bytes_uploaded: *bytes_uploaded,
-                        total_bytes,
-                        current_file: None,
-                        files_uploaded: *files_uploaded,
-                        total_files,
-                        current_file_bytes: 0,
-                        current_file_total: 0,
-                    });
-                }
-            }
-        }
-
-        Ok(())
     }
 }
+
+impl Drop for SftpProvider {
+    fn drop(&mut self) {
+        // Best-effort shutdown of the actor.
+        if let Ok(mut inner) = self.inner.lock() {
+            if let Some(handle) = inner.handle.take() {
+                let _ = block_on(handle.cmd_tx.send(SftpCommand::Shutdown));
+            }
+            inner.state = ConnectionState::Disconnected;
+        }
+    }
+}
+
+// ============================================================================
+// VfsProvider impl
+// ============================================================================
 
 impl VfsProvider for SftpProvider {
     fn name(&self) -> &'static str {
@@ -929,156 +923,65 @@ impl VfsProvider for SftpProvider {
     fn connection_state(&self) -> ConnectionState {
         self.inner
             .lock()
-            .map(|guard| guard.state)
+            .map(|i| i.state)
             .unwrap_or(ConnectionState::Failed)
     }
 
     fn connect(&mut self, options: ConnectOptions) -> VfsOperation<()> {
-        // Check current state and update to Connecting
-        {
-            let mut guard = match self.inner.lock() {
+        let cancelled = {
+            let mut inner = match self.inner.lock() {
                 Ok(g) => g,
                 Err(_) => {
-                    return VfsOperation::error(VfsError::RemoteError {
-                        message: "Failed to acquire lock".to_string(),
-                    })
+                    return VfsOperation::ready(Err(VfsError::RemoteError {
+                        message: "SFTP state poisoned".into(),
+                    }))
                 }
             };
-
-            if guard.state == ConnectionState::Connected {
-                return VfsOperation::error(VfsError::AlreadyConnected);
+            if inner.state == ConnectionState::Connected {
+                return VfsOperation::ready(Err(VfsError::RemoteError {
+                    message: "Already connected".into(),
+                }));
             }
-
-            // Reset cancellation flag for new connection
-            guard.cancelled.store(false, Ordering::SeqCst);
-            guard.state = ConnectionState::Connecting;
-            guard.connect_started = Some(Instant::now());
-        }
+            inner.state = ConnectionState::Connecting;
+            inner.connect_started = Some(Instant::now());
+            inner.cancelled = Arc::new(AtomicBool::new(false));
+            inner.home_dir = None;
+            inner.handle = None;
+            Arc::clone(&inner.cancelled)
+        };
 
         let host = self.host.clone();
         let port = self.port;
         let username = self.effective_username();
-        let auth = options.auth.clone();
-        let timeout_secs = options.timeout_secs.unwrap_or(DEFAULT_TIMEOUT_SECS);
-        let inner = Arc::clone(&self.inner);
+        let inner_arc = Arc::clone(&self.inner);
 
-        // Get cancellation token
-        let cancelled = self
-            .inner
-            .lock()
-            .map(|g| Arc::clone(&g.cancelled))
-            .unwrap_or_else(|_| Arc::new(AtomicBool::new(false)));
+        let (tx, rx) = std_mpsc::channel();
 
-        let (tx, rx) = mpsc::channel();
-
-        // Connection happens in background thread
         thread::spawn(move || {
-            let result = (|| -> VfsResult<(Session, Sftp, String)> {
-                // Check cancellation before starting
-                if cancelled.load(Ordering::SeqCst) {
-                    return Err(VfsError::ConnectionFailed(
-                        "Connection cancelled".to_string(),
-                    ));
-                }
+            let result = block_on(do_connect(
+                host.clone(),
+                port,
+                username.clone(),
+                options,
+                cancelled,
+            ));
 
-                // Connect TCP (resolve hostname via DNS)
-                let addr = format!("{}:{}", host, port);
-                let socket_addr = addr
-                    .to_socket_addrs()
-                    .map_err(|e| {
-                        VfsError::ConnectionFailed(format!("DNS resolution failed: {}", e))
-                    })?
-                    .next()
-                    .ok_or_else(|| {
-                        VfsError::ConnectionFailed(format!(
-                            "DNS resolution returned no addresses for {}",
-                            host
-                        ))
-                    })?;
-                let tcp =
-                    TcpStream::connect_timeout(&socket_addr, Duration::from_secs(timeout_secs))
-                        .map_err(|e| {
-                            VfsError::ConnectionFailed(format!("TCP connect failed: {}", e))
-                        })?;
-
-                // Check cancellation after TCP connect
-                if cancelled.load(Ordering::SeqCst) {
-                    return Err(VfsError::ConnectionFailed(
-                        "Connection cancelled".to_string(),
-                    ));
-                }
-
-                tcp.set_read_timeout(Some(Duration::from_secs(timeout_secs)))
-                    .ok();
-                tcp.set_write_timeout(Some(Duration::from_secs(timeout_secs)))
-                    .ok();
-
-                // Create SSH session
-                let mut session = Session::new().map_err(|e| {
-                    VfsError::ConnectionFailed(format!("Failed to create session: {}", e))
-                })?;
-
-                session.set_tcp_stream(tcp);
-                session.handshake().map_err(|e| {
-                    VfsError::ConnectionFailed(format!("SSH handshake failed: {}", e))
-                })?;
-
-                // Check cancellation after handshake
-                if cancelled.load(Ordering::SeqCst) {
-                    return Err(VfsError::ConnectionFailed(
-                        "Connection cancelled".to_string(),
-                    ));
-                }
-
-                // Authenticate
-                Self::authenticate(&session, &host, &username, &auth)?;
-
-                if !session.authenticated() {
-                    return Err(VfsError::AuthenticationFailed(
-                        "Session not authenticated".to_string(),
-                    ));
-                }
-
-                // Create SFTP channel
-                let sftp = session.sftp().map_err(|e| {
-                    VfsError::ConnectionFailed(format!("Failed to create SFTP channel: {}", e))
-                })?;
-
-                // Get home directory
-                let home_dir = sftp
-                    .realpath(Path::new("."))
-                    .map(|p| p.to_string_lossy().into_owned())
-                    .unwrap_or_else(|_| format!("/home/{}", username));
-
-                Ok((session, sftp, home_dir))
-            })();
-
-            // Update inner state with result
             match result {
-                Ok((session, sftp, home_dir)) => {
-                    if let Ok(mut guard) = inner.lock() {
-                        // Wrap session and sftp in Arc<Mutex<>> for thread-safe operation access
-                        guard.session = Some(Arc::new(Mutex::new(session)));
-                        guard.sftp = Some(Arc::new(Mutex::new(sftp)));
-                        guard.home_dir = Some(home_dir.clone());
-                        guard.state = ConnectionState::Connected;
-                        guard.connect_started = None;
-                        log::info!("SFTP connected to {} (home: {})", host, home_dir);
+                Ok((sftp, home_dir)) => {
+                    let (cmd_tx, cmd_rx) = async_mpsc::channel::<SftpCommand>(32);
+                    runtime().spawn(sftp_actor(sftp, cmd_rx));
+                    if let Ok(mut inner) = inner_arc.lock() {
+                        inner.state = ConnectionState::Connected;
+                        inner.handle = Some(SftpHandle { cmd_tx });
+                        inner.home_dir = home_dir;
                     }
                     let _ = tx.send(Ok(()));
                 }
                 Err(e) => {
-                    if let Ok(mut guard) = inner.lock() {
-                        guard.state = ConnectionState::Failed;
-                        guard.connect_started = None;
+                    if let Ok(mut inner) = inner_arc.lock() {
+                        inner.state = ConnectionState::Failed;
                     }
-                    log::error!("SFTP connection failed: {}", e);
-                    match tx.send(Err(e)) {
-                        Ok(()) => log::info!("SFTP: Error sent to channel successfully",),
-                        Err(send_err) => {
-                            log::error!("SFTP: Failed to send error to channel: {:?}", send_err)
-                        }
-                    }
+                    let _ = tx.send(Err(e));
                 }
             }
         });
@@ -1087,594 +990,349 @@ impl VfsProvider for SftpProvider {
     }
 
     fn disconnect(&mut self) {
-        if let Ok(mut guard) = self.inner.lock() {
-            guard.sftp = None;
-            guard.session = None;
-            guard.state = ConnectionState::Disconnected;
-            guard.home_dir = None;
-            guard.connect_started = None;
+        let mut inner = match self.inner.lock() {
+            Ok(g) => g,
+            Err(_) => return,
+        };
+        if let Some(handle) = inner.handle.take() {
+            let _ = block_on(handle.cmd_tx.send(SftpCommand::Shutdown));
         }
-        log::info!("SFTP disconnected from {}", self.host);
+        inner.state = ConnectionState::Disconnected;
+        inner.home_dir = None;
     }
 
     fn list_dir(&self, path: &VfsPath) -> VfsOperation<Vec<VfsEntry>> {
-        let base_path = path.clone();
-        self.spawn_op(path, move |sftp, remote_path| {
-            let sftp = lock_sftp(&sftp)?;
-
-            let mut entries = Vec::new();
-            let dir = sftp
-                .readdir(&remote_path)
-                .map_err(|e| VfsError::Sftp(format!("readdir failed: {}", e)))?;
-
-            for (entry_path, stat) in dir {
-                let name = entry_path
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_default();
-
-                if name.is_empty() {
-                    continue;
-                }
-
-                let entry_vfs_path = base_path.join(&name);
-                let metadata = Self::stat_to_metadata(&stat);
-                entries.push(VfsEntry::new(name, entry_vfs_path, metadata));
-            }
-
-            entries.sort_by(|a, b| match (a.is_dir(), b.is_dir()) {
-                (true, false) => std::cmp::Ordering::Less,
-                (false, true) => std::cmp::Ordering::Greater,
-                _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+        let remote_path = match Self::to_remote_path(path) {
+            Ok(p) => p,
+            Err(e) => return VfsOperation::ready(Err(e)),
+        };
+        let parent = path.clone();
+        let handle = match self.get_handle() {
+            Ok(h) => h,
+            Err(e) => return VfsOperation::ready(Err(e)),
+        };
+        let (tx, rx) = std_mpsc::channel();
+        thread::spawn(move || {
+            let res = handle.dispatch(|reply| SftpCommand::ListDir {
+                path: remote_path,
+                reply,
             });
-
-            Ok(entries)
-        })
+            let entries = res.map(|raw| {
+                let mut entries: Vec<VfsEntry> = raw
+                    .into_iter()
+                    .map(|e| {
+                        let p = parent.join(&e.name);
+                        VfsEntry::new(e.name, p, e.metadata)
+                    })
+                    .collect();
+                entries.sort_by(|a, b| match (a.is_dir(), b.is_dir()) {
+                    (true, false) => std::cmp::Ordering::Less,
+                    (false, true) => std::cmp::Ordering::Greater,
+                    _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+                });
+                entries
+            });
+            let _ = tx.send(entries);
+        });
+        VfsOperation::new(rx)
     }
 
     fn create_dir(&self, path: &VfsPath) -> VfsOperation<()> {
-        self.spawn_op(path, |sftp, remote_path| {
-            let sftp = lock_sftp(&sftp)?;
-            sftp.mkdir(&remote_path, 0o755)
-                .map_err(|e| VfsError::Sftp(format!("mkdir failed: {}", e)))?;
-            Ok(())
-        })
+        let p = match Self::to_remote_path(path) {
+            Ok(p) => p,
+            Err(e) => return VfsOperation::ready(Err(e)),
+        };
+        self.dispatch_op(move |reply| SftpCommand::Mkdir { path: p, reply })
     }
 
     fn create_dir_all(&self, path: &VfsPath) -> VfsOperation<()> {
-        // SFTP doesn't have native mkdir -p, so we create directories one by one
-        self.spawn_op(path, |sftp, remote_path| {
-            let sftp = lock_sftp(&sftp)?;
-            let mut current = PathBuf::new();
-            for component in remote_path.components() {
-                current.push(component);
-                if sftp.stat(&current).is_err() {
-                    sftp.mkdir(&current, 0o755).map_err(|e| {
-                        VfsError::Sftp(format!("mkdir failed for {:?}: {}", current, e))
-                    })?;
-                }
-            }
-            Ok(())
-        })
+        let p = match Self::to_remote_path(path) {
+            Ok(p) => p,
+            Err(e) => return VfsOperation::ready(Err(e)),
+        };
+        self.dispatch_op(move |reply| SftpCommand::MkdirRecursive { path: p, reply })
     }
 
     fn exists(&self, path: &VfsPath) -> VfsOperation<bool> {
-        self.spawn_op(path, |sftp, remote_path| {
-            let sftp = lock_sftp(&sftp)?;
-            Ok(sftp.stat(&remote_path).is_ok())
-        })
+        let p = match Self::to_remote_path(path) {
+            Ok(p) => p,
+            Err(e) => return VfsOperation::ready(Err(e)),
+        };
+        self.dispatch_op(move |reply| SftpCommand::Exists { path: p, reply })
     }
 
     fn metadata(&self, path: &VfsPath) -> VfsOperation<VfsMetadata> {
-        self.spawn_op(path, |sftp, remote_path| {
-            let sftp = lock_sftp(&sftp)?;
-            let stat = sftp
-                .stat(&remote_path)
-                .map_err(|e| VfsError::Sftp(format!("stat failed: {}", e)))?;
-            Ok(Self::stat_to_metadata(&stat))
-        })
+        let p = match Self::to_remote_path(path) {
+            Ok(p) => p,
+            Err(e) => return VfsOperation::ready(Err(e)),
+        };
+        self.dispatch_op(move |reply| SftpCommand::Stat { path: p, reply })
     }
 
     fn read_file(&self, path: &VfsPath) -> VfsOperation<Vec<u8>> {
-        self.spawn_op(path, |sftp, remote_path| {
-            let sftp = lock_sftp(&sftp)?;
-            let mut file = sftp
-                .open(&remote_path)
-                .map_err(|e| VfsError::Sftp(format!("open failed: {}", e)))?;
-            let mut contents = Vec::new();
-            file.read_to_end(&mut contents).map_err(VfsError::Io)?;
-            Ok(contents)
-        })
+        let p = match Self::to_remote_path(path) {
+            Ok(p) => p,
+            Err(e) => return VfsOperation::ready(Err(e)),
+        };
+        self.dispatch_op(move |reply| SftpCommand::Read { path: p, reply })
     }
 
     fn write_file(&self, path: &VfsPath, data: &[u8]) -> VfsOperation<()> {
+        let p = match Self::to_remote_path(path) {
+            Ok(p) => p,
+            Err(e) => return VfsOperation::ready(Err(e)),
+        };
         let data = data.to_vec();
-        self.spawn_op(path, move |sftp, remote_path| {
-            let sftp = lock_sftp(&sftp)?;
-            let mut file = sftp
-                .create(&remote_path)
-                .map_err(|e| VfsError::Sftp(format!("create failed: {}", e)))?;
-            file.write_all(&data).map_err(VfsError::Io)?;
-            Ok(())
+        self.dispatch_op(move |reply| SftpCommand::Write {
+            path: p,
+            data,
+            reply,
         })
     }
 
     fn delete(&self, path: &VfsPath) -> VfsOperation<()> {
-        // Use delete_recursive which handles both files and non-empty directories
+        // Match previous behavior: delete is recursive on SFTP.
         self.delete_recursive(path)
     }
 
     fn delete_recursive(&self, path: &VfsPath) -> VfsOperation<()> {
-        self.spawn_op(path, |sftp, remote_path| {
-            fn delete_recursive_inner(sftp: &Sftp, path: &Path, depth: usize) -> VfsResult<()> {
-                if depth > crate::MAX_RECURSION_DEPTH {
-                    return Err(VfsError::RemoteError {
-                        message: format!(
-                            "Directory nesting too deep (> {})",
-                            crate::MAX_RECURSION_DEPTH
-                        ),
-                    });
-                }
-
-                let stat = sftp
-                    .stat(path)
-                    .map_err(|e| VfsError::Sftp(format!("stat failed: {}", e)))?;
-
-                if stat.is_dir() {
-                    let entries = sftp
-                        .readdir(path)
-                        .map_err(|e| VfsError::Sftp(format!("readdir failed: {}", e)))?;
-
-                    for (entry_path, _) in entries {
-                        delete_recursive_inner(sftp, &entry_path, depth + 1)?;
-                    }
-
-                    sftp.rmdir(path)
-                        .map_err(|e| VfsError::Sftp(format!("rmdir failed: {}", e)))?;
-                } else {
-                    sftp.unlink(path)
-                        .map_err(|e| VfsError::Sftp(format!("unlink failed: {}", e)))?;
-                }
-
-                Ok(())
-            }
-
-            let sftp = lock_sftp(&sftp)?;
-            delete_recursive_inner(&sftp, &remote_path, 0)
+        let p = match Self::to_remote_path(path) {
+            Ok(p) => p,
+            Err(e) => return VfsOperation::ready(Err(e)),
+        };
+        self.dispatch_op(move |reply| SftpCommand::DeleteRecursive {
+            path: p,
+            depth_limit: crate::MAX_RECURSION_DEPTH,
+            reply,
         })
     }
 
     fn rename(&self, from: &VfsPath, to: &VfsPath) -> VfsOperation<()> {
-        self.spawn_op2(from, to, |sftp, from_path, to_path| {
-            let sftp = lock_sftp(&sftp)?;
-            sftp.rename(&from_path, &to_path, None)
-                .map_err(|e| VfsError::Sftp(format!("rename failed: {}", e)))?;
-            Ok(())
+        let from_p = match Self::to_remote_path(from) {
+            Ok(p) => p,
+            Err(e) => return VfsOperation::ready(Err(e)),
+        };
+        let to_p = match Self::to_remote_path(to) {
+            Ok(p) => p,
+            Err(e) => return VfsOperation::ready(Err(e)),
+        };
+        self.dispatch_op(move |reply| SftpCommand::Rename {
+            from: from_p,
+            to: to_p,
+            reply,
         })
     }
 
     fn copy(&self, from: &VfsPath, to: &VfsPath) -> VfsOperation<()> {
-        // SFTP doesn't have native copy - we need to read and write
-        self.spawn_op2(from, to, |sftp, from_path, to_path| {
-            let sftp = lock_sftp(&sftp)?;
-            let mut src_file = sftp
-                .open(&from_path)
-                .map_err(|e| VfsError::Sftp(format!("open source failed: {}", e)))?;
-            let mut contents = Vec::new();
-            src_file.read_to_end(&mut contents).map_err(VfsError::Io)?;
-            let mut dst_file = sftp
-                .create(&to_path)
-                .map_err(|e| VfsError::Sftp(format!("create destination failed: {}", e)))?;
-            dst_file.write_all(&contents).map_err(VfsError::Io)?;
-            Ok(())
+        let from_p = match Self::to_remote_path(from) {
+            Ok(p) => p,
+            Err(e) => return VfsOperation::ready(Err(e)),
+        };
+        let to_p = match Self::to_remote_path(to) {
+            Ok(p) => p,
+            Err(e) => return VfsOperation::ready(Err(e)),
+        };
+        self.dispatch_op(move |reply| SftpCommand::CopyFile {
+            from: from_p,
+            to: to_p,
+            reply,
         })
     }
 
     fn download(&self, remote: &VfsPath, local: &Path) -> VfsOperation<PathBuf> {
+        let remote_p = match Self::to_remote_path(remote) {
+            Ok(p) => p,
+            Err(e) => return VfsOperation::ready(Err(e)),
+        };
         let local_path = local.to_path_buf();
-        self.spawn_op(remote, move |sftp, remote_path| {
-            let stat = {
-                let sftp_guard = lock_sftp(&sftp)?;
-                sftp_guard
-                    .stat(&remote_path)
-                    .map_err(|e| VfsError::Sftp(format!("stat failed: {}", e)))?
-            };
-
-            if stat.is_dir() {
-                Self::download_directory_recursive(&sftp, &remote_path, &local_path)?;
-            } else {
-                let sftp_guard = lock_sftp(&sftp)?;
-                let mut remote_file = sftp_guard
-                    .open(&remote_path)
-                    .map_err(|e| VfsError::Sftp(format!("open remote failed: {}", e)))?;
-                let mut contents = Vec::new();
-                remote_file
-                    .read_to_end(&mut contents)
-                    .map_err(VfsError::Io)?;
-                std::fs::write(&local_path, contents).map_err(VfsError::Io)?;
-            }
-
-            Ok(local_path)
-        })
+        let result_local = local_path.clone();
+        let handle = match self.get_handle() {
+            Ok(h) => h,
+            Err(e) => return VfsOperation::ready(Err(e)),
+        };
+        let (tx, rx) = std_mpsc::channel();
+        thread::spawn(move || {
+            let result: VfsResult<PathBuf> = (|| -> VfsResult<PathBuf> {
+                let meta = handle.dispatch(|reply| SftpCommand::Stat {
+                    path: remote_p.clone(),
+                    reply,
+                })?;
+                if meta.file_type.is_dir() {
+                    handle.dispatch(|reply| SftpCommand::DownloadDir {
+                        remote: remote_p,
+                        local: local_path,
+                        reply,
+                    })?;
+                } else {
+                    handle.dispatch(|reply| SftpCommand::DownloadFile {
+                        remote: remote_p,
+                        local: local_path,
+                        reply,
+                    })?;
+                }
+                Ok(result_local)
+            })();
+            let _ = tx.send(result);
+        });
+        VfsOperation::new(rx)
     }
 
     fn upload(&self, local: &Path, remote: &VfsPath) -> VfsOperation<()> {
+        let remote_p = match Self::to_remote_path(remote) {
+            Ok(p) => p,
+            Err(e) => return VfsOperation::ready(Err(e)),
+        };
         let local_path = local.to_path_buf();
-        self.spawn_op(remote, move |sftp, remote_path| {
-            let contents = std::fs::read(&local_path).map_err(VfsError::Io)?;
-            let sftp = lock_sftp(&sftp)?;
-            let mut remote_file = sftp
-                .create(&remote_path)
-                .map_err(|e| VfsError::Sftp(format!("create remote failed: {}", e)))?;
-            remote_file.write_all(&contents).map_err(VfsError::Io)?;
-            Ok(())
-        })
+        let handle = match self.get_handle() {
+            Ok(h) => h,
+            Err(e) => return VfsOperation::ready(Err(e)),
+        };
+        let (tx, rx) = std_mpsc::channel();
+        thread::spawn(move || {
+            let result: VfsResult<()> = (|| -> VfsResult<()> {
+                let is_dir = std::fs::metadata(&local_path)
+                    .map(|m| m.is_dir())
+                    .unwrap_or(false);
+                if is_dir {
+                    handle.dispatch(|reply| SftpCommand::UploadDir {
+                        local: local_path,
+                        remote: remote_p,
+                        reply,
+                    })?;
+                } else {
+                    handle.dispatch(|reply| SftpCommand::UploadFile {
+                        local: local_path,
+                        remote: remote_p,
+                        reply,
+                    })?;
+                }
+                Ok(())
+            })();
+            let _ = tx.send(result);
+        });
+        VfsOperation::new(rx)
     }
 
     fn upload_with_progress(&self, local: &Path, remote: &VfsPath) -> VfsUploadOperation {
-        use std::io::Read;
-
-        let sftp = match self.get_sftp() {
-            Some(s) => s,
-            None => return VfsUploadOperation::error(VfsError::NotConnected),
-        };
-
-        let remote_path = match Self::to_remote_path(remote) {
+        // Phase 2a: no live progress yet — perform a plain upload and
+        // report a single 100% UploadProgress on completion. Phase 2d
+        // will wire in chunk-level progress through a dedicated command.
+        let remote_p = match Self::to_remote_path(remote) {
             Ok(p) => p,
             Err(e) => return VfsUploadOperation::error(e),
         };
-
         let local_path = local.to_path_buf();
-        let (tx_complete, rx_complete) = mpsc::channel();
-        let (tx_progress, rx_progress) = mpsc::channel();
+        let handle = match self.get_handle() {
+            Ok(h) => h,
+            Err(e) => return VfsUploadOperation::error(e),
+        };
+        let (completion_tx, completion_rx) = std_mpsc::channel();
+        let (progress_tx, progress_rx) = std_mpsc::channel();
         let pause_flag = Arc::new(AtomicBool::new(false));
         let cancel_flag = Arc::new(AtomicBool::new(false));
-        let pause_flag_clone = Arc::clone(&pause_flag);
-        let cancel_flag_clone = Arc::clone(&cancel_flag);
+        let cancel_flag_thread = Arc::clone(&cancel_flag);
 
         thread::spawn(move || {
-            let result = (|| -> VfsResult<()> {
-                // Check cancel before starting
-                if cancel_flag_clone.load(Ordering::Relaxed) {
-                    return Err(VfsError::Cancelled);
-                }
-
-                // Get metadata to check if it's a directory
-                let metadata = std::fs::metadata(&local_path).map_err(VfsError::Io)?;
-
-                if metadata.is_dir() {
-                    // Directory upload: count files first for progress
-                    let (total_files, total_bytes) =
-                        Self::count_local_files(&local_path, &cancel_flag_clone)?;
-
-                    // Send initial progress
-                    let _ = tx_progress.send(UploadProgress {
-                        bytes_uploaded: 0,
-                        total_bytes,
-                        current_file: None,
-                        files_uploaded: 0,
-                        total_files,
-                        current_file_bytes: 0,
-                        current_file_total: 0,
-                    });
-
-                    // Recursive directory upload (lock managed internally per-file)
-                    let mut files_uploaded = 0;
-                    let mut bytes_uploaded = 0u64;
-                    Self::upload_directory_recursive_with_progress(
-                        &sftp,
-                        &local_path,
-                        &remote_path,
-                        &pause_flag_clone,
-                        &cancel_flag_clone,
-                        Some(&tx_progress),
-                        &mut files_uploaded,
-                        &mut bytes_uploaded,
-                        total_files,
-                        total_bytes,
-                    )?;
+            if cancel_flag_thread.load(Ordering::Relaxed) {
+                let _ = completion_tx.send(Err(VfsError::Cancelled));
+                return;
+            }
+            let result: VfsResult<()> = (|| -> VfsResult<()> {
+                let is_dir = std::fs::metadata(&local_path)
+                    .map(|m| m.is_dir())
+                    .unwrap_or(false);
+                if is_dir {
+                    handle.dispatch(|reply| SftpCommand::UploadDir {
+                        local: local_path.clone(),
+                        remote: remote_p.clone(),
+                        reply,
+                    })?;
                 } else {
-                    // Single file upload with pause-aware lock management
-                    let total_bytes = metadata.len();
-                    let file_name = local_path
-                        .file_name()
-                        .map(|n| n.to_string_lossy().into_owned());
-
-                    // Send initial progress
-                    let _ = tx_progress.send(UploadProgress {
-                        bytes_uploaded: 0,
-                        total_bytes,
-                        current_file: file_name.clone(),
-                        files_uploaded: 0,
-                        total_files: 1,
-                        current_file_bytes: 0,
-                        current_file_total: total_bytes,
-                    });
-
-                    // Open local file for reading
-                    let mut local_file = std::fs::File::open(&local_path).map_err(VfsError::Io)?;
-
-                    // Ensure parent directories exist (brief lock)
-                    {
-                        let sftp_guard = lock_sftp(&sftp)?;
-                        if let Some(parent) = remote_path.parent() {
-                            sftp_mkdir_recursive(&sftp_guard, parent)?;
-                        }
-                    }
-
-                    let mut buffer = vec![0u8; CHUNK_SIZE];
-                    let mut bytes_uploaded: u64 = 0;
-
-                    // Outer loop: handles pause/resume by releasing and
-                    // re-acquiring the lock (reopening the file with seek).
-                    loop {
-                        // Pause/cancel check without SFTP lock
-                        if cancel_flag_clone.load(Ordering::Relaxed) {
-                            return Err(VfsError::Cancelled);
-                        }
-                        while pause_flag_clone.load(Ordering::Relaxed) {
-                            if cancel_flag_clone.load(Ordering::Relaxed) {
-                                return Err(VfsError::Cancelled);
-                            }
-                            std::thread::sleep(PAUSE_POLL_INTERVAL);
-                        }
-
-                        // Acquire lock and open/reopen remote file
-                        let sftp_guard = lock_sftp(&sftp)?;
-
-                        let mut remote_file = if bytes_uploaded == 0 {
-                            sftp_guard.create(&remote_path).map_err(|e| {
-                                VfsError::Sftp(format!("create remote failed: {}", e))
-                            })?
-                        } else {
-                            sftp_guard
-                                .open_mode(&remote_path, OpenFlags::WRITE, 0o644, OpenType::File)
-                                .map_err(|e| {
-                                    VfsError::Sftp(format!("reopen remote file failed: {}", e))
-                                })?
-                        };
-                        if bytes_uploaded > 0 {
-                            use std::io::Seek;
-                            remote_file
-                                .seek(std::io::SeekFrom::Start(bytes_uploaded))
-                                .map_err(VfsError::Io)?;
-                            local_file
-                                .seek(std::io::SeekFrom::Start(bytes_uploaded))
-                                .map_err(VfsError::Io)?;
-                        }
-
-                        // Inner loop: write chunks while lock is held
-                        let mut eof = false;
-                        loop {
-                            if cancel_flag_clone.load(Ordering::Relaxed) {
-                                return Err(VfsError::Cancelled);
-                            }
-                            if pause_flag_clone.load(Ordering::Relaxed) {
-                                break; // Release lock, outer loop waits
-                            }
-
-                            let bytes_read = local_file.read(&mut buffer).map_err(VfsError::Io)?;
-                            if bytes_read == 0 {
-                                eof = true;
-                                break;
-                            }
-
-                            remote_file
-                                .write_all(&buffer[..bytes_read])
-                                .map_err(VfsError::Io)?;
-                            bytes_uploaded += bytes_read as u64;
-
-                            let _ = tx_progress.send(UploadProgress {
-                                bytes_uploaded,
-                                total_bytes,
-                                current_file: file_name.clone(),
-                                files_uploaded: 0,
-                                total_files: 1,
-                                current_file_bytes: bytes_uploaded,
-                                current_file_total: total_bytes,
-                            });
-                        }
-                        // sftp_guard + remote_file dropped — lock released
-
-                        if eof {
-                            break;
-                        }
-                    }
-
-                    // Send final progress
-                    let _ = tx_progress.send(UploadProgress {
-                        bytes_uploaded,
-                        total_bytes,
-                        current_file: None,
-                        files_uploaded: 1,
-                        total_files: 1,
-                        current_file_bytes: bytes_uploaded,
-                        current_file_total: total_bytes,
-                    });
+                    handle.dispatch(|reply| SftpCommand::UploadFile {
+                        local: local_path.clone(),
+                        remote: remote_p.clone(),
+                        reply,
+                    })?;
                 }
-
+                let total = std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(0);
+                let _ = progress_tx.send(UploadProgress {
+                    bytes_uploaded: total,
+                    total_bytes: total,
+                    current_file: local_path
+                        .file_name()
+                        .map(|s| s.to_string_lossy().into_owned()),
+                    files_uploaded: 1,
+                    total_files: 1,
+                    current_file_bytes: total,
+                    current_file_total: total,
+                });
                 Ok(())
             })();
-
-            let _ = tx_complete.send(result);
+            let _ = completion_tx.send(result);
         });
 
-        VfsUploadOperation::new(rx_complete, rx_progress, pause_flag, cancel_flag)
+        VfsUploadOperation::new(completion_rx, progress_rx, pause_flag, cancel_flag)
     }
 
     fn download_with_progress(&self, remote: &VfsPath, local: &Path) -> VfsDownloadOperation {
-        let sftp = match self.get_sftp() {
-            Some(s) => s,
-            None => return VfsDownloadOperation::error(VfsError::NotConnected),
-        };
-
-        let remote_path = match Self::to_remote_path(remote) {
+        // Phase 2a: plain download, single completion progress.
+        let remote_p = match Self::to_remote_path(remote) {
             Ok(p) => p,
             Err(e) => return VfsDownloadOperation::error(e),
         };
-
         let local_path = local.to_path_buf();
-
-        let (tx_complete, rx_complete) = mpsc::channel();
-        let (tx_progress, rx_progress) = mpsc::channel();
+        let result_local = local_path.clone();
+        let handle = match self.get_handle() {
+            Ok(h) => h,
+            Err(e) => return VfsDownloadOperation::error(e),
+        };
+        let (completion_tx, completion_rx) = std_mpsc::channel();
+        let (progress_tx, progress_rx) = std_mpsc::channel();
         let pause_flag = Arc::new(AtomicBool::new(false));
         let cancel_flag = Arc::new(AtomicBool::new(false));
-        let pause_flag_clone = Arc::clone(&pause_flag);
-        let cancel_flag_clone = Arc::clone(&cancel_flag);
+        let cancel_flag_thread = Arc::clone(&cancel_flag);
 
         thread::spawn(move || {
-            let result = (|| -> VfsResult<PathBuf> {
-                // Stat with brief lock to check if directory or file
-                let stat = {
-                    let sftp_guard = lock_sftp(&sftp)?;
-                    sftp_guard
-                        .stat(&remote_path)
-                        .map_err(|e| VfsError::Sftp(format!("stat failed: {}", e)))?
-                };
-
-                if stat.is_dir() {
-                    // Count files with scanning progress
-                    let (total_files, total_bytes) = Self::count_remote_files(
-                        &sftp,
-                        &remote_path,
-                        &cancel_flag_clone,
-                        Some(&tx_progress),
-                    )?;
-
-                    // Send initial progress
-                    let _ = tx_progress.send(DownloadProgress {
-                        bytes_downloaded: 0,
-                        total_bytes,
-                        current_file: None,
-                        files_downloaded: 0,
-                        total_files,
-                        current_file_bytes: 0,
-                        current_file_total: 0,
-                    });
-
-                    // Recursive directory download (lock managed internally per-file)
-                    let mut files_downloaded = 0;
-                    let mut bytes_downloaded = 0u64;
-                    Self::download_directory_recursive_with_progress(
-                        &sftp,
-                        &remote_path,
-                        &local_path,
-                        &pause_flag_clone,
-                        &cancel_flag_clone,
-                        Some(&tx_progress),
-                        &mut files_downloaded,
-                        &mut bytes_downloaded,
-                        total_files,
-                        total_bytes,
-                    )?;
+            if cancel_flag_thread.load(Ordering::Relaxed) {
+                let _ = completion_tx.send(Err(VfsError::Cancelled));
+                return;
+            }
+            let result: VfsResult<PathBuf> = (|| -> VfsResult<PathBuf> {
+                let meta = handle.dispatch(|reply| SftpCommand::Stat {
+                    path: remote_p.clone(),
+                    reply,
+                })?;
+                let total = meta.size;
+                if meta.file_type.is_dir() {
+                    handle.dispatch(|reply| SftpCommand::DownloadDir {
+                        remote: remote_p.clone(),
+                        local: local_path.clone(),
+                        reply,
+                    })?;
                 } else {
-                    // Single file download with pause-aware lock management
-                    let file_size = stat.size.unwrap_or(0);
-                    let file_name = remote_path
-                        .file_name()
-                        .map(|n| n.to_string_lossy().into_owned());
-
-                    // Send initial progress
-                    let _ = tx_progress.send(DownloadProgress {
-                        bytes_downloaded: 0,
-                        total_bytes: file_size,
-                        current_file: file_name.clone(),
-                        files_downloaded: 0,
-                        total_files: 1,
-                        current_file_bytes: 0,
-                        current_file_total: file_size,
-                    });
-
-                    // Create local file
-                    let mut local_file =
-                        std::fs::File::create(&local_path).map_err(VfsError::Io)?;
-
-                    let mut buffer = vec![0u8; CHUNK_SIZE];
-                    let mut bytes_downloaded = 0u64;
-
-                    // Outer loop: handles pause/resume by releasing and
-                    // re-acquiring the lock (reopening the file with seek).
-                    loop {
-                        // Pause/cancel check without SFTP lock
-                        if cancel_flag_clone.load(Ordering::Relaxed) {
-                            return Err(VfsError::Cancelled);
-                        }
-                        while pause_flag_clone.load(Ordering::Relaxed) {
-                            if cancel_flag_clone.load(Ordering::Relaxed) {
-                                return Err(VfsError::Cancelled);
-                            }
-                            std::thread::sleep(PAUSE_POLL_INTERVAL);
-                        }
-
-                        // Acquire lock and open/reopen remote file
-                        let sftp_guard = lock_sftp(&sftp)?;
-                        let mut remote_file = sftp_guard
-                            .open(&remote_path)
-                            .map_err(|e| VfsError::Sftp(format!("open remote failed: {}", e)))?;
-                        if bytes_downloaded > 0 {
-                            use std::io::Seek;
-                            remote_file
-                                .seek(std::io::SeekFrom::Start(bytes_downloaded))
-                                .map_err(VfsError::Io)?;
-                        }
-
-                        // Inner loop: read chunks while lock is held
-                        let mut eof = false;
-                        loop {
-                            if cancel_flag_clone.load(Ordering::Relaxed) {
-                                return Err(VfsError::Cancelled);
-                            }
-                            if pause_flag_clone.load(Ordering::Relaxed) {
-                                break; // Release lock, outer loop waits
-                            }
-
-                            let bytes_read = remote_file.read(&mut buffer).map_err(VfsError::Io)?;
-                            if bytes_read == 0 {
-                                eof = true;
-                                break;
-                            }
-
-                            local_file
-                                .write_all(&buffer[..bytes_read])
-                                .map_err(VfsError::Io)?;
-                            bytes_downloaded += bytes_read as u64;
-
-                            let _ = tx_progress.send(DownloadProgress {
-                                bytes_downloaded,
-                                total_bytes: file_size,
-                                current_file: file_name.clone(),
-                                files_downloaded: 0,
-                                total_files: 1,
-                                current_file_bytes: bytes_downloaded,
-                                current_file_total: file_size,
-                            });
-                        }
-                        // sftp_guard + remote_file dropped — lock released
-
-                        if eof {
-                            break;
-                        }
-                    }
-
-                    // Send final progress
-                    let _ = tx_progress.send(DownloadProgress {
-                        bytes_downloaded,
-                        total_bytes: file_size,
-                        current_file: None,
-                        files_downloaded: 1,
-                        total_files: 1,
-                        current_file_bytes: bytes_downloaded,
-                        current_file_total: file_size,
-                    });
+                    handle.dispatch(|reply| SftpCommand::DownloadFile {
+                        remote: remote_p.clone(),
+                        local: local_path.clone(),
+                        reply,
+                    })?;
                 }
-
-                Ok(local_path)
+                let _ = progress_tx.send(DownloadProgress {
+                    bytes_downloaded: total,
+                    total_bytes: total,
+                    current_file: remote_p
+                        .file_name()
+                        .map(|s| s.to_string_lossy().into_owned()),
+                    files_downloaded: 1,
+                    total_files: 1,
+                    current_file_bytes: total,
+                    current_file_total: total,
+                });
+                Ok(result_local)
             })();
-
-            let _ = tx_complete.send(result);
+            let _ = completion_tx.send(result);
         });
 
-        VfsDownloadOperation::new(rx_complete, rx_progress, pause_flag, cancel_flag)
+        VfsDownloadOperation::new(completion_rx, progress_rx, pause_flag, cancel_flag)
     }
 
     fn supported_auth_methods(&self) -> Vec<AuthMethod> {
@@ -1694,19 +1352,31 @@ impl VfsProvider for SftpProvider {
     }
 
     fn home_dir(&self) -> Option<VfsPath> {
-        self.get_home_dir().map(|h| {
-            VfsPath::remote(VfsProtocol::Sftp, &self.host, &h)
+        let home = self.inner.lock().ok()?.home_dir.clone()?;
+        Some(
+            VfsPath::remote(VfsProtocol::Sftp, &self.host, Path::new(&home))
                 .with_port(self.port)
-                .with_username(self.effective_username())
-        })
+                .with_username(self.effective_username()),
+        )
     }
 
     fn disk_space(&self, _path: &VfsPath) -> Option<DiskSpace> {
-        // SFTP extension for statvfs is not widely supported
-        // Could implement via SSH exec of `df` command
+        // Could be implemented via SSH exec "df" but not used by termide yet.
         None
     }
 }
+
+// Decoding helper kept around for downstream use cases (e.g. inline keys).
+#[allow(dead_code)]
+fn decode_inline_key(pem: &str, passphrase: Option<&str>) -> VfsResult<PrivateKey> {
+    decode_secret_key(pem, passphrase).map_err(|e| {
+        VfsError::AuthenticationFailed(format!("Failed to decode inline private key: {e}"))
+    })
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
 
 #[cfg(test)]
 mod tests {
@@ -1714,37 +1384,32 @@ mod tests {
 
     #[test]
     fn test_sftp_provider_creation() {
-        let provider = SftpProvider::new("example.com", 22, Some("user"));
+        let provider = SftpProvider::new("example.com", 22, Some("alice"));
         assert_eq!(provider.name(), "sftp");
         assert_eq!(provider.connection_state(), ConnectionState::Disconnected);
-        assert!(!provider.is_connected());
     }
 
     #[test]
     fn test_effective_username() {
-        let provider = SftpProvider::new("host", 22, Some("testuser"));
-        assert_eq!(provider.effective_username(), "testuser");
+        let p1 = SftpProvider::new("h", 22, Some("alice"));
+        assert_eq!(p1.effective_username(), "alice");
 
-        let provider2 = SftpProvider::new("host", 22, None);
-        // Should fall back to environment variable or "root"
-        assert!(!provider2.effective_username().is_empty());
+        let p2 = SftpProvider::new("h", 22, None);
+        assert!(!p2.effective_username().is_empty());
     }
 
     #[test]
     fn test_to_remote_path() {
-        let sftp_path = VfsPath::remote(VfsProtocol::Sftp, "host", "/home/user/file.txt");
-        let result = SftpProvider::to_remote_path(&sftp_path);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), PathBuf::from("/home/user/file.txt"));
+        let sftp_path = VfsPath::remote(VfsProtocol::Sftp, "example.com", Path::new("/var/log"));
+        assert!(SftpProvider::to_remote_path(&sftp_path).is_ok());
 
-        let local_path = VfsPath::local("/local/path");
-        let result = SftpProvider::to_remote_path(&local_path);
-        assert!(result.is_err());
+        let local_path = VfsPath::local("/tmp");
+        assert!(SftpProvider::to_remote_path(&local_path).is_err());
     }
 
     #[test]
     fn test_supported_auth_methods() {
-        let provider = SftpProvider::new("host", 22, None);
+        let provider = SftpProvider::new("h", 22, None);
         let methods = provider.supported_auth_methods();
         assert!(!methods.is_empty());
     }

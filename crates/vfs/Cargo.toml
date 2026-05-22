@@ -14,11 +14,11 @@ log = "0.4"
 chrono.workspace = true
 termide-logger = { path = "../logger" }
 
-# SFTP support
-ssh2 = "0.9"
-
-# OpenSSL vendored (for cross-compilation)
-openssl-sys = { version = "0.9", optional = true, features = ["vendored"] }
+# SFTP support — pure-Rust russh stack (no OpenSSL/libssh2 needed).
+russh = "0.61"
+russh-sftp = "2.2"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "io-util", "macros", "time", "net", "fs"] }
+async-trait = "0.1"
 
 # FTP support — rustls TLS provider (pure-Rust, enables musl-static builds).
 suppaftp = { version = "5.3", features = ["rustls"] }
@@ -40,7 +40,6 @@ sftp = []
 ftp = []
 smb = ["pavao"]
 nfs = []
-vendored-openssl = ["openssl-sys"]
 
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true
