@@ -331,9 +331,25 @@ impl App {
             return Ok(()); // Invalid response type
         };
 
-        let Some(dest_str) = destination_str else {
+        let Some(mut dest_str) = destination_str else {
             return Ok(());
         };
+
+        // If the user typed a bare relative name (e.g. "newname.txt" from
+        // the rename modal) while the source panel is remote, the value
+        // alone is not a VFS URL. Join it with the remote `target_directory`
+        // URL so the downstream `is_vfs_url` check sees the full URL and
+        // routes through the remote ops path — otherwise the operation
+        // falls through to local fs and creates surprises like a local
+        // directory named after the new file.
+        if let Some(td) = target_directory.as_ref() {
+            let td_str = td.display().to_string();
+            if termide_vfs::is_vfs_url(&td_str) && !termide_vfs::is_vfs_url(&dest_str) {
+                let base = td_str.trim_end_matches('/');
+                let tail = dest_str.trim_start_matches('/');
+                dest_str = format!("{base}/{tail}");
+            }
+        }
 
         // Check if destination is a remote VFS URL (e.g., sftp://user@host/path)
         if termide_vfs::is_vfs_url(&dest_str) {
