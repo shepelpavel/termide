@@ -581,10 +581,34 @@ fn fallback_username() -> String {
         .unwrap_or_else(|_| "root".to_string())
 }
 
+/// Expand a leading `~` in a path using `$HOME`. Returns the input
+/// unchanged if there's no tilde or no home directory.
+fn expand_tilde(p: &Path) -> PathBuf {
+    let s = match p.to_str() {
+        Some(s) => s,
+        None => return p.to_path_buf(),
+    };
+    if let Some(rest) = s.strip_prefix("~/") {
+        if let Some(home) = dirs::home_dir() {
+            return home.join(rest);
+        }
+    }
+    if s == "~" {
+        if let Some(home) = dirs::home_dir() {
+            return home;
+        }
+    }
+    p.to_path_buf()
+}
+
 /// Try every reasonable auth method until one succeeds. Stops at the
 /// first success; returns AuthenticationFailed if none work.
+///
+/// `host` is used to look up Host-specific entries in `~/.ssh/config`
+/// (IdentityFile / IdentitiesOnly) when `auth == Auto`.
 async fn try_authenticate(
     session: &mut client::Handle<AcceptAllHandler>,
+    host: &str,
     username: &str,
     auth: &AuthMethod,
     cancelled: &Arc<AtomicBool>,
@@ -611,13 +635,26 @@ async fn try_authenticate(
         } => try_auth_keyfile(session, username, private_key, passphrase.as_deref()).await,
         AuthMethod::SshAgent => try_auth_agent(session, username).await,
         AuthMethod::Auto => {
-            // Try agent first, then default keys. ssh_config parsing is
-            // handled in Phase 2b — for now we cover the 90% case.
-            if try_auth_agent(session, username).await.is_ok() {
+            // Phase 2b: honor ~/.ssh/config IdentityFile / IdentitiesOnly.
+            // Priority order matches OpenSSH's default behavior:
+            //   1. SSH agent (unless IdentitiesOnly=yes)
+            //   2. Keys from IdentityFile entries in ssh_config
+            //   3. Default keys in ~/.ssh/id_*
+            let host_cfg = crate::ssh_config::SshConfig::from_default_path()
+                .map(|cfg| cfg.get_host_config(host))
+                .unwrap_or_default();
+
+            if !host_cfg.identities_only && try_auth_agent(session, username).await.is_ok() {
                 return Ok(());
             }
             cancelled_check()?;
-            for key_path in default_key_files() {
+
+            // Try keys from ssh_config first (they're authoritative).
+            for raw_key in &host_cfg.identity_files {
+                let key_path = expand_tilde(raw_key);
+                if !key_path.exists() {
+                    continue;
+                }
                 if try_auth_keyfile(session, username, &key_path, None)
                     .await
                     .is_ok()
@@ -626,8 +663,22 @@ async fn try_authenticate(
                 }
                 cancelled_check()?;
             }
+
+            // Fallback to default keys unless IdentitiesOnly forbids it.
+            if !host_cfg.identities_only {
+                for key_path in default_key_files() {
+                    if try_auth_keyfile(session, username, &key_path, None)
+                        .await
+                        .is_ok()
+                    {
+                        return Ok(());
+                    }
+                    cancelled_check()?;
+                }
+            }
+
             Err(VfsError::AuthenticationFailed(
-                "No authentication method succeeded (tried SSH agent and default keys). \
+                "No authentication method succeeded (tried SSH agent and SSH keys). \
                  Provide a password or specific key."
                     .into(),
             ))
@@ -758,7 +809,7 @@ async fn do_connect(
         return Err(VfsError::ConnectionFailed("Connection cancelled".into()));
     }
 
-    try_authenticate(&mut session, &username, &options.auth, &cancelled).await?;
+    try_authenticate(&mut session, &host, &username, &options.auth, &cancelled).await?;
 
     if cancelled.load(Ordering::SeqCst) {
         return Err(VfsError::ConnectionFailed("Connection cancelled".into()));
