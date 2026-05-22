@@ -818,6 +818,14 @@ impl FileManager {
 
     /// Build top-level `tree_entries` from a sorted list of `FileEntry`.
     fn build_top_level_tree(&self, entries: Vec<FileEntry>) -> Vec<tree::TreeEntry> {
+        // Tree-style inline expansion is local-only: expanding a remote
+        // subtree without entering it would have to walk it via the
+        // VFS provider (async), and falling back to fs::read_dir() — as
+        // the local-only helpers do — would show local files for a
+        // matching remote path, which is a footgun. Suppress the
+        // expand indicator on remote panels; navigation still works
+        // through Enter / Right.
+        let is_remote = self.vfs.is_remote();
         entries
             .into_iter()
             .map(|fe| {
@@ -829,7 +837,7 @@ impl FileManager {
                 } else {
                     self.current_path.join(&fe.name)
                 };
-                let expanded = if fe.is_dir && fe.name != ".." {
+                let expanded = if fe.is_dir && fe.name != ".." && !is_remote {
                     let is_expanded = self.expanded_dirs.contains(&full_path);
                     Some(is_expanded)
                 } else {
@@ -901,6 +909,12 @@ impl FileManager {
 
     /// Expand a directory at the given visible index, loading children lazily.
     pub(crate) fn expand_dir(&mut self, vis_idx: usize) {
+        // Tree-style expansion uses fs::read_dir under the hood and
+        // would read the *local* filesystem at the remote path, which
+        // is misleading on remote panels — disable it explicitly.
+        if self.vfs.is_remote() {
+            return;
+        }
         let tree_idx = match self.visible_indices.get(vis_idx) {
             Some(&idx) => idx,
             None => return,
@@ -1252,6 +1266,11 @@ impl FileManager {
 
     /// After building top-level tree, load children for any expanded directories.
     fn load_expanded_subtrees(&mut self) {
+        // Same reasoning as expand_dir: never auto-expand subtrees on
+        // remote panels, since `read_dir_entries` hits the local fs.
+        if self.vfs.is_remote() {
+            return;
+        }
         let mut i = 0;
         while i < self.tree_entries.len() {
             if self.tree_entries[i].expanded == Some(true) {
