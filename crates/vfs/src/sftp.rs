@@ -278,17 +278,21 @@ async fn sftp_actor(sftp: SftpSession, mut rx: async_mpsc::Receiver<SftpCommand>
                 progress_tx,
                 reply,
             } => {
-                let _ = reply.send(
-                    actor_download_with_progress(
+                // Run the transfer under a cancel watchdog so a stuck
+                // network read can't pin the actor — see cancel_watch.
+                let result = tokio::select! {
+                    biased;
+                    _ = cancel_watch(Arc::clone(&cancel)) => Err(VfsError::Cancelled),
+                    r = actor_download_with_progress(
                         &sftp,
                         &remote,
                         &local,
                         &pause,
                         &cancel,
                         &progress_tx,
-                    )
-                    .await,
-                );
+                    ) => r,
+                };
+                let _ = reply.send(result);
             }
             SftpCommand::UploadWithProgress {
                 local,
@@ -298,17 +302,19 @@ async fn sftp_actor(sftp: SftpSession, mut rx: async_mpsc::Receiver<SftpCommand>
                 progress_tx,
                 reply,
             } => {
-                let _ = reply.send(
-                    actor_upload_with_progress(
+                let result = tokio::select! {
+                    biased;
+                    _ = cancel_watch(Arc::clone(&cancel)) => Err(VfsError::Cancelled),
+                    r = actor_upload_with_progress(
                         &sftp,
                         &local,
                         &remote,
                         &pause,
                         &cancel,
                         &progress_tx,
-                    )
-                    .await,
-                );
+                    ) => r,
+                };
+                let _ = reply.send(result);
             }
             SftpCommand::Shutdown => break,
         }
@@ -633,6 +639,19 @@ async fn wait_or_cancel(pause: &Arc<AtomicBool>, cancel: &Arc<AtomicBool>) -> Vf
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
     Ok(())
+}
+
+/// Future that resolves when `cancel` becomes `true`. Used with
+/// `tokio::select!` to interrupt in-flight server I/O the moment the
+/// user cancels — otherwise a slow / stuck `src.read().await` would
+/// pin the actor and block every subsequent VFS operation.
+async fn cancel_watch(cancel: Arc<AtomicBool>) {
+    loop {
+        if cancel.load(Ordering::Relaxed) {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
 }
 
 async fn actor_count_remote_files(

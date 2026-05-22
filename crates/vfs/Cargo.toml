@@ -10,6 +10,7 @@ description = "Virtual File System abstraction for termide with network filesyst
 [dependencies]
 thiserror = "1.0"
 url.workspace = true
+percent-encoding = "2"
 log = "0.4"
 chrono.workspace = true
 termide-logger = { path = "../logger" }

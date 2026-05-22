@@ -80,8 +80,15 @@ pub fn parse_vfs_url(url: &str) -> VfsResult<VfsPath> {
         Some(parsed.username().to_string())
     };
 
-    // Extract path
-    let path = PathBuf::from(parsed.path());
+    // Extract path. `url::Url::path()` returns percent-encoded bytes
+    // (e.g. "%D1%82%D0%B8" instead of "ти"), but the remote protocols
+    // — SFTP/FTP — want the original UTF-8 path. Decode here so the
+    // VfsPath stays in the same representation regardless of whether
+    // it was constructed directly or round-tripped through a URL.
+    let decoded = percent_encoding::percent_decode_str(parsed.path())
+        .decode_utf8()
+        .map_err(|e| VfsError::InvalidUrl(format!("path is not valid UTF-8: {e}")))?;
+    let path = PathBuf::from(decoded.as_ref());
 
     let mut vfs_path = VfsPath::remote(protocol, host, path);
 
