@@ -103,9 +103,9 @@ fn sort_entries(entries: &mut [FileEntry]) {
 use anyhow::Result;
 use ratatui::{buffer::Buffer, layout::Rect, prelude::Widget, widgets::Paragraph};
 use std::any::Any;
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 
 use termide_config::{constants, Config, FileManagerSettings, KeyBinding};
@@ -117,7 +117,7 @@ use termide_modal::{ActionButton, ActiveModal, ConfirmModal, InfoActionModal, In
 use termide_state::{DirSizeResult, PendingAction};
 use termide_theme::Theme;
 use termide_ui::{clipboard, path_utils, IndexClickTracker, ScrollBar};
-use termide_vfs::{VfsEntry, VfsFileType};
+use termide_vfs::{VfsEntry, VfsFileType, VfsOperation, VfsResult};
 
 /// Smart file manager with advanced features
 pub struct FileManager {
@@ -185,6 +185,12 @@ pub struct FileManager {
     last_config_ptr: usize,
     /// Background directory reload result (watcher-triggered, non-blocking).
     async_reload_receiver: Option<mpsc::Receiver<AsyncDirReloadResult>>,
+    /// In-flight `list_dir` operations for tree-expand on remote panels.
+    /// Keyed by the absolute path of the directory being expanded; while
+    /// an entry is present the tree shows a synthetic loading placeholder
+    /// underneath that directory. `tick()` polls and replaces the
+    /// placeholder with real children when the VFS op resolves.
+    pending_expansions: HashMap<PathBuf, VfsOperation<Vec<VfsEntry>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -401,6 +407,7 @@ impl FileManager {
             hotkeys: HotkeyTable::default(),
             last_config_ptr: 0,
             async_reload_receiver: None,
+            pending_expansions: HashMap::new(),
         };
         let _ = fm.load_directory();
         fm
@@ -445,6 +452,7 @@ impl FileManager {
             hotkeys: HotkeyTable::default(),
             last_config_ptr: 0,
             async_reload_receiver: None,
+            pending_expansions: HashMap::new(),
         };
 
         // Start the directory listing operation for remote paths
@@ -818,14 +826,6 @@ impl FileManager {
 
     /// Build top-level `tree_entries` from a sorted list of `FileEntry`.
     fn build_top_level_tree(&self, entries: Vec<FileEntry>) -> Vec<tree::TreeEntry> {
-        // Tree-style inline expansion is local-only: expanding a remote
-        // subtree without entering it would have to walk it via the
-        // VFS provider (async), and falling back to fs::read_dir() — as
-        // the local-only helpers do — would show local files for a
-        // matching remote path, which is a footgun. Suppress the
-        // expand indicator on remote panels; navigation still works
-        // through Enter / Right.
-        let is_remote = self.vfs.is_remote();
         entries
             .into_iter()
             .map(|fe| {
@@ -837,7 +837,7 @@ impl FileManager {
                 } else {
                     self.current_path.join(&fe.name)
                 };
-                let expanded = if fe.is_dir && fe.name != ".." && !is_remote {
+                let expanded = if fe.is_dir && fe.name != ".." {
                     let is_expanded = self.expanded_dirs.contains(&full_path);
                     Some(is_expanded)
                 } else {
@@ -848,6 +848,7 @@ impl FileManager {
                     full_path,
                     depth: 0,
                     expanded,
+                    is_loading: false,
                 }
             })
             .collect()
@@ -909,18 +910,22 @@ impl FileManager {
 
     /// Expand a directory at the given visible index, loading children lazily.
     pub(crate) fn expand_dir(&mut self, vis_idx: usize) {
-        // Tree-style expansion uses fs::read_dir under the hood and
-        // would read the *local* filesystem at the remote path, which
-        // is misleading on remote panels — disable it explicitly.
-        if self.vfs.is_remote() {
-            return;
-        }
         let tree_idx = match self.visible_indices.get(vis_idx) {
             Some(&idx) => idx,
             None => return,
         };
         if self.tree_entries[tree_idx].expanded != Some(false) {
             return; // not a collapsed dir
+        }
+
+        // Remote panels can't use fs::read_dir (would read the *local*
+        // filesystem at the remote path). Spawn an async VFS list_dir
+        // instead and show a loading placeholder until it resolves —
+        // the actual children are inserted by `tick()` once the
+        // operation completes.
+        if self.vfs.is_remote() {
+            self.begin_remote_expand(tree_idx, vis_idx);
+            return;
         }
         let dir_path = self.tree_entries[tree_idx].full_path.clone();
         let depth = self.tree_entries[tree_idx].depth;
@@ -959,6 +964,7 @@ impl FileManager {
                             full_path,
                             depth: child_depth,
                             expanded,
+                            is_loading: false,
                         }
                     })
                     .collect();
@@ -1025,6 +1031,7 @@ impl FileManager {
                                 full_path,
                                 depth: child_depth,
                                 expanded,
+                                is_loading: false,
                             }
                         })
                         .collect();
@@ -1041,6 +1048,242 @@ impl FileManager {
             i += 1;
             while i < self.tree_entries.len() && self.tree_entries[i].depth > current_depth {
                 i += 1;
+            }
+        }
+    }
+
+    /// Translate a tree entry's local-style `full_path` into a real
+    /// VfsPath rooted on the current remote connection.
+    fn remote_vfs_path_for(&self, dir_path: &Path) -> Option<termide_vfs::VfsPath> {
+        let base = self.vfs.current_path().clone();
+        if let Ok(rel) = dir_path.strip_prefix(&self.current_path) {
+            if rel.as_os_str().is_empty() {
+                Some(base)
+            } else {
+                Some(base.join(rel))
+            }
+        } else {
+            // Fallback: treat dir_path itself as the absolute remote path
+            // (e.g. for ".." or odd entries). Reuse host/port/user.
+            Some(termide_vfs::VfsPath::remote(
+                base.protocol,
+                base.host.clone().unwrap_or_default(),
+                dir_path,
+            ))
+        }
+    }
+
+    /// Insert a synthetic "Loading…" placeholder under `parent_idx` and
+    /// register the in-flight `list_dir` operation. The placeholder is
+    /// replaced once `tick()` sees the VFS op resolve.
+    fn begin_remote_expand(&mut self, parent_idx: usize, vis_idx: usize) {
+        let dir_path = self.tree_entries[parent_idx].full_path.clone();
+        let depth = self.tree_entries[parent_idx].depth;
+
+        // Mark expanded and remember it for restore-after-reload.
+        self.tree_entries[parent_idx].expanded = Some(true);
+        self.expanded_dirs.insert(dir_path.clone());
+
+        // Skip if we already have a pending expansion for this directory.
+        if self.pending_expansions.contains_key(&dir_path) {
+            self.recompute_visible();
+            return;
+        }
+
+        let vfs_path = match self.remote_vfs_path_for(&dir_path) {
+            Some(p) => p,
+            None => return,
+        };
+        let op = self.vfs.manager().list_dir(&vfs_path);
+
+        let placeholder = tree::TreeEntry {
+            file_entry: FileEntry {
+                name: "…".to_string(),
+                is_dir: false,
+                is_symlink: false,
+                is_executable: false,
+                is_readonly: false,
+                git_status: GitStatus::Unmodified,
+                size: None,
+                modified: None,
+            },
+            full_path: dir_path.join("__loading__"),
+            depth: depth + 1,
+            expanded: None,
+            is_loading: true,
+        };
+        let insert_at = parent_idx + 1;
+        self.tree_entries.insert(insert_at, placeholder);
+
+        self.pending_expansions.insert(dir_path, op);
+
+        let dir_was_selected = self.selection.items.contains(&vis_idx);
+        let saved = self.save_selection_paths();
+        self.recompute_visible();
+        self.restore_selection_by_paths(&saved);
+        if dir_was_selected {
+            self.select_descendants(vis_idx);
+        }
+    }
+
+    /// Variant of `begin_remote_expand` used by `load_expanded_subtrees`
+    /// to restore previously-expanded subtrees after a reload — there's
+    /// no `vis_idx` and no selection to cascade.
+    fn kick_off_remote_subtree(&mut self, tree_idx: usize, dir_path: PathBuf, depth: usize) {
+        if self.pending_expansions.contains_key(&dir_path) {
+            return;
+        }
+        let vfs_path = match self.remote_vfs_path_for(&dir_path) {
+            Some(p) => p,
+            None => return,
+        };
+        let op = self.vfs.manager().list_dir(&vfs_path);
+        let placeholder = tree::TreeEntry {
+            file_entry: FileEntry {
+                name: "…".to_string(),
+                is_dir: false,
+                is_symlink: false,
+                is_executable: false,
+                is_readonly: false,
+                git_status: GitStatus::Unmodified,
+                size: None,
+                modified: None,
+            },
+            full_path: dir_path.join("__loading__"),
+            depth: depth + 1,
+            expanded: None,
+            is_loading: true,
+        };
+        self.tree_entries.insert(tree_idx + 1, placeholder);
+        self.pending_expansions.insert(dir_path, op);
+    }
+
+    /// Drain any completed pending expansions and substitute placeholders
+    /// with real children. Returns true if anything changed (caller will
+    /// emit NeedsRedraw).
+    fn poll_pending_expansions(&mut self) -> bool {
+        if self.pending_expansions.is_empty() {
+            return false;
+        }
+        let keys: Vec<PathBuf> = self.pending_expansions.keys().cloned().collect();
+        let mut results: Vec<(PathBuf, VfsResult<Vec<VfsEntry>>)> = Vec::new();
+        for key in keys {
+            if let Some(op) = self.pending_expansions.get(&key) {
+                if let Some(res) = op.try_recv() {
+                    results.push((key, res));
+                }
+            }
+        }
+        let changed = !results.is_empty();
+        for (dir_path, result) in results {
+            self.pending_expansions.remove(&dir_path);
+            self.finish_remote_expand(&dir_path, result);
+        }
+        if changed {
+            let saved = self.save_selection_paths();
+            self.recompute_visible();
+            self.restore_selection_by_paths(&saved);
+        }
+        changed
+    }
+
+    /// Substitute the loading placeholder under `dir_path` with the real
+    /// children returned by the VFS list. On error, leave a "<error>"
+    /// placeholder so the user sees the failure rather than silent
+    /// nothing.
+    fn finish_remote_expand(&mut self, dir_path: &Path, result: VfsResult<Vec<VfsEntry>>) {
+        // Locate the parent tree index.
+        let Some(parent_idx) = self
+            .tree_entries
+            .iter()
+            .position(|te| te.full_path == dir_path)
+        else {
+            return;
+        };
+        let parent_depth = self.tree_entries[parent_idx].depth;
+
+        // Remove the placeholder (single entry right after parent that
+        // carries `is_loading == true`).
+        let placeholder_idx = parent_idx + 1;
+        if placeholder_idx < self.tree_entries.len()
+            && self.tree_entries[placeholder_idx].is_loading
+            && self.tree_entries[placeholder_idx].depth == parent_depth + 1
+        {
+            self.tree_entries.remove(placeholder_idx);
+        }
+
+        match result {
+            Ok(entries) => {
+                let mut file_entries: Vec<FileEntry> = entries
+                    .into_iter()
+                    .filter(|e| e.name != "." && e.name != "..")
+                    .filter(|e| self.show_hidden || !e.name.starts_with('.'))
+                    .map(FileEntry::from_vfs_entry)
+                    .collect();
+                file_entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+                    (true, false) => std::cmp::Ordering::Less,
+                    (false, true) => std::cmp::Ordering::Greater,
+                    _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+                });
+                let child_depth = parent_depth + 1;
+                let dir_path_owned = dir_path.to_path_buf();
+                let children: Vec<tree::TreeEntry> = file_entries
+                    .into_iter()
+                    .map(|fe| {
+                        let full_path = dir_path_owned.join(&fe.name);
+                        let expanded = if fe.is_dir {
+                            let is_exp = self.expanded_dirs.contains(&full_path);
+                            Some(is_exp)
+                        } else {
+                            None
+                        };
+                        tree::TreeEntry {
+                            file_entry: fe,
+                            full_path,
+                            depth: child_depth,
+                            expanded,
+                            is_loading: false,
+                        }
+                    })
+                    .collect();
+                let n = children.len();
+                let insert_at = parent_idx + 1;
+                self.tree_entries.splice(insert_at..insert_at, children);
+                // Re-trigger expansion for any newly visible directories
+                // the user had previously expanded.
+                for offset in 0..n {
+                    let idx = insert_at + offset;
+                    if idx >= self.tree_entries.len() {
+                        break;
+                    }
+                    if self.tree_entries[idx].expanded == Some(true) {
+                        let child_path = self.tree_entries[idx].full_path.clone();
+                        let child_depth = self.tree_entries[idx].depth;
+                        self.kick_off_remote_subtree(idx, child_path, child_depth);
+                    }
+                }
+            }
+            Err(e) => {
+                let placeholder = tree::TreeEntry {
+                    file_entry: FileEntry {
+                        name: format!("<error: {e}>"),
+                        is_dir: false,
+                        is_symlink: false,
+                        is_executable: false,
+                        is_readonly: false,
+                        git_status: GitStatus::Unmodified,
+                        size: None,
+                        modified: None,
+                    },
+                    full_path: dir_path.join("__error__"),
+                    depth: parent_depth + 1,
+                    expanded: None,
+                    is_loading: false,
+                };
+                self.tree_entries.insert(parent_idx + 1, placeholder);
+                // Also clear expanded state so user can retry by clicking again.
+                self.tree_entries[parent_idx].expanded = Some(false);
+                self.expanded_dirs.remove(dir_path);
             }
         }
     }
@@ -1266,9 +1509,27 @@ impl FileManager {
 
     /// After building top-level tree, load children for any expanded directories.
     fn load_expanded_subtrees(&mut self) {
-        // Same reasoning as expand_dir: never auto-expand subtrees on
-        // remote panels, since `read_dir_entries` hits the local fs.
+        // On remote panels, kick off async list_dir for every previously
+        // expanded subtree. The placeholders inserted here are replaced
+        // by real children in `tick()` once each VFS op resolves.
         if self.vfs.is_remote() {
+            let dirs: Vec<(usize, PathBuf, usize)> = self
+                .tree_entries
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, te)| {
+                    if te.expanded == Some(true) && te.file_entry.is_dir {
+                        Some((idx, te.full_path.clone(), te.depth))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            // Walk in reverse so insertions don't shift indices we still
+            // need to process.
+            for (tree_idx, dir_path, depth) in dirs.into_iter().rev() {
+                self.kick_off_remote_subtree(tree_idx, dir_path, depth);
+            }
             return;
         }
         let mut i = 0;
@@ -1298,6 +1559,7 @@ impl FileManager {
                                 full_path,
                                 depth: child_depth,
                                 expanded,
+                                is_loading: false,
                             }
                         })
                         .collect();
@@ -1696,6 +1958,11 @@ impl Panel for FileManager {
         // IMPORTANT: never early-return before vfs.tick() — results must always be drained.
 
         let mut events = Vec::new();
+
+        // Drain any tree-expand list_dir operations that have resolved.
+        if self.poll_pending_expansions() {
+            events.push(PanelEvent::NeedsRedraw);
+        }
 
         // Check for VFS connection timeout (cancel stuck connections)
         if let Some((status, Some(secs))) = self.vfs.connection_status_with_elapsed() {

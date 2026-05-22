@@ -102,6 +102,7 @@ impl FileManager {
                             full_path,
                             depth: 0,
                             expanded: None,
+                            is_loading: false,
                         }
                     })
                     .collect();

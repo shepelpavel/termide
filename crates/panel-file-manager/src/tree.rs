@@ -18,6 +18,10 @@ pub(crate) struct TreeEntry {
     pub depth: usize,
     /// `Some(true)` = expanded dir, `Some(false)` = collapsed dir, `None` = file or "..".
     pub expanded: Option<bool>,
+    /// Synthetic placeholder shown under a remote directory while its
+    /// async `list_dir` is in flight. The placeholder is removed and
+    /// replaced by real children once the VFS operation resolves.
+    pub is_loading: bool,
 }
 
 /// Compute indices of visible nodes, skipping children of collapsed directories.
@@ -152,6 +156,7 @@ mod tests {
             full_path: PathBuf::from(format!("/test/{}", name)),
             depth,
             expanded,
+            is_loading: false,
         }
     }
 
