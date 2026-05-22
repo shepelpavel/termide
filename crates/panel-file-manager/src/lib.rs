@@ -1090,6 +1090,25 @@ impl FileManager {
             return;
         }
 
+        // If children were already loaded earlier (collapse keeps them
+        // in tree_entries to make re-expand instantaneous), don't
+        // refetch — otherwise each expand/collapse round-trip would
+        // append a duplicate set of children.
+        let next_idx = parent_idx + 1;
+        let already_loaded = next_idx < self.tree_entries.len()
+            && self.tree_entries[next_idx].depth > depth
+            && !self.tree_entries[next_idx].is_loading;
+        if already_loaded {
+            let dir_was_selected = self.selection.items.contains(&vis_idx);
+            let saved = self.save_selection_paths();
+            self.recompute_visible();
+            self.restore_selection_by_paths(&saved);
+            if dir_was_selected {
+                self.select_descendants(vis_idx);
+            }
+            return;
+        }
+
         let vfs_path = match self.remote_vfs_path_for(&dir_path) {
             Some(p) => p,
             None => return,
@@ -1131,6 +1150,15 @@ impl FileManager {
     /// no `vis_idx` and no selection to cascade.
     fn kick_off_remote_subtree(&mut self, tree_idx: usize, dir_path: PathBuf, depth: usize) {
         if self.pending_expansions.contains_key(&dir_path) {
+            return;
+        }
+        // Already-loaded guard mirrors begin_remote_expand: don't fetch
+        // if children are already in the tree.
+        let next_idx = tree_idx + 1;
+        if next_idx < self.tree_entries.len()
+            && self.tree_entries[next_idx].depth > depth
+            && !self.tree_entries[next_idx].is_loading
+        {
             return;
         }
         let vfs_path = match self.remote_vfs_path_for(&dir_path) {
