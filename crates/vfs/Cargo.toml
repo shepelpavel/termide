@@ -20,8 +20,10 @@ ssh2 = "0.9"
 # OpenSSL vendored (for cross-compilation)
 openssl-sys = { version = "0.9", optional = true, features = ["vendored"] }
 
-# FTP support
-suppaftp = { version = "5.3", features = ["native-tls"] }
+# FTP support — rustls TLS provider (pure-Rust, enables musl-static builds).
+suppaftp = { version = "5.3", features = ["rustls"] }
+rustls = "0.21"
+webpki-roots = "0.25"
 
 # SMB support (optional, may require system libraries)
 pavao = { version = "0.2", optional = true }

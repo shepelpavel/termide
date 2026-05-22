@@ -8,7 +8,8 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::SystemTime;
 
-use suppaftp::{NativeTlsConnector, NativeTlsFtpStream};
+use suppaftp::rustls::{ClientConfig, OwnedTrustAnchor, RootCertStore};
+use suppaftp::{RustlsConnector, RustlsFtpStream};
 
 use crate::error::{VfsError, VfsResult};
 use crate::traits::{DiskSpace, VfsProvider};
@@ -22,8 +23,8 @@ const DEFAULT_PORT: u16 = 21;
 
 /// Acquire FTP stream mutex lock, converting poison error to VfsError.
 fn lock_ftp(
-    stream: &Arc<Mutex<NativeTlsFtpStream>>,
-) -> VfsResult<std::sync::MutexGuard<'_, NativeTlsFtpStream>> {
+    stream: &Arc<Mutex<RustlsFtpStream>>,
+) -> VfsResult<std::sync::MutexGuard<'_, RustlsFtpStream>> {
     stream.lock().map_err(|e| VfsError::RemoteError {
         message: format!("Failed to acquire FTP stream lock: {e}"),
     })
@@ -44,7 +45,7 @@ pub struct FtpProvider {
     /// Current connection state.
     state: ConnectionState,
     /// FTP stream (shared for thread safety).
-    stream: Option<Arc<Mutex<NativeTlsFtpStream>>>,
+    stream: Option<Arc<Mutex<RustlsFtpStream>>>,
 }
 
 impl FtpProvider {
@@ -73,7 +74,7 @@ impl FtpProvider {
     }
 
     /// Check if connected and return the stream.
-    fn get_stream(&self) -> VfsResult<Arc<Mutex<NativeTlsFtpStream>>> {
+    fn get_stream(&self) -> VfsResult<Arc<Mutex<RustlsFtpStream>>> {
         match &self.stream {
             Some(stream) => Ok(Arc::clone(stream)),
             None => Err(VfsError::NotConnected),
@@ -173,7 +174,7 @@ impl VfsProvider for FtpProvider {
         let (tx, rx) = std::sync::mpsc::channel();
 
         thread::spawn(move || {
-            let result = (|| -> VfsResult<NativeTlsFtpStream> {
+            let result = (|| -> VfsResult<RustlsFtpStream> {
                 // Connect to FTP server
                 let addr = format!("{}:{}", host, port);
                 log::info!(
@@ -182,17 +183,26 @@ impl VfsProvider for FtpProvider {
                     if use_tls { "yes" } else { "no" }
                 );
 
-                let mut stream = NativeTlsFtpStream::connect(&addr).map_err(|e| {
+                let mut stream = RustlsFtpStream::connect(&addr).map_err(|e| {
                     VfsError::ConnectionFailed(format!("FTP connection failed: {}", e))
                 })?;
 
-                // Upgrade to TLS if requested (explicit FTPS / STARTTLS)
+                // Upgrade to TLS if requested (explicit FTPS / STARTTLS).
+                // Rustls + Mozilla CA bundle from webpki-roots — no system OpenSSL needed.
                 if use_tls {
-                    let tls_connector = NativeTlsConnector::from(
-                        suppaftp::native_tls::TlsConnector::new().map_err(|e| {
-                            VfsError::ConnectionFailed(format!("TLS initialization failed: {}", e))
-                        })?,
-                    );
+                    let mut root_store = RootCertStore::empty();
+                    root_store.add_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.iter().map(|ta| {
+                        OwnedTrustAnchor::from_subject_spki_name_constraints(
+                            ta.subject,
+                            ta.spki,
+                            ta.name_constraints,
+                        )
+                    }));
+                    let config = ClientConfig::builder()
+                        .with_safe_defaults()
+                        .with_root_certificates(root_store)
+                        .with_no_client_auth();
+                    let tls_connector = RustlsConnector::from(std::sync::Arc::new(config));
                     stream = stream.into_secure(tls_connector, &host).map_err(|e| {
                         VfsError::ConnectionFailed(format!("TLS upgrade failed: {}", e))
                     })?;
