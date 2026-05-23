@@ -172,3 +172,20 @@ Files are displayed in groups, each sorted alphabetically:
 
 - `..` (parent directory) cannot be selected — it is only for navigation
 - Input modals support `~/` expansion to home directory
+
+## Configuration
+
+The file manager reads its settings from `[file_manager]` in
+`config.toml`. The most user-visible options:
+
+| Key                                | Default | Description                                                                                                  |
+|------------------------------------|---------|--------------------------------------------------------------------------------------------------------------|
+| `extended_view_width`              | `50`    | Minimum panel width (columns) before the extended view shows the size / modified-time columns.               |
+| `content_search_max_file_size_mb`  | `1`     | Maximum file size considered by `Ctrl+Shift+F` content search. Larger files are skipped.                     |
+| `dir_size_in_wide_view`            | `true`  | Compute and show directory sizes in the Size column of the extended view. Local filesystems only.            |
+| `dir_size_budget_ms`               | `100`   | Per-directory time budget (ms) for that walk. Trees that don't finish render a `-` marker. `0` disables it.  |
+
+The walks share a process-wide cache, so two panels viewing the same
+directory don't double-walk. Pressing `Space` on a directory also
+publishes its exact (unbounded) size into that cache, so the
+wide-view column picks the result up on the next redraw.
