@@ -91,6 +91,19 @@ Press `/` to start incremental search within the current directory tree:
 | `Ctrl+X`          | Cut paths of selected items                |
 | `Ctrl+V`          | Paste files from clipboard                 |
 
+### Target directory rule
+
+Create-new-file, create-new-directory and paste-from-clipboard all
+land **at the cursor's tree level**, not always in the panel's root:
+
+- Cursor on a top-level entry → the action targets the panel's
+  current directory.
+- Cursor inside an expanded subdirectory → the action targets that
+  subdirectory.
+
+This matches the visual position of the cursor — what you see is where
+the file is created or pasted.
+
 ## Git Integration
 
 The file manager displays file status in Git repositories:
