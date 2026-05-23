@@ -753,7 +753,10 @@ impl HelpGenerator {
                 description: t.help_desc_pause_resume().to_string(),
             },
             HelpEntry {
-                keys: "Delete / Backspace".to_string(),
+                // Esc swallows the panel-close shortcut when an
+                // operation is selected and routes it to cancel
+                // instead — same effect as Delete/Backspace.
+                keys: "Esc / Delete / Backspace".to_string(),
                 description: t.help_desc_cancel_operation().to_string(),
             },
         ];
