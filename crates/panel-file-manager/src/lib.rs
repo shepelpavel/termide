@@ -2476,15 +2476,21 @@ impl FileManager {
                         .collect();
 
                     if !files.is_empty() {
+                        // Land the paste at the cursor's tree level —
+                        // same rule as create_file / create_dir use via
+                        // `create_target_dir`. Cursor on a root entry
+                        // pastes into `current_path`; cursor inside an
+                        // expanded subdir pastes into that subdir.
+                        let (local_target, _vfs_target) = self.create_target_dir();
                         let t = termide_i18n::t();
                         let message = t.fm_paste_confirm(
                             files.len(),
                             "Copy",
-                            &self.current_path.display().to_string(),
+                            &local_target.display().to_string(),
                         );
                         let action = PendingAction::CopyPath {
                             sources: files,
-                            target_directory: Some(self.current_path.clone()),
+                            target_directory: Some(local_target),
                             create_symlink: false,
                             create_relative_symlink: false,
                         };

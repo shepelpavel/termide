@@ -300,7 +300,7 @@ impl FileManager {
     /// in the panel's `current_path`; cursor anywhere inside an
     /// expanded subdir creates in that subdir (the parent of the
     /// highlighted entry).
-    fn create_target_dir(&self) -> (std::path::PathBuf, Option<termide_vfs::VfsPath>) {
+    pub(crate) fn create_target_dir(&self) -> (std::path::PathBuf, Option<termide_vfs::VfsPath>) {
         if let Some(te) = self.tree_entry_at(self.selected) {
             // Top-level rows (depth == 0) and ".." always anchor at
             // current_path. For any nested entry we use the parent of
