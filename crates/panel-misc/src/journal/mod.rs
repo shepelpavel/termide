@@ -5,11 +5,18 @@
 //! - Copy to clipboard
 //! - Auto-scroll to new entries
 //! - Log level highlighting (DEBUG, INFO, WARN, ERROR)
+//! - Clickable per-level toggles in a one-row header strip
 
 pub mod highlighting;
 
-use crossterm::event::{MouseEvent, MouseEventKind};
-use ratatui::{buffer::Buffer, layout::Rect};
+use crossterm::event::{KeyCode, KeyModifiers, MouseEvent, MouseEventKind};
+use ratatui::{
+    buffer::Buffer,
+    layout::Rect,
+    style::{Modifier, Style},
+    text::{Line, Span},
+    widgets::{Paragraph, Widget},
+};
 use std::any::Any;
 
 use termide_core::{Panel, PanelEvent, RenderContext, WidthPreference};
@@ -20,6 +27,36 @@ use termide_theme::Theme;
 
 use highlighting::LogHighlightCache;
 
+/// Levels in the order they appear in the header strip. Index into
+/// [`JournalPanel::level_enabled`] / [`JournalPanel::pill_areas`].
+const LEVELS: [LogLevel; 5] = [
+    LogLevel::Trace,
+    LogLevel::Debug,
+    LogLevel::Info,
+    LogLevel::Warn,
+    LogLevel::Error,
+];
+
+fn level_label(level: LogLevel) -> &'static str {
+    match level {
+        LogLevel::Trace => "TRACE",
+        LogLevel::Debug => "DEBUG",
+        LogLevel::Info => "INFO",
+        LogLevel::Warn => "WARN",
+        LogLevel::Error => "ERROR",
+    }
+}
+
+fn level_index(level: LogLevel) -> usize {
+    match level {
+        LogLevel::Trace => 0,
+        LogLevel::Debug => 1,
+        LogLevel::Info => 2,
+        LogLevel::Warn => 3,
+        LogLevel::Error => 4,
+    }
+}
+
 /// Log viewer panel with Editor-based text display.
 pub struct JournalPanel {
     /// Internal editor in read-only mode
@@ -28,8 +65,17 @@ pub struct JournalPanel {
     highlight_cache: LogHighlightCache,
     /// Auto-scroll enabled (scroll to new entries)
     auto_scroll: bool,
-    /// Number of log entries already synced to buffer
+    /// Number of log entries already inspected for sync. Counts every
+    /// entry the logger has produced, not just lines in the buffer —
+    /// filtered-out entries also advance this counter so we never re-
+    /// process them on the next tick.
     last_synced_count: usize,
+    /// Per-level toggle. Levels with `false` are hidden from the
+    /// buffer; toggling rebuilds it from scratch.
+    level_enabled: [bool; LEVELS.len()],
+    /// Cached screen rects of each pill, updated on every render so
+    /// `handle_mouse` can hit-test clicks without recomputing layout.
+    pill_areas: [Rect; LEVELS.len()],
     /// Cached theme for rendering
     cached_theme: Theme,
     /// Cached config for rendering
@@ -51,9 +97,31 @@ impl JournalPanel {
             highlight_cache,
             auto_scroll: true,
             last_synced_count: 0,
+            level_enabled: [true; LEVELS.len()],
+            pill_areas: [Rect::default(); LEVELS.len()],
             cached_theme: *theme,
             cached_config: termide_config::Config::default(),
         }
+    }
+
+    /// Rebuild the in-buffer view from scratch using current
+    /// `level_enabled` flags. Cheap on small logs; called when the
+    /// user toggles a pill so the filter takes effect immediately.
+    fn rebuild_buffer(&mut self) {
+        let mut config = EditorConfig::view_only();
+        config.syntax_highlighting = true;
+        self.editor = Editor::with_config(config);
+        self.last_synced_count = 0;
+        self.highlight_cache.invalidate_all();
+        self.auto_scroll = true;
+    }
+
+    fn toggle_level(&mut self, idx: usize) {
+        if idx >= LEVELS.len() {
+            return;
+        }
+        self.level_enabled[idx] = !self.level_enabled[idx];
+        self.rebuild_buffer();
     }
 
     /// Sync log entries from logger to buffer.
@@ -71,8 +139,14 @@ impl JournalPanel {
             // Get buffer access through editor
             let buffer = self.editor.buffer_mut();
 
-            // Append new entries
+            // Append new entries that pass the active level filter.
+            // `last_synced_count` still advances over filtered-out
+            // entries so a later toggle (via `rebuild_buffer`) starts
+            // from a clean slate and re-includes them.
             for entry in &new_entries {
+                if !self.level_enabled[level_index(entry.level)] {
+                    continue;
+                }
                 let level_text = match entry.level {
                     LogLevel::Trace => "TRACE",
                     LogLevel::Debug => "DEBUG",
@@ -90,6 +164,41 @@ impl JournalPanel {
 
             self.last_synced_count = new_count;
         }
+    }
+
+    /// Render the one-row header strip of clickable level pills.
+    /// Stores each pill's screen rect in `pill_areas` for mouse
+    /// hit-testing.
+    fn render_pills(&mut self, area: Rect, buf: &mut Buffer) {
+        let active_style = Style::default()
+            .fg(self.cached_theme.fg)
+            .add_modifier(Modifier::BOLD);
+        let inactive_style = Style::default().fg(self.cached_theme.disabled);
+
+        // Layout: " [TRACE] [DEBUG] [INFO] [WARN] [ERROR] "
+        let mut spans = Vec::with_capacity(LEVELS.len() * 2 + 1);
+        spans.push(Span::raw(" "));
+        let mut x = area.x.saturating_add(1);
+        for (i, level) in LEVELS.iter().enumerate() {
+            let label = format!("[{}]", level_label(*level));
+            let width = label.chars().count() as u16;
+            self.pill_areas[i] = Rect {
+                x,
+                y: area.y,
+                width,
+                height: 1,
+            };
+            let style = if self.level_enabled[i] {
+                active_style
+            } else {
+                inactive_style
+            };
+            spans.push(Span::styled(label, style));
+            spans.push(Span::raw(" "));
+            x = x.saturating_add(width + 1);
+        }
+
+        Paragraph::new(Line::from(spans)).render(area, buf);
     }
 
     /// Access the inner editor (for search, modal requests, etc.).
@@ -137,14 +246,43 @@ impl Panel for JournalPanel {
         // Sync new log entries
         self.sync_logs();
 
+        // Carve off a one-row header strip for the level pills when
+        // the panel is at least 2 rows tall; below that, the strip
+        // would steal the only content row, so we render without it.
+        let (pills_area, editor_area) = if area.height >= 2 {
+            (
+                Rect {
+                    x: area.x,
+                    y: area.y,
+                    width: area.width,
+                    height: 1,
+                },
+                Rect {
+                    x: area.x,
+                    y: area.y + 1,
+                    width: area.width,
+                    height: area.height - 1,
+                },
+            )
+        } else {
+            (Rect::default(), area)
+        };
+
+        if pills_area.height > 0 {
+            self.render_pills(pills_area, buf);
+        }
+
         // Auto-scroll if enabled, but not when search is active (viewport must follow search cursor)
-        if self.auto_scroll && area.height > 0 && self.editor.get_search_match_info().is_none() {
+        if self.auto_scroll
+            && editor_area.height > 0
+            && self.editor.get_search_match_info().is_none()
+        {
             self.scroll_to_end();
         }
 
         // Render using editor's rendering with our custom highlighter
         self.editor.render_with_highlighter(
-            area,
+            editor_area,
             buf,
             &self.cached_theme,
             &self.cached_config,
@@ -154,6 +292,21 @@ impl Panel for JournalPanel {
     }
 
     fn handle_key(&mut self, chord: termide_core::KeyChord) -> Vec<PanelEvent> {
+        // Alt+1..5 toggles the corresponding level pill. The pills
+        // are also clickable; the shortcut is the keyboard fallback
+        // that the help panel will list.
+        if chord.raw.modifiers == KeyModifiers::ALT {
+            if let KeyCode::Char(c) = chord.raw.code {
+                if let Some(digit) = c.to_digit(10) {
+                    let idx = digit as usize;
+                    if (1..=LEVELS.len()).contains(&idx) {
+                        self.toggle_level(idx - 1);
+                        return vec![PanelEvent::NeedsRedraw];
+                    }
+                }
+            }
+        }
+
         let events = self.editor.handle_key(chord);
 
         // Auto-scroll when cursor is on the last content line (skip trailing empty line)
@@ -172,6 +325,21 @@ impl Panel for JournalPanel {
     }
 
     fn handle_mouse(&mut self, mouse: MouseEvent, area: Rect) -> Vec<PanelEvent> {
+        // Pill row gets first dibs on left clicks so a click on a
+        // pill doesn't also move the editor cursor underneath.
+        if let MouseEventKind::Down(crossterm::event::MouseButton::Left) = mouse.kind {
+            for (i, rect) in self.pill_areas.iter().enumerate() {
+                if rect.width > 0
+                    && mouse.column >= rect.x
+                    && mouse.column < rect.x + rect.width
+                    && mouse.row == rect.y
+                {
+                    self.toggle_level(i);
+                    return vec![PanelEvent::NeedsRedraw];
+                }
+            }
+        }
+
         // Delegate to editor first so viewport updates before we check position
         let _ = self.editor.handle_mouse(mouse, area);
 
