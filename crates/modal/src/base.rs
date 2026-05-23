@@ -66,15 +66,23 @@ pub fn render_modal_frame(
 /// - Inverted colors (bg on fg)
 /// - Bold title with padding
 /// - All borders
+///
+/// An empty (or whitespace-only) title skips the title span entirely
+/// so the top border doesn't get a stray " " gap punched through the
+/// box-drawing line.
 pub fn create_modal_block(title: &str, theme: &Theme) -> Block<'static> {
-    Block::default()
-        .title(Span::styled(
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.accented_fg))
+        .style(Style::default().bg(theme.bg));
+    if title.trim().is_empty() {
+        block
+    } else {
+        block.title(Span::styled(
             format!(" {} ", title),
             Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
         ))
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme.accented_fg))
-        .style(Style::default().bg(theme.bg))
+    }
 }
 
 /// Render a modal block and return its inner area.
