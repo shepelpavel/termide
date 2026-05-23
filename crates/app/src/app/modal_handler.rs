@@ -265,30 +265,34 @@ impl App {
                     self.handle_delete_remote_path(paths, vfs_manager, value)?;
                 }
                 PendingAction::CleanupPartialRemote { path, vfs_manager } => {
-                    // Confirmed → fire a fire-and-forget delete on the
-                    // partial file. We deliberately don't fail the
-                    // user-facing flow if the file was never created
-                    // (e.g. cancel arrived before the first byte hit
-                    // the server) — that's the expected outcome here.
+                    // Confirmed → run the delete synchronously so the
+                    // panel listing afterwards reflects the actual
+                    // server state. Errors (typically "not found"
+                    // when cancel arrived before any byte hit the
+                    // server) go to the log instead of a modal so
+                    // the user isn't bothered with an expected outcome.
                     if value.downcast_ref::<bool>().copied().unwrap_or(false) {
                         let op = vfs_manager.delete(&path);
-                        // Drain the result in the background so any
-                        // errors land in the log instead of a modal.
-                        std::thread::spawn(move || match op.recv() {
-                            Ok(()) => {
-                                log::info!(
-                                    "Cleaned up cancelled-upload partial: {}",
-                                    path.log_safe_key()
-                                );
+                        match op.recv() {
+                            Ok(()) => log::info!(
+                                "Cleaned up cancelled-upload partial: {}",
+                                path.log_safe_key()
+                            ),
+                            Err(e) => log::info!(
+                                "Partial cleanup for {} skipped: {}",
+                                path.log_safe_key(),
+                                e
+                            ),
+                        }
+                        // Re-list any file manager that might be
+                        // showing the parent directory — otherwise
+                        // the just-deleted partial would still
+                        // appear in the panel until manual Ctrl+R.
+                        for panel in self.layout_manager.iter_all_panels_mut() {
+                            if let Some(fm) = panel.as_file_manager_mut() {
+                                let _ = fm.load_directory();
                             }
-                            Err(e) => {
-                                log::info!(
-                                    "Partial cleanup for {} skipped: {}",
-                                    path.log_safe_key(),
-                                    e
-                                );
-                            }
-                        });
+                        }
                     }
                 }
                 PendingAction::SaveFileAs { directory } => {

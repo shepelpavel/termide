@@ -486,6 +486,11 @@ impl App {
                             self.state.untrack_operation(id);
                         }
                         OperationResult::Cancelled => {
+                            // Cancel may still have left bytes on the
+                            // server / disk; the remote / local listing
+                            // is out of sync until we reload.
+                            should_refresh_file_managers = true;
+
                             // Clear pending remote delete (don't delete source if download cancelled)
                             self.state.batch.pending_delete = None;
 
@@ -576,7 +581,10 @@ impl App {
                                 // are agreeing to delete.
                                 let modal = termide_modal::ConfirmModal::new(
                                     "Upload was cancelled",
-                                    format!("Delete partial upload '{filename}'?"),
+                                    // Leading blank line creates a one-row
+                                    // gap between the title bar and the
+                                    // question itself.
+                                    format!("\nDelete partial upload '{filename}'?"),
                                 );
                                 self.state.set_pending_action(
                                     PendingAction::CleanupPartialRemote {
