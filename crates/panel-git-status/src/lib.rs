@@ -124,6 +124,26 @@ pub struct GitStatusPanel {
     hotkeys: HotkeyTable,
     /// Pointer of the last Arc<Config> used to build hotkeys (skip rebuild when unchanged)
     last_config_ptr: usize,
+    /// In-flight async refresh — when set, the panel is rendering its
+    /// `is_loading` placeholder while a background thread runs the
+    /// `git status` / `git branch` / `git rev-list` commands. `tick()`
+    /// polls the receiver and folds the result in once it lands.
+    refresh_rx: Option<std::sync::mpsc::Receiver<GitStatusRefreshResult>>,
+}
+
+/// Snapshot returned by the background refresh worker. All the git
+/// commands the panel needs for a render run on the worker thread; the
+/// UI thread just swaps these fields into place when the result is
+/// ready, so the panel never blocks on a slow `git status --porcelain`
+/// over a large repository.
+struct GitStatusRefreshResult {
+    branch: Option<String>,
+    branches: Vec<String>,
+    ahead: usize,
+    behind: usize,
+    unstaged_files: Vec<UnstagedFile>,
+    staged_files: Vec<StagedFile>,
+    stash_count: usize,
 }
 
 /// Build HotkeyTable for the git status panel.
@@ -198,6 +218,7 @@ impl GitStatusPanel {
             stash_count: 0,
             hotkeys: HotkeyTable::default(),
             last_config_ptr: 0,
+            refresh_rx: None,
         };
 
         panel.refresh();
@@ -213,7 +234,12 @@ impl GitStatusPanel {
         }
     }
 
-    /// Refresh git status
+    /// Trigger a refresh of git status.
+    ///
+    /// Returns immediately; the heavy `git status` / `git branch` /
+    /// `git rev-list` commands run on a worker thread and the result is
+    /// folded in by `tick()` via [`Self::poll_refresh`]. The panel
+    /// stays in `is_loading` state until then.
     pub fn refresh(&mut self) {
         self.is_loading = true;
 
@@ -235,18 +261,57 @@ impl GitStatusPanel {
             }
         };
 
-        self.branch = git::get_current_branch(&repo);
-        self.branches = git::get_all_branches(&repo);
-        let (ahead, behind) = git::get_ahead_behind(&repo);
-        self.ahead = ahead;
-        self.behind = behind;
-        self.unstaged_files = git::get_unstaged_files(&repo);
-        self.staged_files = git::get_staged_files(&repo);
-        self.stash_count = git::stash_list(&repo).len();
+        // Replace any in-flight refresh — `try_recv` on the old
+        // receiver will start returning Disconnected, which `poll_refresh`
+        // treats as "nothing to apply" so the new worker's result wins.
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.refresh_rx = Some(rx);
+        std::thread::spawn(move || {
+            let branch = git::get_current_branch(&repo);
+            let branches = git::get_all_branches(&repo);
+            let (ahead, behind) = git::get_ahead_behind(&repo);
+            let mut unstaged_files = git::get_unstaged_files(&repo);
+            let mut staged_files = git::get_staged_files(&repo);
+            let stash_count = git::stash_list(&repo).len();
+            unstaged_files.sort_by(|a, b| a.path.cmp(&b.path));
+            staged_files.sort_by(|a, b| a.path.cmp(&b.path));
+            let _ = tx.send(GitStatusRefreshResult {
+                branch,
+                branches,
+                ahead,
+                behind,
+                unstaged_files,
+                staged_files,
+                stash_count,
+            });
+        });
+    }
 
-        // Sort by path
-        self.unstaged_files.sort_by(|a, b| a.path.cmp(&b.path));
-        self.staged_files.sort_by(|a, b| a.path.cmp(&b.path));
+    /// Apply an async refresh result if one is ready. Returns `true`
+    /// when the panel state changed so the caller can emit
+    /// `NeedsRedraw`.
+    fn poll_refresh(&mut self) -> bool {
+        let Some(rx) = self.refresh_rx.as_ref() else {
+            return false;
+        };
+        let result = match rx.try_recv() {
+            Ok(r) => r,
+            Err(std::sync::mpsc::TryRecvError::Empty) => return false,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.refresh_rx = None;
+                self.is_loading = false;
+                return true;
+            }
+        };
+        self.refresh_rx = None;
+
+        self.branch = result.branch;
+        self.branches = result.branches;
+        self.ahead = result.ahead;
+        self.behind = result.behind;
+        self.unstaged_files = result.unstaged_files;
+        self.staged_files = result.staged_files;
+        self.stash_count = result.stash_count;
 
         self.rebuild_trees();
 
@@ -255,13 +320,12 @@ impl GitStatusPanel {
         if self.cursor > max_cursor {
             self.cursor = max_cursor;
         }
-        // Ensure cursor is on a selectable line (direct calculation instead of loop)
         if !self.is_selectable_line(self.cursor) {
-            // Find the nearest selectable line (either a file or header with files)
             self.cursor = self.find_nearest_selectable_line(self.cursor);
         }
 
         self.is_loading = false;
+        true
     }
 
     /// Lightweight refresh of only the data used by `title()`.
@@ -1483,6 +1547,13 @@ impl Panel for GitStatusPanel {
         // in here so the repo dropdown reflects the full list once
         // available without ever blocking the constructor.
         if self.repo_manager.poll() {
+            events.push(PanelEvent::NeedsRedraw);
+        }
+
+        // Async refresh worker — when ready, swap branch/files/etc.
+        // into place. Until then the panel keeps showing the
+        // `is_loading` placeholder. `refresh()` is fire-and-forget.
+        if self.poll_refresh() {
             events.push(PanelEvent::NeedsRedraw);
         }
 

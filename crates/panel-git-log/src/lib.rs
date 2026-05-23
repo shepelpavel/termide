@@ -78,6 +78,17 @@ pub struct GitLogPanel {
     hotkeys: HotkeyTable,
     /// Pointer of the last Arc<Config> used to build hotkeys (skip rebuild when unchanged)
     last_config_ptr: usize,
+    /// In-flight async refresh. While `Some`, the heavy
+    /// `get_all_branches` / `get_log_with_graph` calls run on a worker
+    /// thread; `tick()` swaps the result into place when ready.
+    refresh_rx: Option<std::sync::mpsc::Receiver<GitLogRefreshResult>>,
+}
+
+/// Snapshot returned by the background refresh worker.
+struct GitLogRefreshResult {
+    branch: Option<String>,
+    branches: Vec<String>,
+    commits: Vec<CommitInfo>,
 }
 
 /// Build HotkeyTable for the git log panel from config.
@@ -136,6 +147,7 @@ impl GitLogPanel {
             modal_request: None,
             hotkeys: HotkeyTable::default(),
             last_config_ptr: 0,
+            refresh_rx: None,
         };
         panel.refresh();
         panel
@@ -158,15 +170,52 @@ impl GitLogPanel {
         }
     }
 
-    /// Refresh the commit log
+    /// Trigger a refresh of the commit log.
+    ///
+    /// Returns immediately; the `get_all_branches` and
+    /// `get_log_with_graph` git commands run on a worker thread and
+    /// `tick()` folds the result in via [`Self::poll_refresh`].
     pub fn refresh(&mut self) {
         let Some(repo) = self.repo_manager.current() else {
             return;
         };
         let repo = repo.to_path_buf();
+        let count = self.commit_count;
+        let selected_branch = self.selected_branch.clone();
 
-        self.branch = git::get_current_branch(&repo);
-        self.branches = git::get_all_branches(&repo);
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.refresh_rx = Some(rx);
+        std::thread::spawn(move || {
+            let branch = git::get_current_branch(&repo);
+            let branches = git::get_all_branches(&repo);
+            let commits = git::get_log_with_graph(&repo, count, selected_branch.as_deref());
+            let _ = tx.send(GitLogRefreshResult {
+                branch,
+                branches,
+                commits,
+            });
+        });
+    }
+
+    /// Apply an async refresh result if one is ready. Returns `true`
+    /// when the panel state changed so the caller can emit
+    /// `NeedsRedraw`.
+    fn poll_refresh(&mut self) -> bool {
+        let Some(rx) = self.refresh_rx.as_ref() else {
+            return false;
+        };
+        let result = match rx.try_recv() {
+            Ok(r) => r,
+            Err(std::sync::mpsc::TryRecvError::Empty) => return false,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.refresh_rx = None;
+                return true;
+            }
+        };
+        self.refresh_rx = None;
+
+        self.branch = result.branch;
+        self.branches = result.branches;
 
         // If the previously selected branch no longer exists, reset to HEAD
         if let Some(ref b) = self.selected_branch {
@@ -175,14 +224,12 @@ impl GitLogPanel {
             }
         }
 
-        self.commits =
-            git::get_log_with_graph(&repo, self.commit_count, self.selected_branch.as_deref());
-
-        // Adjust selection if needed
+        self.commits = result.commits;
         if self.selected >= self.commits.len() && !self.commits.is_empty() {
             self.selected = self.commits.len() - 1;
         }
         self.scroll = 0;
+        true
     }
 
     /// Move to next section (cycles: RepoSelector → BranchSelector → Commits → RepoSelector)
@@ -899,14 +946,19 @@ impl Panel for GitLogPanel {
     }
 
     fn tick(&mut self) -> Vec<PanelEvent> {
+        let mut events = Vec::new();
         // Submodule discovery runs in the background; pull its result
         // in so the repo dropdown reflects the full list once available
         // without ever blocking the constructor.
         if self.repo_manager.poll() {
-            vec![PanelEvent::NeedsRedraw]
-        } else {
-            vec![]
+            events.push(PanelEvent::NeedsRedraw);
         }
+        // Async refresh worker — swap branches / commits into place
+        // once `git log` finishes off the UI thread.
+        if self.poll_refresh() {
+            events.push(PanelEvent::NeedsRedraw);
+        }
+        events
     }
 
     fn handle_key(&mut self, chord: termide_core::KeyChord) -> Vec<PanelEvent> {
