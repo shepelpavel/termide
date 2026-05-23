@@ -1477,17 +1477,26 @@ impl Panel for GitStatusPanel {
     }
 
     fn tick(&mut self) -> Vec<PanelEvent> {
+        let mut events = Vec::new();
+
+        // Submodule discovery runs in the background; pull its result
+        // in here so the repo dropdown reflects the full list once
+        // available without ever blocking the constructor.
+        if self.repo_manager.poll() {
+            events.push(PanelEvent::NeedsRedraw);
+        }
+
         // Trigger initial fetch once when panel is ready and has a repo
         if self.pending_init_fetch && !self.repo_manager.is_empty() {
             self.pending_init_fetch = false;
             if let Some(repo) = self.repo_manager.current() {
                 use termide_core::event::{GitOperationType, PanelEvent};
-                return vec![PanelEvent::GitOperation {
+                events.push(PanelEvent::GitOperation {
                     operation: GitOperationType::Fetch,
                     repo_path: repo.to_path_buf(),
-                }];
+                });
             }
         }
-        vec![]
+        events
     }
 }

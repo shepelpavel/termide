@@ -898,6 +898,17 @@ impl Panel for GitLogPanel {
         }
     }
 
+    fn tick(&mut self) -> Vec<PanelEvent> {
+        // Submodule discovery runs in the background; pull its result
+        // in so the repo dropdown reflects the full list once available
+        // without ever blocking the constructor.
+        if self.repo_manager.poll() {
+            vec![PanelEvent::NeedsRedraw]
+        } else {
+            vec![]
+        }
+    }
+
     fn handle_key(&mut self, chord: termide_core::KeyChord) -> Vec<PanelEvent> {
         let key = chord.raw;
         // Clear status message on any key

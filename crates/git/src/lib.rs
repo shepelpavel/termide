@@ -631,6 +631,25 @@ pub fn find_all_repos(root: &Path, max_depth: usize) -> Vec<PathBuf> {
 ///
 /// Optimizations: deduplicates paths, removes nested paths, skips already-scanned repos.
 pub fn find_repos_from_paths(paths: &[PathBuf], submodule_depth: usize) -> Vec<PathBuf> {
+    let toplevel = find_toplevel_repos(paths);
+    let mut all: std::collections::HashSet<PathBuf> = toplevel.iter().cloned().collect();
+    for repo_root in &toplevel {
+        for submodule in find_all_repos(repo_root, submodule_depth) {
+            all.insert(submodule);
+        }
+    }
+    let mut result: Vec<PathBuf> = all.into_iter().collect();
+    result.sort();
+    result
+}
+
+/// Resolve `paths` to the set of top-level repository roots, skipping the
+/// recursive submodule walk. This is the cheap half of
+/// [`find_repos_from_paths`] — only the upward search to find each repo
+/// root, with the same dedup/nested-path filtering. Used by the async
+/// repo manager so the panel can render a baseline list immediately
+/// while the submodule walk runs in the background.
+pub fn find_toplevel_repos(paths: &[PathBuf]) -> Vec<PathBuf> {
     use std::collections::HashSet;
 
     if paths.is_empty() {
@@ -639,7 +658,6 @@ pub fn find_repos_from_paths(paths: &[PathBuf], submodule_depth: usize) -> Vec<P
 
     // Resolve symlinks so that paths like /home/user/docs -> /Data/docs
     // don't create duplicate entries for the same physical directory.
-    // Deduplicate and sort paths
     let mut unique_paths: Vec<PathBuf> = paths
         .iter()
         .map(|p| std::fs::canonicalize(p).unwrap_or_else(|_| p.clone()))
@@ -648,31 +666,16 @@ pub fn find_repos_from_paths(paths: &[PathBuf], submodule_depth: usize) -> Vec<P
         .collect();
     unique_paths.sort();
 
-    // Remove nested paths (keep only the shortest/parent paths)
     let filtered_paths = remove_nested_paths(&unique_paths);
 
-    let mut repos = HashSet::new();
-    let mut searched_roots = HashSet::new();
-
+    let mut roots = HashSet::new();
     for path in filtered_paths {
-        // Search UP to find TOP-LEVEL repository root (not submodule)
         if let Some(repo_root) = find_toplevel_repo(&path) {
-            // Skip if we already scanned this repo
-            if searched_roots.contains(&repo_root) {
-                continue;
-            }
-            searched_roots.insert(repo_root.clone());
-            repos.insert(repo_root.clone());
-
-            // Search DOWN for submodules
-            let submodules = find_all_repos(&repo_root, submodule_depth);
-            for submodule in submodules {
-                repos.insert(submodule);
-            }
+            roots.insert(repo_root);
         }
     }
 
-    let mut result: Vec<PathBuf> = repos.into_iter().collect();
+    let mut result: Vec<PathBuf> = roots.into_iter().collect();
     result.sort();
     result
 }
