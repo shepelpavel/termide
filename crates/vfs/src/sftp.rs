@@ -292,20 +292,22 @@ async fn sftp_actor(sftp: SftpSession, mut rx: async_mpsc::Receiver<SftpCommand>
                 progress_tx,
                 reply,
             } => {
-                // Run the transfer under a cancel watchdog so a stuck
-                // network read can't pin the actor — see cancel_watch.
-                let result = tokio::select! {
-                    biased;
-                    _ = cancel_watch(Arc::clone(&cancel)) => Err(VfsError::Cancelled),
-                    r = actor_download_with_progress(
-                        &sftp,
-                        &remote,
-                        &local,
-                        &pause,
-                        &cancel,
-                        &progress_tx,
-                    ) => r,
-                };
+                // Cancellation is now driven inside the transfer
+                // (per-chunk tokio::select! against cancel_watch) so the
+                // function can close remote file handles explicitly
+                // before returning. Wrapping the whole future in an
+                // outer select! would skip that cleanup and leave the
+                // SFTP session in a state where the next operation
+                // can't make progress until the server gives up.
+                let result = actor_download_with_progress(
+                    &sftp,
+                    &remote,
+                    &local,
+                    &pause,
+                    &cancel,
+                    &progress_tx,
+                )
+                .await;
                 let _ = reply.send(result);
             }
             SftpCommand::UploadWithProgress {
@@ -316,18 +318,15 @@ async fn sftp_actor(sftp: SftpSession, mut rx: async_mpsc::Receiver<SftpCommand>
                 progress_tx,
                 reply,
             } => {
-                let result = tokio::select! {
-                    biased;
-                    _ = cancel_watch(Arc::clone(&cancel)) => Err(VfsError::Cancelled),
-                    r = actor_upload_with_progress(
-                        &sftp,
-                        &local,
-                        &remote,
-                        &pause,
-                        &cancel,
-                        &progress_tx,
-                    ) => r,
-                };
+                let result = actor_upload_with_progress(
+                    &sftp,
+                    &local,
+                    &remote,
+                    &pause,
+                    &cancel,
+                    &progress_tx,
+                )
+                .await;
                 let _ = reply.send(result);
             }
             SftpCommand::Shutdown => break,
@@ -829,10 +828,11 @@ async fn actor_dl_file_with_progress(
         .map_err(map_sftp_err)?
         .size
         .unwrap_or(0);
-    let mut src = sftp
+    let src = sftp
         .open(path_to_string(remote))
         .await
         .map_err(map_sftp_err)?;
+    let mut src = src;
     let mut dst = tokio::fs::File::create(local).await.map_err(VfsError::Io)?;
     let mut buf = vec![0u8; CHUNK_SIZE];
     let mut current_bytes = 0u64;
@@ -849,9 +849,32 @@ async fn actor_dl_file_with_progress(
         current_file_total: file_total,
     });
 
+    let mut cancelled = false;
     loop {
-        wait_or_cancel(pause, cancel).await?;
-        let n = src.read(&mut buf).await.map_err(map_sftp_err)?;
+        if let Err(_e) = wait_or_cancel(pause, cancel).await {
+            cancelled = true;
+            break;
+        }
+        // tokio::select! against the cancel watcher around the SFTP read
+        // so the server doesn't keep us blocked on a slow chunk after
+        // the user has already cancelled.
+        let read_res = tokio::select! {
+            biased;
+            _ = cancel_watch(Arc::clone(cancel)) => None,
+            res = src.read(&mut buf) => Some(res),
+        };
+        let n = match read_res {
+            Some(Ok(n)) => n,
+            Some(Err(e)) => {
+                let _ = tokio::time::timeout(Duration::from_secs(3), src.shutdown()).await;
+                let _ = dst.flush().await;
+                return Err(map_sftp_err(e));
+            }
+            None => {
+                cancelled = true;
+                break;
+            }
+        };
         if n == 0 {
             break;
         }
@@ -868,7 +891,15 @@ async fn actor_dl_file_with_progress(
             current_file_total: file_total,
         });
     }
-    dst.flush().await.map_err(VfsError::Io)?;
+    // Always close the remote read handle (bounded) so the SFTP actor
+    // can move on to the next command — leaving open handles strung
+    // along has caused subsequent ops to wedge until the server times
+    // out.
+    let _ = tokio::time::timeout(Duration::from_secs(3), src.shutdown()).await;
+    let _ = dst.flush().await;
+    if cancelled {
+        return Err(VfsError::Cancelled);
+    }
     state.files_done += 1;
     Ok(())
 }
@@ -985,13 +1016,41 @@ async fn actor_ul_file_with_progress(
         current_file_total: file_total,
     });
 
+    let mut cancelled = false;
     loop {
-        wait_or_cancel(pause, cancel).await?;
-        let n = src.read(&mut buf).await.map_err(VfsError::Io)?;
+        if let Err(_e) = wait_or_cancel(pause, cancel).await {
+            cancelled = true;
+            break;
+        }
+        let n = match src.read(&mut buf).await {
+            Ok(n) => n,
+            Err(e) => {
+                let _ = tokio::time::timeout(Duration::from_secs(3), dst.shutdown()).await;
+                return Err(VfsError::Io(e));
+            }
+        };
         if n == 0 {
             break;
         }
-        dst.write_all(&buf[..n]).await.map_err(map_sftp_err)?;
+        // tokio::select! around the SFTP write so cancel during a slow
+        // network write doesn't pin the actor until the server times
+        // out the channel.
+        let write_res = tokio::select! {
+            biased;
+            _ = cancel_watch(Arc::clone(cancel)) => None,
+            res = dst.write_all(&buf[..n]) => Some(res),
+        };
+        match write_res {
+            Some(Ok(())) => {}
+            Some(Err(e)) => {
+                let _ = tokio::time::timeout(Duration::from_secs(3), dst.shutdown()).await;
+                return Err(map_sftp_err(e));
+            }
+            None => {
+                cancelled = true;
+                break;
+            }
+        }
         current_bytes += n as u64;
         state.bytes_done += n as u64;
         let _ = progress_tx.send(UploadProgress {
@@ -1004,8 +1063,13 @@ async fn actor_ul_file_with_progress(
             current_file_total: file_total,
         });
     }
-    dst.flush().await.map_err(map_sftp_err)?;
-    dst.shutdown().await.map_err(map_sftp_err)?;
+    // Always shutdown the remote write handle (bounded). For a
+    // cancelled upload this is what makes the server flush its state
+    // and stop blocking the next operation on this SFTP session.
+    let _ = tokio::time::timeout(Duration::from_secs(3), dst.shutdown()).await;
+    if cancelled {
+        return Err(VfsError::Cancelled);
+    }
     state.files_done += 1;
     Ok(())
 }
