@@ -182,12 +182,17 @@ fn main() -> Result<()> {
     // effective config (historical semantics). The second tuple element is
     // the `defaults + global` snapshot used later as the diff baseline for
     // the per-project override file.
+    // Capture any config-load failure so we can re-emit it as
+    // `log::warn!` after the logger comes up below. eprintln before
+    // raw mode prints to a soon-to-be-overwritten terminal scrollback;
+    // the Journal panel is where the user will actually look.
+    let mut config_load_warning: Option<String> = None;
     let (mut config, mut global_baseline) = if let Some(ref path) = cli.config {
         let cfg = Config::load_from(path)?;
         (cfg.clone(), cfg)
     } else {
         Config::load_layered(None, &project_root).unwrap_or_else(|e| {
-            eprintln!("Could not load config: {}. Using defaults.", e);
+            config_load_warning = Some(format!("Could not load config: {e}. Using defaults."));
             (Config::default(), Config::default())
         })
     };
@@ -283,12 +288,21 @@ fn main() -> Result<()> {
     // Create application with pre-loaded config (avoids double config loading)
     let mut app = App::new_with_config(config, global_baseline, width, height, keyboard_caps);
 
+    // Re-emit any deferred startup warnings now that the logger is up
+    // — these end up in the Journal panel where users actually look.
+    if let Some(msg) = config_load_warning {
+        log::warn!("{}", msg);
+    }
+
     // Log git availability to journal (not to stderr)
     app.log_git_status(git_available);
 
     // Try to load session, fallback to default layout on error
-    if let Err(_e) = app.load_session() {
-        // Session file doesn't exist or is corrupted - use default layout
+    if let Err(e) = app.load_session() {
+        // Session file doesn't exist or is corrupted - use default layout.
+        // Surface the reason in the Journal so a corrupted session is
+        // diagnosable instead of silently snapping to defaults.
+        log::warn!("Could not load session ({e}); starting with the default layout.");
         app.setup_default_layout();
     }
 
