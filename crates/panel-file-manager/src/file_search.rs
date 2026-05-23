@@ -10,7 +10,7 @@ use std::sync::{mpsc, Arc};
 
 use regex::Regex;
 use termide_core::util::is_binary_file;
-use termide_git::{GitStatus, GitStatusCache};
+use termide_git::{get_git_status, GitStatus, GitStatusCache};
 
 /// Maximum total results to collect
 const MAX_RESULTS: usize = 500;
@@ -82,7 +82,6 @@ pub(crate) struct FileSearchState {
     pub is_searching: bool,
     search_receiver: Option<mpsc::Receiver<SearchResults>>,
     search_cancel: Option<Arc<AtomicBool>>,
-    git_cache: Option<GitStatusCache>,
     base_path: PathBuf,
     max_file_size: u64,
 }
@@ -101,7 +100,6 @@ impl std::fmt::Debug for FileSearchState {
 impl FileSearchState {
     /// Create new file glob search state
     pub fn new_file_glob(base_path: PathBuf) -> Self {
-        let git_cache = termide_git::get_git_status(&base_path);
         Self {
             mode: FileSearchMode::FileGlob,
             tree_nodes: Vec::new(),
@@ -112,7 +110,6 @@ impl FileSearchState {
             is_searching: false,
             search_receiver: None,
             search_cancel: None,
-            git_cache,
             base_path,
             max_file_size: 0,
         }
@@ -120,7 +117,6 @@ impl FileSearchState {
 
     /// Create new content search state
     pub fn new_content(base_path: PathBuf, max_file_size: u64) -> Self {
-        let git_cache = termide_git::get_git_status(&base_path);
         Self {
             mode: FileSearchMode::Content,
             tree_nodes: Vec::new(),
@@ -131,7 +127,6 @@ impl FileSearchState {
             is_searching: false,
             search_receiver: None,
             search_cancel: None,
-            git_cache,
             base_path,
             max_file_size,
         }
@@ -159,13 +154,16 @@ impl FileSearchState {
 
         let (tx, rx) = mpsc::channel();
         let base_path = self.base_path.clone();
-        let git_cache = self.git_cache.clone();
         let mask = mask.to_string();
 
         self.search_receiver = Some(rx);
         self.is_searching = true;
 
         std::thread::spawn(move || {
+            // Build the git status cache on the worker thread so the
+            // search panel opens without blocking the UI on a slow
+            // `git status` (large or network-mounted repos).
+            let git_cache = get_git_status(&base_path);
             let results = search_files(&base_path, &mask, &cancel, git_cache.as_ref());
             if !cancel.load(Ordering::Relaxed) {
                 let _ = tx.send(SearchResults::FileResults(results));
@@ -200,7 +198,6 @@ impl FileSearchState {
 
         let (tx, rx) = mpsc::channel();
         let base_path = self.base_path.clone();
-        let git_cache = self.git_cache.clone();
         let mask = mask.to_string();
         let content_pattern = content_pattern.to_string();
         let max_file_size = self.max_file_size;
@@ -209,6 +206,7 @@ impl FileSearchState {
         self.is_searching = true;
 
         std::thread::spawn(move || {
+            let git_cache = get_git_status(&base_path);
             let results = search_content(
                 &base_path,
                 &mask,
