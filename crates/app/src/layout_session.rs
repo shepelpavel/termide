@@ -2,7 +2,7 @@
 //!
 //! Provides session save/restore functionality for the layout manager.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
@@ -90,123 +90,40 @@ impl LayoutManagerSession for LayoutManager {
                 continue;
             }
 
-            let mut panels: Vec<Box<dyn Panel>> = Vec::with_capacity(session_group.panels.len());
+            // Construct every panel in this group on its own worker
+            // thread so heavy initializers (file reads, PTY spawn, VFS
+            // probes, local directory walks) run concurrently instead
+            // of stacking up on the main thread. The session-dir,
+            // editor config and terminal dimensions are cheap to clone
+            // per worker; everything else is move-by-value out of the
+            // session struct.
+            let session_dir_owned: PathBuf = session_dir.to_path_buf();
+            let handles: Vec<_> = session_group
+                .panels
+                .into_iter()
+                .map(|session_panel| {
+                    let session_dir = session_dir_owned.clone();
+                    let editor_config = editor_config.clone();
+                    std::thread::spawn(move || {
+                        construct_panel(
+                            session_panel,
+                            &session_dir,
+                            term_height,
+                            term_width,
+                            editor_config,
+                        )
+                    })
+                })
+                .collect();
 
-            for session_panel in session_group.panels {
-                let panel: Option<Box<dyn Panel>> = match session_panel {
-                    SessionPanel::FileManager { path_or_url } => {
-                        // Check if it's a VFS URL (starts with protocol://)
-                        if termide_vfs::is_vfs_url(&path_or_url) {
-                            // Remote path - use VFS restoration
-                            let vfs_manager = std::sync::Arc::new(termide_vfs::VfsManager::new());
-                            match FileManager::new_with_vfs_url(&path_or_url, vfs_manager) {
-                                Ok(fm) => Some(Box::new(fm)),
-                                Err(e) => {
-                                    log::warn!(
-                                        "Failed to restore remote FileManager at '{}': {}",
-                                        path_or_url,
-                                        e
-                                    );
-                                    None
-                                }
-                            }
-                        } else {
-                            // Local path
-                            Some(Box::new(FileManager::new_with_path(
-                                std::path::PathBuf::from(path_or_url),
-                            )))
-                        }
+            let mut panels: Vec<Box<dyn Panel>> = Vec::with_capacity(handles.len());
+            for handle in handles {
+                match handle.join() {
+                    Ok(Some(panel)) => panels.push(panel),
+                    Ok(None) => {} // construct_panel logged the failure
+                    Err(_) => {
+                        log::warn!("panel construction worker panicked during session restore")
                     }
-                    SessionPanel::Editor {
-                        path,
-                        unsaved_buffer_file,
-                    } => {
-                        if let Some(file_path) = path {
-                            Editor::open_file_with_config(file_path, editor_config.clone())
-                                .ok()
-                                .map(|e| Box::new(e) as Box<dyn Panel>)
-                        } else if let Some(ref buffer_file) = unsaved_buffer_file {
-                            match load_unsaved_buffer(session_dir, buffer_file) {
-                                Ok(content) => {
-                                    if content.trim().is_empty() {
-                                        if let Err(e) =
-                                            cleanup_unsaved_buffer(session_dir, buffer_file)
-                                        {
-                                            log::warn!(
-                                                "cleanup_unsaved_buffer({}) failed: {e}",
-                                                buffer_file
-                                            );
-                                        }
-                                        None
-                                    } else {
-                                        let mut editor = Editor::with_config(editor_config.clone());
-                                        if let Err(e) = editor.insert_text(&content) {
-                                            log::warn!(
-                                                "Failed to restore unsaved buffer content: {}",
-                                                e
-                                            );
-                                            None
-                                        } else {
-                                            editor
-                                                .set_unsaved_buffer_file(Some(buffer_file.clone()));
-                                            Some(Box::new(editor) as Box<dyn Panel>)
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    log::warn!(
-                                        "Failed to load unsaved buffer {}: {}",
-                                        buffer_file,
-                                        e
-                                    );
-                                    None
-                                }
-                            }
-                        } else {
-                            None
-                        }
-                    }
-                    SessionPanel::Terminal { working_dir } => {
-                        Terminal::new_with_cwd(term_height, term_width, Some(working_dir))
-                            .ok()
-                            .map(|t| Box::new(t) as Box<dyn Panel>)
-                    }
-                    SessionPanel::Journal => Some(Box::new(JournalPanel::default())),
-                    SessionPanel::Image { path } => {
-                        // Only restore image panel if graphics are available
-                        if ImagePanel::graphics_available() {
-                            ImagePanel::new(path)
-                                .ok()
-                                .map(|p| Box::new(p) as Box<dyn Panel>)
-                        } else {
-                            None
-                        }
-                    }
-                    SessionPanel::GitStatus { repo_path } => Some(Box::new(
-                        termide_panel_git_status::GitStatusPanel::new_for_repo(repo_path),
-                    )),
-                    SessionPanel::GitLog { repo_path } => Some(Box::new(
-                        termide_panel_git_log::GitLogPanel::new_for_repo(repo_path),
-                    )),
-                    SessionPanel::GitDiff {
-                        repo_path,
-                        commit_hash,
-                    } => Some(Box::new(match commit_hash {
-                        Some(hash) => {
-                            termide_panel_git_diff::GitDiffPanel::new_for_commit(repo_path, hash)
-                        }
-                        None => termide_panel_git_diff::GitDiffPanel::new(repo_path),
-                    })),
-                    SessionPanel::Outline => Some(Box::new(
-                        termide_panel_outline::OutlinePanel::new(Theme::default()),
-                    )),
-                    SessionPanel::Diagnostics => Some(Box::new(
-                        termide_panel_diagnostics::DiagnosticsPanel::new(&Theme::default()),
-                    )),
-                };
-
-                if let Some(p) = panel {
-                    panels.push(p);
                 }
             }
 
@@ -275,5 +192,113 @@ impl LayoutManagerSession for LayoutManager {
             .min(layout.panel_groups.len().saturating_sub(1));
 
         Ok(layout)
+    }
+}
+
+/// Build one panel from its saved descriptor.
+///
+/// Runs from a worker thread (see `from_session`), so any blocking I/O
+/// — file reads, VFS probes, PTY spawn — overlaps with other panels in
+/// the group instead of stacking on the main thread. All inputs are
+/// owned so the closure is `Send` without extra dances; logging of
+/// failures happens here so the caller can just `match` the result.
+fn construct_panel(
+    session_panel: SessionPanel,
+    session_dir: &Path,
+    term_height: u16,
+    term_width: u16,
+    editor_config: EditorConfig,
+) -> Option<Box<dyn Panel + Send>> {
+    match session_panel {
+        SessionPanel::FileManager { path_or_url } => {
+            if termide_vfs::is_vfs_url(&path_or_url) {
+                let vfs_manager = std::sync::Arc::new(termide_vfs::VfsManager::new());
+                match FileManager::new_with_vfs_url(&path_or_url, vfs_manager) {
+                    Ok(fm) => Some(Box::new(fm)),
+                    Err(e) => {
+                        log::warn!(
+                            "Failed to restore remote FileManager at '{}': {}",
+                            path_or_url,
+                            e
+                        );
+                        None
+                    }
+                }
+            } else {
+                Some(Box::new(FileManager::new_with_path(PathBuf::from(
+                    path_or_url,
+                ))))
+            }
+        }
+        SessionPanel::Editor {
+            path,
+            unsaved_buffer_file,
+        } => {
+            if let Some(file_path) = path {
+                Editor::open_file_with_config(file_path, editor_config)
+                    .ok()
+                    .map(|e| Box::new(e) as Box<dyn Panel + Send>)
+            } else if let Some(ref buffer_file) = unsaved_buffer_file {
+                match load_unsaved_buffer(session_dir, buffer_file) {
+                    Ok(content) => {
+                        if content.trim().is_empty() {
+                            if let Err(e) = cleanup_unsaved_buffer(session_dir, buffer_file) {
+                                log::warn!("cleanup_unsaved_buffer({}) failed: {e}", buffer_file);
+                            }
+                            None
+                        } else {
+                            let mut editor = Editor::with_config(editor_config);
+                            if let Err(e) = editor.insert_text(&content) {
+                                log::warn!("Failed to restore unsaved buffer content: {}", e);
+                                None
+                            } else {
+                                editor.set_unsaved_buffer_file(Some(buffer_file.clone()));
+                                Some(Box::new(editor) as Box<dyn Panel + Send>)
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to load unsaved buffer {}: {}", buffer_file, e);
+                        None
+                    }
+                }
+            } else {
+                None
+            }
+        }
+        SessionPanel::Terminal { working_dir } => {
+            Terminal::new_with_cwd(term_height, term_width, Some(working_dir))
+                .ok()
+                .map(|t| Box::new(t) as Box<dyn Panel + Send>)
+        }
+        SessionPanel::Journal => Some(Box::new(JournalPanel::default())),
+        SessionPanel::Image { path } => {
+            if ImagePanel::graphics_available() {
+                ImagePanel::new(path)
+                    .ok()
+                    .map(|p| Box::new(p) as Box<dyn Panel + Send>)
+            } else {
+                None
+            }
+        }
+        SessionPanel::GitStatus { repo_path } => Some(Box::new(
+            termide_panel_git_status::GitStatusPanel::new_for_repo(repo_path),
+        )),
+        SessionPanel::GitLog { repo_path } => Some(Box::new(
+            termide_panel_git_log::GitLogPanel::new_for_repo(repo_path),
+        )),
+        SessionPanel::GitDiff {
+            repo_path,
+            commit_hash,
+        } => Some(Box::new(match commit_hash {
+            Some(hash) => termide_panel_git_diff::GitDiffPanel::new_for_commit(repo_path, hash),
+            None => termide_panel_git_diff::GitDiffPanel::new(repo_path),
+        })),
+        SessionPanel::Outline => Some(Box::new(termide_panel_outline::OutlinePanel::new(
+            Theme::default(),
+        ))),
+        SessionPanel::Diagnostics => Some(Box::new(
+            termide_panel_diagnostics::DiagnosticsPanel::new(&Theme::default()),
+        )),
     }
 }
