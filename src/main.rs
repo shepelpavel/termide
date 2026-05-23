@@ -37,6 +37,95 @@ struct Cli {
     /// Path to config file (default: ~/.config/termide/config.toml)
     #[arg(long, value_name = "PATH")]
     config: Option<std::path::PathBuf>,
+
+    /// Run pre-flight diagnostics (config / paths / git) and exit
+    /// without starting the UI. Exit code 0 if everything is OK,
+    /// non-zero if any check failed.
+    #[arg(long)]
+    diagnostics: bool,
+}
+
+/// Print a diagnostics report to stdout and return whether everything
+/// passed. Called when the user runs `termide --diagnostics`; never
+/// touches raw mode / alternate screen, so the output is safely
+/// captured by shell redirects.
+fn run_diagnostics(custom_config: Option<&std::path::Path>) -> bool {
+    use termide_config::{get_config_dir, get_data_dir};
+
+    let mut ok = true;
+    let mut check = |label: &str, status: Result<String, String>| match status {
+        Ok(msg) => println!("  \u{2713} {}: {}", label, msg),
+        Err(msg) => {
+            println!("  \u{2717} {}: {}", label, msg);
+            ok = false;
+        }
+    };
+
+    println!("termide diagnostics");
+    println!("===================\n");
+
+    println!("Config:");
+    let project_root = std::env::current_dir().ok();
+    let config_result = if let Some(path) = custom_config {
+        termide_config::Config::load_from(path).map(|_| path.display().to_string())
+    } else if let Some(root) = project_root.as_ref() {
+        termide_config::Config::load_layered(None, root)
+            .map(|_| "layered (defaults + global + project) parses OK".to_string())
+    } else {
+        Err(anyhow::anyhow!("cannot resolve current directory"))
+    };
+    check("load", config_result.map_err(|e| format!("{e}")));
+
+    println!("\nDirectories:");
+    check(
+        "config dir",
+        get_config_dir()
+            .map(|p| p.display().to_string())
+            .map_err(|e| format!("{e}")),
+    );
+    check(
+        "data dir",
+        get_data_dir()
+            .map(|p| p.display().to_string())
+            .map_err(|e| format!("{e}")),
+    );
+    check(
+        "themes dir",
+        termide_config::Config::get_themes_dir()
+            .map(|p| {
+                if p.exists() {
+                    p.display().to_string()
+                } else {
+                    format!("{} (will be created on first save)", p.display())
+                }
+            })
+            .map_err(|e| format!("{e}")),
+    );
+    if let Some(ref root) = project_root {
+        check(
+            "session dir",
+            termide_session::Session::get_session_dir(root)
+                .map(|p| p.display().to_string())
+                .map_err(|e| format!("{e}")),
+        );
+    }
+
+    println!("\nGit:");
+    if check_git_available() {
+        check("git", Ok("found in PATH".to_string()));
+    } else {
+        // Not an error — git is optional — but flag it as a warning so
+        // users know why git panels stay empty.
+        println!("  \u{26A0}  git: not found in PATH (git panels will be disabled)");
+    }
+
+    println!();
+    if ok {
+        println!("All checks passed.");
+    } else {
+        println!("One or more checks failed.");
+    }
+    ok
 }
 
 /// Restore terminal to a usable state (raw mode off, alternate screen off, etc.).
@@ -57,6 +146,14 @@ fn restore_terminal() {
 fn main() -> Result<()> {
     // Parse CLI arguments
     let cli = Cli::parse();
+
+    // --diagnostics short-circuits before terminal init so output
+    // is plain stdout, capturable by scripts and visible if termide
+    // is launched without a TTY.
+    if cli.diagnostics {
+        let ok = run_diagnostics(cli.config.as_deref());
+        std::process::exit(if ok { 0 } else { 1 });
+    }
 
     // Install panic handler that restores terminal before printing the panic.
     // Without this, a panic leaves the terminal in raw mode + alternate screen,
