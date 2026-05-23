@@ -183,8 +183,14 @@ pub struct FileManager {
     hotkeys: HotkeyTable,
     /// Pointer of the last Arc<Config> used to build hotkeys (skip rebuild when unchanged)
     last_config_ptr: usize,
-    /// Background directory reload result (watcher-triggered, non-blocking).
+    /// Background directory reload result (watcher- or constructor-
+    /// triggered, non-blocking).
     async_reload_receiver: Option<mpsc::Receiver<AsyncDirReloadResult>>,
+    /// Cursor restore state to apply once `async_reload_receiver`
+    /// resolves. Set by the navigation-driven path which used to be
+    /// synchronous; cleared by `check_async_reload`. `None` means a
+    /// watcher-triggered passive refresh — keep cursor where it is.
+    pending_dir_load: Option<PendingDirLoad>,
     /// In-flight directory listings for tree-expand. Keyed by the
     /// absolute path of the directory being expanded; while an entry is
     /// present the tree shows a synthetic loading placeholder underneath
@@ -270,6 +276,20 @@ impl FileEntry {
 struct AsyncDirReloadResult {
     path: PathBuf,
     entries: Vec<FileEntry>,
+}
+
+/// Cursor / selection restoration state to apply once an async directory
+/// load completes. Stored on `FileManager` between the moment the load
+/// is kicked off and the moment `tick()` sees the worker's result.
+#[derive(Default)]
+struct PendingDirLoad {
+    /// Name to put the cursor on when the load resolves.
+    previous_name: Option<String>,
+    previous_index: usize,
+    previous_scroll_offset: usize,
+    /// Names of files that were selected before the load. Empty when
+    /// the caller did not request selection preservation.
+    selected_names: HashSet<String>,
 }
 
 /// Standalone directory reader that can run in a background thread.
@@ -444,6 +464,7 @@ impl FileManager {
             hotkeys: HotkeyTable::default(),
             last_config_ptr: 0,
             async_reload_receiver: None,
+            pending_dir_load: None,
             pending_expansions: HashMap::new(),
         };
         let _ = fm.load_directory();
@@ -489,6 +510,7 @@ impl FileManager {
             hotkeys: HotkeyTable::default(),
             last_config_ptr: 0,
             async_reload_receiver: None,
+            pending_dir_load: None,
             pending_expansions: HashMap::new(),
         };
 
@@ -830,6 +852,7 @@ impl FileManager {
         };
 
         if result.path != self.current_path {
+            self.pending_dir_load = None;
             return false; // Stale result — user navigated away
         }
 
@@ -849,14 +872,49 @@ impl FileManager {
         }
         entries.extend(result.entries);
 
-        // Preserve cursor
-        let current_name = self.entry_at(self.selected).map(|e| e.name.clone());
-        let previous_scroll_offset = self.scroll_offset;
+        // If `pending_dir_load` is set, this was a navigation-initiated
+        // load — restore the saved cursor/selection. Otherwise we're
+        // resolving a passive watcher refresh, so just hold the current
+        // cursor by name.
+        let pending = self.pending_dir_load.take();
+        let (current_name, previous_index, previous_scroll_offset, selected_names) =
+            if let Some(p) = pending {
+                (
+                    p.previous_name,
+                    p.previous_index,
+                    p.previous_scroll_offset,
+                    p.selected_names,
+                )
+            } else {
+                (
+                    self.entry_at(self.selected).map(|e| e.name.clone()),
+                    self.selected,
+                    self.scroll_offset,
+                    HashSet::new(),
+                )
+            };
 
         self.tree_entries = self.build_top_level_tree(entries);
         self.load_expanded_subtrees();
         self.recompute_visible();
-        self.restore_cursor(current_name, self.selected, previous_scroll_offset);
+
+        // If the parallel git-status worker already finished and
+        // deposited a cache, its `apply_git_statuses` ran when the
+        // tree was still empty. Reapply now that tree_entries is
+        // populated so the listing isn't stuck on Unmodified colors.
+        if self.git_status_cache.is_some() {
+            self.apply_git_statuses();
+        }
+
+        if !selected_names.is_empty() {
+            for (vis_idx, &tree_idx) in self.visible_indices.iter().enumerate() {
+                if selected_names.contains(&self.tree_entries[tree_idx].file_entry.name) {
+                    self.selection.select(vis_idx);
+                }
+            }
+        }
+
+        self.restore_cursor(current_name, previous_index, previous_scroll_offset);
 
         true
     }
@@ -889,21 +947,6 @@ impl FileManager {
                 }
             })
             .collect()
-    }
-
-    /// Read entries from a directory and return sorted `FileEntry` list.
-    /// Does NOT add ".." entry — caller handles that.
-    fn read_dir_entries(
-        &self,
-        dir_path: &std::path::Path,
-        rel_prefix: &str,
-    ) -> Result<Vec<FileEntry>> {
-        Ok(read_dir_entries_standalone(
-            dir_path,
-            rel_prefix,
-            self.show_hidden,
-            self.git_status_cache.as_ref(),
-        ))
     }
 
     /// Restore cursor position after entries reload.
@@ -1406,7 +1449,14 @@ impl FileManager {
         self.restore_cursor(current_name, previous_index, previous_scroll_offset);
     }
 
-    /// Internal method to load directory with optional selection preservation
+    /// Internal method to load directory with optional selection preservation.
+    ///
+    /// Returns immediately. For local paths, the directory read runs on
+    /// a worker thread via [`Self::async_reload_receiver`] and the
+    /// result is applied by `tick()` through [`Self::check_async_reload`];
+    /// the cursor/selection restore info is parked on
+    /// [`Self::pending_dir_load`] until then. For remote paths the VFS
+    /// list already runs async, so we just kick it off.
     fn load_directory_inner(&mut self, preserve_selection: bool) -> Result<()> {
         // Sync VFS path with current_path for local paths
         if !self.vfs.is_remote() {
@@ -1421,15 +1471,15 @@ impl FileManager {
             return Ok(());
         }
 
-        // Save current file name and index to restore position
-        let current_name = self
+        // Save current file name and index to restore position once the
+        // async read completes (see `check_async_reload`).
+        let previous_name = self
             .navigation
             .take_previous_dir_name()
             .or_else(|| self.entry_at(self.selected).map(|e| e.name.clone()));
         let previous_index = self.selected;
         let previous_scroll_offset = self.scroll_offset;
 
-        // Save names of selected files if we need to restore selection
         let selected_names: HashSet<String> = if preserve_selection {
             self.selection
                 .items
@@ -1445,61 +1495,34 @@ impl FileManager {
         self.scroll_offset = 0;
         self.selection.clear();
         self.selection.end_drag();
-
-        // Navigation does not invalidate the size cache: cached values
-        // stay valid until the FS watcher reports a real change or the
-        // user explicitly reloads. This avoids re-walking a directory
-        // every time the user enters and leaves it.
         self.dir_size_queue.clear();
 
-        // Start async git status loading (non-blocking)
         self.git_status_cache = None;
         self.git_status_receiver = Some(get_git_status_async(self.current_path.clone()));
 
-        // Build entries list
-        let mut entries = Vec::new();
+        self.pending_dir_load = Some(PendingDirLoad {
+            previous_name,
+            previous_index,
+            previous_scroll_offset,
+            selected_names,
+        });
 
-        // Add parent directory if not at root
-        if self.current_path.parent().is_some() {
-            entries.push(FileEntry {
-                name: "..".to_string(),
-                is_dir: true,
-                is_symlink: false,
-                is_executable: false,
-                is_readonly: false,
-                git_status: GitStatus::Unmodified,
-                size: None,
-                modified: None,
+        // Spawn the read_dir on a worker. `read_dir_entries_standalone`
+        // is the same helper the watcher-driven async reload uses; we
+        // pass `git_cache = None` here because the git status worker is
+        // racing us — the watcher will reapply statuses once the cache
+        // is in place.
+        let (tx, rx) = mpsc::channel();
+        let dir_path = self.current_path.clone();
+        let show_hidden = self.show_hidden;
+        std::thread::spawn(move || {
+            let entries = read_dir_entries_standalone(&dir_path, "", show_hidden, None);
+            let _ = tx.send(AsyncDirReloadResult {
+                path: dir_path,
+                entries,
             });
-        }
-
-        // Read directory contents
-        let mut dir_entries = self.read_dir_entries(&self.current_path, "")?;
-        entries.append(&mut dir_entries);
-
-        // Build tree (top-level, respecting previously expanded dirs)
-        self.tree_entries = self.build_top_level_tree(entries);
-
-        // Expand any directories that were previously expanded
-        self.load_expanded_subtrees();
-
-        self.recompute_visible();
-
-        // Size-walk queue is populated lazily in `tick()` from the
-        // current `tree_entries`, so we don't need to enumerate directories
-        // here. That also lets sibling panels trigger a refresh merely by
-        // invalidating the shared cache.
-
-        // Restore selection by file names
-        if !selected_names.is_empty() {
-            for (vis_idx, &tree_idx) in self.visible_indices.iter().enumerate() {
-                if selected_names.contains(&self.tree_entries[tree_idx].file_entry.name) {
-                    self.selection.select(vis_idx);
-                }
-            }
-        }
-
-        self.restore_cursor(current_name, previous_index, previous_scroll_offset);
+        });
+        self.async_reload_receiver = Some(rx);
 
         Ok(())
     }
