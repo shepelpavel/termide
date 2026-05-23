@@ -323,10 +323,27 @@ impl Panel for OperationsPanel {
                 }
             }
 
+            // Escape: if something is selected, treat it as "cancel the
+            // selected operation" rather than "close the panel". The
+            // matching captures_escape() impl keeps the app's default
+            // close-panel-on-Esc from firing in that case.
+            KeyCode::Esc => {
+                if let Some(op_id) = self.selected_operation_id() {
+                    events.push(PanelEvent::CancelOperation(op_id));
+                }
+            }
+
             _ => {}
         }
 
         events
+    }
+
+    fn captures_escape(&self) -> bool {
+        // Swallow Escape only when there's a selected operation to cancel.
+        // With no selection, Escape falls through to the app and closes
+        // the panel as usual.
+        self.selected_operation_id().is_some()
     }
 
     fn handle_mouse(&mut self, event: MouseEvent, _panel_area: Rect) -> Vec<PanelEvent> {
