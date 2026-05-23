@@ -80,7 +80,7 @@
   - Git Stash — Git 暂存管理面板
   - Journal — 应用日志面板
   - Diagnostics — LSP 诊断面板
-  - Operations — 后台操作面板
+  - [Operations](operations.md) — 后台操作面板
   - Outline — 代码结构导航面板
 - `Scripts` — 用户自定义脚本（支持分组子菜单）。点击分组标题可展开子菜单；再次点击同一标题则折叠（toggle）。
 - `Bookmarks` — 书签（目录、文件、SSH、SFTP）。分组行为与 Scripts 相同，支持 toggle。
@@ -120,7 +120,7 @@
 - 诊断 — `Alt+I`
 - Git 日志 — `Alt+C`
 - Git 差异
-- 操作
+- [操作](operations.md)
 - 图片查看器
 - 帮助 — `Alt+H`
 - 日志 — `Alt+L`

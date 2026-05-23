@@ -80,7 +80,7 @@ Menu activation/deactivation and each item can be accessed by mouse click or [ke
   - Git Stash — git stash management panel
   - Journal — application log panel
   - Diagnostics — LSP diagnostics panel
-  - Operations — background operations panel
+  - [Operations](operations.md) — background operations panel
   - Outline — structural code navigation panel
 - `Scripts` — user-defined scripts (with group submenus). Clicking a group header expands the submenu; clicking the same header again collapses it (toggle).
 - `Bookmarks` — saved locations (directories, files, SSH, SFTP). Group behaviour is the same toggle as in Scripts.
@@ -121,7 +121,7 @@ The layout adapts to the terminal width, showing more panel groups on wider scre
 - diagnostics — `Alt+I`
 - git log — `Alt+C`
 - git diff
-- operations
+- [operations](operations.md)
 - image viewer
 - help — `Alt+H`
 - journal — `Alt+L`
