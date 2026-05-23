@@ -26,9 +26,40 @@ no-default-features = false
 # Fail on any RUSTSEC advisory. The unmaintained / unsound /
 # notice classes catch crates that haven't been patched in years
 # even when no concrete CVE is filed yet.
+#
+# The `ignore` list below covers transitive-dep advisories that
+# don't apply to termide's threat model (single-user desktop TUI;
+# client-side SFTP/FTPS only, never a network server). Each entry
+# names the path back to our tree so the next reviewer can decide
+# whether the justification still holds.
 version = 2
 yanked = "deny"
-ignore = []
+ignore = [
+    # RUSTSEC-2023-0071 — Marvin Attack: timing sidechannel in
+    # `rsa` for RSA key decryption. Path: `rsa` ← `russh` ← VFS
+    # SFTP client. Termide is the SFTP *client*, never a server,
+    # so an attacker has no opportunity to feed crafted ciphertext
+    # and measure timing on our process. Re-evaluate when russh
+    # ships a fix or migrates off the rsa crate.
+    "RUSTSEC-2023-0071",
+    # RUSTSEC-2026-0098 / 0099 / 0104 — `rustls-webpki 0.101.7`:
+    # URI / wildcard name-constraint mishandling and a panic in
+    # CRL parsing. Path: `rustls-webpki` ← `rustls 0.21` ←
+    # `suppaftp 5.4 (rustls feature)` ← termide-vfs FTPS client.
+    # We connect to a user-specified server; we don't apply name
+    # constraints to our own CA bundle, and we don't parse remote
+    # CRLs. Re-evaluate when suppaftp ships against rustls 0.23+.
+    "RUSTSEC-2026-0098",
+    "RUSTSEC-2026-0099",
+    "RUSTSEC-2026-0104",
+    # RUSTSEC-2017-0008 — `serial` crate unmaintained.
+    # Path: `serial` ← `portable-pty 0.8` ← termide-panel-terminal.
+    # serial is used by portable-pty's optional UART backend for
+    # interactive embedded shells; we don't exercise that code
+    # path. Re-evaluate when portable-pty drops the dep or moves
+    # to a maintained alternative.
+    "RUSTSEC-2017-0008",
+]
 
 [licenses]
 # Two-axis check: every dep's license must appear in `allow` (so we
@@ -44,6 +75,10 @@ allow = [
     "Apache-2.0 WITH LLVM-exception",
     "BSD-2-Clause",
     "BSD-3-Clause",
+    # `clipboard-win` ships under Boost Software License 1.0. BSL-1.0
+    # is OSI-approved, FSF-free, and compatible with MIT/Apache. Safe
+    # to allow for a binary distribution.
+    "BSL-1.0",
     "ISC",
     "Unicode-DFS-2016",
     "Unicode-3.0",
