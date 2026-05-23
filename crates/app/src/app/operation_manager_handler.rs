@@ -508,8 +508,24 @@ impl App {
                                 self.clear_editor_uploading_flag(&editor_path);
                             }
 
-                            // Clear pending batch upload (don't continue if upload cancelled)
-                            if self.state.batch.pending_upload.take().is_some() {
+                            // Clear pending batch upload (don't continue if upload cancelled).
+                            // Stash partial-remote info so we can ask the user whether to clean it up.
+                            let partial_remote =
+                                self.state.batch.pending_upload.take().and_then(|pending| {
+                                    let filename = pending
+                                        .current_source
+                                        .file_name()
+                                        .map(|n| n.to_string_lossy().into_owned())?;
+                                    let dest_url = format!(
+                                        "{}/{}",
+                                        pending.dest_base_url.trim_end_matches('/'),
+                                        filename
+                                    );
+                                    termide_vfs::parse_vfs_url(&dest_url)
+                                        .ok()
+                                        .map(|path| (path, pending.vfs_manager.clone(), filename))
+                                });
+                            if partial_remote.is_some() {
                                 self.state.close_modal();
                                 self.state.set_info("Upload cancelled".to_string());
                             }
@@ -543,6 +559,24 @@ impl App {
                                             batch_operation: Some(Box::new(operation)),
                                         });
                                 }
+                            } else if let Some((partial_path, vfs_manager, filename)) =
+                                partial_remote
+                            {
+                                // Single-file remote upload was cancelled mid-flight.
+                                // Ask whether to clean up the partial file left on
+                                // the server.
+                                let modal = termide_modal::ConfirmModal::new(
+                                    format!("Delete partial '{filename}'?"),
+                                    "The upload was cancelled. A partial copy was \
+                                     left on the remote server.",
+                                );
+                                self.state.set_pending_action(
+                                    PendingAction::DeleteRemotePath {
+                                        paths: vec![partial_path],
+                                        vfs_manager,
+                                    },
+                                    ActiveModal::Confirm(Box::new(modal)),
+                                );
                             } else {
                                 self.state.set_info("Operation cancelled".to_string());
                             }
