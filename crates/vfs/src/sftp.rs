@@ -1411,6 +1411,16 @@ struct SftpInner {
     home_dir: Option<String>,
     connect_started: Option<Instant>,
     cancelled: Arc<AtomicBool>,
+    /// Last `ConnectOptions` used to bring the session up. Cached so
+    /// the actor can transparently reconnect — for example after a
+    /// cancel that left the SFTP session in an unknown state — without
+    /// having to round-trip through the UI for credentials. Cleared
+    /// and zeroed on Drop.
+    cached_options: Option<ConnectOptions>,
+    /// Username effectively used at connect time (after fallback to
+    /// `$USER` / `$USERNAME` / `"root"`). Needed alongside
+    /// `cached_options` to repeat the handshake.
+    cached_username: Option<String>,
 }
 
 impl SftpInner {
@@ -1421,6 +1431,8 @@ impl SftpInner {
             home_dir: None,
             connect_started: None,
             cancelled: Arc::new(AtomicBool::new(false)),
+            cached_options: None,
+            cached_username: None,
         }
     }
 }
@@ -1521,6 +1533,17 @@ impl Drop for SftpProvider {
                 let _ = block_on(handle.cmd_tx.send(SftpCommand::Shutdown));
             }
             inner.state = ConnectionState::Disconnected;
+            // Zero out any cached password before letting the cache go.
+            if let Some(ref mut opts) = inner.cached_options {
+                if let AuthMethod::Password(ref mut pw) = opts.auth {
+                    // SAFETY: zeroing owned String bytes valid for pw.len().
+                    unsafe {
+                        std::ptr::write_bytes(pw.as_mut_vec().as_mut_ptr(), 0, pw.len());
+                    }
+                }
+            }
+            inner.cached_options = None;
+            inner.cached_username = None;
         }
     }
 }
@@ -1568,6 +1591,11 @@ impl VfsProvider for SftpProvider {
         let port = self.port;
         let username = self.effective_username();
         let inner_arc = Arc::clone(&self.inner);
+        // Stash creds before the move into the worker thread so we can
+        // hand them to the reconnect path later. Cloning ConnectOptions
+        // is cheap (small enum + maybe a String).
+        let options_for_cache = options.clone();
+        let username_for_cache = username.clone();
 
         let (tx, rx) = std_mpsc::channel();
 
@@ -1588,6 +1616,8 @@ impl VfsProvider for SftpProvider {
                         inner.state = ConnectionState::Connected;
                         inner.handle = Some(SftpHandle { cmd_tx });
                         inner.home_dir = home_dir;
+                        inner.cached_options = Some(options_for_cache);
+                        inner.cached_username = Some(username_for_cache);
                     }
                     let _ = tx.send(Ok(()));
                 }
