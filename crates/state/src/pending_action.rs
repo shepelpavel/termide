@@ -21,6 +21,14 @@ pub enum PendingAction {
         paths: Vec<VfsPath>,
         vfs_manager: Arc<VfsManager>,
     },
+    /// Clean up a partial remote file that was left behind by a
+    /// cancelled upload. Fire-and-forget delete that silently
+    /// tolerates a "not found" outcome (the cancel may have happened
+    /// before any bytes hit the server).
+    CleanupPartialRemote {
+        path: VfsPath,
+        vfs_manager: Arc<VfsManager>,
+    },
     /// Copy files/directories (one or multiple)
     CopyPath {
         sources: Vec<PathBuf>,

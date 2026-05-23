@@ -264,6 +264,33 @@ impl App {
                 PendingAction::DeleteRemotePath { paths, vfs_manager } => {
                     self.handle_delete_remote_path(paths, vfs_manager, value)?;
                 }
+                PendingAction::CleanupPartialRemote { path, vfs_manager } => {
+                    // Confirmed → fire a fire-and-forget delete on the
+                    // partial file. We deliberately don't fail the
+                    // user-facing flow if the file was never created
+                    // (e.g. cancel arrived before the first byte hit
+                    // the server) — that's the expected outcome here.
+                    if value.downcast_ref::<bool>().copied().unwrap_or(false) {
+                        let op = vfs_manager.delete(&path);
+                        // Drain the result in the background so any
+                        // errors land in the log instead of a modal.
+                        std::thread::spawn(move || match op.recv() {
+                            Ok(()) => {
+                                log::info!(
+                                    "Cleaned up cancelled-upload partial: {}",
+                                    path.log_safe_key()
+                                );
+                            }
+                            Err(e) => {
+                                log::info!(
+                                    "Partial cleanup for {} skipped: {}",
+                                    path.log_safe_key(),
+                                    e
+                                );
+                            }
+                        });
+                    }
+                }
                 PendingAction::SaveFileAs { directory } => {
                     self.handle_save_file_as(directory, value)?;
                 }

@@ -563,16 +563,19 @@ impl App {
                                 partial_remote
                             {
                                 // Single-file remote upload was cancelled mid-flight.
-                                // Ask whether to clean up the partial file left on
-                                // the server.
+                                // Default is to delete the leftover partial file —
+                                // it's a half-written copy of something the user
+                                // explicitly aborted, keeping it is the unusual
+                                // choice.
                                 let modal = termide_modal::ConfirmModal::new(
-                                    format!("Delete partial '{filename}'?"),
-                                    "The upload was cancelled. A partial copy was \
-                                     left on the remote server.",
+                                    format!("Delete partial upload '{filename}'?"),
+                                    "Upload was cancelled mid-transfer.\n\
+                                     Yes — delete the partial file from the server (default).\n\
+                                     No  — keep the partial bytes on the server as they are.",
                                 );
                                 self.state.set_pending_action(
-                                    PendingAction::DeleteRemotePath {
-                                        paths: vec![partial_path],
+                                    PendingAction::CleanupPartialRemote {
+                                        path: partial_path,
                                         vfs_manager,
                                     },
                                     ActiveModal::Confirm(Box::new(modal)),
