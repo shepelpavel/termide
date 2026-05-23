@@ -15,6 +15,12 @@
 wget https://github.com/termide/termide/releases/latest/download/termide-0.22.1-x86_64-unknown-linux-gnu.tar.gz
 ```
 
+**Linux x86_64 — 静态 musl**（Alpine、distroless 容器、任何没有 glibc
+的系统）：
+```bash
+wget https://github.com/termide/termide/releases/latest/download/termide-0.22.1-x86_64-unknown-linux-musl.tar.gz
+```
+
 **Linux ARM64**（树莓派、ARM 服务器）：
 ```bash
 wget https://github.com/termide/termide/releases/latest/download/termide-0.22.1-aarch64-unknown-linux-gnu.tar.gz

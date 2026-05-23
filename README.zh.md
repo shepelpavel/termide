@@ -69,6 +69,11 @@ wget https://github.com/termide/termide/releases/latest/download/termide-0.22.1-
 tar xzf termide-0.22.1-x86_64-unknown-linux-gnu.tar.gz
 ./termide
 
+# Linux x86_64（静态 musl — Alpine、distroless 容器、任何无 glibc 的系统）
+wget https://github.com/termide/termide/releases/latest/download/termide-0.22.1-x86_64-unknown-linux-musl.tar.gz
+tar xzf termide-0.22.1-x86_64-unknown-linux-musl.tar.gz
+./termide
+
 # macOS Intel (x86_64)
 curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.22.1-x86_64-apple-darwin.tar.gz
 tar xzf termide-0.22.1-x86_64-apple-darwin.tar.gz

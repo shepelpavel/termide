@@ -61,6 +61,12 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-22.04  # Use older Ubuntu for glibc compatibility
             archive: tar.gz
+          # Linux x86_64 (musl, fully static — runs on Alpine and any
+          # other distro without a glibc dependency)
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-22.04
+            archive: tar.gz
+            musl: true
           # Linux aarch64 (ARM servers, Raspberry Pi)
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-22.04  # Use older Ubuntu for glibc compatibility
@@ -99,8 +105,19 @@ jobs:
           echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
           echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS=-C linker=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
 
+      - name: Install musl tools (Linux musl)
+        if: matrix.musl
+        # The musl C library + gcc wrapper. Rust's musl target links
+        # statically by default, so no `target-feature=+crt-static`
+        # flag is needed here; just the C toolchain to wrap any C deps.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }} --features vendored-openssl
+        # VFS uses rustls / russh — fully pure-Rust, no native OpenSSL —
+        # so no extra features are required for static builds.
+        run: cargo build --release --target ${{ matrix.target }}
 
       - name: Package (Unix)
         if: matrix.archive == 'tar.gz'
@@ -157,7 +174,7 @@ jobs:
           echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
 
       - name: Build and package
-        run: cargo deb --target ${{ matrix.target }} -- --features vendored-openssl
+        run: cargo deb --target ${{ matrix.target }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -195,7 +212,7 @@ jobs:
           echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
 
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }} --features vendored-openssl
+        run: cargo build --release --target ${{ matrix.target }}
 
       - name: Generate RPM
         run: cargo generate-rpm --target ${{ matrix.target }}

@@ -15,6 +15,12 @@ Visit the [GitHub Releases](https://github.com/termide/termide/releases) page an
 wget https://github.com/termide/termide/releases/latest/download/termide-0.22.1-x86_64-unknown-linux-gnu.tar.gz
 ```
 
+**Linux x86_64 — static musl** (Alpine, distroless containers, any
+glibc-free system):
+```bash
+wget https://github.com/termide/termide/releases/latest/download/termide-0.22.1-x86_64-unknown-linux-musl.tar.gz
+```
+
 **Linux ARM64** (Raspberry Pi, ARM servers):
 ```bash
 wget https://github.com/termide/termide/releases/latest/download/termide-0.22.1-aarch64-unknown-linux-gnu.tar.gz

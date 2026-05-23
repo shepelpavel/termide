@@ -70,6 +70,11 @@ wget https://github.com/termide/termide/releases/latest/download/termide-0.22.1-
 tar xzf termide-0.22.1-x86_64-unknown-linux-gnu.tar.gz
 ./termide
 
+# Linux x86_64 (static musl — Alpine, distroless containers, any glibc-free system)
+wget https://github.com/termide/termide/releases/latest/download/termide-0.22.1-x86_64-unknown-linux-musl.tar.gz
+tar xzf termide-0.22.1-x86_64-unknown-linux-musl.tar.gz
+./termide
+
 # macOS Intel (x86_64)
 curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.22.1-x86_64-apple-darwin.tar.gz
 tar xzf termide-0.22.1-x86_64-apple-darwin.tar.gz
@@ -216,24 +221,32 @@ cargo build --release
 <details>
 <summary><b>📦 Portable static binary (Alpine / any Linux)</b></summary>
 
-A fully static musl build is provided as a separate flake output.
-It links no shared libraries and runs on any Linux distribution,
-including Alpine and minimal containers. The whole workspace is
-pure-Rust (rustls + russh + russh-sftp — no OpenSSL, no libssh2),
-so this is the same code, just compiled against musl.
+A fully static musl build is published with every release. It links
+no shared libraries and runs on any Linux distribution, including
+Alpine and minimal containers. The whole workspace is pure-Rust
+(rustls + russh + russh-sftp — no OpenSSL, no libssh2), so this is
+the same code, just compiled against musl.
+
+The easiest way is to grab the pre-built tarball from the release:
 
 ```bash
-# Build a self-contained binary
-nix build github:termide/termide#termide-static
+wget https://github.com/termide/termide/releases/latest/download/termide-0.22.1-x86_64-unknown-linux-musl.tar.gz
+tar xzf termide-0.22.1-x86_64-unknown-linux-musl.tar.gz
+./termide
 
-# Run it
-./result/bin/termide
-
-# Verify there are no dynamic dependencies
-ldd ./result/bin/termide   # → "not a dynamic executable"
+# Verify it's fully static — no shared libraries
+ldd ./termide   # → "not a dynamic executable"
 ```
 
-You can also copy the binary anywhere — into a container, a stripped
+If you'd rather build it yourself (e.g. for a different musl variant),
+the flake exposes the same recipe as a derivation:
+
+```bash
+nix build github:termide/termide#termide-static
+./result/bin/termide
+```
+
+Either binary can be copied anywhere — into a container, a stripped
 Alpine image, an embedded box — and it will work without needing
 musl-dev or glibc installed.
 
