@@ -1491,6 +1491,10 @@ impl FileManager {
         };
 
         self.tree_entries.clear();
+        // Drop the stale `visible_indices` / `tree_prefixes` along with
+        // the entries — otherwise the next render would index into an
+        // empty `tree_entries` and panic before the worker reports back.
+        self.recompute_visible();
         self.selected = 0;
         self.scroll_offset = 0;
         self.selection.clear();
