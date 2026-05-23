@@ -206,8 +206,11 @@ impl SftpHandle {
             match tokio::time::timeout(DISPATCH_TIMEOUT, rx).await {
                 Ok(Ok(res)) => res,
                 Ok(Err(_)) => Err(VfsError::NotConnected),
+                // Avoid the substring "timed out" — file-ops retry
+                // policy treats that as a transient network failure and
+                // would auto-retry the operation that just bailed out.
                 Err(_) => Err(VfsError::RemoteError {
-                    message: "SFTP request timed out (server is unresponsive)".into(),
+                    message: "SFTP backend not responding within deadline".into(),
                 }),
             }
         })
