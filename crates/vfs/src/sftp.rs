@@ -218,8 +218,14 @@ impl SftpHandle {
 }
 
 /// Async actor task: owns the SftpSession and serves commands until the
-/// channel closes or `Shutdown` is received.
-async fn sftp_actor(sftp: SftpSession, mut rx: async_mpsc::Receiver<SftpCommand>) {
+/// channel closes or `Shutdown` is received. `inner` lets the actor
+/// flip the public connection state back to Disconnected if it decides
+/// to exit on its own (e.g. after a cancelled transfer).
+async fn sftp_actor(
+    sftp: SftpSession,
+    mut rx: async_mpsc::Receiver<SftpCommand>,
+    inner: Arc<Mutex<SftpInner>>,
+) {
     while let Some(cmd) = rx.recv().await {
         match cmd {
             SftpCommand::ListDir { path, reply } => {
@@ -295,13 +301,11 @@ async fn sftp_actor(sftp: SftpSession, mut rx: async_mpsc::Receiver<SftpCommand>
                 progress_tx,
                 reply,
             } => {
-                // Cancellation is now driven inside the transfer
-                // (per-chunk tokio::select! against cancel_watch) so the
-                // function can close remote file handles explicitly
-                // before returning. Wrapping the whole future in an
-                // outer select! would skip that cleanup and leave the
-                // SFTP session in a state where the next operation
-                // can't make progress until the server gives up.
+                // Cancellation is driven inside the transfer (per-chunk
+                // tokio::select! against cancel_watch) so the function
+                // can close remote file handles explicitly before
+                // returning. Wrapping the whole future in an outer
+                // select! would skip that cleanup and wedge the session.
                 let result = actor_download_with_progress(
                     &sftp,
                     &remote,
@@ -311,7 +315,18 @@ async fn sftp_actor(sftp: SftpSession, mut rx: async_mpsc::Receiver<SftpCommand>
                     &progress_tx,
                 )
                 .await;
+                // Cancelled transfers can leave the SFTP session in a
+                // state where subsequent reads/writes never resolve
+                // (server holds the channel busy). Treat any cancel as
+                // a connection reset: signal the result and then break
+                // the actor loop so sftp.close() runs and the next
+                // operation surfaces NotConnected — the UI can then
+                // prompt the user to reconnect.
+                let was_cancelled = matches!(&result, Err(VfsError::Cancelled));
                 let _ = reply.send(result);
+                if was_cancelled {
+                    break;
+                }
             }
             SftpCommand::UploadWithProgress {
                 local,
@@ -330,12 +345,21 @@ async fn sftp_actor(sftp: SftpSession, mut rx: async_mpsc::Receiver<SftpCommand>
                     &progress_tx,
                 )
                 .await;
+                let was_cancelled = matches!(&result, Err(VfsError::Cancelled));
                 let _ = reply.send(result);
+                if was_cancelled {
+                    break;
+                }
             }
             SftpCommand::Shutdown => break,
         }
     }
     let _ = sftp.close().await;
+    if let Ok(mut g) = inner.lock() {
+        g.state = ConnectionState::Disconnected;
+        g.handle = None;
+        g.home_dir = None;
+    }
 }
 
 // ============================================================================
@@ -1556,7 +1580,7 @@ impl VfsProvider for SftpProvider {
             match result {
                 Ok((sftp, home_dir)) => {
                     let (cmd_tx, cmd_rx) = async_mpsc::channel::<SftpCommand>(32);
-                    runtime().spawn(sftp_actor(sftp, cmd_rx));
+                    runtime().spawn(sftp_actor(sftp, cmd_rx, Arc::clone(&inner_arc)));
                     if let Ok(mut inner) = inner_arc.lock() {
                         inner.state = ConnectionState::Connected;
                         inner.handle = Some(SftpHandle { cmd_tx });
