@@ -294,14 +294,40 @@ impl FileManager {
         determine_file_open_event(entry, &full_path, FileOpenMode::External)
     }
 
+    /// Pick the directory new files / dirs should land in. If the
+    /// cursor sits on an expanded subdirectory, create inside it;
+    /// otherwise fall back to the panel's current directory.
+    fn create_target_dir(&self) -> (std::path::PathBuf, Option<termide_vfs::VfsPath>) {
+        if let Some(te) = self.tree_entry_at(self.selected) {
+            if te.file_entry.is_dir && te.expanded == Some(true) && te.file_entry.name != ".." {
+                let local = te.full_path.clone();
+                let vfs = if self.vfs.is_remote() {
+                    self.remote_vfs_path_for(&local)
+                } else {
+                    None
+                };
+                return (local, vfs);
+            }
+        }
+        (
+            self.current_path.clone(),
+            if self.vfs.is_remote() {
+                Some(self.vfs.current_path().clone())
+            } else {
+                None
+            },
+        )
+    }
+
     /// Create a new file
     pub fn create_file(&mut self, name: String) -> Result<()> {
         validate_entry_name(&name)?;
 
+        let (local_target, vfs_target) = self.create_target_dir();
+
         if self.vfs.is_remote() {
-            // Remote path - use VFS
-            let vfs_path = self.vfs.current_path();
-            let new_path = vfs_path.join(&name);
+            let base = vfs_target.unwrap_or_else(|| self.vfs.current_path().clone());
+            let new_path = base.join(&name);
             let operation = self.vfs.manager().write_file(&new_path, &[]);
 
             // Block until completion
@@ -310,8 +336,7 @@ impl FileManager {
             self.navigation.set_newly_created(name);
             self.load_directory()?;
         } else {
-            // Local path - use std::fs
-            let file_path = self.current_path.join(&name);
+            let file_path = local_target.join(&name);
             fs::write(&file_path, "")?;
             // Navigate to newly created file
             self.navigation.set_newly_created(name);
@@ -324,10 +349,11 @@ impl FileManager {
     pub fn create_directory(&mut self, name: String) -> Result<()> {
         validate_entry_name(&name)?;
 
+        let (local_target, vfs_target) = self.create_target_dir();
+
         if self.vfs.is_remote() {
-            // Remote path - use VFS
-            let vfs_path = self.vfs.current_path();
-            let new_path = vfs_path.join(&name);
+            let base = vfs_target.unwrap_or_else(|| self.vfs.current_path().clone());
+            let new_path = base.join(&name);
             let operation = self.vfs.manager().create_dir(&new_path);
 
             // Block until completion (sync behavior for UI)
@@ -336,8 +362,7 @@ impl FileManager {
             self.navigation.set_newly_created(name);
             self.load_directory()?;
         } else {
-            // Local path - use std::fs
-            let dir_path = self.current_path.join(&name);
+            let dir_path = local_target.join(&name);
             fs::create_dir(&dir_path)?;
             // Navigate to newly created directory
             self.navigation.set_newly_created(name);
