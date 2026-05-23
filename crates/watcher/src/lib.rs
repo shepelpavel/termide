@@ -52,6 +52,28 @@ enum InternalEvent {
 
 /// Unified watcher for filesystem and git changes.
 ///
+/// Per-repo install progress for [`UnifiedWatcher::poll_pending`].
+///
+/// Holds the path queue (already walked, not yet handed to notify) and
+/// the set of paths already installed for this repo. We don't update
+/// `UnifiedWatcher::watched_repos` until the queue drains so that
+/// `is_watching_repo` returns `true` across the full install window —
+/// otherwise `register_panel_watchers` would race with the install and
+/// schedule a duplicate walk on the next tick.
+#[derive(Debug)]
+struct RepoInstallState {
+    repo_root: PathBuf,
+    queue: Vec<PathBuf>,
+    installed: HashSet<PathBuf>,
+}
+
+/// Maximum number of `notify::Watcher::watch` calls processed per tick.
+/// Each call is a syscall (inotify_add_watch on Linux); 256 keeps a
+/// burst under ~3 ms on a healthy machine while still draining a
+/// 5000-directory repo within ~20 ticks (well under one second of
+/// real time at typical tick rates).
+const INSTALL_CHUNK: usize = 256;
+
 /// Combines functionality of FileSystemWatcher and GitWatcher:
 /// - Reference counting for all watches
 /// - Filters .git/ to only index/HEAD/refs changes -> GitCommit events
@@ -62,10 +84,15 @@ pub struct UnifiedWatcher {
     /// Git repos: repo_root -> (reference_count, watched_paths)
     watched_repos: HashMap<PathBuf, (usize, HashSet<PathBuf>)>,
     /// Repos whose directory walk is still running on a worker thread.
-    /// `poll_pending` drains these into `watched_repos` when ready.
-    /// `is_watching_repo` reports `true` for pending repos so callers
-    /// don't restart the walk.
+    /// `poll_pending` drains these into `pending_repo_installs` when
+    /// ready. `is_watching_repo` reports `true` for pending repos so
+    /// callers don't restart the walk.
     pending_repo_walks: HashMap<PathBuf, Receiver<Vec<PathBuf>>>,
+    /// Walks that have completed and are now being installed chunk by
+    /// chunk. Each tick `poll_pending` consumes at most
+    /// `INSTALL_CHUNK` paths so a repo with thousands of directories
+    /// doesn't spike a single tick into a visible freeze.
+    pending_repo_installs: Vec<RepoInstallState>,
     /// Non-git dirs: dir_path -> reference count (NonRecursive mode)
     watched_dirs: HashMap<PathBuf, usize>,
     /// Receiver for internal events from debouncer callback
@@ -99,6 +126,7 @@ impl UnifiedWatcher {
             debouncer,
             watched_repos: HashMap::new(),
             pending_repo_walks: HashMap::new(),
+            pending_repo_installs: Vec::new(),
             watched_dirs: HashMap::new(),
             internal_rx,
             pending_git: HashMap::new(),
@@ -240,34 +268,48 @@ impl UnifiedWatcher {
                 }
             }
         }
-        // If we were still walking for it, drop the receiver — the
-        // worker's send will be ignored.
+        // If the registration was still mid-walk or mid-install, drop
+        // it so we don't keep installing watches the caller no longer
+        // wants. Anything already in `installed` stays in notify until
+        // the panel decides to register again or shut down.
         self.pending_repo_walks.remove(repo_root);
+        self.pending_repo_installs
+            .retain(|s| s.repo_root != repo_root);
     }
 
     /// Check if repository root is being watched (including the pending
-    /// walk phase). Returning `true` here keeps `register_panel_watchers`
-    /// from spinning up a second walk for the same root.
+    /// walk and chunked install phases). Returning `true` here keeps
+    /// `register_panel_watchers` from spinning up a second walk for the
+    /// same root.
     pub fn is_watching_repo(&self, repo_root: &Path) -> bool {
         self.watched_repos.contains_key(repo_root)
             || self.pending_repo_walks.contains_key(repo_root)
+            || self
+                .pending_repo_installs
+                .iter()
+                .any(|s| s.repo_root == repo_root)
     }
 
-    /// Drain any background repository walks that have finished and
-    /// install the actual inotify watches for them. Cheap on each call —
-    /// `try_recv` over a tiny map. Returns the number of repos that
-    /// just transitioned from pending to fully watched.
-    pub fn poll_pending(&mut self) -> usize {
-        if self.pending_repo_walks.is_empty() {
-            return 0;
-        }
-        // Collect ready (repo, paths) pairs in one pass so we don't
-        // borrow `self.pending_repo_walks` while installing watches.
-        let mut ready: Vec<(PathBuf, Vec<PathBuf>)> = Vec::new();
+    /// Drain background work in two stages so a single tick never
+    /// spikes:
+    /// 1. Pull finished `WalkBuilder` results off
+    ///    `pending_repo_walks` and queue them for install.
+    /// 2. Install up to `INSTALL_CHUNK` watches per tick from the
+    ///    queue. Each `watcher.watch` is a syscall, and a repo with
+    ///    thousands of dirs would otherwise stall the main loop for
+    ///    ~tens of milliseconds.
+    ///
+    /// Returns `true` if any state changed (a walk landed or a chunk
+    /// installed) so the caller can request a redraw.
+    pub fn poll_pending(&mut self) -> bool {
+        let mut any_progress = false;
+
+        // Stage 1: move finished walks into the install queue.
+        let mut ready: Vec<PathBuf> = Vec::new();
         let mut drop_disconnected: Vec<PathBuf> = Vec::new();
         for (repo, rx) in &self.pending_repo_walks {
             match rx.try_recv() {
-                Ok(paths) => ready.push((repo.clone(), paths)),
+                Ok(_) => ready.push(repo.clone()),
                 Err(std::sync::mpsc::TryRecvError::Empty) => {}
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                     drop_disconnected.push(repo.clone())
@@ -276,21 +318,65 @@ impl UnifiedWatcher {
         }
         for repo in drop_disconnected {
             self.pending_repo_walks.remove(&repo);
+            any_progress = true;
         }
-        for (repo, _) in &ready {
-            self.pending_repo_walks.remove(repo);
+        for repo in ready {
+            // Re-take with a fresh try_recv that owns the receiver so
+            // the move-out succeeds. Already proven Ready above.
+            let Some(rx) = self.pending_repo_walks.remove(&repo) else {
+                continue;
+            };
+            if let Ok(paths) = rx.try_recv() {
+                self.pending_repo_installs.push(RepoInstallState {
+                    repo_root: repo,
+                    queue: paths,
+                    installed: HashSet::new(),
+                });
+                any_progress = true;
+            }
         }
-        for (repo, paths) in &ready {
-            let watcher = self.debouncer.watcher();
-            let mut watched_paths = HashSet::new();
-            for path in paths {
-                if watcher.watch(path, RecursiveMode::NonRecursive).is_ok() {
-                    watched_paths.insert(path.clone());
+
+        // Stage 2: install up to INSTALL_CHUNK watches across all
+        // pending repos this tick. Round-robin across repos keeps a
+        // single huge repo from starving smaller siblings.
+        let mut budget = INSTALL_CHUNK;
+        while budget > 0 && !self.pending_repo_installs.is_empty() {
+            let mut made_progress = false;
+            let mut finished_indices: Vec<usize> = Vec::new();
+            for (i, state) in self.pending_repo_installs.iter_mut().enumerate() {
+                if budget == 0 {
+                    break;
+                }
+                if state.queue.is_empty() {
+                    finished_indices.push(i);
+                    continue;
+                }
+                let take = budget.min(state.queue.len());
+                let watcher = self.debouncer.watcher();
+                for path in state.queue.drain(state.queue.len() - take..) {
+                    if watcher.watch(&path, RecursiveMode::NonRecursive).is_ok() {
+                        state.installed.insert(path);
+                    }
+                }
+                budget -= take;
+                made_progress = true;
+                if state.queue.is_empty() {
+                    finished_indices.push(i);
                 }
             }
-            self.watched_repos.insert(repo.clone(), (1, watched_paths));
+            if !made_progress {
+                break;
+            }
+            // Walk in reverse so removals don't shift earlier indices.
+            for i in finished_indices.into_iter().rev() {
+                let done = self.pending_repo_installs.swap_remove(i);
+                self.watched_repos
+                    .insert(done.repo_root, (1, done.installed));
+                any_progress = true;
+            }
         }
-        ready.len()
+
+        any_progress
     }
 
     /// Start watching a non-git directory (non-recursive, direct children only).

@@ -678,7 +678,7 @@ impl App {
                         // walk itself runs on a worker thread; this is
                         // just the per-path `watcher.watch` call.
                         if let Some(watcher) = self.state.watcher.as_mut() {
-                            if watcher.poll_pending() > 0 {
+                            if watcher.poll_pending() {
                                 self.state.needs_redraw = true;
                             }
                         }
