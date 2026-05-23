@@ -763,16 +763,16 @@ struct UlState {
     bytes_done: u64,
 }
 
-/// Bail out if cancel was requested; otherwise block while pause is set.
-async fn wait_or_cancel(pause: &Arc<AtomicBool>, cancel: &Arc<AtomicBool>) -> VfsResult<()> {
+/// Bail out if cancel was requested. The `pause` flag is *not* honored
+/// here on purpose: the SFTP actor is single-threaded, so spinning on a
+/// pause flag would block every other VFS dispatch (metadata, list_dir
+/// from other panels, etc.) for as long as the user keeps the transfer
+/// paused, surfacing as "SFTP timeout" after DISPATCH_TIMEOUT. Until
+/// the transfer is restructured as chunk-as-command, pause can only be
+/// honored at the worker boundary (between files in a batch).
+async fn wait_or_cancel(_pause: &Arc<AtomicBool>, cancel: &Arc<AtomicBool>) -> VfsResult<()> {
     if cancel.load(Ordering::Relaxed) {
         return Err(VfsError::Cancelled);
-    }
-    while pause.load(Ordering::Relaxed) {
-        if cancel.load(Ordering::Relaxed) {
-            return Err(VfsError::Cancelled);
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
     }
     Ok(())
 }

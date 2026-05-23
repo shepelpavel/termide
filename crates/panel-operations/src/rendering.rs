@@ -102,17 +102,21 @@ fn render_snapshot_card(
 
     let pause_icon = if op.is_paused { " \u{23F8}" } else { "" }; // ⏸
 
+    // Bracket the type icon to mirror the panel `[≡]` menu button —
+    // signals "this is clickable / opens a context menu".
+    let icon_button = format!("[{}]", icon);
+
     let title = if is_command {
         // Command: show command name in title instead of generic "Command" label
         Line::from(Span::styled(
-            format!(" {} {}{} ", icon, op.source, pause_icon),
+            format!(" {} {}{} ", icon_button, op.source, pause_icon),
             title_style,
         ))
     } else {
         let percent = format!("{}%", op.progress.percent());
         Line::from(vec![
             Span::styled(
-                format!(" {} {}{} ", icon, type_label, pause_icon),
+                format!(" {} {}{} ", icon_button, type_label, pause_icon),
                 title_style,
             ),
             Span::styled(

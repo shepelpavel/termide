@@ -1248,6 +1248,17 @@ impl App {
             }
         }
 
+        // Update is_paused on the ActiveOperation so the card icon
+        // and the per-operation menu pick up the new state. Cover both
+        // single-file ops and batch ops — set_batch_paused only fires
+        // when the targeted id is the batch tracking id, which left
+        // standalone uploads with stale is_paused=false.
+        if let Some(op) = self.state.active_operations.get_mut(&op_id) {
+            op.is_paused = !is_paused;
+            if !is_paused {
+                op.speed_tracker.reset();
+            }
+        }
         // Update batch tracking paused state (UI card)
         self.state.set_batch_paused(!is_paused);
 
