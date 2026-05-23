@@ -583,6 +583,32 @@ crates/i18n/
 - FS watcher uses separate thread
 - Debouncing prevents excessive updates
 
+### Async Pipelines
+
+Several startup and hot-path operations that used to block the
+render loop now run on worker threads, polled from each panel's
+`tick()`. The pattern is the same in every case: spawn a worker,
+park a `mpsc::Receiver` on the panel, swap the result in when
+`try_recv()` returns. References below point to where each pipeline
+lives.
+
+| Pipeline                              | Worker location                                                 | Polled in                                                                          |
+|---------------------------------------|-----------------------------------------------------------------|------------------------------------------------------------------------------------|
+| FileManager initial directory read    | `crates/panel-file-manager/src/lib.rs` (`start_async_reload`)   | `check_async_reload` from app's per-tick `check_background_panel_updates`          |
+| FileManager subtree expand            | `crates/panel-file-manager/src/lib.rs` (`start_listing`)        | `poll_pending_expansions` from same path; placeholder rows show `…` until resolved |
+| FileManager per-entry git status      | `crates/panel-file-manager/src/git_status.rs`                   | `check_git_status_async`; `apply_git_statuses` reapplies if dir read raced ahead   |
+| Git status / log panel refresh        | `crates/panel-git-status/src/lib.rs`, `panel-git-log/src/lib.rs`| `poll_refresh` in each panel's `tick`                                              |
+| Git submodule discovery (RepoManager) | `crates/git/src/repo_manager.rs` (`spawn_submodule_walk`)       | `RepoManager::poll` from git panel `tick`                                          |
+| Session restore — panels in parallel  | `crates/app/src/layout_session.rs` (`construct_panel` per panel)| Joined synchronously after spawn so the slowest panel still gates the first frame  |
+| Watcher repo registration             | `crates/watcher/src/lib.rs` (`watch_repository`)                | `poll_pending` in app main loop; inotify installs chunked at `INSTALL_CHUNK`/tick  |
+| Directory size walk (wide-view)       | `crates/panel-file-manager/src/utils.rs` (`shared_dir_size_cache`) | Per-frame `try_recv` against shared cache; budget enforced per walk             |
+
+The SFTP/FTP backend uses a different pattern — a dedicated tokio
+runtime owns the connection and a chunk-as-command actor (see
+`crates/vfs/src/sftp.rs`). The sync worker drives the chunk loop and
+polls pause/cancel flags between dispatches, so a paused transfer
+leaves the actor free to serve other panels' metadata requests.
+
 ### 8. Session Management
 
 **Location:** `crates/session/src/lib.rs`
@@ -619,6 +645,44 @@ path = "/home/user/project/main.rs"
 ```
 
 A legacy `mode = "accordion"` field is still accepted on read and triggers a one-time migration to the fullscreen preset (current code never writes it).
+
+### 9. VFS (Remote Filesystems)
+
+**Location:** `crates/vfs/src/`
+
+A pure-Rust VFS layer makes remote servers look like local
+directories to the rest of the app. No native OpenSSL or libssh —
+SFTP runs on `russh` + `russh-sftp`, FTPS on `rustls`. Builds work
+statically on Alpine / musl.
+
+**Supported protocols:** `sftp://`, `ftp://`, `ftps://` (URL parsing
+also recognises `smb://` / `nfs://` but no provider is shipped yet).
+
+**Key components:**
+- **`VfsProvider` trait** (`crates/vfs/src/traits.rs`) — abstract
+  filesystem API used by FileManager, file-ops, editor: `list_dir`,
+  `read_file`, `write_file`, `delete`, `upload`,
+  `upload_with_progress`, etc. Every call returns a `VfsOperation<T>`
+  whose receiver the caller polls — there is no blocking variant.
+- **`VfsManager`** (`crates/vfs/src/lib.rs`) — provider cache keyed
+  by `(scheme, host, port, user)`; evicts entries whose actor died.
+- **SFTP actor** (`crates/vfs/src/sftp.rs`) — a single tokio task
+  owns the `russh-sftp` session and handles small atomic commands
+  (`OpenRead` / `ReadChunk` / `WriteChunk` / `CloseHandle` / `Stat`
+  / `ListDir` / `MkdirRecursive` / …). Chunk loops live on the sync
+  worker side, polling pause/cancel between dispatches.
+- **URL parsing** (`crates/vfs/src/url.rs`) — UTF-8 round-trip with
+  percent-decoded paths so non-ASCII filenames survive.
+- **Authentication** — SSH agent → `~/.ssh/config` `IdentityFile`
+  → default keys (`id_ed25519` / `id_rsa` / `id_ecdsa` / `id_dsa`)
+  → password, with all four selectable as explicit `AuthMethod`
+  variants for users who don't want the auto chain.
+
+**Cancel safety:** transfers cancel between chunks; partial files
+get a "Delete partial upload?" modal so the server doesn't keep
+stranded bytes. Same-connection renames stay server-side
+(no download-then-upload). See `doc/en/vfs.md` for the user view
+and `doc/en/operations.md` for the cancel flow.
 
 ## Future Architecture Considerations
 
