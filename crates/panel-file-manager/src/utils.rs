@@ -168,6 +168,29 @@ impl DirSizeCache {
         }
     }
 
+    /// Insert a precomputed result directly, bypassing the claim/complete
+    /// dance. Used when a full walk happens outside the wide-view
+    /// scheduler — e.g. the file-info modal kicks off an unbounded walk
+    /// on Space, and we want every panel that displays that directory
+    /// in the wide view to pick the exact number up immediately.
+    ///
+    /// If another walker is currently in flight for the same path, we
+    /// also clear their inflight slot — their `complete()` call will then
+    /// no-op, leaving our exact result in place rather than overwriting
+    /// it with a possibly-overflowed budgeted walk.
+    pub fn insert(&self, path: PathBuf, outcome: DirSizeOutcome) {
+        if let Ok(mut entries) = self.entries.lock() {
+            entries.insert(path.clone(), outcome);
+        }
+        if let Ok(mut stale) = self.stale.lock() {
+            stale.remove(&path);
+        }
+        if let Ok(mut inflight) = self.inflight.lock() {
+            inflight.remove(&path);
+        }
+        self.generation.fetch_add(1, Ordering::Release);
+    }
+
     /// Deposit a completed result. Clears the stale flag and replaces
     /// the old value. Silently dropped if the claim was revoked.
     pub fn complete(&self, path: PathBuf, outcome: DirSizeOutcome) {

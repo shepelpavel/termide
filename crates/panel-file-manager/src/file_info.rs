@@ -452,9 +452,22 @@ impl FileManager {
 
             if is_dir {
                 let (tx, rx) = mpsc::channel();
+                let cache_path = file_path.clone();
 
                 std::thread::spawn(move || {
-                    let size = utils::calculate_dir_size(&file_path);
+                    let size = utils::calculate_dir_size(&cache_path);
+                    // The modal triggers an unbounded walk, so the result
+                    // is the exact size. Publish it to the shared dir-size
+                    // cache so any panel showing this directory in the wide
+                    // view picks it up immediately instead of re-running
+                    // its own budgeted walk.
+                    utils::shared_dir_size_cache().insert(
+                        cache_path,
+                        utils::DirSizeOutcome {
+                            size,
+                            overflowed: false,
+                        },
+                    );
                     let _ = tx.send(DirSizeResult { size });
                 });
 
