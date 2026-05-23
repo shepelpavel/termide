@@ -15,6 +15,14 @@ on:
   push:
     branches: [main]
 
+# Minimal token scope: PR checks only read the repository, no write
+# is needed (release.yml is what writes tags / artifacts). Pinning
+# this at the workflow level keeps CodeQL's
+# `actions/missing-workflow-permissions` rule happy and shrinks the
+# blast radius if a compromised step tries to escalate.
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 
