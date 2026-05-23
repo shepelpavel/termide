@@ -278,6 +278,25 @@ impl App {
                 self.event_cancel_operation(op_id);
             }
 
+            PanelEvent::OpenOperationActionMenu {
+                op_id,
+                anchor_x,
+                anchor_y,
+            } => {
+                let is_paused = self
+                    .state
+                    .active_operations
+                    .get(&op_id)
+                    .map(|op| op.is_paused)
+                    .unwrap_or(false);
+                self.state.ui.close_all_submenus();
+                self.state
+                    .ui
+                    .operation_action_menu
+                    .open(op_id.0, anchor_x, anchor_y, is_paused);
+                self.state.needs_redraw = true;
+            }
+
             PanelEvent::OpenOperationsPanel => {
                 self.open_operations_panel()?;
             }
@@ -1205,7 +1224,7 @@ impl App {
     // ========================================================================
 
     /// Handle ToggleOperationPause event - pause or resume an operation
-    fn event_toggle_operation_pause(&mut self, op_id: termide_file_ops::OperationId) {
+    pub(super) fn event_toggle_operation_pause(&mut self, op_id: termide_file_ops::OperationId) {
         // Check if operation is paused
         let is_paused = self
             .state
@@ -1250,7 +1269,7 @@ impl App {
     }
 
     /// Handle CancelOperation event - cancel an operation
-    fn event_cancel_operation(&mut self, op_id: termide_file_ops::OperationId) {
+    pub(super) fn event_cancel_operation(&mut self, op_id: termide_file_ops::OperationId) {
         // Check if this is a command operation (not managed by OperationManager)
         if let Some(op) = self.state.active_operations.get(&op_id) {
             if op.op_type.is_command() {

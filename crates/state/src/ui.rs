@@ -95,6 +95,41 @@ impl PanelActionMenuState {
     }
 }
 
+/// State for the per-operation popup menu opened from the type icon
+/// on an operation card in the Operations panel (Pause/Resume/Cancel).
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct OperationActionMenuState {
+    pub open: bool,
+    pub selected: usize,
+    /// Operation id (uuid u128) so we can target the right operation
+    /// even if the panel reorders.
+    /// Raw operation id (OperationId.0); kept as u64 here so this
+    /// crate doesn't have to depend on termide-file-ops.
+    pub op_id: u64,
+    /// Screen X of the clicked icon
+    pub anchor_x: u16,
+    /// Screen Y of the clicked icon
+    pub anchor_y: u16,
+    /// Cached "is paused" snapshot — controls the label of the first
+    /// item (Pause vs Resume).
+    pub is_paused: bool,
+}
+
+impl OperationActionMenuState {
+    pub fn open(&mut self, op_id: u64, anchor_x: u16, anchor_y: u16, is_paused: bool) {
+        self.open = true;
+        self.selected = 0;
+        self.op_id = op_id;
+        self.anchor_x = anchor_x;
+        self.anchor_y = anchor_y;
+        self.is_paused = is_paused;
+    }
+
+    pub fn close(&mut self) {
+        self.open = false;
+    }
+}
+
 /// State for divider drag resize operation
 #[derive(Debug, Default, Clone)]
 pub struct DragState {
@@ -290,6 +325,8 @@ pub struct UiState {
     pub spinner_frame: usize,
     /// Panel action context menu state
     pub panel_action_menu: PanelActionMenuState,
+    /// Per-operation popup menu (Pause/Resume/Cancel) on Operations panel
+    pub operation_action_menu: OperationActionMenuState,
     /// Panel drag-and-drop state (grab a panel by its top border)
     pub panel_drag: PanelDragState,
 }
@@ -312,6 +349,7 @@ impl UiState {
         self.current_bookmarks_group_is_project = false;
         self.stash_submenu.close();
         self.panel_action_menu.close();
+        self.operation_action_menu.close();
         self.panel_drag.cancel();
     }
 }

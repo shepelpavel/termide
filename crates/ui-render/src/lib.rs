@@ -13,10 +13,12 @@ pub mod theme_dropdown;
 
 pub use dropdown::{
     get_bookmarks_group_items, get_bookmarks_item_count, get_bookmarks_items,
-    get_commands_group_items, get_commands_items, get_options_items, get_panel_action_menu_items,
-    get_sessions_items, get_shell_items, get_stash_items, get_tools_items,
+    get_commands_group_items, get_commands_items, get_operation_action_menu_items,
+    get_options_items, get_panel_action_menu_items, get_sessions_items, get_shell_items,
+    get_stash_items, get_tools_items, operation_action_dropdown_position,
     panel_action_dropdown_position, Dropdown, DropdownItem, BOOKMARK_ADD_CURRENT, COMMAND_ADD_NEW,
-    COMMAND_MANAGE, OPTIONS_SUBMENU_HELP, OPTIONS_SUBMENU_ITEM_COUNT, OPTIONS_SUBMENU_LANGUAGE,
+    COMMAND_MANAGE, OPERATION_ACTION_CANCEL, OPERATION_ACTION_PAUSE, OPERATION_ACTION_RESUME,
+    OPTIONS_SUBMENU_HELP, OPTIONS_SUBMENU_ITEM_COUNT, OPTIONS_SUBMENU_LANGUAGE,
     OPTIONS_SUBMENU_PREFERENCES, OPTIONS_SUBMENU_QUIT, OPTIONS_SUBMENU_THEMES, PANEL_ACTION_CLOSE,
     PANEL_ACTION_MOVE_DOWN, PANEL_ACTION_MOVE_LEFT, PANEL_ACTION_MOVE_RIGHT, PANEL_ACTION_MOVE_UP,
     PANEL_ACTION_SPLIT, SESSIONS_SUBMENU_CHANGE_ROOT, SESSIONS_SUBMENU_ITEM_COUNT,

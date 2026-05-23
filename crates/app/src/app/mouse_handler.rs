@@ -168,6 +168,14 @@ impl App {
             return Ok(());
         }
 
+        // Handle per-operation popup menu clicks when it's open
+        if self.state.ui.operation_action_menu.open
+            && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
+        {
+            self.handle_operation_action_menu_click(mouse.column, mouse.row)?;
+            return Ok(());
+        }
+
         // If menu is open, close it on click outside menu
         if self.state.is_menu_open()
             && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))

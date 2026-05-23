@@ -366,6 +366,22 @@ impl Panel for OperationsPanel {
                         && row < card_area.y + card_area.height
                     {
                         self.selected_index = *idx;
+                        // The leftmost few cells of each card hold the
+                        // operation-type icon. Clicking there opens the
+                        // per-operation action menu (Pause/Resume/Cancel),
+                        // anchored at the click position — mirroring the
+                        // panel header `[≡]` behaviour.
+                        const ICON_HIT_WIDTH: u16 = 4;
+                        let in_icon_zone = col < card_area.x.saturating_add(ICON_HIT_WIDTH);
+                        if in_icon_zone {
+                            if let Some(op) = self.operations.get(*idx) {
+                                return vec![PanelEvent::OpenOperationActionMenu {
+                                    op_id: op.id,
+                                    anchor_x: col,
+                                    anchor_y: row,
+                                }];
+                            }
+                        }
                         break;
                     }
                 }

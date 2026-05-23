@@ -505,6 +505,14 @@ pub enum PanelEvent {
     /// Cancel a file operation
     CancelOperation(termide_file_ops::OperationId),
 
+    /// Open the per-operation popup menu (Pause/Resume/Cancel) anchored
+    /// at the operation type icon on its card.
+    OpenOperationActionMenu {
+        op_id: termide_file_ops::OperationId,
+        anchor_x: u16,
+        anchor_y: u16,
+    },
+
     /// Open or focus the operations panel
     OpenOperationsPanel,
 

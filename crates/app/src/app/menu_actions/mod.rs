@@ -8,6 +8,7 @@
 mod bookmarks;
 mod command_palette;
 mod commands;
+mod operation_action;
 mod outline;
 mod panel_action;
 mod sessions;

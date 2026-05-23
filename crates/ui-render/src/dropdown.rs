@@ -690,6 +690,41 @@ pub fn panel_action_dropdown_position(
     (x, y)
 }
 
+// ────────────────────────────────────────────────────────────────────
+// Operation action menu (Pause/Resume/Cancel on an ops-panel card)
+// ────────────────────────────────────────────────────────────────────
+
+pub const OPERATION_ACTION_PAUSE: &str = "__operation_action_pause__";
+pub const OPERATION_ACTION_RESUME: &str = "__operation_action_resume__";
+pub const OPERATION_ACTION_CANCEL: &str = "__operation_action_cancel__";
+
+/// Build items for the per-operation popup menu opened from the icon
+/// on an operations-panel card. The first item swaps label based on
+/// the current pause state of the operation.
+pub fn get_operation_action_menu_items(is_paused: bool) -> Vec<DropdownItem> {
+    let mut items = Vec::with_capacity(2);
+    if is_paused {
+        items.push(DropdownItem::new("Resume", OPERATION_ACTION_RESUME));
+    } else {
+        items.push(DropdownItem::new("Pause", OPERATION_ACTION_PAUSE));
+    }
+    items.push(DropdownItem::new("Cancel", OPERATION_ACTION_CANCEL));
+    items
+}
+
+/// Position calculator for the operation action dropdown — same shape
+/// as `panel_action_dropdown_position` so the visual behaviour stays
+/// consistent.
+pub fn operation_action_dropdown_position(
+    items: &[DropdownItem],
+    anchor_x: u16,
+    anchor_y: u16,
+    screen_w: u16,
+    screen_h: u16,
+) -> (u16, u16) {
+    panel_action_dropdown_position(items, anchor_x, anchor_y, screen_w, screen_h)
+}
+
 /// Get bookmark items for a specific group
 pub fn get_bookmarks_group_items(
     config: &termide_config::BookmarksConfig,

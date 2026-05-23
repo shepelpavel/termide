@@ -234,6 +234,25 @@ fn render_dropdowns_and_modals(
         }
     }
 
+    // Per-operation popup menu (Pause/Resume/Cancel on an Operations card)
+    if state.ui.operation_action_menu.open {
+        let items = termide_ui_render::get_operation_action_menu_items(
+            state.ui.operation_action_menu.is_paused,
+        );
+        if !items.is_empty() {
+            let (x, y) = termide_ui_render::operation_action_dropdown_position(
+                &items,
+                state.ui.operation_action_menu.anchor_x,
+                state.ui.operation_action_menu.anchor_y,
+                state.terminal.width,
+                state.terminal.height,
+            );
+            let dropdown =
+                Dropdown::new(&items, state.ui.operation_action_menu.selected, x, y, theme);
+            dropdown.render(frame.buffer_mut());
+        }
+    }
+
     // Render Options submenu if open
     if state.ui.menu_open
         && state.ui.selected_menu_item == Some(OPTIONS_MENU_INDEX)

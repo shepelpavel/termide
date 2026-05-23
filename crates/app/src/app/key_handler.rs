@@ -68,6 +68,11 @@ impl App {
             return self.handle_panel_action_menu_key(key);
         }
 
+        // If per-operation popup menu is open, route keys to its handler
+        if self.state.ui.operation_action_menu.open {
+            return self.handle_operation_action_menu_key(key);
+        }
+
         // If Options submenu is open, handle submenu navigation
         if self.state.ui.options_submenu.open {
             return self.handle_submenu_key(key);
