@@ -182,6 +182,14 @@ struct SftpHandle {
     cmd_tx: async_mpsc::Sender<SftpCommand>,
 }
 
+/// Per-command timeout for sync dispatches. The actor only processes
+/// one command at a time, so if a previous transfer left it stuck on
+/// the server (e.g. an open file handle that the server hasn't closed
+/// yet after a cancel), all subsequent UI calls — `metadata`,
+/// `exists`, `list_dir` — would otherwise block the UI thread
+/// forever. This is a safety net, not the happy path.
+const DISPATCH_TIMEOUT: Duration = Duration::from_secs(30);
+
 impl SftpHandle {
     /// Send a command and block for the reply on the SFTP runtime.
     fn dispatch<T, F>(&self, build: F) -> VfsResult<T>
@@ -195,7 +203,13 @@ impl SftpHandle {
                 .send(cmd)
                 .await
                 .map_err(|_| VfsError::NotConnected)?;
-            rx.await.map_err(|_| VfsError::NotConnected)?
+            match tokio::time::timeout(DISPATCH_TIMEOUT, rx).await {
+                Ok(Ok(res)) => res,
+                Ok(Err(_)) => Err(VfsError::NotConnected),
+                Err(_) => Err(VfsError::RemoteError {
+                    message: "SFTP request timed out (server is unresponsive)".into(),
+                }),
+            }
         })
     }
 }
