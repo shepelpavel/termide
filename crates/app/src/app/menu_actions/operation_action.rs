@@ -4,6 +4,7 @@
 
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent};
+use termide_core::PanelEvent;
 use termide_ui_render::{
     get_operation_action_menu_items, operation_action_dropdown_position, DropdownItem,
     OPERATION_ACTION_CANCEL, OPERATION_ACTION_PAUSE, OPERATION_ACTION_RESUME,
@@ -98,12 +99,16 @@ impl App {
         self.state.ui.operation_action_menu.close();
         self.state.needs_redraw = true;
 
+        // Route through the same PanelEvent path the keyboard shortcuts
+        // (Space / Esc / Delete) use, so popup-menu and key-driven cancels
+        // run identical follow-up logic — e.g. the "Delete partial upload?"
+        // modal is wired to the PanelEvent::CancelOperation handler.
         match key.as_str() {
             OPERATION_ACTION_PAUSE | OPERATION_ACTION_RESUME => {
-                self.event_toggle_operation_pause(op_id);
+                self.process_panel_events(vec![PanelEvent::ToggleOperationPause(op_id)])?;
             }
             OPERATION_ACTION_CANCEL => {
-                self.event_cancel_operation(op_id);
+                self.process_panel_events(vec![PanelEvent::CancelOperation(op_id)])?;
             }
             _ => {}
         }

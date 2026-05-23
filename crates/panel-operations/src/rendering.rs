@@ -100,7 +100,10 @@ fn render_snapshot_card(
         .fg(if is_selected { accent_color } else { fg_color })
         .add_modifier(Modifier::BOLD);
 
-    let pause_icon = if op.is_paused { " \u{23F8}" } else { "" }; // ⏸
+    // ⏸ goes before the label so it lines up with the bracketed icon —
+    // e.g. `[↑] ⏸ Copy (upload)`. The trailing space is part of the
+    // prefix so the unpaused form collapses cleanly to `[↑] Copy …`.
+    let pause_prefix = if op.is_paused { "\u{23F8} " } else { "" }; // ⏸
 
     // Bracket the type icon to mirror the panel `[≡]` menu button —
     // signals "this is clickable / opens a context menu".
@@ -109,14 +112,14 @@ fn render_snapshot_card(
     let title = if is_command {
         // Command: show command name in title instead of generic "Command" label
         Line::from(Span::styled(
-            format!(" {} {}{} ", icon_button, op.source, pause_icon),
+            format!(" {} {}{} ", icon_button, pause_prefix, op.source),
             title_style,
         ))
     } else {
         let percent = format!("{}%", op.progress.percent());
         Line::from(vec![
             Span::styled(
-                format!(" {} {}{} ", icon_button, type_label, pause_icon),
+                format!(" {} {}{} ", icon_button, pause_prefix, type_label),
                 title_style,
             ),
             Span::styled(
