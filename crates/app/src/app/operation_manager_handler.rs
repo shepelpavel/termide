@@ -243,6 +243,9 @@ impl App {
                                         termide_vfs::parse_vfs_url(&batch_upload.dest_base_url)
                                     {
                                         let final_remote = remote_base.join(&source_name);
+                                        // Keep an exact copy of the next-file destination so
+                                        // the cancel-cleanup modal targets the right partial.
+                                        let next_remote_target = final_remote.clone();
 
                                         // Update modal progress
                                         if let Some(crate::state::ActiveModal::Progress(
@@ -267,6 +270,8 @@ impl App {
 
                                         // Update batch state
                                         batch_upload.current_source = next_source;
+                                        batch_upload.current_remote_target =
+                                            Some(next_remote_target);
 
                                         // Start upload for next file
                                         match self.state.start_operation_now(
@@ -509,25 +514,28 @@ impl App {
                             }
 
                             // Clear pending batch upload (don't continue if upload cancelled).
-                            // Stash partial-remote info so we can ask the user whether to clean it up.
+                            // The exact remote target of the file that was in
+                            // flight at cancel time is stored on the pending
+                            // upload — for multi-file batches this is the
+                            // *only* partial file; files already finished in
+                            // the batch are intact on the server and stay
+                            // untouched.
                             let partial_remote =
                                 self.state.batch.pending_upload.take().and_then(|pending| {
-                                    let filename = pending
-                                        .current_source
+                                    let path = pending.current_remote_target.clone()?;
+                                    let filename = path
                                         .file_name()
-                                        .map(|n| n.to_string_lossy().into_owned())?;
-                                    let dest_url = format!(
-                                        "{}/{}",
-                                        pending.dest_base_url.trim_end_matches('/'),
-                                        filename
-                                    );
-                                    termide_vfs::parse_vfs_url(&dest_url)
-                                        .ok()
-                                        .map(|path| (path, pending.vfs_manager.clone(), filename))
+                                        .map(|n| n.to_string_lossy().into_owned())
+                                        .or_else(|| {
+                                            pending
+                                                .current_source
+                                                .file_name()
+                                                .map(|n| n.to_string_lossy().into_owned())
+                                        })?;
+                                    Some((path, pending.vfs_manager.clone(), filename))
                                 });
                             if partial_remote.is_some() {
                                 self.state.close_modal();
-                                self.state.set_info("Upload cancelled".to_string());
                             }
 
                             // For batch operations, show cleanup modal
@@ -562,16 +570,13 @@ impl App {
                             } else if let Some((partial_path, vfs_manager, filename)) =
                                 partial_remote
                             {
-                                // Single-file remote upload was cancelled mid-flight.
-                                // Default is to delete the leftover partial file —
-                                // it's a half-written copy of something the user
-                                // explicitly aborted, keeping it is the unusual
-                                // choice.
+                                // Remote upload was cancelled mid-flight. Only the
+                                // currently-in-flight file is partial; the modal
+                                // names it explicitly so the user knows what they
+                                // are agreeing to delete.
                                 let modal = termide_modal::ConfirmModal::new(
+                                    "Upload was cancelled",
                                     format!("Delete partial upload '{filename}'?"),
-                                    "Upload was cancelled mid-transfer.\n\
-                                     Yes — delete the partial file from the server (default).\n\
-                                     No  — keep the partial bytes on the server as they are.",
                                 );
                                 self.state.set_pending_action(
                                     PendingAction::CleanupPartialRemote {

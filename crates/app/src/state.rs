@@ -216,6 +216,12 @@ pub struct PendingBatchUpload {
     pub is_move: bool,
     /// Current source path being uploaded (for move delete)
     pub current_source: PathBuf,
+    /// Exact remote destination of the file *currently* being uploaded.
+    /// Used by the cancel-cleanup modal so we delete the right partial
+    /// file even on multi-file uploads (only the last file in flight
+    /// is incomplete; previously-completed files in the batch are
+    /// already on the server and must not be touched).
+    pub current_remote_target: Option<termide_vfs::VfsPath>,
 }
 
 impl std::fmt::Debug for PendingBatchUpload {

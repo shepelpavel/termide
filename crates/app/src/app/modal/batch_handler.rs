@@ -473,6 +473,13 @@ impl App {
         // Extract display strings before moving values
         let source_display = source.display().to_string();
         let dest_display = final_remote.to_url_string();
+        // Snapshot the exact remote destination — we need it later if
+        // the user cancels and we have to ask whether to delete the
+        // partial file. Cloning here is cheaper than reconstructing
+        // the URL post-cancel (and avoids the double-filename bug
+        // when remote_url already ends with the filename for single
+        // source uploads).
+        let cancel_target = final_remote.clone();
 
         // Create upload operation request
         let request = OperationRequest::upload(source.clone(), final_remote);
@@ -485,6 +492,7 @@ impl App {
             vfs_manager: vfs_manager.clone(),
             is_move,
             current_source: source,
+            current_remote_target: Some(cancel_target),
         });
 
         // Start tracked upload operation (opens Operations panel)
