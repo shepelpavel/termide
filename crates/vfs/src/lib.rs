@@ -415,9 +415,37 @@ impl VfsManager {
         E: FnOnce() -> R,
     {
         let key = path.connection_key();
+
+        // Fast read path: if the cached provider is still healthy, run
+        // the op against it directly. The actor publishes Disconnected
+        // / Failed on `SftpInner` when its session is dead — in that
+        // case we evict the zombie provider and report NotConnected so
+        // the UI re-runs Connect.
         if let Ok(providers) = self.remote_providers.read() {
             if let Some(provider) = providers.get(&key) {
-                return on_remote(&**provider);
+                match provider.connection_state() {
+                    ConnectionState::Connected | ConnectionState::Connecting => {
+                        return on_remote(&**provider);
+                    }
+                    ConnectionState::Disconnected | ConnectionState::Failed => {
+                        // Drop the guard before taking the write lock.
+                    }
+                }
+            } else {
+                return on_not_connected();
+            }
+        } else {
+            return on_not_connected();
+        }
+
+        if let Ok(mut providers) = self.remote_providers.write() {
+            if let Some(provider) = providers.get(&key) {
+                if matches!(
+                    provider.connection_state(),
+                    ConnectionState::Disconnected | ConnectionState::Failed
+                ) {
+                    providers.remove(&key);
+                }
             }
         }
         on_not_connected()
