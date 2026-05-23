@@ -294,19 +294,28 @@ impl FileManager {
         determine_file_open_event(entry, &full_path, FileOpenMode::External)
     }
 
-    /// Pick the directory new files / dirs should land in. If the
-    /// cursor sits on an expanded subdirectory, create inside it;
-    /// otherwise fall back to the panel's current directory.
+    /// Pick the directory new files / dirs should land in. The rule
+    /// is "create alongside the cursor": at the same tree level as
+    /// the highlighted entry. So cursor on a root-level item creates
+    /// in the panel's `current_path`; cursor anywhere inside an
+    /// expanded subdir creates in that subdir (the parent of the
+    /// highlighted entry).
     fn create_target_dir(&self) -> (std::path::PathBuf, Option<termide_vfs::VfsPath>) {
         if let Some(te) = self.tree_entry_at(self.selected) {
-            if te.file_entry.is_dir && te.expanded == Some(true) && te.file_entry.name != ".." {
-                let local = te.full_path.clone();
-                let vfs = if self.vfs.is_remote() {
-                    self.remote_vfs_path_for(&local)
-                } else {
-                    None
-                };
-                return (local, vfs);
+            // Top-level rows (depth == 0) and ".." always anchor at
+            // current_path. For any nested entry we use the parent of
+            // its full_path, which corresponds to the visible subdir
+            // the row belongs to.
+            if te.depth > 0 && te.file_entry.name != ".." {
+                if let Some(parent) = te.full_path.parent() {
+                    let local = parent.to_path_buf();
+                    let vfs = if self.vfs.is_remote() {
+                        self.remote_vfs_path_for(&local)
+                    } else {
+                        None
+                    };
+                    return (local, vfs);
+                }
             }
         }
         (
