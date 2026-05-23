@@ -82,7 +82,12 @@ All quality checks passed! Proceeding with release...
 
 ### Step 2: Analyze Changes for CHANGELOG
 
-Analyze changes from **three sources** as requested by user:
+This is **editorial** work, not mechanical commit-parsing. The goal is a
+human-readable changelog, so the agent must *understand* what happened in
+the release, not just translate `git log` line-by-line.
+
+Collect raw material from **three sources**, then synthesize it into
+themes (see "Synthesis" below before writing anything to CHANGELOG).
 
 #### Source 1: Uncommitted Changes
 ```bash
@@ -101,22 +106,24 @@ Parse output to detect:
 # Get last tag
 last_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
 
-# Get commits since tag
+# Get commits since tag (use full subjects + bodies, not just --oneline)
 if [ -n "$last_tag" ]; then
-    git log ${last_tag}..HEAD --oneline --no-decorate
+    git log ${last_tag}..HEAD --no-decorate --pretty=fuller
 else
-    git log --oneline --no-decorate
+    git log --no-decorate --pretty=fuller
 fi
 ```
 
-Parse commit messages to categorize by conventional commit types:
-- `feat:` → Added section
-- `fix:` → Fixed section
-- `docs:` → Changed section (if user-facing docs)
-- `refactor:` → Changed section
-- `perf:` → Changed section
-- `chore:` → Usually not in changelog unless significant
-- `BREAKING CHANGE:` → Special highlight in changelog
+Conventional commit type is a **hint** for categorization, never the final
+word. Always cross-check with the actual diff before placing the change
+under Added / Changed / Fixed:
+
+- `feat:` → usually Added
+- `fix:` → usually Fixed
+- `docs:` → Changed only if user-visible behavior or workflow changed
+- `refactor:` / `perf:` → Changed only if user-observable; otherwise drop
+- `chore:` / `style:` → almost never in changelog
+- `BREAKING CHANGE:` (footer) → call out explicitly regardless of type
 
 #### Source 3: File States at Each Commit
 For each commit between tag and HEAD, check what actually changed in files:
@@ -133,12 +140,52 @@ This reveals:
 - Configuration changes (config.rs, constants.rs)
 - Documentation updates (README.md, doc/*)
 
-**Combine all three sources** to create comprehensive change analysis:
-- Uncommitted changes → Include in "Pending changes" section
-- Commits → Parse messages and actual file changes
-- File states → Validate commit messages match reality
+If a commit message says "feat: add X" but the diff only touches tests or
+unrelated files, **trust the diff**, not the message.
 
-**Output structure:**
+#### Synthesis — turn raw log into a coherent narrative
+
+Git history contains a lot of noise the user will not want to read.
+Before writing the changelog, **collapse the log into themes**. A theme
+is a single user-visible change, possibly spanning many commits.
+
+**Drop entirely (do not surface to user as changelog candidates):**
+- Pure "WIP" / "checkpoint" / "save" commits with no standalone meaning.
+- Typo fixes, formatting fixes, comment edits with no behavior change.
+- Lint / clippy / fmt-only commits.
+- Commits that were later fully reverted within the same release window.
+- Dependency version bumps that don't change observable behavior (unless
+  the bump is the release's headline).
+- Iterative fixes-on-top-of-a-feature inside the same release — fold
+  them into the feature's entry. The reader cares that "feature X
+  works", not that it took three commits to land.
+- Refactor-then-revert / "broke main, fixed main" pairs.
+- Internal renames, file moves, module reorganizations with no API
+  effect — unless they're a deliberate breaking change.
+
+**Collapse together (one changelog line per theme, not per commit):**
+- A feature plus its follow-up bugfixes from the same release window.
+- A multi-step refactor that lands across N commits with one outcome.
+- Translation updates for the same change in multiple languages
+  (mention once, list affected locales if useful).
+
+**Keep, with rewording:**
+- User-visible behavior change → describe the *effect on the user*, not
+  the implementation. "Migrated to XDG Base Directory Specification" is
+  better than "feat(config): use dirs::config_dir() for state path".
+- Bug fix → describe the bug as the user experienced it, not as the
+  patch line in the diff. "Fixed crash when opening empty files" beats
+  "fix: handle 0-length read in editor::load".
+- Breaking change → say what breaks and what the user should do.
+
+**Pull from `git show <hash>` for context** when a commit subject is
+cryptic but the diff is meaningful — write the changelog from the diff.
+
+Verify the synthesis pass actually happened: if the resulting bullet
+count is roughly equal to the commit count, you almost certainly did not
+collapse anything. Re-read the log and merge follow-ups.
+
+**Output structure (raw analysis stage, before drafting CHANGELOG):**
 ```
 Changes Analysis:
 ==================
@@ -147,24 +194,26 @@ Uncommitted Changes:
 - Modified: src/main.rs, Cargo.toml
 - Added: CHANGELOG.md
 
-Commits Since 0.2.0:
+Commits Since 0.2.0 (raw):
 - 6d2e247 refactor: remove FileManager special handling
 - 4e7c694 feat: migrate to XDG Base Directory Specification
 - 6509fdb feat: implement session autosave
+- a1b2c3d fix: typo in autosave
+- d4e5f6a fix(autosave): debounce write
+- 7890abc chore: clippy
 
-Categorized Changes:
-Added:
-- XDG Base Directory Specification support
-- Session autosave with debounce
-- CHANGELOG.md file
+Themes (after synthesis):
+- XDG Base Directory Specification support  [4e7c694]
+- Automatic session persistence with debounced writes  [6509fdb + d4e5f6a, typo and clippy folded in]
+- FileManager is now a regular closable panel — BREAKING  [6d2e247]
 
-Changed:
-- FileManager is now a regular panel (BREAKING CHANGE)
-- Simplified layout architecture (-350 LOC)
-
-Fixed:
-- [none detected]
+Dropped as noise:
+- a1b2c3d (typo, folded into autosave entry)
+- 7890abc (clippy-only)
 ```
+
+These **themes**, not the raw commit list, are what Step 7 turns into
+CHANGELOG entries.
 
 ### Step 3: Detect Current Version
 
@@ -371,7 +420,9 @@ Then re-run this skill to continue.
 
 ### Step 7: Update CHANGELOG.md
 
-Generate new CHANGELOG section from analyzed changes.
+The CHANGELOG is **written for humans reading release notes**, not for
+agents reading git history. Work from the **themes** produced by Step 2
+synthesis, not from the raw commit log.
 
 **Read current CHANGELOG.md** to determine insert position (after header, before first ## version).
 
@@ -380,33 +431,62 @@ Generate new CHANGELOG section from analyzed changes.
 ## [NEW_VERSION] - YYYY-MM-DD
 
 ### Added
-[List features from feat: commits and new files detected]
+[New user-facing capabilities — one bullet per theme, not per commit]
 
 ### Changed
-[List from refactor:, perf:, chore: commits and file changes]
+[Modified behavior the user will notice — workflow, defaults, UX, perf]
 
 ### Fixed
-[List from fix: commits]
+[Bugs described as the user saw them, not as the diff fixed them]
 
 ### Removed
-[List any deleted features/files]
+[Features or options no longer available — call out migration if any]
 
 [NEW_VERSION]: https://github.com/termide/termide/releases/tag/NEW_VERSION
 ```
 
-**Categorization logic:**
+**Writing rules:**
 
-For each commit message:
-- Parse conventional commit type
-- Extract description after type
-- Place in appropriate section
+1. **One theme = one bullet.** Multiple commits that landed the same
+   feature collapse into a single bullet. Three follow-up bugfixes for
+   the same feature do not deserve three Fixed entries in the same
+   release — fold them into the feature's Added/Changed bullet.
 
-For uncommitted changes:
-- Parse file changes
-- Categorize based on file paths:
-  - src/panels/new_panel.rs → Added
-  - Modified existing panel → Changed
-  - Deleted file → Removed
+2. **Describe effect, not implementation.** The reader does not know the
+   module names. "Faster startup on large projects" beats "lazy-load
+   tree-sitter parsers". "Cancel button now actually cancels the
+   transfer" beats "wire OperationManager::cancel through chunk-as-
+   command actor".
+
+3. **Drop pure noise.** Themes the synthesis pass marked as
+   noise/dropped do not appear in the changelog at all. If a fix only
+   matters to maintainers, it is not changelog material.
+
+4. **Be specific where it matters.** Vague entries ("various
+   improvements", "bug fixes") are worse than nothing — either name the
+   improvement concretely or drop the bullet. If you can't say what
+   improved, the synthesis pass was incomplete.
+
+5. **Call out breaking changes loudly.** Either a dedicated `### Breaking
+   Changes` subsection at the top, or a `**BREAKING:**` prefix on the
+   relevant bullet. Include the migration step or workaround.
+
+6. **Past tense, declarative voice.** "Added X.", "Fixed Y.". Not "This
+   release adds X" and not "X has been added".
+
+7. **No commit hashes, no PR numbers in the bullets themselves.** Link
+   them at the bottom of the section if useful, but keep the bullets
+   readable for someone scanning the release notes.
+
+**Sanity-check the draft against the raw log:**
+
+- For every dropped commit, can you justify the drop? (noise, folded,
+  reverted, no user effect)
+- For every kept commit, is the changelog bullet *more useful* than the
+  commit subject? If the bullet is just `git log --oneline | sed`, the
+  synthesis didn't happen — rewrite it.
+- Is the total bullet count noticeably smaller than the commit count?
+  If not, fold more aggressively.
 
 **Show draft to user** and allow editing:
 ```
@@ -420,12 +500,13 @@ Generated CHANGELOG entry:
 - CHANGELOG.md with full project history
 
 ### Changed
-- FileManager is now a regular closable panel (BREAKING CHANGE)
-- Simplified layout architecture (-350 lines of code)
-- Default initialization with 2 FileManager panels (50/50 layout)
+- **BREAKING:** FileManager is now a regular closable panel.
+  Existing sessions will load with the default layout (2 FM panels).
+- Simplified layout architecture
 
 ### Fixed
-- Session serialization without special FileManager handling
+- Sessions no longer require special FileManager handling and
+  serialize cleanly
 
 Do you want to:
 1. Use this changelog as-is
