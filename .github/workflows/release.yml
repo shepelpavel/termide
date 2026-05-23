@@ -38,6 +38,16 @@ jobs:
       - name: Run tests
         run: cargo test
 
+      - name: Install cargo-deny
+        # Rust-cache lets us skip rebuilding cargo-deny on every run;
+        # `--locked` keeps the version reproducible.
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+
+      - name: Supply-chain audit (cargo-deny)
+        run: cargo deny check
+
   # Cross-platform builds
   build:
     name: Build ${{ matrix.target }}

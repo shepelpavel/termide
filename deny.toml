@@ -1,0 +1,75 @@
+# cargo-deny configuration.
+#
+# Run locally:  cargo deny check
+# CI runs the same in `.github/workflows/ci.yml`.
+#
+# Sections below correspond to cargo-deny's four check types:
+# advisories (security), licenses, bans (registry vs git, banned
+# crates), and sources (where deps come from).
+
+[graph]
+# Match what release.yml and pre-commit hook care about — desktop Unix
+# plus Windows. Skipping niche targets keeps the dep graph small
+# enough that license/advisory scans don't drown in unused crates.
+targets = [
+    { triple = "x86_64-unknown-linux-gnu" },
+    { triple = "x86_64-unknown-linux-musl" },
+    { triple = "aarch64-unknown-linux-gnu" },
+    { triple = "x86_64-apple-darwin" },
+    { triple = "aarch64-apple-darwin" },
+    { triple = "x86_64-pc-windows-msvc" },
+]
+all-features = false
+no-default-features = false
+
+[advisories]
+# Fail on any RUSTSEC advisory. The unmaintained / unsound /
+# notice classes catch crates that haven't been patched in years
+# even when no concrete CVE is filed yet.
+version = 2
+yanked = "deny"
+ignore = []
+
+[licenses]
+# Two-axis check: every dep's license must appear in `allow` (so we
+# never ship something that conflicts with the project's own MIT).
+# `confidence-threshold` raises the bar for license-detection
+# heuristics — too low and we approve crates whose actual license
+# we couldn't determine.
+version = 2
+confidence-threshold = 0.93
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-DFS-2016",
+    "Unicode-3.0",
+    "Zlib",
+    "MPL-2.0",
+    "CC0-1.0",
+    "0BSD",
+]
+exceptions = []
+
+[bans]
+# Defaults: warn on duplicate versions of the same crate (slow build
+# + bigger binary), deny crates we never want in the tree (e.g. the
+# old `openssl` family — Phase 3 switched to rustls).
+multiple-versions = "warn"
+wildcards = "allow"
+highlight = "all"
+deny = []
+skip = []
+skip-tree = []
+
+[sources]
+# Crates only from crates.io; git deps must be in the allow-list
+# below. Stops a `cargo add` from quietly pulling something off a
+# random branch.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
