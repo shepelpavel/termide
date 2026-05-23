@@ -61,6 +61,11 @@ pub struct UnifiedWatcher {
     debouncer: Debouncer<RecommendedWatcher>,
     /// Git repos: repo_root -> (reference_count, watched_paths)
     watched_repos: HashMap<PathBuf, (usize, HashSet<PathBuf>)>,
+    /// Repos whose directory walk is still running on a worker thread.
+    /// `poll_pending` drains these into `watched_repos` when ready.
+    /// `is_watching_repo` reports `true` for pending repos so callers
+    /// don't restart the walk.
+    pending_repo_walks: HashMap<PathBuf, Receiver<Vec<PathBuf>>>,
     /// Non-git dirs: dir_path -> reference count (NonRecursive mode)
     watched_dirs: HashMap<PathBuf, usize>,
     /// Receiver for internal events from debouncer callback
@@ -93,6 +98,7 @@ impl UnifiedWatcher {
         Ok(Self {
             debouncer,
             watched_repos: HashMap::new(),
+            pending_repo_walks: HashMap::new(),
             watched_dirs: HashMap::new(),
             internal_rx,
             pending_git: HashMap::new(),
@@ -181,44 +187,40 @@ impl UnifiedWatcher {
         None
     }
 
-    /// Start watching a git repository root recursively, respecting .gitignore.
-    /// Uses ignore crate to walk directories, skipping gitignored paths.
-    /// This is much faster than notify's RecursiveMode::Recursive which watches ALL directories.
-    /// Increments reference count if already watching.
+    /// Start watching a git repository root, respecting .gitignore.
+    ///
+    /// The `WalkBuilder` traversal that collects the per-directory list
+    /// is the slow part — on a repo that tracks `$HOME` it can take
+    /// seconds. It runs on a worker thread; the actual `watcher.watch`
+    /// installs happen when [`Self::poll_pending`] picks up the result.
+    /// Until then [`Self::is_watching_repo`] reports `true` for the
+    /// pending root so callers don't re-spawn the walk.
+    ///
+    /// File-system events emitted before the walk finishes are simply
+    /// missed — same behaviour as the synchronous path while it was
+    /// still mid-walk; once watches are installed the panel picks up
+    /// changes from there on out.
     pub fn watch_repository(&mut self, repo_root: PathBuf) -> Result<()> {
-        // Increment reference count if already watching
+        // Increment reference count if already fully watching
         if let Some((count, _)) = self.watched_repos.get_mut(&repo_root) {
             *count += 1;
             return Ok(());
         }
-
-        let watcher = self.debouncer.watcher();
-        let mut watched_paths = HashSet::new();
-
-        // Walk directory tree respecting .gitignore
-        // This watches ~100 dirs instead of ~7000 (skips target/, node_modules/, etc.)
-        let git_objects_dir = repo_root.join(".git/objects");
-        for entry in WalkBuilder::new(&repo_root)
-            .hidden(false) // don't skip hidden files (we need .git/)
-            .git_ignore(true) // respect .gitignore
-            .git_global(true) // respect global gitignore
-            .git_exclude(true) // respect .git/info/exclude
-            .build()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_some_and(|ft| ft.is_dir()))
-        {
-            let path = entry.into_path();
-            // Skip .git/objects/ — hundreds of hash-named subdirectories that
-            // generate no useful events (object writes are not commit-related).
-            if path.starts_with(&git_objects_dir) && path != git_objects_dir {
-                continue;
-            }
-            if watcher.watch(&path, RecursiveMode::NonRecursive).is_ok() {
-                watched_paths.insert(path);
-            }
+        // Already pending — keep one walk in flight per root. The
+        // caller has no separate refcount on the pending entry; the
+        // implicit count is 1 and gets folded into watched_repos when
+        // the worker reports back.
+        if self.pending_repo_walks.contains_key(&repo_root) {
+            return Ok(());
         }
 
-        self.watched_repos.insert(repo_root, (1, watched_paths));
+        let (tx, rx) = channel();
+        let repo = repo_root.clone();
+        std::thread::spawn(move || {
+            let paths = collect_repo_watch_paths(&repo);
+            let _ = tx.send(paths);
+        });
+        self.pending_repo_walks.insert(repo_root, rx);
         Ok(())
     }
 
@@ -238,11 +240,57 @@ impl UnifiedWatcher {
                 }
             }
         }
+        // If we were still walking for it, drop the receiver — the
+        // worker's send will be ignored.
+        self.pending_repo_walks.remove(repo_root);
     }
 
-    /// Check if repository root is being watched.
+    /// Check if repository root is being watched (including the pending
+    /// walk phase). Returning `true` here keeps `register_panel_watchers`
+    /// from spinning up a second walk for the same root.
     pub fn is_watching_repo(&self, repo_root: &Path) -> bool {
         self.watched_repos.contains_key(repo_root)
+            || self.pending_repo_walks.contains_key(repo_root)
+    }
+
+    /// Drain any background repository walks that have finished and
+    /// install the actual inotify watches for them. Cheap on each call —
+    /// `try_recv` over a tiny map. Returns the number of repos that
+    /// just transitioned from pending to fully watched.
+    pub fn poll_pending(&mut self) -> usize {
+        if self.pending_repo_walks.is_empty() {
+            return 0;
+        }
+        // Collect ready (repo, paths) pairs in one pass so we don't
+        // borrow `self.pending_repo_walks` while installing watches.
+        let mut ready: Vec<(PathBuf, Vec<PathBuf>)> = Vec::new();
+        let mut drop_disconnected: Vec<PathBuf> = Vec::new();
+        for (repo, rx) in &self.pending_repo_walks {
+            match rx.try_recv() {
+                Ok(paths) => ready.push((repo.clone(), paths)),
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    drop_disconnected.push(repo.clone())
+                }
+            }
+        }
+        for repo in drop_disconnected {
+            self.pending_repo_walks.remove(&repo);
+        }
+        for (repo, _) in &ready {
+            self.pending_repo_walks.remove(repo);
+        }
+        for (repo, paths) in &ready {
+            let watcher = self.debouncer.watcher();
+            let mut watched_paths = HashSet::new();
+            for path in paths {
+                if watcher.watch(path, RecursiveMode::NonRecursive).is_ok() {
+                    watched_paths.insert(path.clone());
+                }
+            }
+            self.watched_repos.insert(repo.clone(), (1, watched_paths));
+        }
+        ready.len()
     }
 
     /// Start watching a non-git directory (non-recursive, direct children only).
@@ -370,6 +418,28 @@ impl UnifiedWatcher {
 /// Create a unified watcher instance.
 pub fn create_watcher() -> Result<UnifiedWatcher> {
     UnifiedWatcher::new()
+}
+
+/// Walk `repo_root` respecting `.gitignore` and collect the per-directory
+/// list that `watch_repository` will install non-recursive watches for.
+///
+/// The walk is the slow part — on repos that track `$HOME` it can take
+/// seconds — so the public API hides this behind a worker thread.
+fn collect_repo_watch_paths(repo_root: &Path) -> Vec<PathBuf> {
+    let git_objects_dir = repo_root.join(".git/objects");
+    WalkBuilder::new(repo_root)
+        .hidden(false) // we still need the `.git/` directory
+        .git_ignore(true)
+        .git_global(true)
+        .git_exclude(true)
+        .build()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_some_and(|ft| ft.is_dir()))
+        .map(|e| e.into_path())
+        // Skip `.git/objects/<hash-prefix>/` — hundreds of subdirs that
+        // emit no commit-relevant events.
+        .filter(|path| !(path.starts_with(&git_objects_dir) && path != &git_objects_dir))
+        .collect()
 }
 
 #[cfg(test)]

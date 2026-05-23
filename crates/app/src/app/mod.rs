@@ -673,6 +673,16 @@ impl App {
                             self.state.needs_watcher_registration = false;
                         }
 
+                        // Drain any finished repository walks so the
+                        // inotify watches install non-blockingly. The
+                        // walk itself runs on a worker thread; this is
+                        // just the per-path `watcher.watch` call.
+                        if let Some(watcher) = self.state.watcher.as_mut() {
+                            if watcher.poll_pending() > 0 {
+                                self.state.needs_redraw = true;
+                            }
+                        }
+
                         // Poll unified watcher for git and filesystem events
                         self.poll_watcher_events();
 
