@@ -1,0 +1,74 @@
+name: CI
+
+# PR-facing checks. Runs the same fmt / clippy / test / supply-chain
+# gates that release.yml uses for tagged builds, but on every pull
+# request and every push to main — so reviewers see a green check
+# (or a failing log) before merging instead of finding out at
+# release time.
+#
+# Cross-platform binary builds stay in release.yml; they only matter
+# at release time and would burn minutes here on every iteration.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+# Cancel an older run of the same workflow when a new commit lands
+# on the same PR — keeps the queue from piling up during rapid
+# iteration.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: fmt / check / clippy / test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        # Pinned to the same version release.yml uses; drift here
+        # would let a PR pass and the release-on-tag job fail.
+        uses: dtolnay/rust-toolchain@1.91.1
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry and target
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Check compilation
+        run: cargo check --workspace --all-targets
+
+      - name: Run clippy (strict mode)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Run tests
+        run: cargo test --workspace
+
+  deny:
+    name: Supply-chain audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.91.1
+
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+
+      - name: cargo deny check
+        run: cargo deny check
