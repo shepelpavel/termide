@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The version string (`termide --version` and the help panel header) now includes the git commit it was built from, e.g. `0.23.1 (50b81b1)`, so builds that share a version number can be told apart.
 
 ### Fixed
-- **PHP syntax highlighting** — `.php` files are now highlighted instead of shown as plain text, including mixed HTML/PHP templates (the HTML, the `<?php … ?>` code, and the tags are all coloured). The bundled grammar had been silently disabled by a parser-ABI mismatch.
+- **PHP syntax highlighting** — `.php` files are now highlighted instead of shown as plain text, including mixed HTML/PHP templates (the HTML, the `<?php … ?>` code, and the tags are all coloured). The PHP grammar had been silently disabled in the shipped binary: different crates pulled incompatible tree-sitter-php versions, whose clashing `tree_sitter_php` symbols collided at link time onto an ABI the runtime rejected. All crates are now pinned to the same grammar version.
 - **JSX syntax highlighting** — `.jsx` files are now highlighted; the language was listed as supported but never actually loaded.
 - **Multi-line constructs** — block comments and strings that span several lines now stay coloured to their end across every language, instead of losing highlighting after the first line.
 

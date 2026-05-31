@@ -304,3 +304,54 @@ fn test_large_file_scroll_performance() {
     // Verify we actually scrolled
     assert!(editor.viewport().top_line > 0);
 }
+
+#[test]
+fn open_php_file_renders_with_colors() {
+    use ratatui::buffer::Buffer;
+    use ratatui::layout::Rect;
+    use ratatui::style::Color;
+    use std::collections::HashSet;
+
+    // Real file-manager path: a .php file on disk opened via
+    // `open_file_with_config` (which sets syntax from the extension), then
+    // rendered through `render_content` under a light theme.
+    let src =
+        "<!DOCTYPE html>\n<html>\n<body>\n<?php\n$name = \"Ivan\";\necho $name;\n?>\n</body>\n";
+    let file = tempfile::Builder::new().suffix(".php").tempfile().unwrap();
+    std::fs::write(file.path(), src).unwrap();
+
+    let mut editor =
+        Editor::open_file_with_config(file.path().to_path_buf(), EditorConfig::default()).unwrap();
+    assert_eq!(
+        editor.render_cache.highlight.current_syntax(),
+        Some("php"),
+        "open path should detect php from the .php extension"
+    );
+
+    let theme = termide_theme::Theme::get_by_name("github-light").clone();
+    editor
+        .render_cache
+        .highlight
+        .set_light_theme(theme.is_light_theme());
+    editor.render_cache.highlight.set_default_fg(theme.fg);
+
+    let config = termide_config::Config::default();
+    let area = Rect::new(0, 0, 80, 20);
+    let mut buf = Buffer::empty(area);
+    editor.render_content(area, &mut buf, &theme, &config, true, None);
+
+    let mut colors: HashSet<Color> = HashSet::new();
+    for y in 0..area.height {
+        for x in 0..area.width {
+            if let Some(c) = buf.cell((x, y)) {
+                if c.symbol() != " " {
+                    colors.insert(c.fg);
+                }
+            }
+        }
+    }
+    assert!(
+        colors.len() > 1,
+        "expected highlighting via the real open path, saw {colors:?}"
+    );
+}

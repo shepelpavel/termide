@@ -140,7 +140,12 @@ tree-sitter-c = "0.23"
 tree-sitter-cpp = "0.23"
 tree-sitter-java = "0.23"
 tree-sitter-ruby = "0.23"
-tree-sitter-php = "0.24"
+# Pinned to 0.23 workspace-wide: 0.24 ships an ABI-15 grammar that the
+# workspace's tree-sitter 0.24 (max ABI 14) rejects. Mixing 0.23 and 0.24 also
+# collides the exported `tree_sitter_php` C symbol at final-binary link time,
+# so the 0.24 (ABI-15) copy wins and disables PHP highlighting. Keep every
+# crate that depends on tree-sitter-php on the same 0.23 line.
+tree-sitter-php = "0.23"
 tree-sitter-haskell = "0.23"
 tree-sitter-nix = "0.3"
 
