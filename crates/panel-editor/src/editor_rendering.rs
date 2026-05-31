@@ -441,4 +441,45 @@ mod render_highlight_tests {
             "expected multiple foreground colours from PHP highlighting, saw {colors:?}"
         );
     }
+
+    /// Same as above but mirrors a light-theme session (the reported repro used
+    /// `github-light`): set the highlight cache's theme exactly as
+    /// `prepare_render` does before rendering.
+    #[test]
+    fn php_template_is_rendered_with_multiple_colors_light_theme() {
+        let src =
+            "<!DOCTYPE html>\n<html>\n<body>\n<?php\n$name = \"Ivan\";\necho $name;\n?>\n</body>\n";
+        let mut editor = Editor::from_text(src, "1.php".to_string());
+        editor.render_cache.highlight.set_syntax("php");
+
+        let theme = Theme::get_by_name("github-light").clone();
+        // Mirror prepare_render's highlight sync.
+        editor
+            .render_cache
+            .highlight
+            .set_light_theme(theme.is_light_theme());
+        editor.render_cache.highlight.set_default_fg(theme.fg);
+
+        let config = Config::default();
+        let area = Rect::new(0, 0, 80, 20);
+        let mut buf = Buffer::empty(area);
+
+        editor.render_content(area, &mut buf, &theme, &config, true, None);
+
+        let mut colors: HashSet<Color> = HashSet::new();
+        for y in area.y..area.y + area.height {
+            for x in area.x..area.x + area.width {
+                if let Some(cell) = buf.cell((x, y)) {
+                    if cell.symbol() != " " {
+                        colors.insert(cell.fg);
+                    }
+                }
+            }
+        }
+
+        assert!(
+            colors.len() > 1,
+            "light theme: expected multiple foreground colours, saw {colors:?}"
+        );
+    }
 }
