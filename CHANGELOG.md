@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.23.1] - 2026-05-31
 
+### Added
+- The version string (`termide --version` and the help panel header) now includes the git commit it was built from, e.g. `0.23.1 (50b81b1)`, so builds that share a version number can be told apart.
+
 ### Fixed
 - **PHP syntax highlighting** — `.php` files are now highlighted instead of shown as plain text, including mixed HTML/PHP templates (the HTML, the `<?php … ?>` code, and the tags are all coloured). The bundled grammar had been silently disabled by a parser-ABI mismatch.
 - **JSX syntax highlighting** — `.jsx` files are now highlighted; the language was listed as supported but never actually loaded.

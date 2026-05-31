@@ -24,7 +24,7 @@ use termide_i18n::init_with_language;
 use termide_theme::{set_ansi16_mode, set_themes_dir};
 
 #[derive(Parser)]
-#[command(name = "termide", version, about = "Terminal IDE")]
+#[command(name = "termide", version = termide_core::VERSION, about = "Terminal IDE")]
 struct Cli {
     /// Override minimum log level (trace, debug, info, warn, error)
     #[arg(long)]

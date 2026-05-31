@@ -820,9 +820,8 @@ impl HelpGenerator {
         let key_style = Style::default().fg(theme.fg);
         let desc_style = Style::default().fg(theme.disabled);
 
-        // Version header: ═══════ Termide x.y.z ═══════
-        let version = env!("CARGO_PKG_VERSION");
-        let version_text = format!("Termide {}", version);
+        // Version header: ═══════ Termide x.y.z (hash) ═══════
+        let version_text = format!("Termide {}", termide_core::VERSION);
         let version_len = version_text.chars().count();
         let side_padding = width.saturating_sub(version_len + 2) / 2;
         let left_pad = "═".repeat(side_padding);

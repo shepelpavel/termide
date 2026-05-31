@@ -3,6 +3,11 @@
 //! This crate provides the foundational abstractions for building panels
 //! in termide without coupling them to the application state.
 
+/// Full version string for display: the crate version plus the git commit it
+/// was built from, e.g. `"0.23.1 (50b81b1a)"`. Falls back to just the crate
+/// version when git is unavailable at build time. Stamped by `build.rs`.
+pub const VERSION: &str = env!("TERMIDE_VERSION");
+
 pub mod command;
 pub mod event;
 pub mod hotkey_table;
