@@ -5,6 +5,15 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.1] - 2026-05-31
+
+### Fixed
+- **PHP syntax highlighting** — `.php` files are now highlighted instead of shown as plain text. The bundled PHP grammar was silently disabled by a parser-ABI mismatch, and the editor's line-by-line highlighting needed the tag-less PHP grammar to colour ordinary code lines.
+- **JSX syntax highlighting** — `.jsx` files are now highlighted; the language was listed as supported but never actually loaded.
+
+### Changed
+- A syntax grammar that fails to load is now logged instead of being dropped silently, so missing highlighting is diagnosable.
+
 ## [0.23.0] - 2026-05-23
 
 ### Added
@@ -59,6 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `deny.toml` + `cargo-deny check` step covers advisories, licenses, bans and sources.
 - Pre-commit hook documented in `CONTRIBUTING.md`.
 
+[0.23.1]: https://github.com/termide/termide/releases/tag/0.23.1
 [0.23.0]: https://github.com/termide/termide/releases/tag/0.23.0
 
 ## [0.22.1] - 2026-05-10
