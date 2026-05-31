@@ -393,3 +393,52 @@ impl Editor {
         }
     }
 }
+
+#[cfg(test)]
+mod render_highlight_tests {
+    use super::Editor;
+    use ratatui::buffer::Buffer;
+    use ratatui::layout::Rect;
+    use ratatui::style::Color;
+    use std::collections::HashSet;
+    use termide_config::Config;
+    use termide_theme::Theme;
+
+    /// Render a PHP template through the real `render_content` path and confirm
+    /// the editor draws more than one foreground colour — i.e. highlighting is
+    /// actually applied on screen, not just inside the highlight cache. Guards
+    /// the whole render wiring (`set_document` gate, per-line lookup, cell
+    /// styling) that the highlight-crate unit tests can't reach.
+    #[test]
+    fn php_template_is_rendered_with_multiple_colors() {
+        let src =
+            "<!DOCTYPE html>\n<html>\n<body>\n<?php\n$name = \"Ivan\";\necho $name;\n?>\n</body>\n";
+        let mut editor = Editor::from_text(src, "1.php".to_string());
+        assert!(editor.config.syntax_highlighting);
+        // Mirror the file-open path which sets syntax from the extension.
+        editor.render_cache.highlight.set_syntax("php");
+
+        let theme = Theme::default();
+        let config = Config::default();
+        let area = Rect::new(0, 0, 80, 20);
+        let mut buf = Buffer::empty(area);
+
+        editor.render_content(area, &mut buf, &theme, &config, true, None);
+
+        let mut colors: HashSet<Color> = HashSet::new();
+        for y in area.y..area.y + area.height {
+            for x in area.x..area.x + area.width {
+                if let Some(cell) = buf.cell((x, y)) {
+                    if cell.symbol() != " " {
+                        colors.insert(cell.fg);
+                    }
+                }
+            }
+        }
+
+        assert!(
+            colors.len() > 1,
+            "expected multiple foreground colours from PHP highlighting, saw {colors:?}"
+        );
+    }
+}
