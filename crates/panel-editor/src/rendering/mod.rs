@@ -120,6 +120,18 @@ pub fn render_editor_content<H: LineHighlighter>(
     // instead of rebuilding the HashMap for every visible row.
     let diagnostics_by_line = crate::git::group_diagnostics_by_line(diagnostics, buffer);
 
+    // Rebuild the whole-document highlight when it is stale (after an edit or a
+    // syntax change) and the buffer is small enough to re-parse per edit. This
+    // resolves cross-line context — PHP's HTML/PHP mode, multi-line strings and
+    // comments — that the per-line path cannot. Large buffers skip it and fall
+    // back to per-line highlighting to keep editing responsive.
+    if syntax_highlighting_enabled
+        && highlight_cache.needs_document()
+        && buffer.len_bytes() <= termide_highlight::WHOLE_DOCUMENT_BYTE_LIMIT
+    {
+        highlight_cache.set_document(&buffer.text());
+    }
+
     // Select rendering mode
     if word_wrap_enabled && content_width > 0 {
         // Word wrap mode

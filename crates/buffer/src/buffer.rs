@@ -207,6 +207,14 @@ impl TextBuffer {
         self.rope.to_string()
     }
 
+    /// Total length of the buffer in bytes (O(1) via the rope).
+    ///
+    /// Cheap enough to call every frame; used to gate whole-document syntax
+    /// highlighting so large files fall back to the per-line path.
+    pub fn len_bytes(&self) -> usize {
+        self.rope.len_bytes()
+    }
+
     /// Insert text at cursor position
     pub fn insert(&mut self, cursor: &Cursor, text: &str) -> Result<Cursor> {
         let char_idx = self.cursor_to_char_idx(cursor)?;

@@ -48,6 +48,24 @@ pub const HIGHLIGHT_NAMES: &[&str] = &[
     "embedded",
 ];
 
+/// Map an injection language name (as it appears in a grammar's injections
+/// query or a markdown code fence) to the key under which its config is loaded.
+/// Unknown names pass through unchanged and resolve to no config.
+fn injection_language_alias(name: &str) -> &str {
+    match name {
+        "js" => "javascript",
+        "ts" => "typescript",
+        "rs" => "rust",
+        "py" => "python",
+        "rb" => "ruby",
+        "sh" | "shell" | "zsh" => "bash",
+        "yml" => "yaml",
+        "c++" => "cpp",
+        "md" => "markdown",
+        other => other,
+    }
+}
+
 /// Detect language from file extension.
 pub fn detect_language(path: &Path) -> Option<&'static str> {
     let ext = path.extension()?.to_str()?;
@@ -230,16 +248,24 @@ impl TreeSitterHighlighter {
             &highlight_names,
         );
 
-        // PHP_ONLY (not LANGUAGE_PHP): the editor highlights line-by-line, so each
-        // line is parsed in isolation. LANGUAGE_PHP starts in HTML mode and only
-        // switches to PHP after a `<?php` opener, leaving every other line as plain
-        // HTML text — i.e. unhighlighted. PHP_ONLY parses lines as pure PHP.
+        // LANGUAGE_PHP (the full template grammar, not PHP_ONLY): real .php files
+        // interleave HTML with `<?php … ?>` blocks. This grammar tracks the
+        // HTML↔PHP mode; the markup between PHP tags is parsed into `text` nodes.
+        // The bundled injections query only covers phpdoc/heredoc, so we append
+        // a rule routing those `text` nodes to the HTML grammar — that is what
+        // colours the HTML in a template. It only pays off under whole-document
+        // highlighting (see `HighlightCache::set_document`), which keeps the
+        // cross-line mode state the per-line path cannot.
+        let php_injections = format!(
+            "{}\n((text) @injection.content (#set! injection.language \"html\"))",
+            tree_sitter_php::INJECTIONS_QUERY
+        );
         Self::load_language_config(
             &mut configs,
             "php",
-            tree_sitter_php::LANGUAGE_PHP_ONLY.into(),
+            tree_sitter_php::LANGUAGE_PHP.into(),
             tree_sitter_php::HIGHLIGHTS_QUERY,
-            tree_sitter_php::INJECTIONS_QUERY,
+            &php_injections,
             &highlight_names,
         );
 
@@ -466,6 +492,14 @@ use tree_sitter_highlight::{HighlightEvent, Highlighter};
 /// Maximum highlight cache size (lines)
 const MAX_CACHE_SIZE: usize = 1000;
 
+/// Upper bound (in bytes) for whole-document syntax highlighting.
+///
+/// Whole-document highlighting re-parses the entire buffer on every edit, which
+/// is the only way to resolve cross-line context (PHP's HTML/PHP mode switches,
+/// multi-line strings and comments). Past this size the cost per keystroke is no
+/// longer worth it, so callers fall back to the per-line path.
+pub const WHOLE_DOCUMENT_BYTE_LIMIT: usize = 1024 * 1024;
+
 /// Trait for line-based syntax highlighting.
 /// Allows custom highlighters (e.g., for log files) to integrate with Editor.
 pub trait LineHighlighter: Send + Sync {
@@ -488,6 +522,22 @@ pub trait LineHighlighter: Send + Sync {
 
     /// Check if syntax highlighting is active.
     fn has_syntax(&self) -> bool;
+
+    /// Whether a whole-document highlight pass is pending and applicable.
+    ///
+    /// When `true`, the caller should hand the full buffer text to
+    /// [`LineHighlighter::set_document`] before requesting line segments so
+    /// cross-line context resolves correctly. Default: never needed.
+    fn needs_document(&self) -> bool {
+        false
+    }
+
+    /// Provide the full buffer text for a context-aware whole-document highlight.
+    ///
+    /// Implementations that highlight per line ignore this. Callers must gate
+    /// invocation on buffer size (see [`WHOLE_DOCUMENT_BYTE_LIMIT`]) to keep the
+    /// per-edit cost bounded. Default: no-op.
+    fn set_document(&mut self, _text: &str) {}
 }
 
 /// Highlighted lines cache for incremental highlighting.
@@ -505,6 +555,13 @@ pub struct HighlightCache {
     access_counter: u64,
     /// Default foreground color for unstyled text (from theme.fg)
     default_fg: Color,
+    /// Per-line segments from the last whole-document highlight pass, indexed by
+    /// line number. Populated by [`HighlightCache::set_document`]; empty when the
+    /// document path is unused (no syntax, oversized buffer, or stale).
+    #[allow(clippy::type_complexity)]
+    doc_segments: Vec<Vec<(Cow<'static, str>, Style)>>,
+    /// Whether `doc_segments` reflects the current buffer/syntax/theme.
+    doc_valid: bool,
 }
 
 impl HighlightCache {
@@ -521,7 +578,16 @@ impl HighlightCache {
             is_light_theme,
             access_counter: 0,
             default_fg,
+            doc_segments: Vec::new(),
+            doc_valid: false,
         }
+    }
+
+    /// Drop any cached whole-document highlight. Called whenever the buffer,
+    /// syntax or theme changes so the next render rebuilds it.
+    fn invalidate_document(&mut self) {
+        self.doc_valid = false;
+        self.doc_segments.clear();
     }
 
     /// Set syntax (by language name).
@@ -549,6 +615,21 @@ impl HighlightCache {
         line_idx: usize,
         line_text: &'a str,
     ) -> &'a [(Cow<'a, str>, Style)] {
+        // Whole-document fast path: when a context-aware pass is current and its
+        // cached line still reconstructs this exact text, serve it directly. The
+        // text check guards against any line-index drift (CRLF, trailing
+        // newline, inline-diff rows) by falling back to the per-line path.
+        // The condition is evaluated to a bool first so the immutable borrow is
+        // released before the conditional re-borrow on `return` (NLL).
+        let doc_hit = self.doc_valid
+            && self
+                .doc_segments
+                .get(line_idx)
+                .is_some_and(|segments| Self::segments_match(segments, line_text));
+        if doc_hit {
+            return &self.doc_segments[line_idx];
+        }
+
         self.access_counter += 1;
 
         if let Some((_, access_time)) = self.lines.get_mut(&line_idx) {
@@ -568,6 +649,115 @@ impl HighlightCache {
             .get(&line_idx)
             .expect("line was just inserted or updated above")
             .0
+    }
+
+    /// Whether a whole-document highlight pass should be (re)built before the
+    /// next render. True only when a syntax is active and the cached pass is
+    /// stale; the size guard lives at the call site (see
+    /// [`WHOLE_DOCUMENT_BYTE_LIMIT`]).
+    pub fn needs_document(&self) -> bool {
+        self.language.is_some() && !self.doc_valid
+    }
+
+    /// Highlight the entire buffer in one context-aware pass and cache the
+    /// result per line.
+    ///
+    /// The per-line path parses each line in isolation, which cannot resolve
+    /// tokens whose meaning spans lines: PHP files switch between HTML and PHP
+    /// at `<?php`/`?>`, and strings/comments routinely run across line breaks.
+    /// A single whole-buffer parse keeps that context, so each line is coloured
+    /// according to the real parse state at that point.
+    ///
+    /// No-op when no syntax is set or the grammar/parse fails (the per-line
+    /// path then serves plain text). Callers must gate on buffer size.
+    pub fn set_document(&mut self, text: &str) {
+        self.doc_segments.clear();
+        self.doc_valid = false;
+
+        let Some(ref language) = self.language else {
+            return;
+        };
+        let Some(config) = self.syntax_highlighter.get_config(language) else {
+            return;
+        };
+
+        let default_style = Style::default().fg(self.default_fg);
+        let mut highlighter = Highlighter::new();
+        let source = text.as_bytes();
+
+        // Resolve embedded languages (e.g. the HTML in a PHP template, or CSS/JS
+        // inside HTML) to their loaded configs so injected regions are coloured
+        // too. The highlighter is `'static`, so the borrowed configs outlive the
+        // pass. Unknown injection languages simply stay unhighlighted.
+        let highlighter_ref = self.syntax_highlighter;
+        let events = match highlighter.highlight(config, source, None, |name| {
+            highlighter_ref.get_config(injection_language_alias(name))
+        }) {
+            Ok(events) => events,
+            Err(_) => return,
+        };
+
+        let mut doc: Vec<Vec<(Cow<'static, str>, Style)>> = Vec::new();
+        let mut current_line: Vec<(Cow<'static, str>, Style)> = Vec::new();
+        let mut current_style = default_style;
+
+        for event in events {
+            match event {
+                Ok(HighlightEvent::Source { start, end }) => {
+                    let Ok(chunk) = std::str::from_utf8(&source[start..end]) else {
+                        continue;
+                    };
+                    // tree-sitter emits Source for every byte in order, so the
+                    // chunks concatenate back to the whole document. Split on
+                    // '\n' to distribute each chunk across the lines it spans;
+                    // a style that straddles a newline (e.g. a block comment)
+                    // is carried onto the continuation line.
+                    let mut rest = chunk;
+                    while let Some(nl) = rest.find('\n') {
+                        let piece = &rest[..nl];
+                        if !piece.is_empty() {
+                            current_line.push((Cow::Owned(piece.to_string()), current_style));
+                        }
+                        doc.push(std::mem::take(&mut current_line));
+                        rest = &rest[nl + 1..];
+                    }
+                    if !rest.is_empty() {
+                        current_line.push((Cow::Owned(rest.to_string()), current_style));
+                    }
+                }
+                Ok(HighlightEvent::HighlightStart(highlight)) => {
+                    current_style = self
+                        .syntax_highlighter
+                        .style_for_highlight(highlight.0, self.is_light_theme);
+                }
+                Ok(HighlightEvent::HighlightEnd) => {
+                    current_style = default_style;
+                }
+                Err(_) => {
+                    self.doc_segments.clear();
+                    return;
+                }
+            }
+        }
+        // The text after the final newline (or the whole buffer if it has none).
+        doc.push(current_line);
+
+        self.doc_segments = doc;
+        self.doc_valid = true;
+    }
+
+    /// True when `segments` concatenate to exactly `line_text`. Used to confirm
+    /// a cached whole-document line still matches what the renderer is drawing
+    /// before serving it.
+    fn segments_match(segments: &[(Cow<'_, str>, Style)], line_text: &str) -> bool {
+        let mut rest = line_text;
+        for (text, _) in segments {
+            match rest.strip_prefix(text.as_ref()) {
+                Some(remainder) => rest = remainder,
+                None => return false,
+            }
+        }
+        rest.is_empty()
     }
 
     /// Compute highlighting for line.
@@ -665,6 +855,7 @@ impl HighlightCache {
     /// Invalidate line (when editing).
     pub fn invalidate_line(&mut self, line_idx: usize) {
         self.lines.remove(&line_idx);
+        self.invalidate_document();
     }
 
     /// Invalidate line range.
@@ -672,11 +863,13 @@ impl HighlightCache {
         for idx in start_line..=end_line {
             self.lines.remove(&idx);
         }
+        self.invalidate_document();
     }
 
     /// Invalidate entire cache.
     pub fn invalidate_all(&mut self) {
         self.lines.clear();
+        self.invalidate_document();
     }
 
     /// Change theme (light/dark).
@@ -723,6 +916,7 @@ impl LineHighlighter for HighlightCache {
         for line_idx in lines_to_remove {
             self.lines.remove(&line_idx);
         }
+        self.invalidate_document();
     }
 
     fn invalidate_all(&mut self) {
@@ -731,6 +925,14 @@ impl LineHighlighter for HighlightCache {
 
     fn has_syntax(&self) -> bool {
         HighlightCache::has_syntax(self)
+    }
+
+    fn needs_document(&self) -> bool {
+        HighlightCache::needs_document(self)
+    }
+
+    fn set_document(&mut self, text: &str) {
+        HighlightCache::set_document(self, text);
     }
 }
 
@@ -784,12 +986,17 @@ mod tests {
     }
 
     #[test]
-    fn php_line_is_highlighted() {
-        // Regression: PHP was disabled by an ABI-incompatible grammar, and even
-        // when loaded, LANGUAGE_PHP left non-`<?php` lines as plain HTML.
+    fn php_is_highlighted_in_document() {
+        // Regression: PHP was disabled by an ABI-incompatible grammar. PHP uses
+        // the template grammar (HTML↔PHP), so a statement only resolves with the
+        // surrounding context the whole-document pass provides.
+        let text = "<?php\n$count = 1; // comment\n";
+        let mut cache = HighlightCache::new(global_highlighter(), false, Color::White);
+        cache.set_syntax("php");
+        cache.set_document(text);
         assert!(
-            segment_count("php", "$count = 1; // comment") > 1,
-            "PHP code line should produce multiple highlighted segments"
+            styled_on_line(&mut cache, 1, "$count = 1; // comment") > 0,
+            "PHP statement should be highlighted in a document"
         );
     }
 
@@ -799,6 +1006,88 @@ mod tests {
         assert!(
             segment_count("jsx", "const x = <Foo bar={1} />;") > 1,
             "JSX line should produce multiple highlighted segments"
+        );
+    }
+
+    /// Count segments whose style differs from the default foreground — i.e.
+    /// genuinely highlighted spans on a given line of the cached document.
+    fn styled_on_line(cache: &mut HighlightCache, line_idx: usize, line_text: &str) -> usize {
+        cache
+            .get_line_segments(line_idx, line_text)
+            .iter()
+            .filter(|(_, style)| style.fg != Some(Color::White))
+            .count()
+    }
+
+    #[test]
+    fn php_document_highlights_both_html_and_php() {
+        // Regression: a mixed HTML/PHP template (the common .php file) only
+        // highlighted its PHP lines under the per-line path. The whole-document
+        // pass must colour the surrounding HTML too.
+        let lines = [
+            "<!DOCTYPE html>",
+            "<html lang=\"ru\">",
+            "<body>",
+            "    <h1>Title</h1>",
+            "    <?php",
+            "        $name = \"Ivan\";",
+            "        echo \"<p>Hi, $name</p>\";",
+            "    ?>",
+            "</body>",
+            "</html>",
+        ];
+        let text = lines.join("\n");
+
+        let mut cache = HighlightCache::new(global_highlighter(), false, Color::White);
+        cache.set_syntax("php");
+        assert!(
+            cache.needs_document(),
+            "fresh syntax should request a document pass"
+        );
+        cache.set_document(&text);
+        assert!(
+            !cache.needs_document(),
+            "document pass should satisfy the request"
+        );
+
+        // HTML tag line — highlighted only by the whole-document pass.
+        assert!(
+            styled_on_line(&mut cache, 1, lines[1]) > 0,
+            "HTML line should be highlighted in a mixed PHP document"
+        );
+        // PHP statement inside the <?php block.
+        assert!(
+            styled_on_line(&mut cache, 5, lines[5]) > 0,
+            "PHP line should be highlighted in a mixed PHP document"
+        );
+    }
+
+    #[test]
+    fn document_line_text_mismatch_falls_back() {
+        // The whole-document cache must never render stale text: if the line the
+        // renderer asks for no longer matches the cached segments, the per-line
+        // path serves the correct text instead.
+        let text = "<?php\n$a = 1;\n";
+        let mut cache = HighlightCache::new(global_highlighter(), false, Color::White);
+        cache.set_syntax("php");
+        cache.set_document(text);
+
+        // Ask for a line whose text differs from the cached document line.
+        let segs = cache.get_line_segments(1, "$totally = different;");
+        let rebuilt: String = segs.iter().map(|(t, _)| t.as_ref()).collect();
+        assert_eq!(rebuilt, "$totally = different;");
+    }
+
+    #[test]
+    fn editing_invalidates_document_cache() {
+        let mut cache = HighlightCache::new(global_highlighter(), false, Color::White);
+        cache.set_syntax("php");
+        cache.set_document("<?php\n$a = 1;\n");
+        assert!(!cache.needs_document());
+        cache.invalidate_line(1);
+        assert!(
+            cache.needs_document(),
+            "an edit must trigger a fresh document pass"
         );
     }
 }

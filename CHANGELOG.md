@@ -8,10 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.23.1] - 2026-05-31
 
 ### Fixed
-- **PHP syntax highlighting** — `.php` files are now highlighted instead of shown as plain text. The bundled PHP grammar was silently disabled by a parser-ABI mismatch, and the editor's line-by-line highlighting needed the tag-less PHP grammar to colour ordinary code lines.
+- **PHP syntax highlighting** — `.php` files are now highlighted instead of shown as plain text, including mixed HTML/PHP templates (the HTML, the `<?php … ?>` code, and the tags are all coloured). The bundled grammar had been silently disabled by a parser-ABI mismatch.
 - **JSX syntax highlighting** — `.jsx` files are now highlighted; the language was listed as supported but never actually loaded.
+- **Multi-line constructs** — block comments and strings that span several lines now stay coloured to their end across every language, instead of losing highlighting after the first line.
 
 ### Changed
+- The editor now highlights the whole buffer in one context-aware pass (files up to 1 MB) rather than line by line, which is what makes template languages and multi-line tokens colour correctly. Larger files fall back to the previous per-line highlighting.
 - A syntax grammar that fails to load is now logged instead of being dropped silently, so missing highlighting is diagnosable.
 
 ### Security
