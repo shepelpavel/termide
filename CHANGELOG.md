@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - A syntax grammar that fails to load is now logged instead of being dropped silently, so missing highlighting is diagnosable.
 
+### Security
+- Bumped `russh` to 0.61.1 (CVE-2026-46702): the SFTP client now bounds post-decompression SSH packet size, closing a remote resource-exhaustion vector a malicious server could trigger when compression is negotiated.
+- Refreshed the dependency lock off the yanked `aes` 0.9.0 onto 0.9.1 (no API change).
+
 ## [0.23.0] - 2026-05-23
 
 ### Added
