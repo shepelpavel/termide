@@ -328,7 +328,7 @@ fn open_php_file_renders_with_colors() {
         "open path should detect php from the .php extension"
     );
 
-    let theme = termide_theme::Theme::get_by_name("github-light").clone();
+    let theme = *termide_theme::Theme::get_by_name("github-light");
     editor
         .render_cache
         .highlight

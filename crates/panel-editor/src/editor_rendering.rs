@@ -452,7 +452,7 @@ mod render_highlight_tests {
         let mut editor = Editor::from_text(src, "1.php".to_string());
         editor.render_cache.highlight.set_syntax("php");
 
-        let theme = Theme::get_by_name("github-light").clone();
+        let theme = *Theme::get_by_name("github-light");
         // Mirror prepare_render's highlight sync.
         editor
             .render_cache
