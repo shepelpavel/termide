@@ -580,6 +580,37 @@ impl LspServer {
             })
     }
 
+    /// Whether the server resolves code actions lazily (`codeAction/resolve`).
+    /// Some servers return actions without an `edit` and fill it in on resolve.
+    pub fn supports_code_action_resolve(&self) -> bool {
+        matches!(
+            self.capabilities
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .as_ref()
+                .and_then(|caps| caps.code_action_provider.as_ref()),
+            Some(lsp_types::CodeActionProviderCapability::Options(
+                lsp_types::CodeActionOptions {
+                    resolve_provider: Some(true),
+                    ..
+                }
+            ))
+        )
+    }
+
+    /// Resolve a code action that was returned without an inline `edit`,
+    /// asking the server to fill it in.
+    pub fn code_action_resolve(
+        &self,
+        action: lsp_types::CodeAction,
+    ) -> mpsc::Receiver<Option<lsp_types::CodeAction>> {
+        self.send_request("codeAction/resolve", action)
+            .unwrap_or_else(|_| {
+                let (_, rx) = mpsc::channel();
+                rx
+            })
+    }
+
     /// Request hover at position
     pub fn hover(&self, uri: Uri, position: Position) -> mpsc::Receiver<Option<Hover>> {
         let params = lsp_types::HoverParams {

@@ -3,7 +3,7 @@
 //! Lists the actions returned by `textDocument/codeAction` and lets the user
 //! pick one; the chosen action's `WorkspaceEdit` is applied by the app layer.
 
-use lsp_types::{CodeActionOrCommand, CodeActionResponse, WorkspaceEdit};
+use lsp_types::{CodeAction, CodeActionOrCommand, CodeActionResponse};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -26,16 +26,14 @@ pub struct CodeActionPopup {
 }
 
 impl CodeActionPopup {
-    /// Build a popup from a code-action response, keeping only items we can act
-    /// on: a `CodeAction` carrying an inline `edit`. Returns `None` when nothing
-    /// is applicable (the caller then shows no popup).
+    /// Build a popup from a code-action response, keeping `CodeAction` items
+    /// (with an inline `edit`, or one resolved lazily on accept). Plain
+    /// `Command` items are dropped — they'd need `workspace/executeCommand`,
+    /// which isn't supported. Returns `None` when nothing applicable remains.
     pub fn from_response(response: CodeActionResponse) -> Option<Self> {
         let actions: Vec<CodeActionOrCommand> = response
             .into_iter()
-            .filter(|item| match item {
-                CodeActionOrCommand::CodeAction(action) => action.edit.is_some(),
-                CodeActionOrCommand::Command(_) => false,
-            })
+            .filter(|item| matches!(item, CodeActionOrCommand::CodeAction(_)))
             .collect();
 
         if actions.is_empty() {
@@ -57,10 +55,11 @@ impl CodeActionPopup {
         }
     }
 
-    /// The `WorkspaceEdit` of the selected action, if any.
-    pub fn selected_edit(&self) -> Option<WorkspaceEdit> {
+    /// The selected `CodeAction` (its edit is applied directly when present, or
+    /// resolved via `codeAction/resolve` on accept when deferred).
+    pub fn selected_code_action(&self) -> Option<CodeAction> {
         match self.actions.get(self.selected)? {
-            CodeActionOrCommand::CodeAction(action) => action.edit.clone(),
+            CodeActionOrCommand::CodeAction(action) => Some(action.clone()),
             CodeActionOrCommand::Command(_) => None,
         }
     }
@@ -203,27 +202,28 @@ mod tests {
     }
 
     #[test]
-    fn keeps_only_actions_with_inline_edits() {
+    fn keeps_code_actions_drops_commands() {
         let response = vec![
             action_with_edit("Import App\\Order"),
-            // A command-only action and an edit-less action are not applicable.
-            CodeActionOrCommand::Command(Command {
-                title: "Run command".into(),
-                command: "phpactor.cmd".into(),
-                arguments: None,
-            }),
+            // Edit-less actions are kept too (resolved lazily on accept).
             CodeActionOrCommand::CodeAction(CodeAction {
                 title: "needs resolve".into(),
                 edit: None,
                 ..Default::default()
             }),
+            // Plain commands are dropped (executeCommand unsupported).
+            CodeActionOrCommand::Command(Command {
+                title: "Run command".into(),
+                command: "phpactor.cmd".into(),
+                arguments: None,
+            }),
         ];
-        let popup = CodeActionPopup::from_response(response).expect("has applicable action");
-        assert!(popup.selected_edit().is_some());
+        let popup = CodeActionPopup::from_response(response).expect("has applicable actions");
+        assert!(popup.selected_code_action().is_some());
     }
 
     #[test]
-    fn no_applicable_actions_yields_no_popup() {
+    fn command_only_or_empty_yields_no_popup() {
         let response = vec![CodeActionOrCommand::Command(Command {
             title: "Run".into(),
             command: "x".into(),
@@ -234,14 +234,15 @@ mod tests {
     }
 
     #[test]
-    fn selection_wraps_and_tracks_edit() {
+    fn selection_wraps() {
         let response = vec![action_with_edit("a"), action_with_edit("b")];
         let mut popup = CodeActionPopup::from_response(response).unwrap();
-        assert!(popup.selected_edit().is_some());
+        assert_eq!(popup.selected_code_action().unwrap().title, "a");
         popup.select_next();
-        popup.select_next(); // wraps back to first
-        assert!(popup.selected_edit().is_some());
+        assert_eq!(popup.selected_code_action().unwrap().title, "b");
+        popup.select_next(); // wraps
+        assert_eq!(popup.selected_code_action().unwrap().title, "a");
         popup.select_prev(); // wraps to last
-        assert!(popup.selected_edit().is_some());
+        assert_eq!(popup.selected_code_action().unwrap().title, "b");
     }
 }

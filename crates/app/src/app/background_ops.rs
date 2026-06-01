@@ -396,6 +396,7 @@ impl App {
         let mut pending_definition_event = None;
         let mut pending_references_event: Option<Vec<termide_core::ReferenceLocation>> = None;
         let mut pending_rename_edit: Option<lsp_types::WorkspaceEdit> = None;
+        let mut pending_code_action_edit: Option<lsp_types::WorkspaceEdit> = None;
         if let Some(panel) = self.layout_manager.active_panel_mut() {
             if let Some(editor) = panel.as_editor_mut() {
                 // Check if there's a pending completion response
@@ -455,6 +456,19 @@ impl App {
                     self.state.needs_redraw = true;
                 }
 
+                // Resolve a deferred edit for an accepted action, then collect
+                // the ready edit to apply after the borrow.
+                if let Some(action) = editor.take_code_action_resolve() {
+                    if let Some(ref lsp_manager) = self.state.lsp_manager {
+                        editor.request_code_action_resolve(action, lsp_manager);
+                    }
+                }
+                editor.poll_code_action_resolve();
+                if let Some(edit) = editor.take_code_action_edit() {
+                    pending_code_action_edit = Some(edit);
+                    self.state.needs_redraw = true;
+                }
+
                 // Poll for references response (Shift+F12)
                 if let Some(locations) = editor.poll_references() {
                     let ref_locations: Vec<termide_core::ReferenceLocation> = locations
@@ -504,6 +518,19 @@ impl App {
             };
             if let Err(e) = self.process_panel_events(vec![event]) {
                 log::error!("Error processing references event: {}", e);
+            }
+        }
+
+        // Apply an accepted code action's WorkspaceEdit (outside the panel borrow)
+        if let Some(edit) = pending_code_action_edit {
+            match self.apply_workspace_edit(edit) {
+                Ok(0) => self
+                    .state
+                    .set_info("Code action made no changes".to_string()),
+                Ok(count) => self
+                    .state
+                    .set_info(format!("Code action applied to {count} file(s)")),
+                Err(e) => self.state.set_error(format!("Code action failed: {e}")),
             }
         }
 

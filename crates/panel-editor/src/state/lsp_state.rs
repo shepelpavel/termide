@@ -11,8 +11,8 @@ use std::path::Path;
 use std::sync::mpsc;
 
 use lsp_types::{
-    CodeActionResponse, CompletionResponse, Diagnostic, GotoDefinitionResponse, Hover, Location,
-    Position, Range, WorkspaceEdit,
+    CodeAction, CodeActionResponse, CompletionResponse, Diagnostic, GotoDefinitionResponse, Hover,
+    Location, Position, Range, WorkspaceEdit,
 };
 use ratatui::layout::Rect;
 use termide_lsp::{CompletionTriggerKind, LspManager};
@@ -80,6 +80,9 @@ pub struct LspState {
     /// Pending code-action request receiver
     pub code_action_rx: Option<mpsc::Receiver<Option<CodeActionResponse>>>,
 
+    /// Pending `codeAction/resolve` receiver (fills in a deferred edit)
+    pub code_action_resolve_rx: Option<mpsc::Receiver<Option<CodeAction>>>,
+
     /// Set when the user asked for code actions; consumed by the app layer
     /// which has the LspManager to issue the request.
     pub code_action_requested: bool,
@@ -87,6 +90,10 @@ pub struct LspState {
     /// WorkspaceEdit from an accepted code action, waiting for the app layer to
     /// apply it (edits may span files, so the editor can't apply it alone).
     pub pending_code_action_edit: Option<WorkspaceEdit>,
+
+    /// Accepted code action whose edit is deferred — the app layer issues a
+    /// `codeAction/resolve` for it (it holds the LspManager).
+    pub pending_code_action_resolve: Option<CodeAction>,
 
     /// Current diagnostics for this file
     pub diagnostics: Vec<Diagnostic>,
@@ -168,8 +175,10 @@ impl LspState {
             rename_rx: None,
             pending_rename_request: None,
             code_action_rx: None,
+            code_action_resolve_rx: None,
             code_action_requested: false,
             pending_code_action_edit: None,
+            pending_code_action_resolve: None,
             diagnostics: Vec::new(),
             enabled: false,
             server_loading: false,
@@ -440,6 +449,34 @@ impl LspState {
     /// Poll for a code-action response (non-blocking).
     pub fn poll_code_action(&mut self) -> Option<CodeActionResponse> {
         let result = poll_receiver(&mut self.code_action_rx);
+        if result.is_some() {
+            self.server_loading = false;
+        }
+        result
+    }
+
+    /// Resolve a code action (fetch its deferred `edit`) — only when the server
+    /// actually resolves lazily, to avoid sending an unsupported request.
+    pub fn request_code_action_resolve(
+        &mut self,
+        file_path: &Path,
+        action: CodeAction,
+        lsp_manager: &LspManager,
+    ) {
+        if !self.enabled {
+            return;
+        }
+        if let Some(ref lang) = self.language_id {
+            if lsp_manager.supports_code_action_resolve(lang, file_path) {
+                self.code_action_resolve_rx =
+                    lsp_manager.code_action_resolve(lang, file_path, action);
+            }
+        }
+    }
+
+    /// Poll for a `codeAction/resolve` response (non-blocking).
+    pub fn poll_code_action_resolve(&mut self) -> Option<CodeAction> {
+        let result = poll_receiver(&mut self.code_action_resolve_rx);
         if result.is_some() {
             self.server_loading = false;
         }

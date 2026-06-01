@@ -201,6 +201,24 @@ impl LspManager {
         Some(server.code_action(uri, range, diagnostics))
     }
 
+    /// Whether the server for this file resolves code actions lazily.
+    pub fn supports_code_action_resolve(&self, lang: &str, file_path: &Path) -> bool {
+        self.get_server(lang, file_path)
+            .map(|server| server.supports_code_action_resolve())
+            .unwrap_or(false)
+    }
+
+    /// Resolve a code action (fill in its `edit`) via `codeAction/resolve`.
+    pub fn code_action_resolve(
+        &self,
+        lang: &str,
+        file_path: &Path,
+        action: lsp_types::CodeAction,
+    ) -> Option<mpsc::Receiver<Option<lsp_types::CodeAction>>> {
+        let server = self.get_server(lang, file_path)?;
+        Some(server.code_action_resolve(action))
+    }
+
     /// Request hover info at position
     pub fn hover(
         &self,

@@ -198,7 +198,15 @@ impl App {
                 // Poll for code-action response (opens the popup)
                 editor.poll_code_action();
 
-                // Collect an accepted code-action edit to apply after the borrow.
+                // An accepted action with a deferred edit needs a resolve round-trip.
+                if let Some(action) = editor.take_code_action_resolve() {
+                    if let Some(ref lsp_manager) = self.state.lsp_manager {
+                        editor.request_code_action_resolve(action, lsp_manager);
+                    }
+                }
+                editor.poll_code_action_resolve();
+
+                // Collect a ready code-action edit to apply after the borrow.
                 pending_code_action_edit = editor.take_code_action_edit();
 
                 // Poll for references response

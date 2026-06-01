@@ -329,21 +329,55 @@ impl Editor {
         self.lsp.code_action_popup.is_some()
     }
 
-    /// Accept the selected code action: stash its `WorkspaceEdit` for the app
-    /// layer to apply (edits may span files / reload other editors) and close
-    /// the popup.
+    /// Accept the selected code action and close the popup. If it already
+    /// carries an inline `edit`, stash it for the app to apply; otherwise stash
+    /// the action so the app can resolve its deferred edit (`codeAction/resolve`).
     pub fn accept_code_action(&mut self) {
-        self.lsp.pending_code_action_edit = self
+        let action = self
             .lsp
             .code_action_popup
             .as_ref()
-            .and_then(|popup| popup.selected_edit());
+            .and_then(|popup| popup.selected_code_action());
         self.lsp.code_action_popup = None;
+
+        if let Some(action) = action {
+            if let Some(edit) = action.edit.clone() {
+                self.lsp.pending_code_action_edit = Some(edit);
+            } else {
+                self.lsp.pending_code_action_resolve = Some(action);
+            }
+        }
     }
 
-    /// Take the pending code-action `WorkspaceEdit`, if the user accepted one.
+    /// Take the pending code-action `WorkspaceEdit`, if one is ready to apply.
     pub fn take_code_action_edit(&mut self) -> Option<lsp_types::WorkspaceEdit> {
         self.lsp.pending_code_action_edit.take()
+    }
+
+    /// Take a code action whose edit must be resolved before applying.
+    pub fn take_code_action_resolve(&mut self) -> Option<lsp_types::CodeAction> {
+        self.lsp.pending_code_action_resolve.take()
+    }
+
+    /// Issue a `codeAction/resolve` for an accepted, edit-less action.
+    pub fn request_code_action_resolve(
+        &mut self,
+        action: lsp_types::CodeAction,
+        lsp_manager: &LspManager,
+    ) {
+        if let Some(path) = self.buffer.file_path().map(|p| p.to_path_buf()) {
+            self.lsp
+                .request_code_action_resolve(&path, action, lsp_manager);
+        }
+    }
+
+    /// Poll for a resolved code action; stash its edit for the app to apply.
+    pub fn poll_code_action_resolve(&mut self) {
+        if let Some(action) = self.lsp.poll_code_action_resolve() {
+            if let Some(edit) = action.edit {
+                self.lsp.pending_code_action_edit = Some(edit);
+            }
+        }
     }
 
     /// Cancel the code-action popup.
