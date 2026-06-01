@@ -426,6 +426,24 @@ impl LspServer {
                         related_information: Some(true),
                         ..Default::default()
                     }),
+                    // Advertise CodeAction literal support (so servers return
+                    // `CodeAction` objects, e.g. "Import class"), but NOT
+                    // resolveSupport — that makes servers inline the full
+                    // `edit`, which we can apply directly without a separate
+                    // `codeAction/resolve` round-trip.
+                    code_action: Some(lsp_types::CodeActionClientCapabilities {
+                        code_action_literal_support: Some(lsp_types::CodeActionLiteralSupport {
+                            code_action_kind: lsp_types::CodeActionKindLiteralSupport {
+                                value_set: vec![
+                                    "".to_string(),
+                                    "quickfix".to_string(),
+                                    "refactor".to_string(),
+                                    "source".to_string(),
+                                ],
+                            },
+                        }),
+                        ..Default::default()
+                    }),
                     ..Default::default()
                 }),
                 window: Some(lsp_types::WindowClientCapabilities {
@@ -515,6 +533,47 @@ impl LspServer {
         };
 
         self.send_request("textDocument/completion", params)
+            .unwrap_or_else(|_| {
+                let (_, rx) = mpsc::channel();
+                rx
+            })
+    }
+
+    /// Completion trigger characters the server advertised in its
+    /// `completionProvider` capability (e.g. `->`/`::` components for PHP).
+    /// Empty when the server hasn't reported capabilities yet or advertises
+    /// none — callers should fall back to a built-in set.
+    pub fn completion_trigger_characters(&self) -> Vec<String> {
+        self.capabilities
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            .and_then(|caps| caps.completion_provider.as_ref())
+            .and_then(|provider| provider.trigger_characters.clone())
+            .unwrap_or_default()
+    }
+
+    /// Request code actions for a range (with the diagnostics overlapping it
+    /// as context, so servers can offer quick-fixes like "Import class").
+    pub fn code_action(
+        &self,
+        uri: Uri,
+        range: lsp_types::Range,
+        diagnostics: Vec<lsp_types::Diagnostic>,
+    ) -> mpsc::Receiver<Option<lsp_types::CodeActionResponse>> {
+        let params = lsp_types::CodeActionParams {
+            text_document: TextDocumentIdentifier { uri },
+            range,
+            context: lsp_types::CodeActionContext {
+                diagnostics,
+                only: None,
+                trigger_kind: None,
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        };
+
+        self.send_request("textDocument/codeAction", params)
             .unwrap_or_else(|_| {
                 let (_, rx) = mpsc::channel();
                 rx

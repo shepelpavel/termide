@@ -8,6 +8,7 @@
 //! - Diagnostics
 //! - Auto-completion scheduling
 
+use termide_buffer::Cursor;
 use termide_core::PanelEvent;
 
 use crate::{completion_popup, hover_popup};
@@ -201,29 +202,65 @@ impl Editor {
 
     /// Accept selected completion item.
     ///
-    /// Inserts the completion text and closes the popup.
-    /// Deletes from trigger column to cursor, then inserts completion text.
+    /// Prefers the server-provided `textEdit` (replace its exact range with the
+    /// new text) plus any `additionalTextEdits` (e.g. an added `use` import).
+    /// Only when the item carries no `textEdit` do we fall back to the
+    /// prefix-deletion heuristic — that heuristic mis-handled cases like `$va`
+    /// (treats `$` as a word boundary → `$$var`) and produced duplicated text.
     pub fn accept_completion(&mut self) {
-        if let Some(popup) = &self.lsp.completion_popup {
-            if let Some(insert_text) = popup.selected_insert_text() {
-                // Calculate total chars to delete:
-                // From trigger_column to current cursor position
+        // Pull owned data out first so the popup borrow ends before we mutate
+        // the buffer.
+        let resolution = self
+            .lsp
+            .completion_popup
+            .as_ref()
+            .and_then(|popup| popup.selected_resolution());
+
+        if let Some(resolution) = resolution {
+            if let Some(primary) = resolution.primary {
+                // Authoritative path: apply the server's edits verbatim.
+                let mut edits = Vec::with_capacity(1 + resolution.additional.len());
+                edits.push(primary);
+                edits.extend(resolution.additional);
+                self.apply_completion_text_edits(&edits);
+            } else {
+                // Fallback: replace the typed prefix with the item text.
                 let trigger_col = self.lsp.completion_trigger_column;
                 let cursor_col = self.cursor.column;
                 let chars_to_delete = cursor_col.saturating_sub(trigger_col);
-
-                // Delete the prefix + any additional typed characters
                 for _ in 0..chars_to_delete {
                     let _ = self.backspace();
                 }
-
-                // Insert the completion text
-                for ch in insert_text.chars() {
+                for ch in resolution.fallback_text.chars() {
                     let _ = self.insert_char(ch);
+                }
+                // Side-effect edits (imports) can still accompany a textEdit-less item.
+                if !resolution.additional.is_empty() {
+                    let additional = resolution.additional.clone();
+                    self.apply_completion_text_edits(&additional);
                 }
             }
         }
         self.lsp.completion_popup = None;
+    }
+
+    /// Apply a set of LSP `TextEdit`s to the buffer.
+    ///
+    /// Edits are applied bottom-up (descending start position) so that earlier
+    /// edits don't invalidate the ranges of later ones. The cursor is placed at
+    /// the end of the lowest edit (the one nearest the caret — typically the
+    /// completion itself), adjusted for line shifts introduced by edits above
+    /// it (e.g. an inserted `use` line).
+    fn apply_completion_text_edits(&mut self, edits: &[lsp_types::TextEdit]) {
+        let Some(min_line) = edits.iter().map(|e| e.range.start.line as usize).min() else {
+            return;
+        };
+
+        if let Some(cursor) = apply_text_edits(&mut self.buffer, edits) {
+            self.cursor = cursor;
+        }
+        self.clamp_cursor();
+        self.invalidate_cache_after_edit(min_line, true);
     }
 
     /// Cancel completion popup.
@@ -241,6 +278,89 @@ impl Editor {
     /// Select previous completion item.
     pub fn prev_completion(&mut self) {
         if let Some(popup) = &mut self.lsp.completion_popup {
+            popup.select_prev();
+        }
+    }
+
+    // =========================================================================
+    // LSP Code Actions
+    // =========================================================================
+
+    /// Mark that code actions were requested (Ctrl+.). The actual request is
+    /// issued by the app layer, which holds the `LspManager`.
+    pub fn trigger_code_action(&mut self) {
+        self.lsp.code_action_requested = true;
+    }
+
+    /// Consume the code-action request flag.
+    pub fn take_code_action_request(&mut self) -> bool {
+        std::mem::take(&mut self.lsp.code_action_requested)
+    }
+
+    /// Request code actions for the current line (so a quick-fix like "Import
+    /// class" sees the line's diagnostic as context).
+    pub fn request_code_action(&mut self, lsp_manager: &LspManager) {
+        let Some(path) = self.buffer.file_path().map(|p| p.to_path_buf()) else {
+            return;
+        };
+        let line = self.cursor.line as u32;
+        let line_len = self
+            .buffer
+            .line(self.cursor.line)
+            .map(|l| l.trim_end_matches('\n').chars().count())
+            .unwrap_or(0) as u32;
+        let range = lsp_types::Range::new(
+            lsp_types::Position::new(line, 0),
+            lsp_types::Position::new(line, line_len),
+        );
+        self.lsp.request_code_action(&path, range, lsp_manager);
+    }
+
+    /// Poll for a code-action response and open the popup if any actions apply.
+    pub fn poll_code_action(&mut self) {
+        if let Some(response) = self.lsp.poll_code_action() {
+            self.lsp.code_action_popup =
+                crate::code_action_popup::CodeActionPopup::from_response(response);
+        }
+    }
+
+    /// Whether the code-action popup is open.
+    pub fn has_code_action_popup(&self) -> bool {
+        self.lsp.code_action_popup.is_some()
+    }
+
+    /// Accept the selected code action: stash its `WorkspaceEdit` for the app
+    /// layer to apply (edits may span files / reload other editors) and close
+    /// the popup.
+    pub fn accept_code_action(&mut self) {
+        self.lsp.pending_code_action_edit = self
+            .lsp
+            .code_action_popup
+            .as_ref()
+            .and_then(|popup| popup.selected_edit());
+        self.lsp.code_action_popup = None;
+    }
+
+    /// Take the pending code-action `WorkspaceEdit`, if the user accepted one.
+    pub fn take_code_action_edit(&mut self) -> Option<lsp_types::WorkspaceEdit> {
+        self.lsp.pending_code_action_edit.take()
+    }
+
+    /// Cancel the code-action popup.
+    pub fn cancel_code_action(&mut self) {
+        self.lsp.code_action_popup = None;
+    }
+
+    /// Select the next code action.
+    pub fn next_code_action(&mut self) {
+        if let Some(popup) = &mut self.lsp.code_action_popup {
+            popup.select_next();
+        }
+    }
+
+    /// Select the previous code action.
+    pub fn prev_code_action(&mut self) {
+        if let Some(popup) = &mut self.lsp.code_action_popup {
             popup.select_prev();
         }
     }
@@ -569,9 +689,17 @@ impl Editor {
             return;
         }
 
-        // Trigger characters - trigger immediately with TriggerCharacter kind
-        const TRIGGER_CHARS: &[char] = &['.', ':', '<', '('];
-        if TRIGGER_CHARS.contains(&ch) {
+        // Prefer the trigger characters the server advertised (e.g. phpactor
+        // reports `>` so `->` opens the popup); fall back to a built-in set
+        // when the server hasn't reported capabilities yet or advertises none.
+        // Read against the same `language_id` used to issue the request so the
+        // server lookup matches.
+        let server_triggers = match (self.buffer.file_path(), self.lsp.language_id.as_deref()) {
+            (Some(path), Some(lang)) => lsp_manager.completion_trigger_characters(lang, path),
+            _ => Vec::new(),
+        };
+
+        if char_triggers_completion(ch, &server_triggers) {
             self.trigger_completion_with_kind(
                 lsp_manager,
                 CompletionTriggerKind::TRIGGER_CHARACTER,
@@ -651,5 +779,166 @@ impl Editor {
     /// Used by key_handler to schedule auto-completion after character insertion.
     pub fn take_last_inserted_char(&mut self) -> Option<char> {
         self.lsp.last_inserted_char.take()
+    }
+}
+
+/// Apply LSP `TextEdit`s to `buffer`, returning where the caret should land.
+///
+/// Edits are applied bottom-up (descending start position) so an earlier edit
+/// never shifts the range of a later one. The returned cursor follows the
+/// lowest edit (nearest the caret — usually the completion text itself),
+/// shifted down by the net lines that edits *above* it inserted (e.g. a `use`
+/// import added at the top of the file).
+fn apply_text_edits(
+    buffer: &mut termide_buffer::TextBuffer,
+    edits: &[lsp_types::TextEdit],
+) -> Option<Cursor> {
+    if edits.is_empty() {
+        return None;
+    }
+
+    let primary = edits
+        .iter()
+        .max_by_key(|e| (e.range.start.line, e.range.start.character))
+        .cloned();
+
+    let mut ordered: Vec<&lsp_types::TextEdit> = edits.iter().collect();
+    ordered.sort_by(|a, b| {
+        (b.range.start.line, b.range.start.character)
+            .cmp(&(a.range.start.line, a.range.start.character))
+    });
+
+    for edit in ordered {
+        let start = Cursor::at(
+            edit.range.start.line as usize,
+            edit.range.start.character as usize,
+        );
+        let end = Cursor::at(
+            edit.range.end.line as usize,
+            edit.range.end.character as usize,
+        );
+        let _ = buffer.delete_range(&start, &end);
+        if !edit.new_text.is_empty() {
+            let _ = buffer.insert(&start, &edit.new_text);
+        }
+    }
+
+    primary.map(|primary| {
+        let lines_added_above: i64 = edits
+            .iter()
+            .filter(|e| e.range.start.line < primary.range.start.line)
+            .map(|e| {
+                let inserted = e.new_text.matches('\n').count() as i64;
+                let removed = (e.range.end.line - e.range.start.line) as i64;
+                inserted - removed
+            })
+            .sum();
+        let new_lines = primary.new_text.matches('\n').count();
+        let line = (primary.range.start.line as i64 + lines_added_above + new_lines as i64).max(0)
+            as usize;
+        let column = if new_lines == 0 {
+            primary.range.start.character as usize + primary.new_text.chars().count()
+        } else {
+            primary
+                .new_text
+                .rsplit('\n')
+                .next()
+                .map(|s| s.chars().count())
+                .unwrap_or(0)
+        };
+        Cursor::at(line, column)
+    })
+}
+
+/// Built-in completion trigger characters, used only when the language server
+/// advertises none (or hasn't reported its capabilities yet).
+const FALLBACK_TRIGGERS: &[char] = &['.', ':', '<', '('];
+
+/// Whether typing `ch` should immediately open completion.
+///
+/// The server's advertised `triggerCharacters` take precedence (so e.g.
+/// phpactor's `>` opens the popup right after `->`); the built-in
+/// [`FALLBACK_TRIGGERS`] are used only when the server advertises none.
+fn char_triggers_completion(ch: char, server_triggers: &[String]) -> bool {
+    if server_triggers.is_empty() {
+        FALLBACK_TRIGGERS.contains(&ch)
+    } else {
+        server_triggers
+            .iter()
+            .any(|trigger| trigger.starts_with(ch))
+    }
+}
+
+#[cfg(test)]
+mod text_edit_tests {
+    use super::apply_text_edits;
+    use lsp_types::{Position, Range, TextEdit};
+    use termide_buffer::TextBuffer;
+
+    fn edit(sl: u32, sc: u32, el: u32, ec: u32, text: &str) -> TextEdit {
+        TextEdit {
+            range: Range::new(Position::new(sl, sc), Position::new(el, ec)),
+            new_text: text.to_string(),
+        }
+    }
+
+    #[test]
+    fn text_edit_replaces_prefix_without_duplication() {
+        // Regression for #22: typing `$va`, selecting `$var` must yield `$var`,
+        // not `$$var`. The server's textEdit replaces the whole `$va`.
+        let mut buffer = TextBuffer::from_text("$va");
+        let cursor = apply_text_edits(&mut buffer, &[edit(0, 0, 0, 3, "$var")]);
+        assert_eq!(buffer.to_string(), "$var");
+        let cursor = cursor.expect("primary edit yields a cursor");
+        assert_eq!((cursor.line, cursor.column), (0, 4));
+    }
+
+    #[test]
+    fn class_prefix_is_replaced_not_appended() {
+        // `Ord` -> `Order` must not become `OrdOrder`.
+        let mut buffer = TextBuffer::from_text("Ord");
+        apply_text_edits(&mut buffer, &[edit(0, 0, 0, 3, "Order")]);
+        assert_eq!(buffer.to_string(), "Order");
+    }
+
+    #[test]
+    fn additional_edits_apply_and_cursor_shifts_below_inserted_lines() {
+        // Completion at the bottom plus a `use` import inserted at the top:
+        // both land, and the caret follows the completion, shifted down by the
+        // line the import added.
+        let mut buffer = TextBuffer::from_text("<?php\n\nOrd");
+        let edits = vec![
+            edit(2, 0, 2, 3, "Order"),             // the completion (line 2)
+            edit(1, 0, 1, 0, "use App\\Order;\n"), // import added above (line 1)
+        ];
+        let cursor = apply_text_edits(&mut buffer, &edits).expect("cursor");
+        assert_eq!(buffer.to_string(), "<?php\nuse App\\Order;\n\nOrder");
+        // Completion was on line 2; the import added one line above it -> line 3.
+        assert_eq!((cursor.line, cursor.column), (3, 5));
+    }
+}
+
+#[cfg(test)]
+mod completion_trigger_tests {
+    use super::char_triggers_completion;
+
+    #[test]
+    fn server_trigger_characters_take_precedence() {
+        // phpactor-style triggers: `->` (the `>`) and `::` (the `:`).
+        let triggers = vec![">".to_string(), ":".to_string()];
+        assert!(char_triggers_completion('>', &triggers));
+        assert!(char_triggers_completion(':', &triggers));
+        // `.` is a fallback trigger but NOT advertised here, so it must not fire.
+        assert!(!char_triggers_completion('.', &triggers));
+        assert!(!char_triggers_completion('a', &triggers));
+    }
+
+    #[test]
+    fn falls_back_when_server_advertises_none() {
+        let none: Vec<String> = Vec::new();
+        assert!(char_triggers_completion('.', &none));
+        assert!(char_triggers_completion(':', &none));
+        assert!(!char_triggers_completion('>', &none));
+        assert!(!char_triggers_completion('a', &none));
     }
 }

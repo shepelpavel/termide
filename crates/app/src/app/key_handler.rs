@@ -92,6 +92,9 @@ impl App {
         // `pending_status` carries a (message, is_error) pair to be applied to AppState
         // after the mutable panel borrow is released below.
         let mut pending_status: Option<(String, bool)> = None;
+        // WorkspaceEdit from an accepted code action, applied after the panel
+        // borrow is released (it may touch other files / panels).
+        let mut pending_code_action_edit: Option<lsp_types::WorkspaceEdit> = None;
         let chord = termide_core::KeyChord::new(key, &self.normalizer);
         let (events, modal_request, config_update, escape_close) = if let Some(panel) =
             self.layout_manager.active_panel_mut()
@@ -185,6 +188,19 @@ impl App {
                     }
                 }
 
+                // Handle code-action request (Alt+Enter)
+                if editor.take_code_action_request() {
+                    if let Some(ref lsp_manager) = self.state.lsp_manager {
+                        editor.request_code_action(lsp_manager);
+                    }
+                }
+
+                // Poll for code-action response (opens the popup)
+                editor.poll_code_action();
+
+                // Collect an accepted code-action edit to apply after the borrow.
+                pending_code_action_edit = editor.take_code_action_edit();
+
                 // Poll for references response
                 if let Some(locations) = editor.poll_references() {
                     let ref_locations: Vec<termide_core::ReferenceLocation> = locations
@@ -242,6 +258,20 @@ impl App {
         // Skip if panel already handled Escape by emitting ClosePanel
         if escape_close && !panel_handled_escape {
             self.handle_escape_close_request()?;
+        }
+
+        // Apply an accepted code action's WorkspaceEdit (outside the panel
+        // borrow, since it can write other files and reload their editors).
+        if let Some(edit) = pending_code_action_edit {
+            match self.apply_workspace_edit(edit) {
+                Ok(0) => self
+                    .state
+                    .set_info("Code action made no changes".to_string()),
+                Ok(count) => self
+                    .state
+                    .set_info(format!("Code action applied to {count} file(s)")),
+                Err(e) => self.state.set_error(format!("Code action failed: {e}")),
+            }
         }
 
         // Apply pending status message (e.g., from rename guard rails)

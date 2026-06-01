@@ -141,13 +141,18 @@ impl Panel for Editor {
 
         // Close hover popups on any key press
         // For Escape, just close the popup and don't process further if one was open
-        let had_popup = self.lsp.hover_popup.is_some() || self.lsp.completion_popup.is_some();
+        let had_popup = self.lsp.hover_popup.is_some()
+            || self.lsp.completion_popup.is_some()
+            || self.lsp.code_action_popup.is_some();
         self.close_hover_popup();
 
         if had_popup && key.code == crossterm::event::KeyCode::Esc {
-            // Close completion popup if open
+            // Close completion / code-action popups if open
             if self.lsp.completion_popup.is_some() {
                 self.cancel_completion();
+            }
+            if self.lsp.code_action_popup.is_some() {
+                self.cancel_code_action();
             }
             // Just close the popup, don't trigger other Escape actions
             return vec![];
@@ -197,6 +202,7 @@ impl Panel for Editor {
             self.search.state.is_some(),
             self.selection.is_some(),
             self.lsp.completion_popup.is_some(),
+            self.lsp.code_action_popup.is_some(),
             &self.hotkeys,
         );
 

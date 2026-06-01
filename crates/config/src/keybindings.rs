@@ -319,6 +319,7 @@ pub struct EditorKeybindings {
     pub goto_definition: Option<KeyBinding>,
     pub find_references: Option<KeyBinding>,
     pub rename_symbol: Option<KeyBinding>,
+    pub code_action: Option<KeyBinding>,
 }
 
 /// File manager keybindings (file_manager.keybindings section).
@@ -652,6 +653,10 @@ impl EditorKeybindings {
         set_default!(goto_definition, "F12");
         set_default!(rename_symbol, "F4");
         set_default_multiple!(find_references, "Shift+F12", "F24");
+        // `Ctrl+.` (VS Code's quick-fix) is taken by `toggle_comment` here, so
+        // default to `Alt+Enter` — the classic "show intentions" key, which
+        // terminals deliver reliably.
+        set_default!(code_action, "Alt+Enter");
     }
 }
 

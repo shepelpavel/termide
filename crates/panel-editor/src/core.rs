@@ -843,7 +843,7 @@ impl Editor {
     ///
     /// If the edit is multiline, invalidates all lines from start_line to end of buffer.
     /// Otherwise, invalidates only the single changed line.
-    fn invalidate_cache_after_edit(&mut self, start_line: usize, is_multiline: bool) {
+    pub(crate) fn invalidate_cache_after_edit(&mut self, start_line: usize, is_multiline: bool) {
         if is_multiline {
             self.render_cache
                 .highlight
@@ -1169,6 +1169,7 @@ pub(crate) fn build_editor_hotkey_table(config: &Config) -> HotkeyTable {
     t.insert("goto_definition", &kb.goto_definition);
     t.insert("find_references", &kb.find_references);
     t.insert("rename_symbol", &kb.rename_symbol);
+    t.insert("code_action", &kb.code_action);
 
     t
 }

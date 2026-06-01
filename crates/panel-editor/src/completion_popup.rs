@@ -2,7 +2,9 @@
 //!
 //! Displays a dropdown list of completion items at the cursor position.
 
-use lsp_types::{CompletionItem, CompletionItemKind, CompletionResponse};
+use lsp_types::{
+    CompletionItem, CompletionItemKind, CompletionResponse, CompletionTextEdit, TextEdit,
+};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -20,6 +22,17 @@ const MAX_POPUP_WIDTH: u16 = 50;
 
 /// Minimum width of the popup.
 const MIN_POPUP_WIDTH: u16 = 20;
+
+/// How an accepted completion item should be applied to the buffer.
+pub struct CompletionResolution {
+    /// Server-provided primary edit (replace `range` with `new_text`). When
+    /// present it is authoritative; the prefix-deletion fallback is skipped.
+    pub primary: Option<TextEdit>,
+    /// Extra edits in the same file (e.g. an added `use`/import statement).
+    pub additional: Vec<TextEdit>,
+    /// Text to insert when the item carries no `textEdit` (heuristic fallback).
+    pub fallback_text: String,
+}
 
 /// Completion popup state and rendering.
 pub struct CompletionPopup {
@@ -183,13 +196,30 @@ impl CompletionPopup {
             .and_then(|&idx| self.items.get(idx))
     }
 
-    /// Get the text to insert for the selected item.
-    pub fn selected_insert_text(&self) -> Option<String> {
-        self.selected_item().map(|item| {
-            // Use insert_text if available, otherwise label
-            item.insert_text
+    /// Resolve how the selected item should be applied.
+    ///
+    /// When the server provided a `textEdit`, that range+text is authoritative
+    /// and must be applied verbatim — using it avoids the prefix-deletion
+    /// heuristic that duplicated the typed text (`$va`→`$$var`, `Ord`→`OrdOrder`).
+    /// `additional_text_edits` carry side effects like an added `use` import.
+    pub fn selected_resolution(&self) -> Option<CompletionResolution> {
+        let item = self.selected_item()?;
+        let primary = item.text_edit.as_ref().map(|edit| match edit {
+            CompletionTextEdit::Edit(edit) => edit.clone(),
+            // Prefer the `replace` range so the whole identifier under the
+            // cursor is replaced, not just inserted at the caret.
+            CompletionTextEdit::InsertAndReplace(edit) => TextEdit {
+                range: edit.replace,
+                new_text: edit.new_text.clone(),
+            },
+        });
+        Some(CompletionResolution {
+            primary,
+            additional: item.additional_text_edits.clone().unwrap_or_default(),
+            fallback_text: item
+                .insert_text
                 .clone()
-                .unwrap_or_else(|| item.label.clone())
+                .unwrap_or_else(|| item.label.clone()),
         })
     }
 

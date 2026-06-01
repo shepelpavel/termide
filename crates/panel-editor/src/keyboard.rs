@@ -135,6 +135,18 @@ pub enum EditorCommand {
     /// Rename symbol at cursor (F2)
     RenameSymbol,
 
+    // LSP Code Actions
+    /// Request code actions at cursor (Alt+Enter)
+    TriggerCodeAction,
+    /// Accept the selected code action (Enter when popup open)
+    AcceptCodeAction,
+    /// Close the code-action popup (Esc when popup open)
+    CancelCodeAction,
+    /// Select the next code action (Down when popup open)
+    NextCodeAction,
+    /// Select the previous code action (Up when popup open)
+    PrevCodeAction,
+
     // No operation (for unhandled keys)
     None,
 }
@@ -159,8 +171,20 @@ impl EditorCommand {
         has_search: bool,
         has_selection: bool,
         has_completion: bool,
+        has_code_action: bool,
         hotkeys: &HotkeyTable,
     ) -> Self {
+        // When the code-action popup is open, intercept navigation keys.
+        if has_code_action {
+            match (key.code, key.modifiers) {
+                (KeyCode::Up, KeyModifiers::NONE) => return Self::PrevCodeAction,
+                (KeyCode::Down, KeyModifiers::NONE) => return Self::NextCodeAction,
+                (KeyCode::Enter, KeyModifiers::NONE) => return Self::AcceptCodeAction,
+                (KeyCode::Esc, KeyModifiers::NONE) => return Self::CancelCodeAction,
+                _ => {}
+            }
+        }
+
         // When completion popup is open, intercept navigation keys
         if has_completion {
             match (key.code, key.modifiers) {
@@ -272,6 +296,9 @@ impl EditorCommand {
         }
         if hotkeys.matches("find_references", &key) {
             return Self::FindReferences;
+        }
+        if hotkeys.matches("code_action", &key) {
+            return Self::TriggerCodeAction;
         }
         if hotkeys.matches("rename_symbol", &key) {
             return Self::RenameSymbol;
@@ -713,6 +740,26 @@ impl EditorCommand {
             }
             Self::RenameSymbol => {
                 editor.request_rename_at_cursor();
+                Ok(())
+            }
+            Self::TriggerCodeAction => {
+                editor.trigger_code_action();
+                Ok(())
+            }
+            Self::AcceptCodeAction => {
+                editor.accept_code_action();
+                Ok(())
+            }
+            Self::CancelCodeAction => {
+                editor.cancel_code_action();
+                Ok(())
+            }
+            Self::NextCodeAction => {
+                editor.next_code_action();
+                Ok(())
+            }
+            Self::PrevCodeAction => {
+                editor.prev_code_action();
                 Ok(())
             }
 

@@ -375,6 +375,31 @@ impl Editor {
             self.lsp.popup_rect = None;
         }
 
+        // Render code-action popup if active (anchored at the cursor like
+        // completion).
+        if let Some(ref popup) = self.lsp.code_action_popup {
+            use unicode_width::UnicodeWidthChar;
+            if self.cursor.line >= self.viewport.top_line
+                && self.cursor.line < self.viewport.top_line + content_height
+            {
+                let line_number_width = rendering::LINE_NUMBER_WIDTH as u16;
+                let content_x = area.x + 1 + line_number_width;
+                let cursor_screen_col: usize = self
+                    .buffer
+                    .line(self.cursor.line)
+                    .map(|line| {
+                        line.chars()
+                            .take(self.cursor.column)
+                            .map(|c| c.width().unwrap_or(0))
+                            .sum()
+                    })
+                    .unwrap_or(0);
+                let cursor_x = content_x + cursor_screen_col as u16;
+                let cursor_y = area.y + 1 + (self.cursor.line - self.viewport.top_line) as u16;
+                popup.render(buf, area, cursor_x, cursor_y, theme);
+            }
+        }
+
         // Render hover popup if active
         if let Some(ref popup) = self.lsp.hover_popup {
             // Use stored mouse position for popup placement

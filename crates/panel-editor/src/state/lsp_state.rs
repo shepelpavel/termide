@@ -11,19 +11,30 @@ use std::path::Path;
 use std::sync::mpsc;
 
 use lsp_types::{
-    CompletionResponse, Diagnostic, GotoDefinitionResponse, Hover, Location, Position,
-    WorkspaceEdit,
+    CodeActionResponse, CompletionResponse, Diagnostic, GotoDefinitionResponse, Hover, Location,
+    Position, Range, WorkspaceEdit,
 };
 use ratatui::layout::Rect;
 use termide_lsp::{CompletionTriggerKind, LspManager};
 
 use termide_ui::ColorPreview;
 
+use crate::code_action_popup::CodeActionPopup;
 use crate::completion_popup::CompletionPopup;
 use crate::hover_popup::HoverPopup;
 
 /// Poll an optional receiver, returning the value on success.
 /// Clears the receiver on completion, `None` response, or disconnect.
+/// Whether two LSP ranges overlap (touching endpoints count as overlapping),
+/// comparing by (line, character) order.
+fn ranges_overlap(a: Range, b: Range) -> bool {
+    let a_start = (a.start.line, a.start.character);
+    let a_end = (a.end.line, a.end.character);
+    let b_start = (b.start.line, b.start.character);
+    let b_end = (b.end.line, b.end.character);
+    a_start <= b_end && b_start <= a_end
+}
+
 fn poll_receiver<T>(rx: &mut Option<mpsc::Receiver<Option<T>>>) -> Option<T> {
     let result = match rx.as_ref()?.try_recv() {
         Ok(Some(value)) => {
@@ -66,6 +77,17 @@ pub struct LspState {
     /// Pending rename request position - set by F2 handler, consumed by key_handler
     pub pending_rename_request: Option<(usize, usize)>,
 
+    /// Pending code-action request receiver
+    pub code_action_rx: Option<mpsc::Receiver<Option<CodeActionResponse>>>,
+
+    /// Set when the user asked for code actions; consumed by the app layer
+    /// which has the LspManager to issue the request.
+    pub code_action_requested: bool,
+
+    /// WorkspaceEdit from an accepted code action, waiting for the app layer to
+    /// apply it (edits may span files, so the editor can't apply it alone).
+    pub pending_code_action_edit: Option<WorkspaceEdit>,
+
     /// Current diagnostics for this file
     pub diagnostics: Vec<Diagnostic>,
 
@@ -80,6 +102,9 @@ pub struct LspState {
 
     /// Active completion popup (if any)
     pub completion_popup: Option<CompletionPopup>,
+
+    /// Active code-action popup (if any)
+    pub code_action_popup: Option<CodeActionPopup>,
 
     /// Flag indicating completion was requested (Ctrl+Space)
     pub completion_requested: bool,
@@ -142,11 +167,15 @@ impl LspState {
             pending_references_request: None,
             rename_rx: None,
             pending_rename_request: None,
+            code_action_rx: None,
+            code_action_requested: false,
+            pending_code_action_edit: None,
             diagnostics: Vec::new(),
             enabled: false,
             server_loading: false,
             pending_change: false,
             completion_popup: None,
+            code_action_popup: None,
             completion_requested: false,
             completion_trigger_column: 0,
             popup_rect: None,
@@ -379,6 +408,38 @@ impl LspState {
     /// Poll for rename response (non-blocking).
     pub fn poll_rename(&mut self) -> Option<WorkspaceEdit> {
         let result = poll_receiver(&mut self.rename_rx);
+        if result.is_some() {
+            self.server_loading = false;
+        }
+        result
+    }
+
+    /// Request code actions for `range`, passing the diagnostics overlapping it
+    /// as context (so quick-fixes like "Import class" are offered).
+    pub fn request_code_action(
+        &mut self,
+        file_path: &Path,
+        range: Range,
+        lsp_manager: &LspManager,
+    ) {
+        if !self.enabled {
+            return;
+        }
+        if let Some(ref lang) = self.language_id {
+            let context_diagnostics: Vec<Diagnostic> = self
+                .diagnostics
+                .iter()
+                .filter(|d| ranges_overlap(d.range, range))
+                .cloned()
+                .collect();
+            self.code_action_rx =
+                lsp_manager.code_action(lang, file_path, range, context_diagnostics);
+        }
+    }
+
+    /// Poll for a code-action response (non-blocking).
+    pub fn poll_code_action(&mut self) -> Option<CodeActionResponse> {
+        let result = poll_receiver(&mut self.code_action_rx);
         if result.is_some() {
             self.server_loading = false;
         }

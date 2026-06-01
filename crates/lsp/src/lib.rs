@@ -180,6 +180,27 @@ impl LspManager {
         Some(server.completion(uri, position, trigger_kind, trigger_character))
     }
 
+    /// Completion trigger characters advertised by the server handling this
+    /// file, or an empty list if no server is running for it yet.
+    pub fn completion_trigger_characters(&self, lang: &str, file_path: &Path) -> Vec<String> {
+        self.get_server(lang, file_path)
+            .map(|server| server.completion_trigger_characters())
+            .unwrap_or_default()
+    }
+
+    /// Request code actions for a range in this file.
+    pub fn code_action(
+        &self,
+        lang: &str,
+        file_path: &Path,
+        range: lsp_types::Range,
+        diagnostics: Vec<lsp_types::Diagnostic>,
+    ) -> Option<mpsc::Receiver<Option<lsp_types::CodeActionResponse>>> {
+        let server = self.get_server(lang, file_path)?;
+        let uri = path_to_uri(file_path)?;
+        Some(server.code_action(uri, range, diagnostics))
+    }
+
     /// Request hover info at position
     pub fn hover(
         &self,

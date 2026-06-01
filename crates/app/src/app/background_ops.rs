@@ -447,6 +447,14 @@ impl App {
                     self.state.needs_redraw = true;
                 }
 
+                // Poll for code-action response (opens the popup when actions
+                // arrive after the keypress that requested them).
+                let had_code_action_popup = editor.has_code_action_popup();
+                editor.poll_code_action();
+                if had_code_action_popup != editor.has_code_action_popup() {
+                    self.state.needs_redraw = true;
+                }
+
                 // Poll for references response (Shift+F12)
                 if let Some(locations) = editor.poll_references() {
                     let ref_locations: Vec<termide_core::ReferenceLocation> = locations

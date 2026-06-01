@@ -6,6 +6,7 @@
 mod auto_pairs;
 mod click_tracker;
 pub mod clipboard;
+mod code_action_popup;
 mod completion_popup;
 pub mod config;
 pub mod constants;
