@@ -5,6 +5,17 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.2] - 2026-06-01
+
+### Added
+- **LSP code actions** — press `Alt+Enter` on a line to request quick-fixes (e.g. "Import class" for PHP) and pick one from a popup; the chosen edit is applied across files with open editors reloaded. (`Ctrl+.` stays bound to toggle-comment, so the default is `Alt+Enter`.)
+
+### Changed
+- Auto-completion now triggers on the characters the language server actually advertises (so PHP's `->` opens the popup), falling back to the built-in set only when the server reports none.
+
+### Fixed
+- **Completion no longer duplicates the typed prefix.** Accepting a suggestion now applies the server's edit verbatim instead of a word-boundary heuristic, so `$va`→`$var` (not `$$var`) and `Ord`→`Order` (not `OrdOrder`). Imports that accompany a completion (`use` statements) are applied too.
+
 ## [0.23.1] - 2026-05-31
 
 ### Added
@@ -77,6 +88,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `deny.toml` + `cargo-deny check` step covers advisories, licenses, bans and sources.
 - Pre-commit hook documented in `CONTRIBUTING.md`.
 
+[0.23.2]: https://github.com/termide/termide/releases/tag/0.23.2
 [0.23.1]: https://github.com/termide/termide/releases/tag/0.23.1
 [0.23.0]: https://github.com/termide/termide/releases/tag/0.23.0
 
