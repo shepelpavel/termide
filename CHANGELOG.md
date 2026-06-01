@@ -5,6 +5,11 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.3] - 2026-06-01
+
+### Fixed
+- **Code actions from servers that fill in the edit lazily now work.** Quick-fixes that a language server returns without an inline edit (resolving it only when chosen) previously never appeared in the `Alt+Enter` popup; they are now listed and resolved on accept, so more servers' actions (e.g. phpactor "Import class") apply.
+
 ## [0.23.2] - 2026-06-01
 
 ### Added
@@ -88,6 +93,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `deny.toml` + `cargo-deny check` step covers advisories, licenses, bans and sources.
 - Pre-commit hook documented in `CONTRIBUTING.md`.
 
+[0.23.3]: https://github.com/termide/termide/releases/tag/0.23.3
 [0.23.2]: https://github.com/termide/termide/releases/tag/0.23.2
 [0.23.1]: https://github.com/termide/termide/releases/tag/0.23.1
 [0.23.0]: https://github.com/termide/termide/releases/tag/0.23.0
