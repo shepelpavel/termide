@@ -43,6 +43,12 @@ struct Cli {
     /// non-zero if any check failed.
     #[arg(long)]
     diagnostics: bool,
+
+    /// File(s) to open. Given a path, termide starts in a clean editor view
+    /// (no session is restored or saved), so it works as $EDITOR for tools
+    /// like git, crontab and visudo: `EDITOR=termide git commit`.
+    #[arg(value_name = "FILE")]
+    files: Vec<std::path::PathBuf>,
 }
 
 /// Print a diagnostics report to stdout and return whether everything
@@ -297,13 +303,26 @@ fn main() -> Result<()> {
     // Log git availability to journal (not to stderr)
     app.log_git_status(git_available);
 
-    // Try to load session, fallback to default layout on error
-    if let Err(e) = app.load_session() {
-        // Session file doesn't exist or is corrupted - use default layout.
-        // Surface the reason in the Journal so a corrupted session is
-        // diagnosable instead of silently snapping to defaults.
-        log::warn!("Could not load session ({e}); starting with the default layout.");
-        app.setup_default_layout();
+    // With explicit file arguments, behave like a plain $EDITOR invocation:
+    // open just those files in a clean view and don't touch the project's
+    // session (restoring or overwriting it when editing e.g. a commit message
+    // would be surprising and could clobber the real session).
+    if cli.files.is_empty() {
+        // Try to load session, fallback to default layout on error
+        if let Err(e) = app.load_session() {
+            // Session file doesn't exist or is corrupted - use default layout.
+            // Surface the reason in the Journal so a corrupted session is
+            // diagnosable instead of silently snapping to defaults.
+            log::warn!("Could not load session ({e}); starting with the default layout.");
+            app.setup_default_layout();
+        }
+    } else {
+        app.set_session_persistence(false);
+        for path in cli.files {
+            if let Err(e) = app.open_path_in_editor(path.clone()) {
+                log::error!("Failed to open '{}' from CLI: {e}", path.display());
+            }
+        }
     }
 
     // Run application
@@ -323,4 +342,39 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod cli_tests {
+    use super::Cli;
+    use clap::Parser;
+    use std::path::PathBuf;
+
+    // Regression for #24: a bare file path must parse as a positional argument
+    // (clap previously rejected it as "unexpected argument"), so termide can be
+    // used as $EDITOR — e.g. `EDITOR=termide crontab -e`.
+    #[test]
+    fn accepts_a_file_path_argument() {
+        let cli = Cli::try_parse_from(["termide", "/tmp/crontab.kIwZUa/crontab"]).unwrap();
+        assert_eq!(
+            cli.files,
+            vec![PathBuf::from("/tmp/crontab.kIwZUa/crontab")]
+        );
+    }
+
+    #[test]
+    fn no_arguments_means_no_files() {
+        let cli = Cli::try_parse_from(["termide"]).unwrap();
+        assert!(cli.files.is_empty());
+    }
+
+    #[test]
+    fn flags_and_multiple_files_coexist() {
+        let cli = Cli::try_parse_from(["termide", "--no-lsp", "a.rs", "b.rs"]).unwrap();
+        assert!(cli.no_lsp);
+        assert_eq!(
+            cli.files,
+            vec![PathBuf::from("a.rs"), PathBuf::from("b.rs")]
+        );
+    }
 }

@@ -71,6 +71,10 @@ pub struct App {
     /// downstream see canonical keys while text-input and PTY paths
     /// keep the original raw event.
     normalizer: termide_keyboard::KeyNormalizer,
+    /// Whether the session is persisted. Disabled when termide is launched
+    /// with explicit file arguments ($EDITOR mode), so editing a commit
+    /// message or crontab never restores or overwrites the project session.
+    persist_session: bool,
 }
 
 impl App {
@@ -143,6 +147,7 @@ impl App {
             title_click_tracker: ClickTracker::new(),
             command_palette_actions: None,
             normalizer: termide_keyboard::KeyNormalizer::default(),
+            persist_session: true,
         }
     }
 
@@ -235,7 +240,30 @@ impl App {
             title_click_tracker: ClickTracker::new(),
             command_palette_actions: None,
             normalizer: termide_keyboard::KeyNormalizer::new(caps),
+            persist_session: true,
         }
+    }
+
+    /// Enable or disable session persistence. Disabled for `$EDITOR`-style
+    /// launches (explicit file arguments) so the project session is neither
+    /// restored nor overwritten.
+    pub fn set_session_persistence(&mut self, enabled: bool) {
+        self.persist_session = enabled;
+    }
+
+    /// Open a file path in a new editor panel at startup (used for CLI file
+    /// arguments). Creates the file (and parent directories) if it does not
+    /// exist yet, so termide works as `$EDITOR` for new files too.
+    pub fn open_path_in_editor(&mut self, path: std::path::PathBuf) -> Result<()> {
+        if !path.exists() {
+            if let Some(parent) = path.parent() {
+                if !parent.as_os_str().is_empty() {
+                    std::fs::create_dir_all(parent)?;
+                }
+            }
+            std::fs::File::create(&path)?;
+        }
+        self.open_editor_for_file(path)
     }
 
     /// Log same-section conflicts and bindings that need Kitty

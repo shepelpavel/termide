@@ -83,6 +83,13 @@ impl App {
         let should_add_help = self.layout_manager.panel_groups.is_empty();
 
         if should_add_help {
+            // In $EDITOR mode (launched with file arguments), closing the last
+            // panel returns control to the launching tool (git, crontab, ...)
+            // like nano/vim would, instead of leaving an empty shell behind.
+            if !self.persist_session {
+                self.state.quit();
+                return;
+            }
             let help = Help::new(&self.state.config);
             self.add_panel(Box::new(help));
         }

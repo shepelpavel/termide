@@ -14,6 +14,13 @@ use super::App;
 impl App {
     /// Save current session to file
     pub(super) fn save_session(&mut self) -> Result<()> {
+        // In $EDITOR mode (launched with file arguments) the session is not
+        // persisted, so editing a commit message or crontab never clobbers the
+        // project's real session.
+        if !self.persist_session {
+            return Ok(());
+        }
+
         // Get session directory for this project
         let session_dir = termide_session::Session::get_session_dir(&self.project_root)?;
 

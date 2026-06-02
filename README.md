@@ -262,14 +262,26 @@ musl-dev or glibc installed.
 ### Command-Line Options
 
 ```
-termide [OPTIONS] [PATH]
+termide [OPTIONS] [FILE]...
+
+Arguments:
+  [FILE]...            File(s) to open. With a path, TermIDE starts in a clean
+                       editor view (no session restore/save), so it works as
+                       $EDITOR for git, crontab, visudo, etc.
 
 Options:
   --log-level <LEVEL>  Set log level (trace, debug, info, warn, error)
   --no-lsp             Disable LSP language servers
   --config <FILE>      Use custom config file path
+  --diagnostics        Run pre-flight diagnostics and exit (no UI)
   -h, --help           Print help
   -V, --version        Print version
+```
+
+Use as your editor:
+
+```sh
+export EDITOR=termide   # git commit, crontab -e, visudo, ...
 ```
 
 ## Usage
