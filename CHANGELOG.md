@@ -5,6 +5,11 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.5] - 2026-06-02
+
+### Fixed
+- **"Import class" no longer mangles the file or duplicates the import.** The command-based quick-fix added in 0.23.4 could garble text around the insertion point — servers such as phpactor send the import as two edits at the same position, which the edit-application code mis-ordered — and running it a second time added a duplicate `use` line because the server was never told the file had changed. Edits are now applied by absolute document offset (every other line is preserved verbatim), and the language server is resynced after each applied edit.
+
 ## [0.23.4] - 2026-06-02
 
 ### Fixed
@@ -99,6 +104,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `deny.toml` + `cargo-deny check` step covers advisories, licenses, bans and sources.
 - Pre-commit hook documented in `CONTRIBUTING.md`.
 
+[0.23.5]: https://github.com/termide/termide/releases/tag/0.23.5
 [0.23.4]: https://github.com/termide/termide/releases/tag/0.23.4
 [0.23.3]: https://github.com/termide/termide/releases/tag/0.23.3
 [0.23.2]: https://github.com/termide/termide/releases/tag/0.23.2

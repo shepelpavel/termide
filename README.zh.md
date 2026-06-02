@@ -65,32 +65,32 @@
 
 ```bash
 # Linux x86_64（也适用于 WSL）
-wget https://github.com/termide/termide/releases/latest/download/termide-0.23.4-x86_64-unknown-linux-gnu.tar.gz
-tar xzf termide-0.23.4-x86_64-unknown-linux-gnu.tar.gz
+wget https://github.com/termide/termide/releases/latest/download/termide-0.23.5-x86_64-unknown-linux-gnu.tar.gz
+tar xzf termide-0.23.5-x86_64-unknown-linux-gnu.tar.gz
 ./termide
 
 # Linux x86_64（静态 musl — Alpine、distroless 容器、任何无 glibc 的系统）
-wget https://github.com/termide/termide/releases/latest/download/termide-0.23.4-x86_64-unknown-linux-musl.tar.gz
-tar xzf termide-0.23.4-x86_64-unknown-linux-musl.tar.gz
+wget https://github.com/termide/termide/releases/latest/download/termide-0.23.5-x86_64-unknown-linux-musl.tar.gz
+tar xzf termide-0.23.5-x86_64-unknown-linux-musl.tar.gz
 ./termide
 
 # macOS Intel (x86_64)
-curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.23.4-x86_64-apple-darwin.tar.gz
-tar xzf termide-0.23.4-x86_64-apple-darwin.tar.gz
+curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.23.5-x86_64-apple-darwin.tar.gz
+tar xzf termide-0.23.5-x86_64-apple-darwin.tar.gz
 ./termide
 
 # macOS Apple Silicon (ARM64)
-curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.23.4-aarch64-apple-darwin.tar.gz
-tar xzf termide-0.23.4-aarch64-apple-darwin.tar.gz
+curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.23.5-aarch64-apple-darwin.tar.gz
+tar xzf termide-0.23.5-aarch64-apple-darwin.tar.gz
 ./termide
 
 # Linux ARM64（树莓派、ARM 服务器）
-wget https://github.com/termide/termide/releases/latest/download/termide-0.23.4-aarch64-unknown-linux-gnu.tar.gz
-tar xzf termide-0.23.4-aarch64-unknown-linux-gnu.tar.gz
+wget https://github.com/termide/termide/releases/latest/download/termide-0.23.5-aarch64-unknown-linux-gnu.tar.gz
+tar xzf termide-0.23.5-aarch64-unknown-linux-gnu.tar.gz
 ./termide
 
 # Windows x86_64（从 Releases 下载 .zip，解压后在 Windows Terminal 中运行）
-# https://github.com/termide/termide/releases/latest/download/termide-0.23.4-x86_64-pc-windows-msvc.zip
+# https://github.com/termide/termide/releases/latest/download/termide-0.23.5-x86_64-pc-windows-msvc.zip
 ```
 
 </details>
@@ -102,8 +102,8 @@ tar xzf termide-0.23.4-aarch64-unknown-linux-gnu.tar.gz
 
 ```bash
 # 仅限 x86_64（ARM64 请使用上面的 tar.gz）
-wget https://github.com/termide/termide/releases/latest/download/termide_0.23.4-1_amd64.deb
-sudo dpkg -i termide_0.23.4-1_amd64.deb
+wget https://github.com/termide/termide/releases/latest/download/termide_0.23.5-1_amd64.deb
+sudo dpkg -i termide_0.23.5-1_amd64.deb
 ```
 
 </details>
@@ -115,8 +115,8 @@ sudo dpkg -i termide_0.23.4-1_amd64.deb
 
 ```bash
 # 仅限 x86_64（ARM64 请使用上面的 tar.gz）
-wget https://github.com/termide/termide/releases/latest/download/termide-0.23.4-1.x86_64.rpm
-sudo rpm -i termide-0.23.4-1.x86_64.rpm
+wget https://github.com/termide/termide/releases/latest/download/termide-0.23.5-1.x86_64.rpm
+sudo rpm -i termide-0.23.5-1.x86_64.rpm
 ```
 
 </details>

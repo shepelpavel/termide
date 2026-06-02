@@ -12,28 +12,28 @@
 
 **Linux x86_64** (также работает в WSL/WSL2):
 ```bash
-wget https://github.com/termide/termide/releases/latest/download/termide-0.23.4-x86_64-unknown-linux-gnu.tar.gz
+wget https://github.com/termide/termide/releases/latest/download/termide-0.23.5-x86_64-unknown-linux-gnu.tar.gz
 ```
 
 **Linux x86_64 — статический musl** (Alpine, distroless-контейнеры,
 любая система без glibc):
 ```bash
-wget https://github.com/termide/termide/releases/latest/download/termide-0.23.4-x86_64-unknown-linux-musl.tar.gz
+wget https://github.com/termide/termide/releases/latest/download/termide-0.23.5-x86_64-unknown-linux-musl.tar.gz
 ```
 
 **Linux ARM64** (Raspberry Pi, ARM серверы):
 ```bash
-wget https://github.com/termide/termide/releases/latest/download/termide-0.23.4-aarch64-unknown-linux-gnu.tar.gz
+wget https://github.com/termide/termide/releases/latest/download/termide-0.23.5-aarch64-unknown-linux-gnu.tar.gz
 ```
 
 **macOS Intel (x86_64)**:
 ```bash
-curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.23.4-x86_64-apple-darwin.tar.gz
+curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.23.5-x86_64-apple-darwin.tar.gz
 ```
 
 **macOS Apple Silicon (M1/M2/M3)**:
 ```bash
-curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.23.4-aarch64-apple-darwin.tar.gz
+curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.23.5-aarch64-apple-darwin.tar.gz
 ```
 
 ### Шаг 2: Распаковка
@@ -67,15 +67,15 @@ sudo mv termide /usr/local/bin/
 ### Debian/Ubuntu (.deb)
 
 ```bash
-wget https://github.com/termide/termide/releases/latest/download/termide_0.23.4-1_amd64.deb
-sudo dpkg -i termide_0.23.4-1_amd64.deb
+wget https://github.com/termide/termide/releases/latest/download/termide_0.23.5-1_amd64.deb
+sudo dpkg -i termide_0.23.5-1_amd64.deb
 ```
 
 ### Fedora/RHEL/CentOS (.rpm)
 
 ```bash
-wget https://github.com/termide/termide/releases/latest/download/termide-0.23.4-1.x86_64.rpm
-sudo rpm -i termide-0.23.4-1.x86_64.rpm
+wget https://github.com/termide/termide/releases/latest/download/termide-0.23.5-1.x86_64.rpm
+sudo rpm -i termide-0.23.5-1.x86_64.rpm
 ```
 
 ### Arch Linux (AUR)
@@ -193,8 +193,8 @@ TermIDE также работает в Windows Subsystem for Linux (WSL и WSL2)
 1. Установите WSL2, если еще не установлен
 2. Скачайте Linux x86_64 бинарный файл внутри WSL:
    ```bash
-   wget https://github.com/termide/termide/releases/latest/download/termide-0.23.4-x86_64-unknown-linux-gnu.tar.gz
-   tar xzf termide-0.23.4-x86_64-unknown-linux-gnu.tar.gz
+   wget https://github.com/termide/termide/releases/latest/download/termide-0.23.5-x86_64-unknown-linux-gnu.tar.gz
+   tar xzf termide-0.23.5-x86_64-unknown-linux-gnu.tar.gz
    ./termide
    ```
 
