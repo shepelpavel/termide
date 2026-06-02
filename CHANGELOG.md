@@ -5,6 +5,12 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.4] - 2026-06-02
+
+### Fixed
+- **Command-based quick-fixes now apply.** Actions a language server performs through a command rather than an inline edit — such as phpactor's "Import class" — showed up in the `Alt+Enter` popup but did nothing when chosen. They now run via `workspace/executeCommand`, and the edit the server pushes back is applied (adding the `use` statement and reloading any affected editors). This completes the code-action support started in 0.23.2–0.23.3.
+- The code-action shortcut (`Alt+Enter`) is now listed in the help panel alongside the other LSP shortcuts, and the documented manual-completion shortcut was corrected to `Ctrl+J` / `Ctrl+Space`.
+
 ## [0.23.3] - 2026-06-01
 
 ### Fixed
@@ -93,6 +99,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `deny.toml` + `cargo-deny check` step covers advisories, licenses, bans and sources.
 - Pre-commit hook documented in `CONTRIBUTING.md`.
 
+[0.23.4]: https://github.com/termide/termide/releases/tag/0.23.4
 [0.23.3]: https://github.com/termide/termide/releases/tag/0.23.3
 [0.23.2]: https://github.com/termide/termide/releases/tag/0.23.2
 [0.23.1]: https://github.com/termide/termide/releases/tag/0.23.1
