@@ -132,6 +132,7 @@ help_terminal_keys = "টার্মিনাল"
 help_desc_delete_generic = "Delete"
 help_desc_find_references = "Find all references"
 help_desc_rename_symbol = "Rename symbol"
+help_desc_code_action = "Show code actions"
 help_desc_open_bookmark_add = "Add bookmark"
 help_desc_command_palette = "Command palette"
 

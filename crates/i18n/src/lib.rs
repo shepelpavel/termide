@@ -175,6 +175,7 @@ pub trait Translation: Send + Sync {
     fn help_desc_goto_definition(&self) -> &str;
     fn help_desc_find_references(&self) -> &str;
     fn help_desc_rename_symbol(&self) -> &str;
+    fn help_desc_code_action(&self) -> &str;
 
     // LSP rename flow status messages
     fn lsp_rename_no_identifier(&self) -> &str;

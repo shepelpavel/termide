@@ -198,6 +198,7 @@ impl Translation for RuntimeTranslation {
         help_desc_goto_definition,
         help_desc_find_references,
         help_desc_rename_symbol,
+        help_desc_code_action,
         lsp_rename_no_identifier,
         lsp_rename_unsaved_file,
         lsp_rename_no_changes,

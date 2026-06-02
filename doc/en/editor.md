@@ -293,7 +293,7 @@ TermIDE includes built-in LSP support for intelligent code assistance. When a la
 
 | Shortcut           | Action                                     |
 |-------------------|--------------------------------------------|
-| `Ctrl+.`          | Manually trigger completion popup          |
+| `Ctrl+J` / `Ctrl+Space` | Manually trigger completion popup    |
 | `Enter`           | Accept selected completion                 |
 | `Escape`          | Close completion popup                     |
 | `↑` / `↓`         | Navigate through suggestions               |

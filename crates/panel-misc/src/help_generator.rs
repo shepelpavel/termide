@@ -484,6 +484,10 @@ impl HelpGenerator {
                 description: t.help_desc_rename_symbol().to_string(),
             },
             HelpEntry {
+                keys: Self::format_keys(&kb.code_action),
+                description: t.help_desc_code_action().to_string(),
+            },
+            HelpEntry {
                 keys: "Ctrl+←/→".to_string(),
                 description: t.help_desc_word_nav().to_string(),
             },
