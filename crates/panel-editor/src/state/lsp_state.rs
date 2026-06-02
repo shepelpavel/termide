@@ -11,8 +11,8 @@ use std::path::Path;
 use std::sync::mpsc;
 
 use lsp_types::{
-    CodeAction, CodeActionResponse, CompletionResponse, Diagnostic, GotoDefinitionResponse, Hover,
-    Location, Position, Range, WorkspaceEdit,
+    CodeAction, CodeActionResponse, Command, CompletionResponse, Diagnostic,
+    GotoDefinitionResponse, Hover, Location, Position, Range, WorkspaceEdit,
 };
 use ratatui::layout::Rect;
 use termide_lsp::{CompletionTriggerKind, LspManager};
@@ -94,6 +94,11 @@ pub struct LspState {
     /// Accepted code action whose edit is deferred — the app layer issues a
     /// `codeAction/resolve` for it (it holds the LspManager).
     pub pending_code_action_resolve: Option<CodeAction>,
+
+    /// Command of an accepted code action — the app layer runs it via
+    /// `workspace/executeCommand`; the server then pushes the resulting edit
+    /// back through `workspace/applyEdit` (e.g. phpactor "Import class").
+    pub pending_code_action_command: Option<Command>,
 
     /// Current diagnostics for this file
     pub diagnostics: Vec<Diagnostic>,
@@ -179,6 +184,7 @@ impl LspState {
             code_action_requested: false,
             pending_code_action_edit: None,
             pending_code_action_resolve: None,
+            pending_code_action_command: None,
             diagnostics: Vec::new(),
             enabled: false,
             server_loading: false,
@@ -471,6 +477,28 @@ impl LspState {
                 self.code_action_resolve_rx =
                     lsp_manager.code_action_resolve(lang, file_path, action);
             }
+        }
+    }
+
+    /// Run a command-based code action via `workspace/executeCommand`. The
+    /// server applies the change itself and pushes the edit back through a
+    /// `workspace/applyEdit` request, polled at the app layer.
+    pub fn request_execute_command(
+        &mut self,
+        file_path: &Path,
+        command: Command,
+        lsp_manager: &LspManager,
+    ) {
+        if !self.enabled {
+            return;
+        }
+        if let Some(ref lang) = self.language_id {
+            lsp_manager.execute_command(
+                lang,
+                file_path,
+                command.command,
+                command.arguments.unwrap_or_default(),
+            );
         }
     }
 

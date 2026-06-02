@@ -206,6 +206,14 @@ impl App {
                 }
                 editor.poll_code_action_resolve();
 
+                // A command-based action (e.g. phpactor "Import class") runs via
+                // executeCommand; its edit returns later through applyEdit.
+                if let Some(command) = editor.take_code_action_command() {
+                    if let Some(ref lsp_manager) = self.state.lsp_manager {
+                        editor.request_execute_command(command, lsp_manager);
+                    }
+                }
+
                 // Collect a ready code-action edit to apply after the borrow.
                 pending_code_action_edit = editor.take_code_action_edit();
 

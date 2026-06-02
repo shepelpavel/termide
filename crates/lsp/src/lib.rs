@@ -54,6 +54,10 @@ pub struct LspManager {
     diagnostics_rx: mpsc::Receiver<PublishDiagnosticsParams>,
     /// Sender for diagnostics (cloned to each server)
     diagnostics_tx: mpsc::Sender<PublishDiagnosticsParams>,
+    /// Receiver for server-initiated `workspace/applyEdit` edits
+    apply_edit_rx: mpsc::Receiver<WorkspaceEdit>,
+    /// Sender for apply-edit requests (cloned to each server)
+    apply_edit_tx: mpsc::Sender<WorkspaceEdit>,
 }
 
 impl std::fmt::Debug for LspManager {
@@ -69,11 +73,14 @@ impl LspManager {
     /// Create a new LSP manager with the given configuration
     pub fn new(config: LspConfig) -> Self {
         let (diagnostics_tx, diagnostics_rx) = mpsc::channel();
+        let (apply_edit_tx, apply_edit_rx) = mpsc::channel();
         Self {
             servers: HashMap::new(),
             config,
             diagnostics_rx,
             diagnostics_tx,
+            apply_edit_rx,
+            apply_edit_tx,
         }
     }
 
@@ -150,6 +157,7 @@ impl LspManager {
             server_config,
             workspace_root,
             self.diagnostics_tx.clone(),
+            self.apply_edit_tx.clone(),
         )?;
 
         self.servers.insert(key, server);
@@ -217,6 +225,25 @@ impl LspManager {
     ) -> Option<mpsc::Receiver<Option<lsp_types::CodeAction>>> {
         let server = self.get_server(lang, file_path)?;
         Some(server.code_action_resolve(action))
+    }
+
+    /// Execute a server command (`workspace/executeCommand`) for a command-based
+    /// code action. The resulting edit (if any) arrives via `poll_apply_edit`.
+    pub fn execute_command(
+        &self,
+        lang: &str,
+        file_path: &Path,
+        command: String,
+        arguments: Vec<serde_json::Value>,
+    ) {
+        if let Some(server) = self.get_server(lang, file_path) {
+            server.execute_command(command, arguments);
+        }
+    }
+
+    /// Poll for a server-initiated `workspace/applyEdit` edit (non-blocking).
+    pub fn poll_apply_edit(&self) -> Option<WorkspaceEdit> {
+        self.apply_edit_rx.try_recv().ok()
     }
 
     /// Request hover info at position

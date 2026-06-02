@@ -392,6 +392,27 @@ impl App {
             }
         }
 
+        // Apply edits the server pushed via `workspace/applyEdit` — the path
+        // command-based quick-fixes (e.g. phpactor "Import class") use to
+        // deliver their changes after `workspace/executeCommand`. Collected
+        // first, then applied outside the manager borrow.
+        let mut server_edits: Vec<lsp_types::WorkspaceEdit> = Vec::new();
+        if let Some(ref lsp_manager) = self.state.lsp_manager {
+            while let Some(edit) = lsp_manager.poll_apply_edit() {
+                server_edits.push(edit);
+            }
+        }
+        for edit in server_edits {
+            match self.apply_workspace_edit(edit) {
+                Ok(0) => {}
+                Ok(count) => self
+                    .state
+                    .set_info(format!("Code action applied to {count} file(s)")),
+                Err(e) => self.state.set_error(format!("Code action failed: {e}")),
+            }
+            self.state.needs_redraw = true;
+        }
+
         // Now handle completion and hover for the active editor only
         let mut pending_definition_event = None;
         let mut pending_references_event: Option<Vec<termide_core::ReferenceLocation>> = None;
@@ -467,6 +488,12 @@ impl App {
                 if let Some(edit) = editor.take_code_action_edit() {
                     pending_code_action_edit = Some(edit);
                     self.state.needs_redraw = true;
+                }
+                // Run a command-based action; its edit returns via applyEdit.
+                if let Some(command) = editor.take_code_action_command() {
+                    if let Some(ref lsp_manager) = self.state.lsp_manager {
+                        editor.request_execute_command(command, lsp_manager);
+                    }
                 }
 
                 // Poll for references response (Shift+F12)

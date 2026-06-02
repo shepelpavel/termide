@@ -86,6 +86,7 @@ impl LspServer {
         config: LspServerConfig,
         workspace_root: PathBuf,
         diagnostics_tx: mpsc::Sender<PublishDiagnosticsParams>,
+        apply_edit_tx: mpsc::Sender<WorkspaceEdit>,
     ) -> Result<Self> {
         let mut process = Command::new(&config.command)
             .args(&config.args)
@@ -158,6 +159,7 @@ impl LspServer {
                     capabilities,
                     active_progress,
                     diagnostics_tx,
+                    apply_edit_tx,
                     writer_tx,
                 );
             })
@@ -184,6 +186,7 @@ impl LspServer {
     }
 
     /// Reader thread main loop
+    #[allow(clippy::too_many_arguments)]
     fn reader_loop(
         stdout: std::process::ChildStdout,
         pending: PendingRequests,
@@ -191,6 +194,7 @@ impl LspServer {
         capabilities: Arc<Mutex<Option<ServerCapabilities>>>,
         active_progress: Arc<Mutex<HashSet<String>>>,
         diagnostics_tx: mpsc::Sender<PublishDiagnosticsParams>,
+        apply_edit_tx: mpsc::Sender<WorkspaceEdit>,
         writer_tx: mpsc::Sender<String>,
     ) {
         let mut reader = BufReader::new(stdout);
@@ -258,8 +262,8 @@ impl LspServer {
                     );
                 }
                 Ok(JsonRpcMessage::Request(request)) => {
-                    // Server-initiated requests - respond with success
-                    Self::handle_server_request(&writer_tx, request);
+                    // Server-initiated requests (e.g. workspace/applyEdit)
+                    Self::handle_server_request(&writer_tx, &apply_edit_tx, request);
                 }
                 Err(e) => {
                     log::error!("Failed to parse LSP message: {}", e);
@@ -378,13 +382,43 @@ impl LspServer {
         }
     }
 
-    /// Handle server-initiated request (respond with success)
-    fn handle_server_request(writer_tx: &mpsc::Sender<String>, request: JsonRpcRequest) {
-        // Respond with null/empty result for most server requests
+    /// Handle a server-initiated request.
+    ///
+    /// `workspace/applyEdit` is forwarded to the app layer (which owns the
+    /// buffers) and acknowledged as applied — this is the path command-based
+    /// quick-fixes use, e.g. phpactor's "Import class", which performs the edit
+    /// via `workspace/executeCommand` and pushes the resulting edit back here.
+    /// Every other server request gets a null result.
+    fn handle_server_request(
+        writer_tx: &mpsc::Sender<String>,
+        apply_edit_tx: &mpsc::Sender<WorkspaceEdit>,
+        request: JsonRpcRequest,
+    ) {
+        let result = if request.method == "workspace/applyEdit" {
+            let edit = request
+                .params
+                .and_then(|p| serde_json::from_value::<lsp_types::ApplyWorkspaceEditParams>(p).ok())
+                .map(|params| params.edit);
+
+            let applied = match edit {
+                Some(edit) => apply_edit_tx.send(edit).is_ok(),
+                None => false,
+            };
+
+            serde_json::to_value(lsp_types::ApplyWorkspaceEditResponse {
+                applied,
+                failure_reason: None,
+                failed_change: None,
+            })
+            .unwrap_or(serde_json::Value::Null)
+        } else {
+            serde_json::Value::Null
+        };
+
         let response = JsonRpcResponse {
             jsonrpc: "2.0".to_string(),
             id: request.id,
-            result: Some(serde_json::Value::Null),
+            result: Some(result),
             error: None,
         };
 
@@ -403,6 +437,13 @@ impl LspServer {
             process_id: Some(std::process::id()),
             root_uri: Some(root_uri.clone()),
             capabilities: ClientCapabilities {
+                // Tell the server we honor server-initiated `workspace/applyEdit`
+                // requests, so command-based quick-fixes (e.g. phpactor's
+                // "Import class") will push their edits back to us to apply.
+                workspace: Some(lsp_types::WorkspaceClientCapabilities {
+                    apply_edit: Some(true),
+                    ..Default::default()
+                }),
                 text_document: Some(TextDocumentClientCapabilities {
                     completion: Some(lsp_types::CompletionClientCapabilities {
                         completion_item: Some(lsp_types::CompletionItemCapability {
@@ -611,6 +652,21 @@ impl LspServer {
             })
     }
 
+    /// Execute a server command (`workspace/executeCommand`).
+    ///
+    /// Used for command-based code actions (e.g. phpactor "Import class"),
+    /// where the server performs the change itself and pushes the resulting
+    /// edit back via a `workspace/applyEdit` request. The command's own result
+    /// is irrelevant to us, so it is sent fire-and-forget.
+    pub fn execute_command(&self, command: String, arguments: Vec<Value>) {
+        let params = lsp_types::ExecuteCommandParams {
+            command,
+            arguments,
+            work_done_progress_params: Default::default(),
+        };
+        let _ = self.send_request::<Value>("workspace/executeCommand", params);
+    }
+
     /// Request hover at position
     pub fn hover(&self, uri: Uri, position: Position) -> mpsc::Receiver<Option<Hover>> {
         let params = lsp_types::HoverParams {
@@ -801,5 +857,49 @@ impl LspServer {
         let _ = self.process.wait();
 
         *self.status.lock().unwrap_or_else(|e| e.into_inner()) = ServerStatus::Stopped;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn apply_edit_request_forwards_edit_and_acks_applied() {
+        let (writer_tx, writer_rx) = mpsc::channel();
+        let (apply_tx, apply_rx) = mpsc::channel();
+        let params = lsp_types::ApplyWorkspaceEditParams {
+            label: Some("Import class".into()),
+            edit: WorkspaceEdit::default(),
+        };
+        let request = JsonRpcRequest::new(
+            7u64,
+            "workspace/applyEdit",
+            Some(serde_json::to_value(params).unwrap()),
+        );
+
+        LspServer::handle_server_request(&writer_tx, &apply_tx, request);
+
+        // The edit is forwarded to the app layer for application...
+        assert!(apply_rx.try_recv().is_ok());
+        // ...and the server is told it was applied.
+        let msg = writer_rx.try_recv().unwrap();
+        assert!(msg.contains("\"applied\":true"));
+        assert!(msg.contains("\"id\":7"));
+    }
+
+    #[test]
+    fn other_server_request_gets_null_result_and_no_edit() {
+        let (writer_tx, writer_rx) = mpsc::channel();
+        let (apply_tx, apply_rx) = mpsc::channel();
+        let request =
+            JsonRpcRequest::new(3u64, "window/workDoneProgress/create", Some(Value::Null));
+
+        LspServer::handle_server_request(&writer_tx, &apply_tx, request);
+
+        // Nothing is forwarded for application, and a null result is returned.
+        assert!(apply_rx.try_recv().is_err());
+        let msg = writer_rx.try_recv().unwrap();
+        assert!(msg.contains("\"result\":null"));
     }
 }
