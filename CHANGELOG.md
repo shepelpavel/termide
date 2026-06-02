@@ -5,6 +5,11 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.6] - 2026-06-02
+
+### Fixed
+- **"Import class" no longer deletes code or loses unsaved edits.** A command-based quick-fix's edit is computed by the language server against the document it tracks — the editor buffer — but it was being applied to the file on disk and the editor reloaded from there. With unsaved changes in the buffer (e.g. a just-typed `Order::where()`), disk and buffer diverged: the reload discarded the unsaved text and the edit landed on the wrong lines. Server-driven edits to an open file now go through its buffer, preserving unsaved work and landing where the server intended; the server is also synced before and after so repeated runs don't duplicate the import.
+
 ## [0.23.5] - 2026-06-02
 
 ### Fixed
@@ -104,6 +109,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `deny.toml` + `cargo-deny check` step covers advisories, licenses, bans and sources.
 - Pre-commit hook documented in `CONTRIBUTING.md`.
 
+[0.23.6]: https://github.com/termide/termide/releases/tag/0.23.6
 [0.23.5]: https://github.com/termide/termide/releases/tag/0.23.5
 [0.23.4]: https://github.com/termide/termide/releases/tag/0.23.4
 [0.23.3]: https://github.com/termide/termide/releases/tag/0.23.3
