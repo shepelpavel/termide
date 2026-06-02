@@ -5,6 +5,11 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.7] - 2026-06-02
+
+### Added
+- **Open files from the command line / use termide as `$EDITOR`.** `termide path/to/file ...` now opens the given files (creating them if absent), so termide works as the editor for `git commit`, `crontab -e`, `visudo`, and similar tools that previously failed with "unexpected argument". When launched with file arguments termide starts in a lightweight editor mode: it shows only those files, does not restore or save the project session (so editing a commit message can't clobber it), and closing the last panel quits — returning control to the launching tool like nano or vim.
+
 ## [0.23.6] - 2026-06-02
 
 ### Fixed
@@ -109,6 +114,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `deny.toml` + `cargo-deny check` step covers advisories, licenses, bans and sources.
 - Pre-commit hook documented in `CONTRIBUTING.md`.
 
+[0.23.7]: https://github.com/termide/termide/releases/tag/0.23.7
 [0.23.6]: https://github.com/termide/termide/releases/tag/0.23.6
 [0.23.5]: https://github.com/termide/termide/releases/tag/0.23.5
 [0.23.4]: https://github.com/termide/termide/releases/tag/0.23.4
