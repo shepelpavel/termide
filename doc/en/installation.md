@@ -12,28 +12,28 @@ Visit the [GitHub Releases](https://github.com/termide/termide/releases) page an
 
 **Linux x86_64** (also works in WSL/WSL2):
 ```bash
-wget https://github.com/termide/termide/releases/latest/download/termide-0.23.7-x86_64-unknown-linux-gnu.tar.gz
+wget https://github.com/termide/termide/releases/latest/download/termide-0.23.8-x86_64-unknown-linux-gnu.tar.gz
 ```
 
 **Linux x86_64 — static musl** (Alpine, distroless containers, any
 glibc-free system):
 ```bash
-wget https://github.com/termide/termide/releases/latest/download/termide-0.23.7-x86_64-unknown-linux-musl.tar.gz
+wget https://github.com/termide/termide/releases/latest/download/termide-0.23.8-x86_64-unknown-linux-musl.tar.gz
 ```
 
 **Linux ARM64** (Raspberry Pi, ARM servers):
 ```bash
-wget https://github.com/termide/termide/releases/latest/download/termide-0.23.7-aarch64-unknown-linux-gnu.tar.gz
+wget https://github.com/termide/termide/releases/latest/download/termide-0.23.8-aarch64-unknown-linux-gnu.tar.gz
 ```
 
 **macOS Intel (x86_64)**:
 ```bash
-curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.23.7-x86_64-apple-darwin.tar.gz
+curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.23.8-x86_64-apple-darwin.tar.gz
 ```
 
 **macOS Apple Silicon (M1/M2/M3)**:
 ```bash
-curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.23.7-aarch64-apple-darwin.tar.gz
+curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.23.8-aarch64-apple-darwin.tar.gz
 ```
 
 ### Step 2: Extract
@@ -67,15 +67,15 @@ Now you can run `termide` from anywhere in your terminal.
 ### Debian/Ubuntu (.deb)
 
 ```bash
-wget https://github.com/termide/termide/releases/latest/download/termide_0.23.7-1_amd64.deb
-sudo dpkg -i termide_0.23.7-1_amd64.deb
+wget https://github.com/termide/termide/releases/latest/download/termide_0.23.8-1_amd64.deb
+sudo dpkg -i termide_0.23.8-1_amd64.deb
 ```
 
 ### Fedora/RHEL/CentOS (.rpm)
 
 ```bash
-wget https://github.com/termide/termide/releases/latest/download/termide-0.23.7-1.x86_64.rpm
-sudo rpm -i termide-0.23.7-1.x86_64.rpm
+wget https://github.com/termide/termide/releases/latest/download/termide-0.23.8-1.x86_64.rpm
+sudo rpm -i termide-0.23.8-1.x86_64.rpm
 ```
 
 ### Arch Linux (AUR)
@@ -193,8 +193,8 @@ TermIDE also works in Windows Subsystem for Linux (WSL and WSL2):
 1. Install WSL2 if you haven't already
 2. Download the Linux x86_64 binary inside WSL:
    ```bash
-   wget https://github.com/termide/termide/releases/latest/download/termide-0.23.7-x86_64-unknown-linux-gnu.tar.gz
-   tar xzf termide-0.23.7-x86_64-unknown-linux-gnu.tar.gz
+   wget https://github.com/termide/termide/releases/latest/download/termide-0.23.8-x86_64-unknown-linux-gnu.tar.gz
+   tar xzf termide-0.23.8-x86_64-unknown-linux-gnu.tar.gz
    ./termide
    ```
 
