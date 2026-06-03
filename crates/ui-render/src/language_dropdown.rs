@@ -95,8 +95,11 @@ impl<'a> LanguageDropdown<'a> {
             return;
         }
 
-        let width = self.width();
-        let height = self.height();
+        // Clamp to the buffer so a list taller/wider than the terminal never
+        // renders past its edges (that panics ratatui — issue #25). The per-row
+        // loop below already stops at the inner height.
+        let width = self.width().min(buf.area.width).max(1);
+        let height = self.height().min(buf.area.height).max(1);
 
         // Check screen boundaries
         let max_x = buf.area.width.saturating_sub(width);

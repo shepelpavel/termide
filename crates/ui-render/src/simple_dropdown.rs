@@ -31,16 +31,27 @@ pub fn render_simple_dropdown(
         return;
     }
 
-    let visible_count = items.len().min(max_height as usize);
-    let scroll_offset = if cursor >= visible_count {
+    // Auto-fit width to longest item + padding + borders
+    let item_max_width = items.iter().map(|s| s.width()).max().unwrap_or(10);
+    let width = ((item_max_width + 4).min(max_width as usize) as u16)
+        .min(buf.area.width)
+        .max(1);
+
+    // Clamp the box to the buffer: this function indexes `buf` directly, so a
+    // box taller/wider than the terminal would write out of bounds and panic
+    // (issue #25). The visible window shrinks to the rows that fit.
+    let dropdown_height = ((items.len().min(max_height as usize) as u16) + 2)
+        .min(buf.area.height)
+        .max(1);
+    let x = x.min(buf.area.width.saturating_sub(width));
+    let y = y.min(buf.area.height.saturating_sub(dropdown_height));
+
+    let visible_count = dropdown_height.saturating_sub(2) as usize;
+    let scroll_offset = if visible_count > 0 && cursor >= visible_count {
         cursor - visible_count + 1
     } else {
         0
     };
-
-    // Auto-fit width to longest item + padding + borders
-    let item_max_width = items.iter().map(|s| s.width()).max().unwrap_or(10);
-    let width = (item_max_width + 4).min(max_width as usize) as u16;
 
     let border_style = Style::default().fg(theme.border_focused);
     let bg_style = Style::default()
@@ -48,7 +59,6 @@ pub fn render_simple_dropdown(
         .remove_modifier(Modifier::all());
 
     // Clear area and draw border
-    let dropdown_height = visible_count as u16 + 2; // +2 for top/bottom borders
     for dy in 0..dropdown_height {
         for dx in 0..width {
             let cell = &mut buf[(x + dx, y + dy)];
@@ -119,5 +129,24 @@ pub fn render_simple_dropdown(
             buf[(x + dx, item_y)].set_symbol(" ").set_style(style);
         }
         buf.set_string(x + 1, item_y, display_item, style);
+    }
+}
+
+#[cfg(test)]
+mod overflow_tests {
+    use super::render_simple_dropdown;
+    use ratatui::{buffer::Buffer, layout::Rect};
+    use termide_core::ThemeColors;
+    use termide_theme::Theme;
+
+    // Regression for #25: a simple dropdown taller/wider than the terminal must
+    // not write out of bounds (this function indexes the buffer directly).
+    #[test]
+    fn render_does_not_overflow_short_terminal() {
+        let colors = ThemeColors::from(Theme::get_by_name("default"));
+        let items: Vec<String> = (0..30).map(|i| format!("item-{i:02}")).collect();
+        let mut buf = Buffer::empty(Rect::new(0, 0, 57, 15));
+        // max_height larger than the buffer, anchored near the bottom-right.
+        render_simple_dropdown(&items, 29, 29, 50, 13, 80, 25, &mut buf, &colors);
     }
 }

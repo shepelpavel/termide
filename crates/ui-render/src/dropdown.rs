@@ -125,8 +125,12 @@ impl<'a> Dropdown<'a> {
             return;
         }
 
-        let width = self.width();
-        let height = self.height();
+        // Clamp to the buffer so a dropdown taller/wider than the terminal
+        // never renders past its edges (that panics ratatui — issue #25). The
+        // per-row item loop below already stops at the inner height, so a
+        // shrunken box just shows fewer rows.
+        let width = self.width().min(buf.area.width).max(1);
+        let height = self.height().min(buf.area.height).max(1);
 
         // Check screen boundaries
         let max_x = buf.area.width.saturating_sub(width);
@@ -748,5 +752,25 @@ pub fn get_bookmarks_group_items(
             .into_iter()
             .map(|b| DropdownItem::new(bookmark_label(b), &b.path))
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod overflow_tests {
+    use super::{Dropdown, DropdownItem};
+    use ratatui::{buffer::Buffer, layout::Rect};
+    use termide_theme::Theme;
+
+    // Regression for #25: a menu dropdown with more items than the terminal is
+    // tall must clamp to the screen instead of writing past the bottom (which
+    // panics ratatui). The crash report had a 57x15 area.
+    #[test]
+    fn render_does_not_overflow_short_terminal() {
+        let theme = Theme::get_by_name("default");
+        let items: Vec<DropdownItem> = (0..30)
+            .map(|i| DropdownItem::new(format!("item-{i:02}"), "id"))
+            .collect();
+        let mut buf = Buffer::empty(Rect::new(0, 0, 57, 15));
+        Dropdown::new(&items, 29, 33, 1, theme).render(&mut buf);
     }
 }

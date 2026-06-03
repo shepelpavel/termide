@@ -85,8 +85,30 @@ impl<'a> ThemeDropdown<'a> {
             return;
         }
 
-        let width = self.width();
-        let height = self.height();
+        let total = self.theme_names.len();
+        let width = self.width().min(buf.area.width).max(1);
+
+        // Clamp the box to the terminal: with many themes the list can be
+        // taller than the screen, and rendering past the bottom panics ratatui
+        // (issue #25). The box is at most as tall as the screen; the visible
+        // window shrinks and the rest scrolls.
+        let desired_height = self.height();
+        let height = desired_height.min(buf.area.height).max(1);
+        let visible_count = height.saturating_sub(2) as usize; // rows for items
+
+        // Recompute the scroll window for the (possibly shrunken) viewport so
+        // the selected theme stays visible.
+        let max_scroll = total.saturating_sub(visible_count);
+        let scroll_offset = if visible_count == 0 {
+            0
+        } else if self.selected < self.scroll_offset {
+            self.selected
+        } else if self.selected >= self.scroll_offset + visible_count {
+            self.selected + 1 - visible_count
+        } else {
+            self.scroll_offset
+        }
+        .min(max_scroll);
 
         // Check screen boundaries
         let max_x = buf.area.width.saturating_sub(width);
@@ -105,14 +127,14 @@ impl<'a> ThemeDropdown<'a> {
         Clear.render(area, buf);
 
         // Build list items - use panel colors (not modal colors)
-        let visible_end = (self.scroll_offset + self.max_visible).min(self.theme_names.len());
-        let visible_items = &self.theme_names[self.scroll_offset..visible_end];
+        let visible_end = (scroll_offset + visible_count).min(total);
+        let visible_items = &self.theme_names[scroll_offset..visible_end];
 
         let items: Vec<ListItem> = visible_items
             .iter()
             .enumerate()
             .map(|(i, name)| {
-                let actual_index = self.scroll_offset + i;
+                let actual_index = scroll_offset + i;
                 let is_selected = actual_index == self.selected;
 
                 // Panel-style colors: normal text on panel background, selection highlighted
@@ -149,18 +171,53 @@ impl<'a> ThemeDropdown<'a> {
         list.render(area, buf);
 
         // Render scrollbar on right edge (inside border)
-        let visible_count = self.theme_names.len().min(self.max_visible);
         let theme_colors = ThemeColors::from(self.app_theme);
         ScrollBar::render(
             buf,
             x + width - 1,            // Right border position
             y + 1,                    // Inside top border
             height.saturating_sub(2), // Inside borders
-            self.scroll_offset,
+            scroll_offset,
             visible_count,
-            self.theme_names.len(),
+            total,
             &theme_colors,
             true, // Dropdown is always focused when visible
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ThemeDropdown;
+    use ratatui::{buffer::Buffer, layout::Rect};
+    use termide_theme::Theme;
+
+    fn names(n: usize) -> Vec<String> {
+        (0..n).map(|i| format!("theme-{i:02}")).collect()
+    }
+
+    // Regression for #25: a theme list taller than the terminal must clamp to
+    // the screen instead of rendering past the bottom (which panics ratatui).
+    // The crash report had an 88x24 area with 38 themes.
+    #[test]
+    fn render_does_not_overflow_short_terminal() {
+        let theme = Theme::get_by_name("default");
+        let names = names(38);
+        let mut buf = Buffer::empty(Rect::new(0, 0, 88, 24));
+        // Selected near the end exercises the scroll window at its limit.
+        ThemeDropdown::new(&names, 37, 20, 2, theme).render(&mut buf);
+        // First item too — no underflow in the scroll math.
+        let mut buf2 = Buffer::empty(Rect::new(0, 0, 88, 24));
+        ThemeDropdown::new(&names, 0, 20, 2, theme).render(&mut buf2);
+    }
+
+    #[test]
+    fn render_handles_tiny_terminal() {
+        let theme = Theme::get_by_name("default");
+        let names = names(38);
+        for h in [1u16, 2, 3] {
+            let mut buf = Buffer::empty(Rect::new(0, 0, 40, h));
+            ThemeDropdown::new(&names, 20, 0, 0, theme).render(&mut buf);
+        }
     }
 }
