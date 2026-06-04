@@ -154,11 +154,15 @@ fn main() -> Result<()> {
     // network operation, ssh re-executes this binary to obtain the SSH key
     // passphrase. We detect that purely by the presence of TERMIDE_ASKPASS_FILE
     // (ssh passes the prompt as argv, which must NOT be treated as a file to
-    // open), print the secret termide stored there, and exit. No TUI, no clap.
+    // open), hand the passphrase termide stored there back to ssh, and exit.
+    // No TUI, no clap.
     if let Ok(secret_file) = std::env::var("TERMIDE_ASKPASS_FILE") {
-        if let Ok(secret) = std::fs::read_to_string(&secret_file) {
-            // ssh expects the secret on stdout, optionally newline-terminated.
-            print!("{secret}");
+        if let Ok(secret) = std::fs::read(&secret_file) {
+            // This is the SSH_ASKPASS contract, not logging: ssh reads the
+            // passphrase from our stdout (a pipe it owns), so it never reaches
+            // a terminal or log. Write the raw bytes straight through.
+            use std::io::Write;
+            let _ = std::io::stdout().write_all(&secret);
         }
         return Ok(());
     }
