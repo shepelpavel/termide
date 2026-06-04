@@ -977,7 +977,6 @@ impl App {
         repo_path: PathBuf,
     ) -> Result<()> {
         use crate::state::{GitOperationHandle, GitOperationResult};
-        use std::process::{Command, Stdio};
         use std::sync::mpsc;
         use std::thread;
 
@@ -993,15 +992,12 @@ impl App {
         };
         let cmd_str = cmd.to_string();
 
-        // Spawn the git process with piped stdout/stderr to capture output
-        // and prevent it from corrupting the TUI
-        let child = match Command::new("git")
-            .arg(&cmd_str)
-            .current_dir(&repo_path)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-        {
+        // Spawn the git process via the hardened network command: stdin is
+        // detached and ssh runs non-interactively (BatchMode), so a missing
+        // SSH key passphrase fails cleanly instead of writing a prompt onto
+        // /dev/tty and corrupting the TUI. stdout/stderr are piped to capture
+        // output.
+        let child = match termide_git::network_command(&repo_path, &[&cmd_str]).spawn() {
             Ok(child) => child,
             Err(e) => {
                 self.show_error_modal(format!("Failed to spawn git: {}", e));

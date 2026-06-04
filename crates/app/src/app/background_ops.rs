@@ -94,14 +94,16 @@ impl App {
                 // Notify all panels about git operation completed (shows Push/Pull buttons)
                 self.notify_git_operation_state(false, None, 0);
 
-                // Fetch is silent - no modal, just refresh
+                // Fetch is silent - no modal, just refresh. On failure (e.g. an
+                // SSH key not loaded in the agent) surface a status-line message
+                // rather than a modal, so an auto-fetch on startup never nags.
                 if result.operation == "fetch" {
                     if !result.success {
                         let msg = format!(
                             "git fetch failed: {}",
                             result.stderr.lines().next().unwrap_or("unknown error")
                         );
-                        self.show_error_modal(msg);
+                        self.state.set_error(msg);
                     }
                     // Refresh all git panels silently
                     for panel in self.layout_manager.iter_all_panels_mut() {
