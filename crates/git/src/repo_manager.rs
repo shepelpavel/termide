@@ -11,6 +11,23 @@ use crate::{find_all_repos, find_toplevel_repo, find_toplevel_repos};
 /// `0` would skip the submodule walk entirely.
 const SUBMODULE_DEPTH: usize = 2;
 
+/// Order repositories by display name (case-insensitive), with the full path
+/// as a tiebreak — the dropdown shows `get_repo_name` (the last path
+/// component), so a raw path sort looked unsorted by name to the user.
+fn sort_by_display_name(repos: &mut [PathBuf]) {
+    repos.sort_by(|a, b| {
+        crate::get_repo_name(a)
+            .to_lowercase()
+            .cmp(&crate::get_repo_name(b).to_lowercase())
+            .then_with(|| a.cmp(b))
+    });
+}
+
+/// Depth to scan DOWN from an input path that is not itself inside a repository,
+/// to discover nested repositories — covers opening termide in a directory that
+/// merely *contains* git projects (`~/projects` with `repo-a/`, `repo-b/`).
+const NESTED_REPO_DEPTH: usize = 2;
+
 /// Manages repository selection for git panels.
 ///
 /// The constructor finds top-level repo roots synchronously (cheap: just
@@ -34,8 +51,9 @@ impl RepoManager {
     /// submodule walk in the background. Use [`Self::poll`] from the
     /// panel's update tick to fold the submodule results in when ready.
     pub fn new(paths: &[PathBuf]) -> Self {
-        let roots = find_toplevel_repos(paths);
-        let submodule_rx = spawn_submodule_walk(&roots);
+        let mut roots = find_toplevel_repos(paths);
+        sort_by_display_name(&mut roots);
+        let submodule_rx = spawn_repo_walk(&roots, paths);
         Self {
             repos: roots,
             selected: 0,
@@ -54,7 +72,8 @@ impl RepoManager {
             Some(root) => vec![root],
             None => Vec::new(),
         };
-        let submodule_rx = spawn_submodule_walk(&roots);
+        // `repo_path` is a specific repo; no downward nested-repo scan needed.
+        let submodule_rx = spawn_repo_walk(&roots, &[]);
         Self {
             repos: roots,
             selected: 0,
@@ -134,21 +153,26 @@ impl RepoManager {
     /// from that call.
     pub fn update(&mut self, paths: &[PathBuf]) -> bool {
         let current = self.current().map(|p| p.to_path_buf());
-        let new_roots = find_toplevel_repos(paths);
+        let mut new_roots = find_toplevel_repos(paths);
+        sort_by_display_name(&mut new_roots);
 
-        let changed = new_roots != self.repos;
-        if changed {
+        // Swap in the upward baseline only when it actually found repos.
+        // If it's empty we keep the current set — which may hold nested repos
+        // a previous async walk discovered — until the freshly spawned walk
+        // lands, so a non-repo root doesn't flash "no repositories" on every
+        // navigation. `poll()` will then replace it with the authoritative set.
+        let changed = if !new_roots.is_empty() && new_roots != self.repos {
             self.repos = new_roots.clone();
-            if let Some(current) = current {
-                self.selected = self.repos.iter().position(|r| r == &current).unwrap_or(0);
-            } else {
-                self.selected = 0;
-            }
-        }
-        // Always restart the submodule walk so a later poll() picks up
-        // any new/removed submodules even when the top-level set was
-        // unchanged.
-        self.submodule_rx = spawn_submodule_walk(&new_roots);
+            self.selected = current
+                .and_then(|c| self.repos.iter().position(|r| r == &c))
+                .unwrap_or(0);
+            true
+        } else {
+            false
+        };
+        // Always restart the walk so a later poll() picks up new/removed
+        // submodules and nested repos even when the baseline was unchanged.
+        self.submodule_rx = spawn_repo_walk(&new_roots, paths);
         changed
     }
 
@@ -168,15 +192,24 @@ impl RepoManager {
     }
 }
 
-/// Spawn a background submodule walk for `roots` and return its receiver.
+/// Spawn the background repository walk and return its receiver. Two kinds of
+/// discovery run off the UI thread and fold into one result:
+/// - for each top-level `root`, its submodules (down to [`SUBMODULE_DEPTH`]);
+/// - for each `scan_path` that is *not* inside a repository, nested repos under
+///   it (down to [`NESTED_REPO_DEPTH`]) — the "folder of git projects" case.
+///
 /// Returns `None` when there is nothing to walk so callers can skip the
-/// `poll()` round-trip entirely on empty repo sets.
-fn spawn_submodule_walk(roots: &[PathBuf]) -> Option<mpsc::Receiver<Vec<PathBuf>>> {
-    if roots.is_empty() {
+/// `poll()` round-trip entirely.
+fn spawn_repo_walk(
+    roots: &[PathBuf],
+    scan_paths: &[PathBuf],
+) -> Option<mpsc::Receiver<Vec<PathBuf>>> {
+    if roots.is_empty() && scan_paths.is_empty() {
         return None;
     }
     let (tx, rx) = mpsc::channel();
     let roots: Vec<PathBuf> = roots.to_vec();
+    let scan_paths: Vec<PathBuf> = scan_paths.to_vec();
     std::thread::spawn(move || {
         use std::collections::HashSet;
         let mut all: HashSet<PathBuf> = roots.iter().cloned().collect();
@@ -185,8 +218,22 @@ fn spawn_submodule_walk(roots: &[PathBuf]) -> Option<mpsc::Receiver<Vec<PathBuf>
                 all.insert(submodule);
             }
         }
+        // Scan downward from any path that isn't itself a repo root, to surface
+        // nested project repos. We deliberately do NOT skip paths that merely
+        // live *inside* some ancestor repo: a whole-home/whole-disk repo (e.g.
+        // `~/.git` dotfiles) would otherwise suppress discovery of the real
+        // projects under a container directory. A repo root is left to the
+        // submodule walk above.
+        for path in &scan_paths {
+            if path.join(".git").exists() {
+                continue;
+            }
+            for repo in find_all_repos(path, NESTED_REPO_DEPTH) {
+                all.insert(repo);
+            }
+        }
         let mut full: Vec<PathBuf> = all.into_iter().collect();
-        full.sort();
+        sort_by_display_name(&mut full);
         let _ = tx.send(full);
     });
     Some(rx)
@@ -212,9 +259,59 @@ mod tests {
     }
 
     #[test]
+    fn sorts_repos_by_display_name_not_path() {
+        // Path order would put a-dir/Zebra first; name order is apple, mango,
+        // Zebra (case-insensitive).
+        let mut repos = vec![
+            PathBuf::from("/x/z-dir/apple"),
+            PathBuf::from("/x/a-dir/Zebra"),
+            PathBuf::from("/x/m-dir/mango"),
+        ];
+        sort_by_display_name(&mut repos);
+        let names: Vec<String> = repos.iter().map(|p| crate::get_repo_name(p)).collect();
+        assert_eq!(names, vec!["apple", "mango", "Zebra"]);
+    }
+
+    #[test]
     fn test_select_bounds() {
         let mut manager = RepoManager::new(&[]);
         manager.select(10); // Out of bounds on empty
         assert_eq!(manager.selected_index(), 0); // Unchanged
+    }
+
+    // Opening termide in a directory that is not itself a repo but contains
+    // git projects should surface those nested repos via the async walk — even
+    // when that directory lives inside an ancestor repo (e.g. a whole-home
+    // dotfiles repo), which must not suppress discovery.
+    #[test]
+    fn discovers_nested_repos_under_non_repo_root() {
+        use std::fs;
+        let tmp = std::env::temp_dir().join(format!("termide-rm-nested-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("repo-a/.git")).unwrap();
+        fs::create_dir_all(tmp.join("repo-b/.git")).unwrap();
+        fs::create_dir_all(tmp.join("plain")).unwrap(); // not a repo
+
+        let mut mgr = RepoManager::new(std::slice::from_ref(&tmp));
+        // The nested scan is async, so poll until repo-a lands (or we give up).
+        // Don't wait on is_empty(): an ancestor repo (e.g. a stray /tmp/.git)
+        // can make the list non-empty immediately without the nested repos yet.
+        let mut tries = 0;
+        while !mgr.repos().iter().any(|r| r.ends_with("repo-a")) && tries < 300 {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            mgr.poll();
+            tries += 1;
+        }
+
+        let repos = mgr.repos().to_vec();
+        let _ = fs::remove_dir_all(&tmp);
+        assert!(
+            repos.iter().any(|r| r.ends_with("repo-a")),
+            "repo-a not discovered: {repos:?}"
+        );
+        assert!(
+            repos.iter().any(|r| r.ends_with("repo-b")),
+            "repo-b not discovered: {repos:?}"
+        );
     }
 }

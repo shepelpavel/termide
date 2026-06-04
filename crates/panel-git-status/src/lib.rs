@@ -240,6 +240,21 @@ impl GitStatusPanel {
     /// `git rev-list` commands run on a worker thread and the result is
     /// folded in by `tick()` via [`Self::poll_refresh`]. The panel
     /// stays in `is_loading` state until then.
+    /// Reset all displayed git state to empty. Used when no repository is
+    /// selected — e.g. the current repo's `.git` was just deleted — so stale
+    /// files, branch and counts don't linger in the panel.
+    fn clear_git_state(&mut self) {
+        self.branch = None;
+        self.branches.clear();
+        self.ahead = 0;
+        self.behind = 0;
+        self.unstaged_files.clear();
+        self.staged_files.clear();
+        self.stash_count = 0;
+        self.rebuild_trees();
+        self.cursor = 0;
+    }
+
     pub fn refresh(&mut self) {
         self.is_loading = true;
 
@@ -251,10 +266,13 @@ impl GitStatusPanel {
                     if let Some(r) = self.repo_manager.current() {
                         r.to_path_buf()
                     } else {
+                        // No repo to show — drop any stale file list.
+                        self.clear_git_state();
                         self.is_loading = false;
                         return;
                     }
                 } else {
+                    self.clear_git_state();
                     self.is_loading = false;
                     return;
                 }
@@ -1543,11 +1561,26 @@ impl Panel for GitStatusPanel {
     fn tick(&mut self) -> Vec<PanelEvent> {
         let mut events = Vec::new();
 
-        // Submodule discovery runs in the background; pull its result
-        // in here so the repo dropdown reflects the full list once
-        // available without ever blocking the constructor.
+        // Repository discovery (submodules, and nested repos under a non-repo
+        // root) runs in the background; pull its result in here so the repo
+        // dropdown reflects the full list once available without ever blocking
+        // the constructor.
+        let before = self.repo_manager.current().map(|p| p.to_path_buf());
         if self.repo_manager.poll() {
             events.push(PanelEvent::NeedsRedraw);
+            let after = self.repo_manager.current().map(|p| p.to_path_buf());
+            if after.is_none() {
+                // The repo(s) vanished (e.g. `.git` deleted) — drop the now
+                // stale branch/file lists instead of leaving them on screen.
+                if before.is_some() {
+                    self.clear_git_state();
+                }
+            } else if before != after {
+                // A repo was just discovered (async nested scan) or the current
+                // one was removed and selection moved — load its status, since
+                // `poll()` only fills the list.
+                self.refresh();
+            }
         }
 
         // Async refresh worker — when ready, swap branch/files/etc.

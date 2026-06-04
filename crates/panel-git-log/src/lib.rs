@@ -175,8 +175,21 @@ impl GitLogPanel {
     /// Returns immediately; the `get_all_branches` and
     /// `get_log_with_graph` git commands run on a worker thread and
     /// `tick()` folds the result in via [`Self::poll_refresh`].
+    /// Reset displayed log state to empty — used when no repository is selected
+    /// (e.g. the current repo's `.git` was deleted) so stale commits/branch
+    /// don't linger.
+    fn clear_git_state(&mut self) {
+        self.branch = None;
+        self.branches.clear();
+        self.selected_branch = None;
+        self.commits.clear();
+        self.selected = 0;
+        self.scroll = 0;
+    }
+
     pub fn refresh(&mut self) {
         let Some(repo) = self.repo_manager.current() else {
+            self.clear_git_state();
             return;
         };
         let repo = repo.to_path_buf();
@@ -947,11 +960,23 @@ impl Panel for GitLogPanel {
 
     fn tick(&mut self) -> Vec<PanelEvent> {
         let mut events = Vec::new();
-        // Submodule discovery runs in the background; pull its result
-        // in so the repo dropdown reflects the full list once available
-        // without ever blocking the constructor.
+        // Repository discovery (submodules, and nested repos under a non-repo
+        // root) runs in the background; pull its result in so the repo dropdown
+        // reflects the full list once available without blocking the constructor.
+        let before = self.repo_manager.current().map(|p| p.to_path_buf());
         if self.repo_manager.poll() {
             events.push(PanelEvent::NeedsRedraw);
+            let after = self.repo_manager.current().map(|p| p.to_path_buf());
+            if after.is_none() {
+                // Repo(s) vanished (e.g. `.git` deleted) — drop stale commits.
+                if before.is_some() {
+                    self.clear_git_state();
+                }
+            } else if before != after {
+                // Newly discovered repo, or current one removed and selection
+                // moved — load its log (poll() only fills the list).
+                self.refresh();
+            }
         }
         // Async refresh worker — swap branches / commits into place
         // once `git log` finishes off the UI thread.
