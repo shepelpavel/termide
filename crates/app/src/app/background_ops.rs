@@ -80,6 +80,45 @@ impl App {
         }
     }
 
+    /// If `stderr` from a failed git network op looks like an SSH key
+    /// authentication failure, handle it: either prompt for the key passphrase
+    /// (first failure) and let the retry run, or — if a cached passphrase was
+    /// already tried — clear it and report a clean error (no prompt loop).
+    /// Returns `true` when the failure was handled here.
+    pub(super) fn maybe_prompt_ssh_passphrase(
+        &mut self,
+        operation: &str,
+        repo_path: std::path::PathBuf,
+        stderr: &str,
+    ) -> bool {
+        let s = stderr.to_ascii_lowercase();
+        let is_auth_failure = (s.contains("permission denied") && s.contains("publickey"))
+            || s.contains("authentication failed")
+            || s.contains("passphrase");
+        if !is_auth_failure {
+            return false;
+        }
+
+        if self.state.git_ssh_passphrase.is_some() {
+            // A cached passphrase was already tried and still failed — it's
+            // wrong, or the key isn't authorized. Don't loop: clear and report.
+            self.state.git_ssh_passphrase = None;
+            self.state
+                .set_error(format!("git {operation}: SSH authentication failed"));
+            return true;
+        }
+
+        self.event_show_input(
+            "Enter passphrase for your SSH key:".to_string(),
+            String::new(),
+            termide_core::InputAction::GitSshPassphrase {
+                operation: operation.to_string(),
+                repo_path,
+            },
+        );
+        true
+    }
+
     /// Check for background git operation result (push/pull/fetch)
     pub(super) fn check_git_operation_result(&mut self) {
         let handle = match self.state.git_operation_handle.take() {
@@ -99,11 +138,14 @@ impl App {
                 // rather than a modal, so an auto-fetch on startup never nags.
                 if result.operation == "fetch" {
                     if !result.success {
-                        let msg = format!(
-                            "git fetch failed: {}",
-                            result.stderr.lines().next().unwrap_or("unknown error")
-                        );
-                        self.state.set_error(msg);
+                        let repo = handle.repo_path.clone();
+                        if !self.maybe_prompt_ssh_passphrase("fetch", repo, &result.stderr) {
+                            let msg = format!(
+                                "git fetch failed: {}",
+                                result.stderr.lines().next().unwrap_or("unknown error")
+                            );
+                            self.state.set_error(msg);
+                        }
                     }
                     // Refresh all git panels silently
                     for panel in self.layout_manager.iter_all_panels_mut() {
@@ -111,6 +153,19 @@ impl App {
                     }
                     self.state.needs_redraw = true;
                     return;
+                }
+
+                // On an SSH auth failure, prompt for the key passphrase and
+                // retry instead of showing a failure modal.
+                if !result.success {
+                    let repo = handle.repo_path.clone();
+                    if self.maybe_prompt_ssh_passphrase(&result.operation, repo, &result.stderr) {
+                        for panel in self.layout_manager.iter_all_panels_mut() {
+                            panel.handle_command(PanelCommand::Reload);
+                        }
+                        self.state.needs_redraw = true;
+                        return;
+                    }
                 }
 
                 // Show result modal for push/pull

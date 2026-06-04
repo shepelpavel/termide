@@ -150,6 +150,19 @@ fn restore_terminal() {
 }
 
 fn main() -> Result<()> {
+    // SSH_ASKPASS mode: when termide is set as ssh's askpass helper for a git
+    // network operation, ssh re-executes this binary to obtain the SSH key
+    // passphrase. We detect that purely by the presence of TERMIDE_ASKPASS_FILE
+    // (ssh passes the prompt as argv, which must NOT be treated as a file to
+    // open), print the secret termide stored there, and exit. No TUI, no clap.
+    if let Ok(secret_file) = std::env::var("TERMIDE_ASKPASS_FILE") {
+        if let Ok(secret) = std::fs::read_to_string(&secret_file) {
+            // ssh expects the secret on stdout, optionally newline-terminated.
+            print!("{secret}");
+        }
+        return Ok(());
+    }
+
     // Parse CLI arguments
     let cli = Cli::parse();
 

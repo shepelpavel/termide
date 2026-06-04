@@ -333,7 +333,7 @@ impl App {
                         }
 
                         // Start background git operation
-                        self.event_git_operation(operation, repo_path)?;
+                        self.event_git_operation(operation, repo_path, None)?;
 
                         return Ok(true);
                     }

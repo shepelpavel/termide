@@ -616,6 +616,15 @@ pub enum InputAction {
         line: usize,
         column: usize,
     },
+
+    /// Retry a git network operation (fetch/pull/push) with an SSH key
+    /// passphrase the user types into a masked modal.
+    GitSshPassphrase {
+        /// "fetch" | "pull" | "push"
+        operation: String,
+        /// Repository root path
+        repo_path: PathBuf,
+    },
 }
 
 /// Selection dialog actions.

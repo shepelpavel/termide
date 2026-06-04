@@ -255,6 +255,12 @@ impl App {
                 PendingAction::CreateFile { directory } => {
                     self.handle_create_file(directory, value)?;
                 }
+                PendingAction::GitSshPassphraseRetry {
+                    operation,
+                    repo_path,
+                } => {
+                    self.handle_git_ssh_passphrase_retry(operation, repo_path, value)?;
+                }
                 PendingAction::CreateDirectory { directory } => {
                     self.handle_create_directory(directory, value)?;
                 }

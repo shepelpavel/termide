@@ -18,24 +18,57 @@ fn hardened_git(dir: &Path, args: &[&str]) -> Command {
     cmd
 }
 
+/// Authentication mode for a network git command.
+pub enum SshAuth<'a> {
+    /// Non-interactive: agent only, ssh runs in `BatchMode`. A missing
+    /// passphrase fails cleanly instead of prompting on the terminal.
+    Batch,
+    /// Supply a known SSH key passphrase via an `SSH_ASKPASS` helper. `helper`
+    /// is the askpass program (the termide binary in askpass mode); it reads
+    /// the secret from `secret_file`. Used to retry after termide collected the
+    /// passphrase in a modal.
+    Askpass {
+        helper: &'a Path,
+        secret_file: &'a Path,
+    },
+}
+
 /// Build a hardened `git` command for a NETWORK operation (fetch/pull/push).
 ///
 /// Network operations can trigger ssh / credential prompts. Without hardening,
 /// ssh opens `/dev/tty` directly to ask for a key passphrase and writes the
-/// prompt straight over the TUI. Here stdin is detached, git's own prompt is
-/// disabled, and ssh runs in `BatchMode` so a missing passphrase fails cleanly
-/// instead of prompting — keys already loaded in ssh-agent keep working.
-/// `stdout`/`stderr` are piped for the caller to capture; the command is
+/// prompt straight over the TUI. Here stdin is detached and git's own prompt is
+/// disabled. With [`SshAuth::Batch`] ssh runs in `BatchMode` (no prompts; keys
+/// in ssh-agent still work); with [`SshAuth::Askpass`] ssh is pointed at a
+/// non-interactive askpass helper that supplies a passphrase termide already
+/// holds. `stdout`/`stderr` are piped for the caller to capture; the command is
 /// returned ready to `.spawn()`.
-pub fn network_command(repo: &Path, args: &[&str]) -> Command {
+pub fn network_command(repo: &Path, args: &[&str], auth: SshAuth) -> Command {
     let mut cmd = Command::new("git");
     cmd.args(args)
         .current_dir(repo)
         .env("GIT_TERMINAL_PROMPT", "0")
-        .env("GIT_SSH_COMMAND", "ssh -o BatchMode=yes")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    match auth {
+        SshAuth::Batch => {
+            cmd.env("GIT_SSH_COMMAND", "ssh -o BatchMode=yes");
+        }
+        SshAuth::Askpass {
+            helper,
+            secret_file,
+        } => {
+            // Force ssh to use our askpass helper instead of /dev/tty, and feed
+            // it the passphrase via the secret file. DISPLAY is a fallback for
+            // ssh older than the SSH_ASKPASS_REQUIRE support (8.4).
+            cmd.env("SSH_ASKPASS", helper)
+                .env("SSH_ASKPASS_REQUIRE", "force")
+                .env("GIT_ASKPASS", helper)
+                .env("TERMIDE_ASKPASS_FILE", secret_file)
+                .env("DISPLAY", ":0");
+        }
+    }
     cmd
 }
 
@@ -77,7 +110,7 @@ pub(crate) fn run_git_with_stderr(repo: &Path, args: &[&str], op_name: &str) -> 
 
 #[cfg(test)]
 mod tests {
-    use super::network_command;
+    use super::{network_command, SshAuth};
     use std::ffi::OsStr;
     use std::path::Path;
 
@@ -86,7 +119,7 @@ mod tests {
     // hardening env is in place.
     #[test]
     fn network_command_disables_interactive_prompts() {
-        let cmd = network_command(Path::new("/tmp"), &["fetch", "origin"]);
+        let cmd = network_command(Path::new("/tmp"), &["fetch", "origin"], SshAuth::Batch);
 
         let mut terminal_prompt = None;
         let mut ssh_command = None;
@@ -112,5 +145,40 @@ mod tests {
             .map(|a| a.to_string_lossy().into_owned())
             .collect();
         assert_eq!(args, vec!["fetch", "origin"]);
+    }
+
+    // Askpass mode must point ssh at the helper (not /dev/tty) and not run in
+    // BatchMode, so the supplied passphrase is actually used.
+    #[test]
+    fn network_command_askpass_uses_helper() {
+        let cmd = network_command(
+            Path::new("/tmp"),
+            &["fetch"],
+            SshAuth::Askpass {
+                helper: Path::new("/usr/bin/termide"),
+                secret_file: Path::new("/run/secret"),
+            },
+        );
+        let mut askpass = None;
+        let mut require = None;
+        let mut secret = None;
+        let mut ssh_cmd = None;
+        for (k, v) in cmd.get_envs() {
+            match k.to_string_lossy().as_ref() {
+                "SSH_ASKPASS" => askpass = v.map(|s| s.to_string_lossy().into_owned()),
+                "SSH_ASKPASS_REQUIRE" => require = v.map(|s| s.to_string_lossy().into_owned()),
+                "TERMIDE_ASKPASS_FILE" => secret = v.map(|s| s.to_string_lossy().into_owned()),
+                "GIT_SSH_COMMAND" => ssh_cmd = v.map(|s| s.to_string_lossy().into_owned()),
+                _ => {}
+            }
+        }
+        assert_eq!(askpass.as_deref(), Some("/usr/bin/termide"));
+        assert_eq!(require.as_deref(), Some("force"));
+        assert_eq!(secret.as_deref(), Some("/run/secret"));
+        // Must NOT force BatchMode in askpass mode (that would suppress the helper).
+        assert!(
+            ssh_cmd.is_none(),
+            "askpass mode must not set BatchMode ssh command"
+        );
     }
 }

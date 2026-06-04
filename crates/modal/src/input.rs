@@ -90,6 +90,13 @@ impl InputModal {
         }
     }
 
+    /// Mask the input field, showing asterisks instead of the typed text
+    /// (passphrase / password entry).
+    pub fn password(mut self) -> Self {
+        self.is_password = true;
+        self
+    }
+
     /// Add an optional checkbox to the modal
     pub fn with_checkbox(mut self, label: String) -> Self {
         self.checkboxes.push(ModalCheckbox {

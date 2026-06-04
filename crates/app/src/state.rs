@@ -64,6 +64,8 @@ pub struct GitOperationHandle {
     pub pid: u32,
     /// Operation type: "push" or "pull"
     pub operation: String,
+    /// Repository the operation ran in (used to retry after a passphrase prompt)
+    pub repo_path: std::path::PathBuf,
     /// When the operation was started (for timeout detection)
     pub started_at: std::time::Instant,
 }
@@ -282,6 +284,9 @@ pub struct AppState {
     pub dir_size_receiver: Option<mpsc::Receiver<DirSizeResult>>,
     /// Handle for background git operation (allows cancellation)
     pub git_operation_handle: Option<GitOperationHandle>,
+    /// SSH key passphrase entered for git network operations, cached in memory
+    /// for the session so repeated push/fetch don't re-prompt. Never persisted.
+    pub git_ssh_passphrase: Option<String>,
     /// Handles for background command operations (.report. commands)
     pub command_operation_handles: Vec<CommandOperationHandle>,
     /// Handles for background commands (.bg.) tracked in Operations panel: (op_id, receiver, pid)
@@ -419,6 +424,7 @@ impl AppState {
             pending_action: None,
             dir_size_receiver: None,
             git_operation_handle: None,
+            git_ssh_passphrase: None,
             command_operation_handles: Vec::new(),
             bg_command_handles: Vec::new(),
             pending_editor_download: None,

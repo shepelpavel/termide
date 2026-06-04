@@ -229,7 +229,7 @@ impl App {
                 operation,
                 repo_path,
             } => {
-                self.event_git_operation(operation, repo_path)?;
+                self.event_git_operation(operation, repo_path, None)?;
             }
 
             PanelEvent::CancelGitOperation => {
@@ -833,7 +833,7 @@ impl App {
     }
 
     /// Handle ShowInput event - show input modal
-    fn event_show_input(
+    pub(super) fn event_show_input(
         &mut self,
         prompt: String,
         initial_value: String,
@@ -884,10 +884,25 @@ impl App {
                 line: *line,
                 column: *column,
             },
+            termide_core::InputAction::GitSshPassphrase {
+                operation,
+                repo_path,
+            } => PendingAction::GitSshPassphraseRetry {
+                operation: operation.clone(),
+                repo_path: repo_path.clone(),
+            },
         };
 
-        // Create input modal
-        let modal = InputModal::with_default("Input", prompt, &initial_value);
+        // Create input modal — mask the field for passphrase entry.
+        let is_password = matches!(
+            on_submit,
+            termide_core::InputAction::GitSshPassphrase { .. }
+        );
+        let modal = if is_password {
+            InputModal::new("SSH Passphrase", prompt).password()
+        } else {
+            InputModal::with_default("Input", prompt, &initial_value)
+        };
         self.state
             .set_pending_action(pending_action, ActiveModal::Input(Box::new(modal)));
     }
@@ -975,15 +990,50 @@ impl App {
         &mut self,
         operation: GitOperationType,
         repo_path: PathBuf,
+        passphrase: Option<String>,
     ) -> Result<()> {
         use crate::state::{GitOperationHandle, GitOperationResult};
         use std::sync::mpsc;
         use std::thread;
 
+        // Write an SSH key passphrase to a private, short-lived file the askpass
+        // helper reads. Owner-only perms; removed once git finishes.
+        fn write_askpass_secret(secret: &str) -> std::io::Result<PathBuf> {
+            use std::io::Write;
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+            let dir = std::env::var_os("XDG_RUNTIME_DIR")
+                .map(PathBuf::from)
+                .unwrap_or_else(std::env::temp_dir);
+            let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+            let path = dir.join(format!("termide-askpass-{}-{}", std::process::id(), n));
+
+            #[cfg(unix)]
+            let mut file = {
+                use std::os::unix::fs::OpenOptionsExt;
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .mode(0o600)
+                    .open(&path)?
+            };
+            #[cfg(not(unix))]
+            let mut file = std::fs::File::create(&path)?;
+
+            file.write_all(secret.as_bytes())?;
+            Ok(path)
+        }
+
         // Prevent multiple concurrent operations
         if self.state.ui.git_operation_in_progress {
             return Ok(());
         }
+
+        // Reuse a passphrase entered earlier this session so repeated ops don't
+        // re-prompt; an explicit retry value takes precedence.
+        let passphrase = passphrase.or_else(|| self.state.git_ssh_passphrase.clone());
 
         let cmd = match operation {
             GitOperationType::Push => "push",
@@ -992,14 +1042,36 @@ impl App {
         };
         let cmd_str = cmd.to_string();
 
-        // Spawn the git process via the hardened network command: stdin is
-        // detached and ssh runs non-interactively (BatchMode), so a missing
-        // SSH key passphrase fails cleanly instead of writing a prompt onto
-        // /dev/tty and corrupting the TUI. stdout/stderr are piped to capture
-        // output.
-        let child = match termide_git::network_command(&repo_path, &[&cmd_str]).spawn() {
+        // With a passphrase, write it to a private (0600) temp file and run ssh
+        // through our askpass helper so the passphrase is supplied without a
+        // terminal prompt. Without one, run non-interactively (BatchMode) so a
+        // missing passphrase fails cleanly instead of corrupting the TUI.
+        let secret_file = match &passphrase {
+            Some(pp) => match write_askpass_secret(pp) {
+                Ok(path) => Some(path),
+                Err(e) => {
+                    self.show_error_modal(format!("Failed to prepare SSH askpass: {e}"));
+                    return Ok(());
+                }
+            },
+            None => None,
+        };
+        let helper = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("termide"));
+        let auth = match &secret_file {
+            Some(sf) => termide_git::SshAuth::Askpass {
+                helper: &helper,
+                secret_file: sf,
+            },
+            None => termide_git::SshAuth::Batch,
+        };
+
+        // stdout/stderr are piped to capture output and keep it off the TUI.
+        let child = match termide_git::network_command(&repo_path, &[&cmd_str], auth).spawn() {
             Ok(child) => child,
             Err(e) => {
+                if let Some(sf) = &secret_file {
+                    let _ = std::fs::remove_file(sf);
+                }
                 self.show_error_modal(format!("Failed to spawn git: {}", e));
                 return Ok(());
             }
@@ -1024,9 +1096,15 @@ impl App {
         // Spawn background thread to wait for result
         let (tx, rx) = mpsc::channel();
         let cmd_for_thread = cmd_str.clone();
+        let secret_for_thread = secret_file.clone();
 
         thread::spawn(move || {
             let output = child.wait_with_output();
+
+            // Drop the transient passphrase file as soon as git is done.
+            if let Some(sf) = secret_for_thread {
+                let _ = std::fs::remove_file(sf);
+            }
 
             let result = match output {
                 Ok(out) => GitOperationResult {
@@ -1050,6 +1128,7 @@ impl App {
             receiver: rx,
             pid,
             operation: cmd_str,
+            repo_path,
             started_at: std::time::Instant::now(),
         });
 

@@ -253,6 +253,14 @@ pub enum PendingAction {
         /// Selected index to restore on return
         selected: usize,
     },
+    /// Retry a git network operation with an SSH key passphrase the user just
+    /// entered in the (masked) password modal.
+    GitSshPassphraseRetry {
+        /// "fetch" | "pull" | "push"
+        operation: String,
+        /// Repository root path
+        repo_path: PathBuf,
+    },
     /// Apply settings from the Settings modal
     Settings,
     /// Confirm-modal result for "Remove project override". On `true` the
