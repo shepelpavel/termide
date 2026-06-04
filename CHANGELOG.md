@@ -5,6 +5,18 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.10] - 2026-06-05
+
+### Added
+- **Git Status/Log now find nested repositories.** Opening termide in a directory that isn't a repo itself but contains git projects (or sits inside a whole-home/whole-disk repo) now lists those nested projects, discovered asynchronously up to two levels deep — alongside the usual submodule discovery.
+
+### Changed
+- The repository dropdown is sorted by name (case-insensitive) instead of full path, so the list reads alphabetically.
+
+### Fixed
+- The Git Status/Log panels no longer keep showing a repository's branch, files, or commits after it disappears (e.g. its `.git` was deleted) — the panel state is cleared, and it reloads when the selected repository changes.
+- Navigating no longer briefly flashes "no repositories" while the repo list is re-scanned.
+
 ## [0.23.9] - 2026-06-03
 
 ### Fixed
@@ -127,6 +139,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `deny.toml` + `cargo-deny check` step covers advisories, licenses, bans and sources.
 - Pre-commit hook documented in `CONTRIBUTING.md`.
 
+[0.23.10]: https://github.com/termide/termide/releases/tag/0.23.10
 [0.23.9]: https://github.com/termide/termide/releases/tag/0.23.9
 [0.23.8]: https://github.com/termide/termide/releases/tag/0.23.8
 [0.23.7]: https://github.com/termide/termide/releases/tag/0.23.7
