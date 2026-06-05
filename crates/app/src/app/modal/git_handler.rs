@@ -113,15 +113,14 @@ impl App {
             match result {
                 InfoActionResult::Action(action) => match action.as_str() {
                     "git_status" => {
-                        // Open Git Status panel for the repository
-                        if !self.find_and_focus_panel_by_name("git_status") {
-                            // Not found, create new one
-                            let git_status_panel =
-                                termide_panel_git_status::GitStatusPanel::new_for_repo(
-                                    repo_path.to_path_buf(),
-                                );
-                            self.add_panel(Box::new(git_status_panel));
-                        }
+                        // Open a Git Status panel for THIS repository. Always
+                        // create a new one rather than focusing an existing
+                        // panel (which may track a different repo).
+                        let git_status_panel =
+                            termide_panel_git_status::GitStatusPanel::new_for_repo(
+                                repo_path.to_path_buf(),
+                            );
+                        self.add_panel(Box::new(git_status_panel));
                         self.auto_save_session();
                     }
                     "stage" => {

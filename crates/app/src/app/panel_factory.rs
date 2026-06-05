@@ -258,15 +258,17 @@ impl App {
         Ok(())
     }
 
-    /// Open Git Status panel
+    /// Open a Git Status panel.
+    ///
+    /// Always creates a NEW panel (like editors/terminals) rather than focusing
+    /// an existing one, so several repositories can be watched side by side —
+    /// each instance tracks its own repo via the repo dropdown.
     pub(super) fn handle_open_git_status(&mut self) -> Result<()> {
         self.close_help_panels();
 
-        if !self.find_and_focus_panel_by_name("git_status") {
-            let paths = self.collect_panel_paths();
-            let git_status_panel = termide_panel_git_status::GitStatusPanel::new(&paths);
-            self.add_panel(Box::new(git_status_panel));
-        }
+        let paths = self.collect_panel_paths();
+        let git_status_panel = termide_panel_git_status::GitStatusPanel::new(&paths);
+        self.add_panel(Box::new(git_status_panel));
         self.auto_save_session();
         Ok(())
     }
