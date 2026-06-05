@@ -5,6 +5,14 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.11] - 2026-06-05
+
+### Added
+- **Multiple Git Status panels.** Opening Git Status (`Alt+G` / Tools menu) now always creates a new panel instead of focusing the existing one, so several repositories can be watched side by side — each panel tracks its own repo via the dropdown.
+
+### Security
+- The SSH askpass helper now hands the passphrase to ssh via a raw stdout write rather than a `print!` macro. Behaviour is unchanged (ssh reads it over a pipe it owns — never a terminal or log); this just keeps static analysis from mistaking the askpass contract for cleartext logging.
+
 ## [0.23.10] - 2026-06-05
 
 ### Added
@@ -139,6 +147,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `deny.toml` + `cargo-deny check` step covers advisories, licenses, bans and sources.
 - Pre-commit hook documented in `CONTRIBUTING.md`.
 
+[0.23.11]: https://github.com/termide/termide/releases/tag/0.23.11
 [0.23.10]: https://github.com/termide/termide/releases/tag/0.23.10
 [0.23.9]: https://github.com/termide/termide/releases/tag/0.23.9
 [0.23.8]: https://github.com/termide/termide/releases/tag/0.23.8
