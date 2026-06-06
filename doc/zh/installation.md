@@ -26,6 +26,11 @@ wget https://github.com/termide/termide/releases/latest/download/termide-0.23.11
 wget https://github.com/termide/termide/releases/latest/download/termide-0.23.11-aarch64-unknown-linux-gnu.tar.gz
 ```
 
+**Linux ARM64 — 静态 musl**（Android/Termux、Alpine ARM、任何无 glibc 的 ARM64 系统）：
+```bash
+wget https://github.com/termide/termide/releases/latest/download/termide-0.23.11-aarch64-unknown-linux-musl.tar.gz
+```
+
 **macOS Intel (x86_64)**：
 ```bash
 curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.23.11-x86_64-apple-darwin.tar.gz
@@ -197,6 +202,21 @@ TermIDE 也可在 Windows Subsystem for Linux（WSL 和 WSL2）中运行：
    tar xzf termide-0.23.11-x86_64-unknown-linux-gnu.tar.gz
    ./termide
    ```
+
+### Android (Termux)
+
+TermIDE 可在 [Termux](https://termux.dev) 中运行。请使用**静态 ARM64 musl**
+构建 —— glibc 的 `aarch64-unknown-linux-gnu` 构建无法在 Android 的 Bionic libc 上运行：
+
+```bash
+pkg install git openssh   # termide 会调用的工具（以及所需的 LSP 服务器）
+wget https://github.com/termide/termide/releases/latest/download/termide-0.23.11-aarch64-unknown-linux-musl.tar.gz
+tar xzf termide-0.23.11-aarch64-unknown-linux-musl.tar.gz
+./termide
+```
+
+Android 上没有系统剪贴板（无 X11/Wayland），资源监视器可能因 `/proc` 受限而显示不完整；
+编辑器、文件管理器、git 和内置终端均可正常使用。
 
 ## 验证安装
 

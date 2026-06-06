@@ -26,6 +26,11 @@ wget https://github.com/termide/termide/releases/latest/download/termide-0.23.11
 wget https://github.com/termide/termide/releases/latest/download/termide-0.23.11-aarch64-unknown-linux-gnu.tar.gz
 ```
 
+**Linux ARM64 — статический musl** (Android/Termux, Alpine ARM, любая ARM64-система без glibc):
+```bash
+wget https://github.com/termide/termide/releases/latest/download/termide-0.23.11-aarch64-unknown-linux-musl.tar.gz
+```
+
 **macOS Intel (x86_64)**:
 ```bash
 curl -LO https://github.com/termide/termide/releases/latest/download/termide-0.23.11-x86_64-apple-darwin.tar.gz
@@ -197,6 +202,23 @@ TermIDE также работает в Windows Subsystem for Linux (WSL и WSL2)
    tar xzf termide-0.23.11-x86_64-unknown-linux-gnu.tar.gz
    ./termide
    ```
+
+### Android (Termux)
+
+TermIDE работает в [Termux](https://termux.dev). Используйте **статическую
+сборку ARM64 musl** — glibc-сборка `aarch64-unknown-linux-gnu` не запустится на
+Android (libc Bionic):
+
+```bash
+pkg install git openssh   # инструменты, к которым обращается termide (плюс нужные LSP)
+wget https://github.com/termide/termide/releases/latest/download/termide-0.23.11-aarch64-unknown-linux-musl.tar.gz
+tar xzf termide-0.23.11-aarch64-unknown-linux-musl.tar.gz
+./termide
+```
+
+Системный буфер обмена на Android недоступен (нет X11/Wayland), а монитор
+ресурсов может показывать неполные данные (ограниченный `/proc`); редактор,
+файловый менеджер, git и встроенный терминал работают как обычно.
 
 ## Проверка установки
 

@@ -90,6 +90,11 @@ wget https://github.com/termide/termide/releases/latest/download/termide-0.23.11
 tar xzf termide-0.23.11-aarch64-unknown-linux-gnu.tar.gz
 ./termide
 
+# Linux ARM64 (static musl — Android/Termux, Alpine ARM, any glibc-free ARM64)
+wget https://github.com/termide/termide/releases/latest/download/termide-0.23.11-aarch64-unknown-linux-musl.tar.gz
+tar xzf termide-0.23.11-aarch64-unknown-linux-musl.tar.gz
+./termide
+
 # Windows x86_64 (download .zip from Releases, extract, run in Windows Terminal)
 # https://github.com/termide/termide/releases/latest/download/termide-0.23.11-x86_64-pc-windows-msvc.zip
 ```
@@ -177,6 +182,25 @@ nix profile install github:termide/termide
   environment.systemPackages = [ pkgs.termide ];
 }
 ```
+
+</details>
+
+<details>
+<summary><b>🤖 Android (Termux)</b></summary>
+
+Inside [Termux](https://termux.dev), use the **static ARM64 musl** build (the
+glibc `aarch64-unknown-linux-gnu` build won't run on Android's Bionic libc):
+
+```bash
+pkg install git openssh   # tools termide shells out to (plus any LSP servers)
+wget https://github.com/termide/termide/releases/latest/download/termide-0.23.11-aarch64-unknown-linux-musl.tar.gz
+tar xzf termide-0.23.11-aarch64-unknown-linux-musl.tar.gz
+./termide
+```
+
+Notes: the system clipboard isn't available on Android (no X11/Wayland), and the
+resource monitor may show partial data due to Android's restricted `/proc`. The
+editor, file manager, git, and the integrated terminal work normally.
 
 </details>
 

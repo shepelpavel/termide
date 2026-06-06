@@ -72,6 +72,13 @@ jobs:
             os: ubuntu-22.04  # Use older Ubuntu for glibc compatibility
             archive: tar.gz
             cross: true
+          # Linux aarch64 (musl, fully static — runs under Termux on Android,
+          # Alpine on ARM, and any glibc-free ARM64 system). Built via `cross`
+          # so the musl toolchain + tree-sitter C deps link cleanly.
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-22.04
+            archive: tar.gz
+            use_cross: true
           # macOS x86_64 (Intel Macs)
           - target: x86_64-apple-darwin
             os: macos-latest
@@ -114,10 +121,22 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y musl-tools
 
+      - name: Install cross
+        if: matrix.use_cross
+        # `cross` builds inside a target-matched container that ships the musl
+        # cross toolchain, so the Rust code and the tree-sitter C deps link
+        # against the same musl without hand-wiring a sysroot.
+        run: cargo install cross --locked
+
       - name: Build
         # VFS uses rustls / russh — fully pure-Rust, no native OpenSSL —
         # so no extra features are required for static builds.
+        if: ${{ !matrix.use_cross }}
         run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Build (cross)
+        if: matrix.use_cross
+        run: cross build --release --target ${{ matrix.target }}
 
       - name: Package (Unix)
         if: matrix.archive == 'tar.gz'
