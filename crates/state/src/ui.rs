@@ -113,16 +113,28 @@ pub struct OperationActionMenuState {
     /// Cached "is paused" snapshot — controls the label of the first
     /// item (Pause vs Resume).
     pub is_paused: bool,
+    /// Cached "is a command/script run" snapshot. Such operations can't be
+    /// paused (no way to suspend an external process), so the menu omits
+    /// Pause/Resume and offers only Cancel for them.
+    pub is_command: bool,
 }
 
 impl OperationActionMenuState {
-    pub fn open(&mut self, op_id: u64, anchor_x: u16, anchor_y: u16, is_paused: bool) {
+    pub fn open(
+        &mut self,
+        op_id: u64,
+        anchor_x: u16,
+        anchor_y: u16,
+        is_paused: bool,
+        is_command: bool,
+    ) {
         self.open = true;
         self.selected = 0;
         self.op_id = op_id;
         self.anchor_x = anchor_x;
         self.anchor_y = anchor_y;
         self.is_paused = is_paused;
+        self.is_command = is_command;
     }
 
     pub fn close(&mut self) {

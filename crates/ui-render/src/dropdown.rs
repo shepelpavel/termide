@@ -703,14 +703,18 @@ pub const OPERATION_ACTION_RESUME: &str = "__operation_action_resume__";
 pub const OPERATION_ACTION_CANCEL: &str = "__operation_action_cancel__";
 
 /// Build items for the per-operation popup menu opened from the icon
-/// on an operations-panel card. The first item swaps label based on
-/// the current pause state of the operation.
-pub fn get_operation_action_menu_items(is_paused: bool) -> Vec<DropdownItem> {
+/// on an operations-panel card. The first item swaps label based on the
+/// current pause state. Command/script runs (`is_command`) can't be paused —
+/// there's no way to suspend an external process — so Pause/Resume is omitted
+/// for them and only Cancel (which kills the process) is offered.
+pub fn get_operation_action_menu_items(is_paused: bool, is_command: bool) -> Vec<DropdownItem> {
     let mut items = Vec::with_capacity(2);
-    if is_paused {
-        items.push(DropdownItem::new("Resume", OPERATION_ACTION_RESUME));
-    } else {
-        items.push(DropdownItem::new("Pause", OPERATION_ACTION_PAUSE));
+    if !is_command {
+        if is_paused {
+            items.push(DropdownItem::new("Resume", OPERATION_ACTION_RESUME));
+        } else {
+            items.push(DropdownItem::new("Pause", OPERATION_ACTION_PAUSE));
+        }
     }
     items.push(DropdownItem::new("Cancel", OPERATION_ACTION_CANCEL));
     items
@@ -772,5 +776,41 @@ mod overflow_tests {
             .collect();
         let mut buf = Buffer::empty(Rect::new(0, 0, 57, 15));
         Dropdown::new(&items, 29, 33, 1, theme).render(&mut buf);
+    }
+}
+
+#[cfg(test)]
+mod operation_menu_tests {
+    use super::{
+        get_operation_action_menu_items, OPERATION_ACTION_CANCEL, OPERATION_ACTION_PAUSE,
+        OPERATION_ACTION_RESUME,
+    };
+
+    fn keys(is_paused: bool, is_command: bool) -> Vec<String> {
+        get_operation_action_menu_items(is_paused, is_command)
+            .into_iter()
+            .map(|i| i.key)
+            .collect()
+    }
+
+    // File operations are pausable: Pause/Resume + Cancel.
+    #[test]
+    fn file_operation_offers_pause_and_cancel() {
+        assert_eq!(
+            keys(false, false),
+            vec![OPERATION_ACTION_PAUSE, OPERATION_ACTION_CANCEL]
+        );
+        assert_eq!(
+            keys(true, false),
+            vec![OPERATION_ACTION_RESUME, OPERATION_ACTION_CANCEL]
+        );
+    }
+
+    // Script/command runs can't be paused — only Cancel (which kills the
+    // process) is offered, regardless of the (meaningless) paused flag.
+    #[test]
+    fn command_operation_offers_only_cancel() {
+        assert_eq!(keys(false, true), vec![OPERATION_ACTION_CANCEL]);
+        assert_eq!(keys(true, true), vec![OPERATION_ACTION_CANCEL]);
     }
 }

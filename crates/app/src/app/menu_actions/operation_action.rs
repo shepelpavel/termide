@@ -14,7 +14,10 @@ use super::super::App;
 
 impl App {
     fn operation_action_menu_items(&self) -> Vec<DropdownItem> {
-        get_operation_action_menu_items(self.state.ui.operation_action_menu.is_paused)
+        get_operation_action_menu_items(
+            self.state.ui.operation_action_menu.is_paused,
+            self.state.ui.operation_action_menu.is_command,
+        )
     }
 
     /// Handle a click while the operation action menu is open. Inside the

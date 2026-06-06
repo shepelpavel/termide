@@ -238,6 +238,7 @@ fn render_dropdowns_and_modals(
     if state.ui.operation_action_menu.open {
         let items = termide_ui_render::get_operation_action_menu_items(
             state.ui.operation_action_menu.is_paused,
+            state.ui.operation_action_menu.is_command,
         );
         if !items.is_empty() {
             let (x, y) = termide_ui_render::operation_action_dropdown_position(

@@ -283,17 +283,17 @@ impl App {
                 anchor_x,
                 anchor_y,
             } => {
-                let is_paused = self
+                let (is_paused, is_command) = self
                     .state
                     .active_operations
                     .get(&op_id)
-                    .map(|op| op.is_paused)
-                    .unwrap_or(false);
+                    .map(|op| (op.is_paused, op.op_type.is_command()))
+                    .unwrap_or((false, false));
                 self.state.ui.close_all_submenus();
                 self.state
                     .ui
                     .operation_action_menu
-                    .open(op_id.0, anchor_x, anchor_y, is_paused);
+                    .open(op_id.0, anchor_x, anchor_y, is_paused, is_command);
                 self.state.needs_redraw = true;
             }
 
