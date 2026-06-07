@@ -480,6 +480,50 @@ impl GitLogKeybindings {
     }
 }
 
+/// Database viewer panel keybindings (database.keybindings section).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DatabaseKeybindings {
+    /// Sort by the current column (cycles ascending → descending → unsorted)
+    pub sort: Option<KeyBinding>,
+    /// Filter the current column
+    pub filter: Option<KeyBinding>,
+    /// Clear all filters
+    pub clear_filter: Option<KeyBinding>,
+    /// Show the full current row (detail dialog)
+    pub detail: Option<KeyBinding>,
+    /// Copy the current cell value
+    pub copy_cell: Option<KeyBinding>,
+    /// Copy the current row (tab-separated)
+    pub copy_row: Option<KeyBinding>,
+    /// Reload tables and the current view
+    pub refresh: Option<KeyBinding>,
+}
+
+impl DatabaseKeybindings {
+    /// Fill None values with default keybindings
+    pub fn with_defaults(&mut self) {
+        macro_rules! set_default {
+            ($field:ident, $default:expr) => {
+                if self.$field.is_none() {
+                    self.$field = Some(KeyBinding::Single($default.into()));
+                }
+            };
+        }
+
+        set_default!(sort, "S");
+        set_default!(filter, "F");
+        set_default!(clear_filter, "Ctrl+F");
+        if self.detail.is_none() {
+            self.detail = Some(KeyBinding::Multiple(vec!["Space".into(), "F12".into()]));
+        }
+        set_default!(copy_cell, "Y");
+        set_default!(copy_row, "Ctrl+Y");
+        if self.refresh.is_none() {
+            self.refresh = Some(KeyBinding::Multiple(vec!["F5".into(), "Ctrl+R".into()]));
+        }
+    }
+}
+
 /// Terminal panel keybindings (terminal.keybindings section).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct TerminalKeybindings {

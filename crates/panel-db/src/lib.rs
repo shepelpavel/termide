@@ -22,8 +22,8 @@ use ratatui::layout::Rect;
 
 use termide_config::Config;
 use termide_core::{
-    CommandResult, KeyChord, Panel, PanelCommand, PanelEvent, RenderContext, ThemeColors,
-    WidthPreference,
+    CommandResult, HotkeyTable, KeyChord, Panel, PanelCommand, PanelEvent, RenderContext,
+    ThemeColors, WidthPreference,
 };
 use termide_db::{
     ColumnInfo, Condition, DbBackend, DbConnection, DbError, Page, PageRequest, SortDir,
@@ -91,14 +91,33 @@ pub struct DbPanel {
     page_rx: Option<Receiver<Result<Page, DbError>>>,
     loading: bool,
 
+    // --- input ---
+    hotkeys: HotkeyTable,
+    last_config_ptr: usize,
+
     // --- render cache ---
     cached_theme: ThemeColors,
     last_area: Rect,
     /// Number of data rows visible in the grid viewport (set during render).
     visible_rows: usize,
+    /// Mouse hit-test geometry captured during render.
+    geom: GridGeometry,
 
     /// Pending modal request, polled by the app via `take_modal_request`.
     modal_request: Option<(PendingAction, ActiveModal)>,
+}
+
+/// Screen geometry captured each render for mouse hit-testing.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct GridGeometry {
+    /// Y of the table-selector row.
+    selector_y: u16,
+    /// Y of the column-header row (when the grid is shown).
+    header_y: Option<u16>,
+    /// Y of the first data row.
+    data_y0: u16,
+    /// Per visible column: (column index, x start, x end-exclusive).
+    columns: Vec<(usize, u16, u16)>,
 }
 
 impl DbPanel {
@@ -140,9 +159,12 @@ impl DbPanel {
             count_rx: None,
             page_rx: None,
             loading: true,
+            hotkeys: HotkeyTable::default(),
+            last_config_ptr: 0,
             cached_theme: ThemeColors::default(),
             last_area: Rect::default(),
             visible_rows: 0,
+            geom: GridGeometry::default(),
             modal_request: None,
         }
     }
@@ -248,6 +270,21 @@ impl DbPanel {
         }
     }
 
+    /// Refresh the catalog (table list) and the current view. The tables-list
+    /// reply (polled in `poll_async`) keeps the current selection if it still
+    /// exists, otherwise re-selects the first table.
+    fn refresh_catalog(&mut self) {
+        let rx = if let ConnState::Connected(conn) = &self.conn {
+            Some(conn.list_tables())
+        } else {
+            None
+        };
+        if let Some(rx) = rx {
+            self.tables_rx = Some(rx);
+        }
+        self.reload_all();
+    }
+
     /// Re-issue only the page query (window move / sort change), keeping the
     /// known column list and total count.
     fn reload_page(&mut self) {
@@ -308,9 +345,15 @@ impl DbPanel {
                 match result {
                     Ok(tables) => {
                         self.tables = tables;
-                        if self.selected_table.is_none() {
-                            if let Some(first) = self.tables.first().cloned() {
-                                self.selected_table = Some(first);
+                        let still_present = self
+                            .selected_table
+                            .as_ref()
+                            .is_some_and(|t| self.tables.iter().any(|n| n == t));
+                        if !still_present {
+                            // Initial load, or the selected table vanished:
+                            // (re-)select the first table and load it.
+                            self.selected_table = self.tables.first().cloned();
+                            if self.selected_table.is_some() {
                                 self.section = Section::Grid;
                                 self.reload_table();
                             } else {
@@ -401,6 +444,20 @@ impl DbPanel {
     }
 }
 
+/// Build the configurable hotkey table for the DB panel.
+fn build_db_hotkey_table(config: &Config) -> HotkeyTable {
+    let mut t = HotkeyTable::new();
+    let kb = &config.database.keybindings;
+    t.insert("sort", &kb.sort);
+    t.insert("filter", &kb.filter);
+    t.insert("clear_filter", &kb.clear_filter);
+    t.insert("detail", &kb.detail);
+    t.insert("copy_cell", &kb.copy_cell);
+    t.insert("copy_row", &kb.copy_row);
+    t.insert("refresh", &kb.refresh);
+    t
+}
+
 /// Spawn a thread that connects and ships the handle (or error) back.
 fn spawn_connect(url: String) -> Receiver<Result<DbConnection, DbError>> {
     let (tx, rx) = std::sync::mpsc::channel();
@@ -451,8 +508,13 @@ impl Panel for DbPanel {
         }
     }
 
-    fn prepare_render(&mut self, theme: &termide_theme::Theme, _config: &Arc<Config>) {
+    fn prepare_render(&mut self, theme: &termide_theme::Theme, config: &Arc<Config>) {
         self.cached_theme = ThemeColors::from(theme);
+        let config_ptr = Arc::as_ptr(config) as usize;
+        if self.last_config_ptr != config_ptr {
+            self.last_config_ptr = config_ptr;
+            self.hotkeys = build_db_hotkey_table(config);
+        }
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
@@ -462,6 +524,14 @@ impl Panel for DbPanel {
 
     fn handle_key(&mut self, chord: KeyChord) -> Vec<PanelEvent> {
         self.handle_key_impl(chord)
+    }
+
+    fn handle_mouse(
+        &mut self,
+        event: crossterm::event::MouseEvent,
+        _panel_area: Rect,
+    ) -> Vec<PanelEvent> {
+        self.handle_mouse_impl(event)
     }
 
     fn tick(&mut self) -> Vec<PanelEvent> {

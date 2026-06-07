@@ -22,6 +22,12 @@ impl DbPanel {
         let theme = self.cached_theme;
         let base = Style::default().fg(theme.fg).bg(theme.bg);
 
+        // Reset mouse hit-test geometry for this frame.
+        self.geom.selector_y = area.y;
+        self.geom.header_y = None;
+        self.geom.data_y0 = area.y + 2;
+        self.geom.columns.clear();
+
         // --- selector row ---
         let sel_focused = is_focused && self.section == Section::TableSelector;
         let table_label = self
@@ -107,6 +113,8 @@ impl DbPanel {
         self.adjust_col_scroll(&widths, area.width as usize);
 
         // --- header row ---
+        self.geom.header_y = Some(area.y);
+        self.geom.data_y0 = area.y + 1;
         let sorted = self.order_by.first().cloned();
         fill_line(buf, area.x, area.y, area.width, base);
         let mut x = area.x;
@@ -124,11 +132,15 @@ impl DbPanel {
             }
             let cell = pad(&label, widths[j]);
             let hstyle = base.add_modifier(Modifier::BOLD);
+            let cell_start = x;
             x = put(buf, x, area.y, max_x, &cell, hstyle);
+            // Record this column's clickable span (cell only, not the separator).
+            self.geom.columns.push((j, cell_start, x));
             x = put(buf, x, area.y, max_x, SEP, base.fg(theme.border));
         }
 
         // --- data rows ---
+        // Selected row: normal colours but bold. Selected cell: inverse video.
         let rows = &self.page.rows;
         for vis in 0..data_height {
             let abs = self.row_scroll + vis;
@@ -138,13 +150,11 @@ impl DbPanel {
             let y = area.y + 1 + vis as u16;
             let is_cur_row = is_focused && self.section == Section::Grid && abs == self.cursor_row;
             let row_style = if is_cur_row {
-                Style::default()
-                    .fg(theme.selection_fg)
-                    .bg(theme.selection_bg)
+                base.add_modifier(Modifier::BOLD)
             } else {
                 base
             };
-            fill_line(buf, area.x, y, area.width, row_style);
+            fill_line(buf, area.x, y, area.width, base);
 
             let row = &rows[abs];
             let mut x = area.x;
@@ -159,15 +169,16 @@ impl DbPanel {
                     None => (String::new(), false),
                 };
                 let cell = pad(&text, widths[j]);
+                let is_cur_cell = is_cur_row && j == self.cursor_col;
                 let mut style = row_style;
-                if is_null && !is_cur_row {
+                if is_null && !is_cur_cell {
                     style = style.fg(theme.disabled);
                 }
-                if is_cur_row && j == self.cursor_col {
-                    style = style.add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
+                if is_cur_cell {
+                    style = style.add_modifier(Modifier::REVERSED);
                 }
                 x = put(buf, x, y, max_x, &cell, style);
-                x = put(buf, x, y, max_x, SEP, row_style.fg(theme.border));
+                x = put(buf, x, y, max_x, SEP, base.fg(theme.border));
             }
         }
 

@@ -56,13 +56,20 @@ active sort and filter, e.g. `app.db · users · rows 1–200 of 1203 · sort: n
 | `↑ ↓ ← →` | Move the cell cursor (auto-scrolls rows and columns) |
 | `PageUp` / `PageDown` | Move a screenful; loads the next/previous window at the edges |
 | `Home` / `End` | Jump to the first / last row |
-| `s` | Sort by the current column — cycles ascending → descending → unsorted |
-| `f` | Filter the current column (opens the filter dialog) |
-| `F` | Clear all filters |
-| `Space` (on grid) | Show the full current row (key/value), with copy options |
-| `y` | Copy the current cell value |
-| `Y` | Copy the current row as tab-separated values |
-| `r` | Reload the current view |
+| `S` | Sort by the current column — cycles ascending → descending → unsorted |
+| `F` | Filter the current column (opens the filter dialog) |
+| `Ctrl+F` | Clear all filters |
+| `Space` / `F12` (on grid) | Show the full current row (key/value), with copy options |
+| `Y` | Copy the current cell value |
+| `Ctrl+Y` | Copy the current row as tab-separated values |
+| `F5` / `Ctrl+R` | Refresh the table list and reload the current view |
+
+These action keys are configurable under `[database.keybindings]` in the config
+and appear in the Help panel. Navigation keys (Tab, arrows, PageUp/Down,
+Home/End) are fixed.
+
+**Mouse:** click the table selector to open it, click a column header to cycle
+its sort, and click a data cell to move the cursor there.
 
 ## Sorting
 

@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Database viewer (read-only).** Browse **SQLite**, **PostgreSQL** and **MySQL/MariaDB** tables from a bookmark whose path is a database URL (`sqlite:///…`, `postgres://…`, `mysql://…`). The panel connects in the background and shows rows in a 2D grid with a cell cursor, sliding-window pagination, single-column server-side sort (ascending → descending → unsorted), type-aware per-column filtering (combined with `AND`), a full-row detail dialog (copy as TSV / JSON / INSERT), and cell/row copy. Queries run on a background runtime so the UI never blocks; everything is strictly read-only (`SELECT`/catalog queries only). See [Database Viewer](doc/en/database.md).
+- **Database viewer (read-only).** Browse **SQLite**, **PostgreSQL** and **MySQL/MariaDB** tables from a bookmark whose path is a database URL (`sqlite:///…`, `postgres://…`, `mysql://…`). The panel connects in the background and shows rows in a 2D grid with a cell cursor, sliding-window pagination, single-column server-side sort (ascending → descending → unsorted), type-aware per-column filtering (combined with `AND`), a full-row detail dialog (copy as TSV / JSON / INSERT), and cell/row copy. Queries run on a background runtime so the UI never blocks; everything is strictly read-only (`SELECT`/catalog queries only). Action keys are configurable under `[database.keybindings]` and shown in Help; the mouse can open the table selector, sort by clicking a column header, and move the cursor by clicking a cell. See [Database Viewer](doc/en/database.md).
 
 ## [0.23.11] - 2026-06-05
 

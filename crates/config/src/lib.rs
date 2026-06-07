@@ -19,14 +19,14 @@ pub use conflicts::{
 };
 pub use diff::{diff_toml, merge_partial};
 pub use keybindings::{
-    is_go_end, is_go_home, is_move_down, is_move_up, parse_keybinding, EditorKeybindings,
-    FileManagerKeybindings, GitDiffKeybindings, GitLogKeybindings, GitStatusKeybindings,
-    GlobalKeybindings, KeyBinding, ParsedKeyBinding, TerminalKeybindings,
+    is_go_end, is_go_home, is_move_down, is_move_up, parse_keybinding, DatabaseKeybindings,
+    EditorKeybindings, FileManagerKeybindings, GitDiffKeybindings, GitLogKeybindings,
+    GitStatusKeybindings, GlobalKeybindings, KeyBinding, ParsedKeyBinding, TerminalKeybindings,
 };
 pub use settings::{
-    Config, EditorSettings, FileManagerSettings, GeneralSettings, GitDiffSettings, GitLogSettings,
-    GitStatusSettings, IconMode, LegacyConfig, LoggingSettings, LspServerSettings, LspSettings,
-    TerminalSettings, VfsSettings,
+    Config, DatabaseSettings, EditorSettings, FileManagerSettings, GeneralSettings,
+    GitDiffSettings, GitLogSettings, GitStatusSettings, IconMode, LegacyConfig, LoggingSettings,
+    LspServerSettings, LspSettings, TerminalSettings, VfsSettings,
 };
 pub use xdg::{get_config_dir, get_data_dir};
 

@@ -254,6 +254,15 @@ pub fn enumerate_bindings(config: &Config) -> Vec<(BindingLocation, ParsedKeyBin
     push(&mut out, "git_log", "checkout", &gl.checkout);
     push(&mut out, "git_log", "clipboard_copy", &gl.clipboard_copy);
 
+    let db = &config.database.keybindings;
+    push(&mut out, "database", "sort", &db.sort);
+    push(&mut out, "database", "filter", &db.filter);
+    push(&mut out, "database", "clear_filter", &db.clear_filter);
+    push(&mut out, "database", "detail", &db.detail);
+    push(&mut out, "database", "copy_cell", &db.copy_cell);
+    push(&mut out, "database", "copy_row", &db.copy_row);
+    push(&mut out, "database", "refresh", &db.refresh);
+
     let t = &config.terminal.keybindings;
     push(&mut out, "terminal", "copy", &t.copy);
     push(&mut out, "terminal", "paste", &t.paste);

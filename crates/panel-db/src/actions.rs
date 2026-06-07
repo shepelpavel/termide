@@ -1,6 +1,6 @@
 //! Keyboard handling and grid navigation for [`DbPanel`].
 
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use termide_core::{KeyChord, PanelEvent};
 use termide_db::{Condition, DbValue, FilterOp, SortDir, TypeCategory};
 use termide_modal::{ActionButton, ActiveModal, DbFilterModal, DbFilterResult, InfoActionModal};
@@ -10,7 +10,8 @@ use crate::{DbPanel, Section, WINDOW};
 
 impl DbPanel {
     pub(crate) fn handle_key_impl(&mut self, chord: KeyChord) -> Vec<PanelEvent> {
-        let code = chord.raw.code;
+        let key = chord.raw;
+        let code = key.code;
 
         // Open table dropdown captures navigation.
         if self.table_dropdown_open {
@@ -43,6 +44,12 @@ impl DbPanel {
             }
         }
 
+        // Panel-wide action: refresh the catalog + current view.
+        if self.hotkeys.matches("refresh", &key) {
+            self.refresh_catalog();
+            return self.redraw();
+        }
+
         match code {
             KeyCode::Tab | KeyCode::BackTab => {
                 self.section = match self.section {
@@ -56,7 +63,7 @@ impl DbPanel {
 
         match self.section {
             Section::TableSelector => self.handle_selector_key(code),
-            Section::Grid => self.handle_grid_key(code),
+            Section::Grid => self.handle_grid_key(key),
         }
     }
 
@@ -81,11 +88,40 @@ impl DbPanel {
         }
     }
 
-    fn handle_grid_key(&mut self, code: KeyCode) -> Vec<PanelEvent> {
+    fn handle_grid_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
         if !self.is_connected() {
             return vec![];
         }
-        let changed = match code {
+
+        // Configurable action hotkeys (see [database.keybindings]).
+        if self.hotkeys.matches("sort", &key) {
+            self.cycle_sort();
+            return self.redraw();
+        }
+        if self.hotkeys.matches("filter", &key) {
+            self.open_filter();
+            return self.redraw();
+        }
+        if self.hotkeys.matches("clear_filter", &key) {
+            return if self.clear_filters() {
+                self.redraw()
+            } else {
+                vec![]
+            };
+        }
+        if self.hotkeys.matches("detail", &key) {
+            self.open_row_detail();
+            return self.redraw();
+        }
+        if self.hotkeys.matches("copy_cell", &key) {
+            return self.copy(false);
+        }
+        if self.hotkeys.matches("copy_row", &key) {
+            return self.copy(true);
+        }
+
+        // Fixed navigation keys.
+        let changed = match key.code {
             KeyCode::Up => self.grid_up(),
             KeyCode::Down => self.grid_down(),
             KeyCode::Left => self.grid_left(),
@@ -94,25 +130,6 @@ impl DbPanel {
             KeyCode::PageUp => self.grid_page(false),
             KeyCode::Home => self.grid_home(),
             KeyCode::End => self.grid_end(),
-            KeyCode::Char('s') => {
-                self.cycle_sort();
-                true
-            }
-            KeyCode::Char('r') => {
-                self.reload_all();
-                true
-            }
-            KeyCode::Char('y') => return self.copy(false),
-            KeyCode::Char('Y') => return self.copy(true),
-            KeyCode::Char(' ') => {
-                self.open_row_detail();
-                true
-            }
-            KeyCode::Char('f') => {
-                self.open_filter();
-                true
-            }
-            KeyCode::Char('F') => self.clear_filters(),
             _ => false,
         };
         if changed {
@@ -120,6 +137,86 @@ impl DbPanel {
         } else {
             vec![]
         }
+    }
+
+    /// Mouse: click the table selector to open it; click a column header to
+    /// cycle its sort; click a data cell to move the cursor there.
+    pub(crate) fn handle_mouse_impl(&mut self, event: MouseEvent) -> Vec<PanelEvent> {
+        if event.kind != MouseEventKind::Down(MouseButton::Left) {
+            return vec![];
+        }
+        let (row, col) = (event.row, event.column);
+
+        // Open dropdown: pick a table from the open list.
+        if self.table_dropdown_open {
+            let list_top = self.geom.selector_y + 1;
+            if row >= list_top {
+                let idx = (row - list_top) as usize + self.dropdown_scroll;
+                if let Some(name) = self.tables.get(idx).cloned() {
+                    self.table_dropdown_open = false;
+                    if self.selected_table.as_deref() != Some(name.as_str()) {
+                        self.selected_table = Some(name);
+                        self.reload_table();
+                    }
+                    return self.redraw();
+                }
+            }
+            self.table_dropdown_open = false;
+            return self.redraw();
+        }
+
+        // Click on the selector row → open the table dropdown.
+        if row == self.geom.selector_y {
+            self.section = Section::TableSelector;
+            if !self.tables.is_empty() {
+                self.table_dropdown_open = true;
+                self.dropdown_cursor = self
+                    .selected_table
+                    .as_ref()
+                    .and_then(|t| self.tables.iter().position(|n| n == t))
+                    .unwrap_or(0);
+            }
+            return self.redraw();
+        }
+
+        if !self.is_connected() {
+            return vec![];
+        }
+
+        // Click on a column header → sort by that column.
+        if Some(row) == self.geom.header_y {
+            if let Some(col_idx) = self.column_at(col) {
+                self.section = Section::Grid;
+                self.cursor_col = col_idx;
+                self.cycle_sort();
+                return self.redraw();
+            }
+            return vec![];
+        }
+
+        // Click on a data cell → move the cursor there.
+        if row >= self.geom.data_y0 {
+            let vis = (row - self.geom.data_y0) as usize;
+            let abs = self.row_scroll + vis;
+            if abs < self.page.rows.len() {
+                self.section = Section::Grid;
+                self.cursor_row = abs;
+                if let Some(col_idx) = self.column_at(col) {
+                    self.cursor_col = col_idx;
+                }
+                return self.redraw();
+            }
+        }
+        vec![]
+    }
+
+    /// Map a screen column to a grid column index using the captured layout.
+    fn column_at(&self, x: u16) -> Option<usize> {
+        self.geom
+            .columns
+            .iter()
+            .find(|(_, start, end)| x >= *start && x < *end)
+            .map(|(idx, _, _)| *idx)
     }
 
     // --- navigation primitives (scroll is recomputed in render) ---
