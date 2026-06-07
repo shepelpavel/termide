@@ -81,8 +81,10 @@ pub struct DbPanel {
     // --- focus / selector ---
     section: Section,
     table_dropdown_open: bool,
+    /// Absolute index of the highlighted table in the open dropdown.
     dropdown_cursor: usize,
-    dropdown_scroll: usize,
+    /// Rows per dropdown page (set during render; drives paging navigation).
+    dropdown_page_size: usize,
 
     // --- async receivers (polled in tick) ---
     tables_rx: Option<Receiver<Result<Vec<String>, DbError>>>,
@@ -153,7 +155,7 @@ impl DbPanel {
             section: Section::TableSelector,
             table_dropdown_open: false,
             dropdown_cursor: 0,
-            dropdown_scroll: 0,
+            dropdown_page_size: 1,
             tables_rx: None,
             columns_rx: None,
             count_rx: None,

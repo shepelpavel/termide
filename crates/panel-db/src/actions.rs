@@ -21,9 +21,31 @@ impl DbPanel {
                     return self.redraw();
                 }
                 KeyCode::Down => {
+                    // Past the page's last row this lands on the next page's
+                    // first row (cursor / page_size increments).
                     if self.dropdown_cursor + 1 < self.tables.len() {
                         self.dropdown_cursor += 1;
                     }
+                    return self.redraw();
+                }
+                KeyCode::PageDown => {
+                    let ps = self.dropdown_page_size.max(1);
+                    let next = (self.dropdown_cursor / ps + 1) * ps;
+                    self.dropdown_cursor = if next < self.tables.len() {
+                        next // first row of the next page
+                    } else {
+                        self.tables.len().saturating_sub(1)
+                    };
+                    return self.redraw();
+                }
+                KeyCode::PageUp => {
+                    let ps = self.dropdown_page_size.max(1);
+                    let page = self.dropdown_cursor / ps;
+                    self.dropdown_cursor = if page > 0 {
+                        page * ps - 1 // last row of the previous page
+                    } else {
+                        0
+                    };
                     return self.redraw();
                 }
                 KeyCode::Enter => {
@@ -151,7 +173,9 @@ impl DbPanel {
         if self.table_dropdown_open {
             let list_top = self.geom.selector_y + 1;
             if row >= list_top {
-                let idx = (row - list_top) as usize + self.dropdown_scroll;
+                let ps = self.dropdown_page_size.max(1);
+                let page_start = (self.dropdown_cursor / ps) * ps;
+                let idx = page_start + (row - list_top) as usize;
                 if let Some(name) = self.tables.get(idx).cloned() {
                     self.table_dropdown_open = false;
                     if self.selected_table.as_deref() != Some(name.as_str()) {

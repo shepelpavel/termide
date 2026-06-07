@@ -7,6 +7,7 @@ use ratatui::style::{Modifier, Style};
 use unicode_width::UnicodeWidthStr;
 
 use termide_db::SortDir;
+use termide_ui_render::InlineSelector;
 
 use crate::{ConnState, DbPanel, Section};
 
@@ -28,29 +29,19 @@ impl DbPanel {
         self.geom.header_y = None;
         self.geom.data_y0 = area.y + 2;
         self.geom.columns.clear();
+        // Dropdown page = the body height (no scrollbar; we page instead).
+        self.dropdown_page_size = (area.height.saturating_sub(1)).max(1) as usize;
 
-        // --- selector row ---
+        // --- selector row (bracketed chip, like the git-status selectors) ---
         let sel_focused = is_focused && self.section == Section::TableSelector;
         let table_label = self
             .selected_table
             .clone()
             .unwrap_or_else(|| "(no table)".to_string());
-        let selector = format!(" Table ▾ {table_label} ");
-        let selector_style = if sel_focused {
-            Style::default()
-                .fg(theme.selection_fg)
-                .bg(theme.selection_bg)
-        } else {
-            base
-        };
         fill_line(buf, area.x, area.y, area.width, base);
-        buf.set_stringn(
-            area.x,
-            area.y,
-            &selector,
-            area.width as usize,
-            selector_style,
-        );
+        let selector =
+            InlineSelector::new(&table_label, self.table_dropdown_open, sel_focused, &theme);
+        selector.render(area.x, area.y, area.width, buf);
 
         // --- body area below selector ---
         let body = Rect {
@@ -262,8 +253,12 @@ impl DbPanel {
     fn render_dropdown(&self, buf: &mut Buffer, area: Rect) {
         let theme = self.cached_theme;
         let base = Style::default().fg(theme.fg).bg(theme.bg);
-        let max_items = ((area.height.saturating_sub(2)) as usize).clamp(1, 12);
-        let start = self.dropdown_scroll.min(self.tables.len());
+        // Page sized to the body height (no scrollbar): show the page that
+        // contains the cursor.
+        let page_size = self.dropdown_page_size.max(1);
+        let page = self.dropdown_cursor / page_size;
+        let start = page * page_size;
+        let end = (start + page_size).min(self.tables.len());
         let y0 = area.y + 1;
         // Width adapts to the longest table name (+ side padding), clamped to
         // the panel width.
@@ -274,8 +269,8 @@ impl DbPanel {
             .max()
             .unwrap_or(0);
         let width = ((longest + 2) as u16).clamp(10, area.width);
-        for (i, name) in self.tables.iter().enumerate().skip(start).take(max_items) {
-            let y = y0 + (i - start) as u16;
+        for (row, i) in (start..end).enumerate() {
+            let y = y0 + row as u16;
             if y >= area.y + area.height {
                 break;
             }
@@ -287,7 +282,7 @@ impl DbPanel {
                 base
             };
             fill_line(buf, area.x, y, width, style);
-            buf.set_stringn(area.x + 1, y, name, width as usize - 1, style);
+            buf.set_stringn(area.x + 1, y, &self.tables[i], width as usize - 1, style);
         }
     }
 

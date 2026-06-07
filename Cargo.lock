@@ -5168,6 +5168,7 @@ dependencies = [
  "termide-modal",
  "termide-state",
  "termide-theme",
+ "termide-ui-render",
  "unicode-width",
 ]
 
