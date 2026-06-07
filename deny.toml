@@ -80,6 +80,12 @@ allow = [
     # to allow for a binary distribution.
     "BSL-1.0",
     "ISC",
+    # `webpki-roots` ships Mozilla's CA certificate dataset under
+    # CDLA-Permissive-2.0 (Community Data License Agreement). It's a
+    # permissive data license with no copyleft and no attribution
+    # burden beyond the upstream notice, safe for binary distribution.
+    # Path: `webpki-roots` ← `sqlx-core` (rustls TLS) ← termide-db.
+    "CDLA-Permissive-2.0",
     "Unicode-DFS-2016",
     "Unicode-3.0",
     "Zlib",
