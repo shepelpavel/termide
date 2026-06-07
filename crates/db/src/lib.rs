@@ -125,6 +125,7 @@ pub struct Page {
 /// What the caller asked the worker to do; each carries a reply channel the
 /// caller polls non-blockingly.
 enum Request {
+    ListDatabases(mpsc::Sender<Result<Vec<String>, DbError>>),
     ListTables(mpsc::Sender<Result<Vec<String>, DbError>>),
     Columns {
         table: String,
@@ -188,6 +189,15 @@ impl DbConnection {
 
     pub fn backend(&self) -> DbBackend {
         self.backend
+    }
+
+    /// List databases/schemas the connection can switch to. Poll the receiver.
+    pub fn list_databases(&self) -> mpsc::Receiver<Result<Vec<String>, DbError>> {
+        let (reply, rx) = mpsc::channel();
+        self.dispatch(Request::ListDatabases(reply.clone()), || {
+            let _ = reply.send(Err(DbError::Closed));
+        });
+        rx
     }
 
     /// List tables. Poll the returned receiver for the result.
@@ -308,6 +318,9 @@ fn run_worker(
 
     while let Ok(req) = rx.recv() {
         match req {
+            Request::ListDatabases(reply) => {
+                let _ = reply.send(rt.block_on(engine::list_databases(&pool)));
+            }
             Request::ListTables(reply) => {
                 let _ = reply.send(rt.block_on(engine::list_tables(&pool)));
             }

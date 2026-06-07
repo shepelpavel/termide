@@ -57,7 +57,13 @@ pub(crate) async fn connect(url: &str) -> Result<Pool, DbError> {
             Ok(Pool::Sqlite(pool))
         }
         DbBackend::Postgres => {
-            let opts = PgConnectOptions::from_str(url)?;
+            let mut opts = PgConnectOptions::from_str(url)?;
+            // PostgreSQL requires a database to connect to. When the URL omits
+            // one, bootstrap on the standard `postgres` maintenance DB so we can
+            // still enumerate databases and let the user pick.
+            if opts.get_database().is_none() {
+                opts = opts.database("postgres");
+            }
             let pool = PgPoolOptions::new()
                 .max_connections(1)
                 .connect_with(opts)
@@ -105,6 +111,24 @@ pub(crate) async fn list_tables(pool: &Pool) -> Result<Vec<String>, DbError> {
         Pool::Sqlite(p) => collect_first_column(sqlx::query(sql).fetch_all(p).await?),
         Pool::Postgres(p) => collect_first_column(sqlx::query(sql).fetch_all(p).await?),
         Pool::MySql(p) => collect_first_column(sqlx::query(sql).fetch_all(p).await?),
+    };
+    Ok(names)
+}
+
+/// List databases/schemas the connection can switch to. SQLite has none.
+pub(crate) async fn list_databases(pool: &Pool) -> Result<Vec<String>, DbError> {
+    let names = match pool {
+        Pool::Sqlite(_) => Vec::new(),
+        Pool::Postgres(p) => {
+            let sql = "SELECT datname FROM pg_database \
+                       WHERE datistemplate = false AND datallowconn ORDER BY datname";
+            collect_first_column(sqlx::query(sql).fetch_all(p).await?)
+        }
+        Pool::MySql(p) => {
+            let sql = "SELECT schema_name FROM information_schema.schemata \
+                       ORDER BY schema_name";
+            collect_first_column(sqlx::query(sql).fetch_all(p).await?)
+        }
     };
     Ok(names)
 }

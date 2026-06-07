@@ -29,19 +29,29 @@ impl DbPanel {
         self.geom.header_y = None;
         self.geom.data_y0 = area.y + 2;
         self.geom.columns.clear();
-        // Dropdown page = the body height (no scrollbar; we page instead).
-        self.dropdown_page_size = (area.height.saturating_sub(1)).max(1) as usize;
 
-        // --- selector row (bracketed chip, like the git-status selectors) ---
-        let sel_focused = is_focused && self.section == Section::TableSelector;
+        // --- selector row (bracketed chips, like the git-status selectors) ---
+        let tr = termide_i18n::t();
+        fill_line(buf, area.x, area.y, area.width, base);
+        let mut sx = area.x;
+        if self.needs_db_pick {
+            let db_label = self
+                .selected_db
+                .clone()
+                .unwrap_or_else(|| tr.db_no_database().to_string());
+            let focused = is_focused && self.section == Section::DbSelector;
+            let chip = InlineSelector::new(&db_label, self.db_dd.open, focused, &theme);
+            let used = chip.render(sx, area.y, area.width / 2, buf);
+            sx += used + 1;
+        }
+        self.geom.table_selector_x = sx;
         let table_label = self
             .selected_table
             .clone()
-            .unwrap_or_else(|| termide_i18n::t().db_no_table().to_string());
-        fill_line(buf, area.x, area.y, area.width, base);
-        let selector =
-            InlineSelector::new(&table_label, self.table_dropdown_open, sel_focused, &theme);
-        selector.render(area.x, area.y, area.width, buf);
+            .unwrap_or_else(|| tr.db_no_table().to_string());
+        let focused = is_focused && self.section == Section::TableSelector;
+        let chip = InlineSelector::new(&table_label, self.table_dd.open, focused, &theme);
+        chip.render(sx, area.y, area.width.saturating_sub(sx - area.x), buf);
 
         // --- body area below selector ---
         let body = Rect {
@@ -51,7 +61,6 @@ impl DbPanel {
             height: area.height.saturating_sub(1),
         };
 
-        let tr = termide_i18n::t();
         match &self.conn {
             ConnState::Connecting(_) => {
                 self.center_message(
@@ -78,8 +87,18 @@ impl DbPanel {
         self.render_grid(buf, body, is_focused);
 
         // Dropdown overlay drawn last so it sits above the grid.
-        if self.table_dropdown_open {
-            self.render_dropdown(buf, area);
+        if self.db_dd.open {
+            self.db_dd.render(buf, area, &self.databases, &theme);
+        } else if self.table_dd.open {
+            let tarea = Rect {
+                x: self.geom.table_selector_x,
+                y: area.y,
+                width: area
+                    .width
+                    .saturating_sub(self.geom.table_selector_x - area.x),
+                height: area.height,
+            };
+            self.table_dd.render(buf, tarea, &self.tables, &theme);
         }
     }
 
@@ -263,45 +282,6 @@ impl DbPanel {
                 break;
             }
             self.col_scroll += 1;
-        }
-    }
-
-    fn render_dropdown(&mut self, buf: &mut Buffer, area: Rect) {
-        let theme = self.cached_theme;
-        let base = Style::default().fg(theme.fg).bg(theme.bg);
-        // Scrollable list: keep the cursor within the visible window.
-        let visible = self.dropdown_page_size.max(1);
-        if self.dropdown_cursor < self.dropdown_scroll {
-            self.dropdown_scroll = self.dropdown_cursor;
-        } else if self.dropdown_cursor >= self.dropdown_scroll + visible {
-            self.dropdown_scroll = self.dropdown_cursor + 1 - visible;
-        }
-        let start = self.dropdown_scroll.min(self.tables.len());
-        let end = (start + visible).min(self.tables.len());
-        let y0 = area.y + 1;
-        // Width adapts to the longest table name (+ side padding), clamped to
-        // the panel width.
-        let longest = self
-            .tables
-            .iter()
-            .map(|n| UnicodeWidthStr::width(n.as_str()))
-            .max()
-            .unwrap_or(0);
-        let width = ((longest + 2) as u16).clamp(10, area.width);
-        for (row, i) in (start..end).enumerate() {
-            let y = y0 + row as u16;
-            if y >= area.y + area.height {
-                break;
-            }
-            let style = if i == self.dropdown_cursor {
-                Style::default()
-                    .fg(theme.selection_fg)
-                    .bg(theme.selection_bg)
-            } else {
-                base
-            };
-            fill_line(buf, area.x, y, width, style);
-            buf.set_stringn(area.x + 1, y, &self.tables[i], width as usize - 1, style);
         }
     }
 

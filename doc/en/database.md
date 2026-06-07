@@ -42,7 +42,9 @@ saved verbatim to `bookmarks.toml`, so treat that file accordingly.
 └──────────────────────────────────────────────────────┘
 ```
 
-A **table selector** sits on top; the **data grid** fills the rest. The grid
+A **table selector** sits on top; the **data grid** fills the rest. When the
+connection URL omits a database (PostgreSQL/MySQL), a **database selector**
+appears to its left — pick a database and the viewer reconnects to it. The grid
 has a 2D cell cursor: the highlighted cell is the target for sorting, filtering
 and copying. The shared status bar shows the current range, total row count,
 active sort and filter, e.g. `app.db · users · rows 1–200 of 1203 · sort: name ↑ · filter: 1`.
@@ -114,6 +116,7 @@ fetched in the background and appears in the status bar once ready.
 - Read-only — no editing, no arbitrary SQL.
 - Exotic column types (JSON, arrays, UUID, timestamps, unsigned integers) are
   shown as empty/`NULL` in this version; common scalar types render fully.
-- Schema selection (PostgreSQL) defaults to the current schema.
+- Database selection is supported when the URL omits it; schema selection
+  (PostgreSQL) still defaults to the current schema.
 - No in-app password prompt yet — use a password-less auth path or include the
   password in the URL (see above).

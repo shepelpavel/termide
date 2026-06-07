@@ -11,6 +11,7 @@
 //! prompt are layered on next (see `ROADMAP.md.tmp`).
 
 mod actions;
+mod dropdown;
 mod render;
 
 use std::any::Any;
@@ -31,6 +32,8 @@ use termide_db::{
 use termide_modal::ActiveModal;
 use termide_state::PendingAction;
 
+use crate::dropdown::Dropdown;
+
 /// Default sliding-window size (rows held in memory per page fetch).
 /// Fetch-window size before the first render tells us the real viewport height.
 const DEFAULT_PAGE_ROWS: u64 = 40;
@@ -38,6 +41,7 @@ const DEFAULT_PAGE_ROWS: u64 = 40;
 /// Which zone has focus inside the panel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Section {
+    DbSelector,
     TableSelector,
     Grid,
 }
@@ -60,6 +64,10 @@ pub struct DbPanel {
     conn: ConnState,
 
     // --- catalog ---
+    /// Whether the connection URL omitted a database (→ offer a DB selector).
+    needs_db_pick: bool,
+    databases: Vec<String>,
+    selected_db: Option<String>,
     tables: Vec<String>,
     selected_table: Option<String>,
     columns: Vec<ColumnInfo>,
@@ -84,15 +92,11 @@ pub struct DbPanel {
 
     // --- focus / selector ---
     section: Section,
-    table_dropdown_open: bool,
-    /// Absolute index of the highlighted table in the open dropdown.
-    dropdown_cursor: usize,
-    /// Scroll offset of the dropdown list (top visible index).
-    dropdown_scroll: usize,
-    /// Visible rows in the open dropdown (set during render; PageUp/Down step).
-    dropdown_page_size: usize,
+    db_dd: Dropdown,
+    table_dd: Dropdown,
 
     // --- async receivers (polled in tick) ---
+    databases_rx: Option<Receiver<Result<Vec<String>, DbError>>>,
     tables_rx: Option<Receiver<Result<Vec<String>, DbError>>>,
     columns_rx: Option<Receiver<Result<Vec<ColumnInfo>, DbError>>>,
     count_rx: Option<Receiver<Result<i64, DbError>>>,
@@ -118,8 +122,10 @@ pub struct DbPanel {
 /// Screen geometry captured each render for mouse hit-testing.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct GridGeometry {
-    /// Y of the table-selector row.
+    /// Y of the selector row.
     selector_y: u16,
+    /// X where the table-selector chip starts (db chip, if any, is left of it).
+    table_selector_x: u16,
     /// Y of the column-header row (when the grid is shown).
     header_y: Option<u16>,
     /// Y of the first data row.
@@ -140,12 +146,17 @@ impl DbPanel {
         } else {
             label_in
         };
+        let selected_db = url_database(&url);
+        let needs_db_pick = backend != DbBackend::Sqlite && selected_db.is_none();
         let conn = spawn_connect(url.clone());
         Self {
             url,
             label,
             backend,
             conn: ConnState::Connecting(conn),
+            needs_db_pick,
+            databases: Vec::new(),
+            selected_db,
             tables: Vec::new(),
             selected_table: None,
             columns: Vec::new(),
@@ -160,10 +171,9 @@ impl DbPanel {
             order_by: Vec::new(),
             page_rows: DEFAULT_PAGE_ROWS,
             section: Section::TableSelector,
-            table_dropdown_open: false,
-            dropdown_cursor: 0,
-            dropdown_scroll: 0,
-            dropdown_page_size: 1,
+            db_dd: Dropdown::default(),
+            table_dd: Dropdown::default(),
+            databases_rx: None,
             tables_rx: None,
             columns_rx: None,
             count_rx: None,
@@ -196,6 +206,14 @@ impl DbPanel {
             ConnState::Connecting(_) => t.db_status_connecting_fmt(&self.label),
             ConnState::Failed(e) => t.db_status_failed_fmt(&self.label, e),
             ConnState::Connected(_) => {
+                if self.needs_db_pick && self.selected_db.is_none() {
+                    return format!(
+                        "{} · {} · {}",
+                        self.label,
+                        self.backend.label(),
+                        t.db_select_database()
+                    );
+                }
                 let Some(table) = &self.selected_table else {
                     return format!(
                         "{} · {} · {}",
@@ -239,6 +257,31 @@ impl DbPanel {
             message: self.status_text(),
             is_error: matches!(self.conn, ConnState::Failed(_)),
         }
+    }
+
+    /// Switch to a different database: reconnect with the chosen DB in the URL,
+    /// then list its tables. No-op if it's already the selected DB.
+    fn select_database(&mut self, db: String) {
+        if self.selected_db.as_deref() == Some(db.as_str()) {
+            self.section = Section::TableSelector;
+            return;
+        }
+        let new_url = url_with_database(&self.url, &db);
+        self.selected_db = Some(db);
+        self.conn = ConnState::Connecting(spawn_connect(new_url));
+        // Reset catalog/grid state for the new database.
+        self.tables.clear();
+        self.selected_table = None;
+        self.columns.clear();
+        self.page = Page::default();
+        self.total_rows = None;
+        self.offset = 0;
+        self.cursor_row = 0;
+        self.cursor_col = 0;
+        self.filters.clear();
+        self.order_by.clear();
+        self.section = Section::TableSelector;
+        self.loading = true;
     }
 
     /// (Re)issue columns + count + page queries for the selected table.
@@ -340,7 +383,14 @@ impl DbPanel {
                     Ok(conn) => {
                         self.conn = ConnState::Connected(conn);
                         if let ConnState::Connected(c) = &self.conn {
-                            self.tables_rx = Some(c.list_tables());
+                            if self.needs_db_pick && self.selected_db.is_none() {
+                                // No database in the URL: enumerate and let the
+                                // user pick before listing tables.
+                                self.databases_rx = Some(c.list_databases());
+                                self.section = Section::DbSelector;
+                            } else {
+                                self.tables_rx = Some(c.list_tables());
+                            }
                         }
                     }
                     Err(e) => {
@@ -352,6 +402,16 @@ impl DbPanel {
                         self.conn = ConnState::Failed(msg);
                         self.loading = false;
                     }
+                }
+                changed = true;
+            }
+        }
+
+        if let Some(rx) = &self.databases_rx {
+            if let Ok(result) = rx.try_recv() {
+                self.databases_rx = None;
+                if let Ok(dbs) = result {
+                    self.databases = dbs;
                 }
                 changed = true;
             }
@@ -514,6 +574,36 @@ fn sanitize_url(url: &str) -> String {
     url.to_string()
 }
 
+/// Extract the database name from a connection URL's path, if any.
+fn url_database(url: &str) -> Option<String> {
+    let after = url.split("://").nth(1)?;
+    let slash = after.find('/')?;
+    let path = &after[slash + 1..];
+    let db = path.split(['?', '#']).next().unwrap_or("");
+    if db.is_empty() {
+        None
+    } else {
+        Some(db.to_string())
+    }
+}
+
+/// Replace (or insert) the database in a connection URL, preserving the query.
+fn url_with_database(url: &str, db: &str) -> String {
+    let Some(sep) = url.find("://") else {
+        return url.to_string();
+    };
+    let scheme = &url[..sep];
+    let after = &url[sep + 3..];
+    let auth_end = after.find(['/', '?']).unwrap_or(after.len());
+    let authority = &after[..auth_end];
+    let rest = &after[auth_end..];
+    let query = match rest.find('?') {
+        Some(q) => &rest[q..],
+        None => "",
+    };
+    format!("{scheme}://{authority}/{db}{query}")
+}
+
 impl Panel for DbPanel {
     fn name(&self) -> &'static str {
         "db"
@@ -565,7 +655,7 @@ impl Panel for DbPanel {
     }
 
     fn captures_escape(&self) -> bool {
-        self.table_dropdown_open
+        self.table_dd.open || self.db_dd.open
     }
 
     fn width_preference(&self) -> WidthPreference {

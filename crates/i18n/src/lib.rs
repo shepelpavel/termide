@@ -713,7 +713,9 @@ pub trait Translation: Send + Sync {
     fn db_loading(&self) -> &str;
     fn db_no_tables(&self) -> &str;
     fn db_no_table(&self) -> &str;
+    fn db_no_database(&self) -> &str;
     fn db_select_table(&self) -> &str;
+    fn db_select_database(&self) -> &str;
     fn db_rows_empty(&self) -> &str;
     fn db_total_unknown(&self) -> &str;
     fn db_copied(&self) -> &str;

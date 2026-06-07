@@ -6,6 +6,7 @@ use termide_db::{Condition, DbValue, FilterOp, SortDir, TypeCategory};
 use termide_modal::{ActionButton, ActiveModal, DbFilterModal, DbFilterResult, InfoActionModal};
 use termide_state::PendingAction;
 
+use crate::dropdown::DropdownKey;
 use crate::{DbPanel, Section};
 
 impl DbPanel {
@@ -13,54 +14,33 @@ impl DbPanel {
         let key = chord.raw;
         let code = key.code;
 
-        // Open table dropdown captures navigation.
-        if self.table_dropdown_open {
-            match code {
-                KeyCode::Up => {
-                    self.dropdown_cursor = self.dropdown_cursor.saturating_sub(1);
-                    return self.redraw();
-                }
-                KeyCode::Down => {
-                    if self.dropdown_cursor + 1 < self.tables.len() {
-                        self.dropdown_cursor += 1;
+        // An open dropdown captures navigation.
+        if self.db_dd.open {
+            return match self.db_dd.handle_key(code, self.databases.len()) {
+                DropdownKey::Pick(i) => {
+                    if let Some(db) = self.databases.get(i).cloned() {
+                        self.select_database(db);
                     }
-                    return self.redraw();
+                    self.redraw()
                 }
-                KeyCode::PageDown => {
-                    let step = self.dropdown_page_size.max(1);
-                    self.dropdown_cursor =
-                        (self.dropdown_cursor + step).min(self.tables.len().saturating_sub(1));
-                    return self.redraw();
-                }
-                KeyCode::PageUp => {
-                    let step = self.dropdown_page_size.max(1);
-                    self.dropdown_cursor = self.dropdown_cursor.saturating_sub(step);
-                    return self.redraw();
-                }
-                KeyCode::Home => {
-                    self.dropdown_cursor = 0;
-                    return self.redraw();
-                }
-                KeyCode::End => {
-                    self.dropdown_cursor = self.tables.len().saturating_sub(1);
-                    return self.redraw();
-                }
-                KeyCode::Enter => {
-                    if let Some(name) = self.tables.get(self.dropdown_cursor).cloned() {
-                        self.table_dropdown_open = false;
+                DropdownKey::Nav | DropdownKey::Closed => self.redraw(),
+                DropdownKey::Unhandled => vec![],
+            };
+        }
+        if self.table_dd.open {
+            return match self.table_dd.handle_key(code, self.tables.len()) {
+                DropdownKey::Pick(i) => {
+                    if let Some(name) = self.tables.get(i).cloned() {
                         if self.selected_table.as_deref() != Some(name.as_str()) {
                             self.selected_table = Some(name);
                             self.reload_table();
                         }
                     }
-                    return self.redraw();
+                    self.redraw()
                 }
-                KeyCode::Esc => {
-                    self.table_dropdown_open = false;
-                    return self.redraw();
-                }
-                _ => return vec![],
-            }
+                DropdownKey::Nav | DropdownKey::Closed => self.redraw(),
+                DropdownKey::Unhandled => vec![],
+            };
         }
 
         // Panel-wide action: refresh the catalog + current view.
@@ -71,18 +51,53 @@ impl DbPanel {
 
         match code {
             KeyCode::Tab | KeyCode::BackTab => {
-                self.section = match self.section {
-                    Section::TableSelector => Section::Grid,
-                    Section::Grid => Section::TableSelector,
-                };
+                self.cycle_section();
                 return self.redraw();
             }
             _ => {}
         }
 
         match self.section {
+            Section::DbSelector => self.handle_db_selector_key(code),
             Section::TableSelector => self.handle_selector_key(code),
             Section::Grid => self.handle_grid_key(key),
+        }
+    }
+
+    /// Move focus to the next zone (the DB selector exists only when the URL
+    /// omitted a database).
+    fn cycle_section(&mut self) {
+        self.section = match self.section {
+            Section::DbSelector => Section::TableSelector,
+            Section::TableSelector => Section::Grid,
+            Section::Grid => {
+                if self.needs_db_pick {
+                    Section::DbSelector
+                } else {
+                    Section::TableSelector
+                }
+            }
+        };
+    }
+
+    fn handle_db_selector_key(&mut self, code: KeyCode) -> Vec<PanelEvent> {
+        match code {
+            KeyCode::Enter | KeyCode::Char(' ') => {
+                if !self.databases.is_empty() {
+                    let idx = self
+                        .selected_db
+                        .as_ref()
+                        .and_then(|d| self.databases.iter().position(|n| n == d))
+                        .unwrap_or(0);
+                    self.db_dd.open_at(idx);
+                }
+                self.redraw()
+            }
+            KeyCode::Down => {
+                self.section = Section::TableSelector;
+                self.redraw()
+            }
+            _ => vec![],
         }
     }
 
@@ -90,12 +105,12 @@ impl DbPanel {
         match code {
             KeyCode::Enter | KeyCode::Char(' ') => {
                 if !self.tables.is_empty() {
-                    self.table_dropdown_open = true;
-                    self.dropdown_cursor = self
+                    let idx = self
                         .selected_table
                         .as_ref()
                         .and_then(|t| self.tables.iter().position(|n| n == t))
                         .unwrap_or(0);
+                    self.table_dd.open_at(idx);
                 }
                 self.redraw()
             }
@@ -166,13 +181,25 @@ impl DbPanel {
         }
         let (row, col) = (event.row, event.column);
 
-        // Open dropdown: pick a table from the open list.
-        if self.table_dropdown_open {
-            let list_top = self.geom.selector_y + 1;
-            if row >= list_top {
-                let idx = self.dropdown_scroll + (row - list_top) as usize;
+        let list_top = self.geom.selector_y + 1;
+
+        // Open DB dropdown: pick a database.
+        if self.db_dd.open {
+            if let Some(idx) = self.db_dd.index_at_row(row, list_top) {
+                if let Some(db) = self.databases.get(idx).cloned() {
+                    self.db_dd.open = false;
+                    self.select_database(db);
+                    return self.redraw();
+                }
+            }
+            self.db_dd.open = false;
+            return self.redraw();
+        }
+        // Open table dropdown: pick a table.
+        if self.table_dd.open {
+            if let Some(idx) = self.table_dd.index_at_row(row, list_top) {
                 if let Some(name) = self.tables.get(idx).cloned() {
-                    self.table_dropdown_open = false;
+                    self.table_dd.open = false;
                     if self.selected_table.as_deref() != Some(name.as_str()) {
                         self.selected_table = Some(name);
                         self.reload_table();
@@ -180,20 +207,34 @@ impl DbPanel {
                     return self.redraw();
                 }
             }
-            self.table_dropdown_open = false;
+            self.table_dd.open = false;
             return self.redraw();
         }
 
-        // Click on the selector row → open the table dropdown.
+        // Click on the selector row → open the DB or table dropdown depending
+        // on which chip was hit.
         if row == self.geom.selector_y {
-            self.section = Section::TableSelector;
-            if !self.tables.is_empty() {
-                self.table_dropdown_open = true;
-                self.dropdown_cursor = self
-                    .selected_table
-                    .as_ref()
-                    .and_then(|t| self.tables.iter().position(|n| n == t))
-                    .unwrap_or(0);
+            let on_table = !self.needs_db_pick || col >= self.geom.table_selector_x;
+            if on_table {
+                self.section = Section::TableSelector;
+                if !self.tables.is_empty() {
+                    let idx = self
+                        .selected_table
+                        .as_ref()
+                        .and_then(|t| self.tables.iter().position(|n| n == t))
+                        .unwrap_or(0);
+                    self.table_dd.open_at(idx);
+                }
+            } else {
+                self.section = Section::DbSelector;
+                if !self.databases.is_empty() {
+                    let idx = self
+                        .selected_db
+                        .as_ref()
+                        .and_then(|d| self.databases.iter().position(|n| n == d))
+                        .unwrap_or(0);
+                    self.db_dd.open_at(idx);
+                }
             }
             return self.redraw();
         }
