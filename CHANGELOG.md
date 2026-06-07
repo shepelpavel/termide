@@ -5,10 +5,14 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.24.0] - 2026-06-07
 
 ### Added
-- **Database viewer (read-only).** Browse **SQLite**, **PostgreSQL** and **MySQL/MariaDB** tables from a bookmark whose path is a database URL (`sqlite:///…`, `postgres://…`, `mysql://…`). The panel connects in the background and shows rows in a 2D grid with a cell cursor, sliding-window pagination, single-column server-side sort (ascending → descending → unsorted), type-aware per-column filtering (combined with `AND`), a full-row detail dialog (copy as TSV / JSON / INSERT), and cell/row copy. Queries run on a background runtime so the UI never blocks; everything is strictly read-only (`SELECT`/catalog queries only). Action keys are configurable under `[database.keybindings]` and shown in Help; the mouse can open the table selector, sort by clicking a column header, and move the cursor by clicking a cell. See [Database Viewer](doc/en/database.md).
+- **Database viewer (read-only).** Browse **SQLite**, **PostgreSQL** and **MySQL/MariaDB** tables from a bookmark whose path is a database URL (`sqlite:///…`, `postgres://…`, `mysql://…`). The panel connects in the background and shows rows in a 2D grid with a cell cursor, sliding-window pagination, single-column server-side sort (ascending → descending → unsorted), type-aware per-column filtering (combined with `AND`), a full-row detail dialog (copy as TSV / JSON / INSERT), and cell/row copy. When the URL omits a database (PostgreSQL/MySQL) a selector lets you pick one (the first is auto-selected); the panel is restored across sessions. Queries run on a background runtime so the UI never blocks; everything is strictly read-only (`SELECT`/catalog queries only). Action keys are configurable under `[database.keybindings]` and shown in Help; the mouse can open the selectors, sort by clicking a column header, and move the cursor by clicking a cell. See [Database Viewer](doc/en/database.md).
+- **Android / Termux support.** Releases now include a statically-linked `aarch64-unknown-linux-musl` binary that runs in Termux; see the installation docs.
+
+### Fixed
+- The Operations panel no longer offers **Pause** for script/command operations (it was never actually implementable); **Cancel** still stops them by killing the process. Pause/Resume remain for file transfers.
 
 ## [0.23.11] - 2026-06-05
 
@@ -152,6 +156,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `deny.toml` + `cargo-deny check` step covers advisories, licenses, bans and sources.
 - Pre-commit hook documented in `CONTRIBUTING.md`.
 
+[0.24.0]: https://github.com/termide/termide/releases/tag/0.24.0
 [0.23.11]: https://github.com/termide/termide/releases/tag/0.23.11
 [0.23.10]: https://github.com/termide/termide/releases/tag/0.23.10
 [0.23.9]: https://github.com/termide/termide/releases/tag/0.23.9
