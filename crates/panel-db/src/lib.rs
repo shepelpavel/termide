@@ -183,34 +183,40 @@ impl DbPanel {
 
     /// Build the shared-status-bar summary for the current view.
     fn status_text(&self) -> String {
+        let t = termide_i18n::t();
         match &self.conn {
-            ConnState::Connecting(_) => format!("{}: connecting…", self.label),
-            ConnState::Failed(e) => format!("{}: {}", self.label, e),
+            ConnState::Connecting(_) => t.db_status_connecting_fmt(&self.label),
+            ConnState::Failed(e) => t.db_status_failed_fmt(&self.label, e),
             ConnState::Connected(_) => {
                 let Some(table) = &self.selected_table else {
-                    return format!("{} · {} · select a table", self.label, self.backend.label());
+                    return format!(
+                        "{} · {} · {}",
+                        self.label,
+                        self.backend.label(),
+                        t.db_select_table()
+                    );
                 };
                 let n = self.page.rows.len() as u64;
                 let range = if n == 0 {
-                    "0 rows".to_string()
+                    t.db_rows_empty().to_string()
                 } else {
-                    format!("rows {}–{}", self.offset + 1, self.offset + n)
+                    t.db_rows_range_fmt(self.offset + 1, self.offset + n)
                 };
                 let total = match self.total_rows {
-                    Some(t) => format!(" of {t}"),
-                    None => " of …".to_string(),
+                    Some(tot) => t.db_total_fmt(tot),
+                    None => t.db_total_unknown().to_string(),
                 };
                 let sort = match self.order_by.first() {
                     Some((c, d)) => {
                         let arrow = if *d == SortDir::Asc { "↑" } else { "↓" };
-                        format!(" · sort: {c} {arrow}")
+                        t.db_sort_fmt(c, arrow)
                     }
                     None => String::new(),
                 };
                 let filter = if self.filters.is_empty() {
                     String::new()
                 } else {
-                    format!(" · filter: {}", self.filters.len())
+                    t.db_filter_count_fmt(self.filters.len())
                 };
                 format!(
                     "{} · {} · {}{}{}{}",
@@ -329,7 +335,7 @@ impl DbPanel {
                     }
                     Err(e) => {
                         let msg = if e.is_auth() {
-                            format!("auth failed — add a password to the bookmark URL ({e})")
+                            termide_i18n::t().db_auth_failed_fmt(&e.to_string())
                         } else {
                             e.to_string()
                         };

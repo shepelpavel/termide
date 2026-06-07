@@ -451,6 +451,24 @@ lsp_rename_no_identifier = "光标位置无标识符"
 lsp_rename_unsaved_file = "重命名需要已保存的文件"
 lsp_rename_no_changes = "重命名:未产生更改"
 
+# 数据库查看器
+db_connecting = "连接中…"
+db_loading = "加载中…"
+db_no_tables = "此数据库中没有表"
+db_no_table = "(无表)"
+db_select_table = "选择一个表"
+db_rows_empty = "0 行"
+db_total_unknown = " / …"
+db_copied = "已复制"
+db_copied_cell = "已复制单元格"
+db_copied_row = "已复制行"
+db_copy_tsv = "复制 TSV"
+db_copy_json = "复制 JSON"
+db_copy_insert = "复制 INSERT"
+db_filter_operator = "运算符"
+db_filter_value = "值"
+db_filter_hint = "Tab：字段 · ←/→：运算符 · Enter：应用 · Esc：取消"
+
 [formats]
 language_changed = "语言已更改为 {name}"
 theme_changed = "主题已更改为 {name}"
@@ -520,6 +538,18 @@ git_switched_to_fmt = "已切换到 {branch}"
 image_error_fmt = "图片加载失败: {error}"
 
 lsp_rename_result_fmt = "已在 {count} 个文件中重命名"
+
+# 数据库查看器
+db_status_connecting_fmt = "{label}：连接中…"
+db_status_failed_fmt = "{label}：{error}"
+db_rows_range_fmt = "行 {start}–{end}"
+db_total_fmt = " / {total}"
+db_sort_fmt = " · 排序：{column} {arrow}"
+db_filter_count_fmt = " · 过滤：{count}"
+db_connection_failed_fmt = "连接失败：{error}"
+db_auth_failed_fmt = "认证失败——请在书签 URL 中加入密码（{error}）"
+db_filter_title_fmt = "过滤 · {column}"
+db_row_title_fmt = "行 · {table}"
 
 [plurals]
 # Chinese doesn't have plural forms

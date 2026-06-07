@@ -400,14 +400,17 @@ impl DbPanel {
                 None => return vec![],
             }
         };
+        let t = termide_i18n::t();
+        let message = if whole_row {
+            t.db_copied_row()
+        } else {
+            t.db_copied_cell()
+        }
+        .to_string();
         vec![
             PanelEvent::CopyToClipboard(text),
             PanelEvent::SetStatusMessage {
-                message: if whole_row {
-                    "Copied row".to_string()
-                } else {
-                    "Copied cell".to_string()
-                },
+                message,
                 is_error: false,
             },
         ]
@@ -445,13 +448,14 @@ impl DbPanel {
         let json = row_to_json(&names, row);
         let insert = row_to_insert(&table, &names, row);
 
+        let t = termide_i18n::t();
         let buttons = vec![
-            ActionButton::new("Copy TSV", "copy_tsv"),
-            ActionButton::new("Copy JSON", "copy_json"),
-            ActionButton::new("Copy INSERT", "copy_insert"),
-            ActionButton::new("Close", "close"),
+            ActionButton::new(t.db_copy_tsv(), "copy_tsv"),
+            ActionButton::new(t.db_copy_json(), "copy_json"),
+            ActionButton::new(t.db_copy_insert(), "copy_insert"),
+            ActionButton::new(t.git_action_close(), "close"),
         ];
-        let title = format!("Row · {table}");
+        let title = t.db_row_title_fmt(&table);
         let modal = InfoActionModal::new(title, lines, buttons);
         self.modal_request = Some((
             PendingAction::DbRowDetail { tsv, json, insert },

@@ -543,6 +543,68 @@ impl Translation for RuntimeTranslation {
         calendar_october,
         calendar_november,
         calendar_december,
+        db_connecting,
+        db_loading,
+        db_no_tables,
+        db_no_table,
+        db_select_table,
+        db_rows_empty,
+        db_total_unknown,
+        db_copied,
+        db_copied_cell,
+        db_copied_row,
+        db_copy_tsv,
+        db_copy_json,
+        db_copy_insert,
+        db_filter_operator,
+        db_filter_value,
+        db_filter_hint,
+    }
+
+    fn db_status_connecting_fmt(&self, label: &str) -> String {
+        self.format("db_status_connecting_fmt", &[("label", label)])
+    }
+
+    fn db_status_failed_fmt(&self, label: &str, error: &str) -> String {
+        self.format(
+            "db_status_failed_fmt",
+            &[("label", label), ("error", error)],
+        )
+    }
+
+    fn db_rows_range_fmt(&self, start: u64, end: u64) -> String {
+        self.format(
+            "db_rows_range_fmt",
+            &[("start", &start.to_string()), ("end", &end.to_string())],
+        )
+    }
+
+    fn db_total_fmt(&self, total: i64) -> String {
+        self.format("db_total_fmt", &[("total", &total.to_string())])
+    }
+
+    fn db_sort_fmt(&self, column: &str, arrow: &str) -> String {
+        self.format("db_sort_fmt", &[("column", column), ("arrow", arrow)])
+    }
+
+    fn db_filter_count_fmt(&self, count: usize) -> String {
+        self.format("db_filter_count_fmt", &[("count", &count.to_string())])
+    }
+
+    fn db_connection_failed_fmt(&self, error: &str) -> String {
+        self.format("db_connection_failed_fmt", &[("error", error)])
+    }
+
+    fn db_auth_failed_fmt(&self, error: &str) -> String {
+        self.format("db_auth_failed_fmt", &[("error", error)])
+    }
+
+    fn db_filter_title_fmt(&self, column: &str) -> String {
+        self.format("db_filter_title_fmt", &[("column", column)])
+    }
+
+    fn db_row_title_fmt(&self, table: &str) -> String {
+        self.format("db_row_title_fmt", &[("table", table)])
     }
 
     fn fm_paste_confirm(&self, count: usize, mode: &str, dest: &str) -> String {

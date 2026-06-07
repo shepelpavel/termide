@@ -708,6 +708,34 @@ pub trait Translation: Send + Sync {
     fn calendar_november(&self) -> &str;
     fn calendar_december(&self) -> &str;
 
+    // Database viewer panel strings
+    fn db_connecting(&self) -> &str;
+    fn db_loading(&self) -> &str;
+    fn db_no_tables(&self) -> &str;
+    fn db_no_table(&self) -> &str;
+    fn db_select_table(&self) -> &str;
+    fn db_rows_empty(&self) -> &str;
+    fn db_total_unknown(&self) -> &str;
+    fn db_copied(&self) -> &str;
+    fn db_copied_cell(&self) -> &str;
+    fn db_copied_row(&self) -> &str;
+    fn db_copy_tsv(&self) -> &str;
+    fn db_copy_json(&self) -> &str;
+    fn db_copy_insert(&self) -> &str;
+    fn db_filter_operator(&self) -> &str;
+    fn db_filter_value(&self) -> &str;
+    fn db_filter_hint(&self) -> &str;
+    fn db_status_connecting_fmt(&self, label: &str) -> String;
+    fn db_status_failed_fmt(&self, label: &str, error: &str) -> String;
+    fn db_rows_range_fmt(&self, start: u64, end: u64) -> String;
+    fn db_total_fmt(&self, total: i64) -> String;
+    fn db_sort_fmt(&self, column: &str, arrow: &str) -> String;
+    fn db_filter_count_fmt(&self, count: usize) -> String;
+    fn db_connection_failed_fmt(&self, error: &str) -> String;
+    fn db_auth_failed_fmt(&self, error: &str) -> String;
+    fn db_filter_title_fmt(&self, column: &str) -> String;
+    fn db_row_title_fmt(&self, table: &str) -> String;
+
     // VFS remote connections
 }
 

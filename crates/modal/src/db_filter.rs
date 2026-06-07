@@ -89,8 +89,9 @@ impl Modal for DbFilterModal {
     type Result = DbFilterResult;
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, theme: &Theme) {
+        let tr = termide_i18n::t();
         let modal_area = centered_rect_with_size(50, 8, area);
-        let title = format!("Filter · {}", self.column);
+        let title = tr.db_filter_title_fmt(&self.column);
         let inner = render_modal_block(modal_area, buf, &title, theme);
         if inner.width == 0 || inner.height == 0 {
             return;
@@ -104,7 +105,7 @@ impl Modal for DbFilterModal {
         } else {
             base
         };
-        let op_line = format!("Operator:  ‹ {} ›", self.current_op());
+        let op_line = format!("{}:  ‹ {} ›", tr.db_filter_operator(), self.current_op());
         buf.set_stringn(inner.x, inner.y, &op_line, inner.width as usize, op_style);
 
         // Value line (unless the operator is a null check).
@@ -114,7 +115,7 @@ impl Modal for DbFilterModal {
             } else {
                 base
             };
-            let val_line = format!("Value:     {}_", self.value);
+            let val_line = format!("{}:     {}_", tr.db_filter_value(), self.value);
             buf.set_stringn(
                 inner.x,
                 inner.y + 2,
@@ -125,11 +126,10 @@ impl Modal for DbFilterModal {
         }
 
         // Hint line.
-        let hint = "Tab: field · ←/→: operator · Enter: apply · Esc: cancel";
         buf.set_stringn(
             inner.x,
             inner.y + inner.height.saturating_sub(1),
-            hint,
+            tr.db_filter_hint(),
             inner.width as usize,
             base.add_modifier(Modifier::DIM),
         );

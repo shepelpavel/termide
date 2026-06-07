@@ -802,7 +802,8 @@ impl App {
                             if let Err(e) = termide_clipboard::copy(&text) {
                                 log::error!("Failed to copy to clipboard: {}", e);
                             } else {
-                                self.state.set_info("Copied".to_string());
+                                self.state
+                                    .set_info(termide_i18n::t().db_copied().to_string());
                             }
                         }
                     }

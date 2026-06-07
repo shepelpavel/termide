@@ -37,7 +37,7 @@ impl DbPanel {
         let table_label = self
             .selected_table
             .clone()
-            .unwrap_or_else(|| "(no table)".to_string());
+            .unwrap_or_else(|| termide_i18n::t().db_no_table().to_string());
         fill_line(buf, area.x, area.y, area.width, base);
         let selector =
             InlineSelector::new(&table_label, self.table_dropdown_open, sel_focused, &theme);
@@ -51,21 +51,27 @@ impl DbPanel {
             height: area.height.saturating_sub(1),
         };
 
+        let tr = termide_i18n::t();
         match &self.conn {
             ConnState::Connecting(_) => {
-                self.center_message(buf, body, "Connecting…", base.fg(self.cached_theme.info));
+                self.center_message(
+                    buf,
+                    body,
+                    tr.db_connecting(),
+                    base.fg(self.cached_theme.info),
+                );
                 return;
             }
             ConnState::Failed(msg) => {
                 let style = base.fg(self.cached_theme.error);
-                self.center_message(buf, body, &format!("Connection failed: {msg}"), style);
+                self.center_message(buf, body, &tr.db_connection_failed_fmt(msg), style);
                 return;
             }
             ConnState::Connected(_) => {}
         }
 
         if self.selected_table.is_none() {
-            self.center_message(buf, body, "No tables in this database", base);
+            self.center_message(buf, body, tr.db_no_tables(), base);
             return;
         }
 
@@ -83,7 +89,7 @@ impl DbPanel {
         let base = Style::default().fg(theme.fg).bg(theme.bg);
         let names = self.column_names();
         if names.is_empty() {
-            self.center_message(buf, area, "Loading…", base);
+            self.center_message(buf, area, termide_i18n::t().db_loading(), base);
             return;
         }
 
@@ -194,7 +200,8 @@ impl DbPanel {
 
         if self.loading {
             let style = base.fg(theme.info);
-            buf.set_stringn(area.x, area.y, " loading… ", area.width as usize, style);
+            let label = format!(" {} ", termide_i18n::t().db_loading());
+            buf.set_stringn(area.x, area.y, &label, area.width as usize, style);
         }
     }
 

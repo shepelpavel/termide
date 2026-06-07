@@ -5165,6 +5165,7 @@ dependencies = [
  "termide-config",
  "termide-core",
  "termide-db",
+ "termide-i18n",
  "termide-modal",
  "termide-state",
  "termide-theme",
