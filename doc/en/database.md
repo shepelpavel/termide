@@ -86,17 +86,19 @@ its header. One column at a time.
 
 ## Filtering
 
-Press `f` on a column to add a condition. The available operators depend on the
-column's type:
+`Ctrl+F` (or `F3`) opens the filter dialog, which lists **every column** — one
+row each with the column name, an operator (cycle with ←/→; the first option
+means "no condition") and a value typed in place. The available operators depend
+on the column's type:
 
 - **Text:** contains, starts with, ends with, =, ≠, is null, is not null
 - **Numeric / date:** =, ≠, >, ≥, <, ≤, is null, is not null
 - **Boolean:** =, ≠, is null, is not null
 
-`contains`/`starts with`/`ends with` are case-insensitive. Conditions on
-different columns combine with **AND**; filtering the same column again replaces
-its condition. Press `F` to clear everything. Values are always sent as bound
-parameters.
+Bottom buttons: **Apply**, **Clear filters**, **Cancel**. Applying replaces the
+whole filter set; conditions on different columns combine with **AND**.
+`contains`/`starts with`/`ends with` are case-insensitive. `Alt+F` clears all
+filters without opening the dialog. Values are always sent as bound parameters.
 
 ## Row detail
 
