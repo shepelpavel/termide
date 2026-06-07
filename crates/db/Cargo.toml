@@ -1,0 +1,27 @@
+[package]
+name = "termide-db"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Database access core for termide (SQLite / PostgreSQL / MySQL viewer)"
+
+[dependencies]
+# Pure-Rust SQL access. SQLite is bundled (static); Postgres/MySQL speak the
+# wire protocol in Rust; TLS via rustls so static-musl builds keep working.
+sqlx = { version = "0.8", default-features = false, features = [
+    "runtime-tokio",
+    "tls-rustls-ring",
+    "sqlite",
+    "postgres",
+    "mysql",
+] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros"] }
+thiserror = "1.0"
+log = "0.4"
+url.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
