@@ -333,10 +333,21 @@ impl DbPanel {
         }
     }
 
-    /// Refresh the catalog (table list) and the current view. The tables-list
-    /// reply (polled in `poll_async`) keeps the current selection if it still
-    /// exists, otherwise re-selects the first table.
+    /// Refresh the catalog and current view. While still choosing a database
+    /// (URL omitted one), refresh the database list instead of listing tables
+    /// from the bootstrap connection.
     fn refresh_catalog(&mut self) {
+        if self.needs_db_pick && self.selected_db.is_none() {
+            let rx = if let ConnState::Connected(conn) = &self.conn {
+                Some(conn.list_databases())
+            } else {
+                None
+            };
+            if let Some(rx) = rx {
+                self.databases_rx = Some(rx);
+            }
+            return;
+        }
         let rx = if let ConnState::Connected(conn) = &self.conn {
             Some(conn.list_tables())
         } else {
@@ -414,7 +425,14 @@ impl DbPanel {
             if let Ok(result) = rx.try_recv() {
                 self.databases_rx = None;
                 match result {
-                    Ok(dbs) => self.databases = dbs,
+                    Ok(dbs) => {
+                        self.databases = dbs;
+                        // Surface the list right away so the user can pick.
+                        if self.selected_db.is_none() && !self.databases.is_empty() {
+                            self.section = Section::DbSelector;
+                            self.db_dd.open_at(0);
+                        }
+                    }
                     Err(e) => self.conn = ConnState::Failed(e.to_string()),
                 }
                 changed = true;

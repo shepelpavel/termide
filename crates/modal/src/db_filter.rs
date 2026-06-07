@@ -1,9 +1,9 @@
 //! Multi-column filter modal for the database viewer.
 //!
-//! One row per column — column name, a type-aware operator (cycled with
-//! ←/→, where the first option means "no condition"), and a value typed in
-//! place. Bottom buttons Apply / Clear / Cancel. The panel maps the chosen
-//! operator labels back to typed conditions.
+//! One row per column — column name, an operator selectbox, and a value. Within
+//! a row, ←/→ switch focus between the operator and the value; ↑/↓ move between
+//! rows. Enter on the operator opens a standard dropdown to pick it. Bottom
+//! buttons: Apply / Clear filters / Cancel.
 
 use anyhow::Result;
 use crossterm::event::KeyCode;
@@ -20,7 +20,7 @@ use crate::{centered_rect_with_size, Modal, ModalResult};
 /// A column the modal can filter on.
 pub struct DbFilterColumn {
     pub name: String,
-    /// Operator labels (the modal prepends a "no condition" sentinel).
+    /// Operator labels (a leading "no condition" sentinel is added internally).
     pub operators: Vec<String>,
     /// Pre-selected operator (index into `operators`), if a condition exists.
     pub op: Option<usize>,
@@ -52,25 +52,38 @@ struct Row {
 }
 
 impl Row {
-    fn op_label(&self) -> &str {
-        if self.op_sel == 0 {
+    /// Number of selectable operator options (index 0 = "no condition").
+    fn op_count(&self) -> usize {
+        self.operators.len() + 1
+    }
+    fn op_label_at(&self, idx: usize) -> &str {
+        if idx == 0 {
             "—"
         } else {
             self.operators
-                .get(self.op_sel - 1)
+                .get(idx - 1)
                 .map(|s| s.as_str())
                 .unwrap_or("—")
         }
     }
-    /// Operators with a value field (null checks and "no condition" don't).
+    fn op_label(&self) -> &str {
+        self.op_label_at(self.op_sel)
+    }
     fn needs_value(&self) -> bool {
         !matches!(self.op_label(), "—" | "is null" | "is not null")
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Field {
+    Operator,
+    Value,
+}
+
 const BTN_APPLY: usize = 0;
 const BTN_CLEAR: usize = 1;
 const BTN_CANCEL: usize = 2;
+const OP_CHIP_W: usize = 16;
 
 /// Modal for editing per-column filter conditions.
 #[derive(Debug)]
@@ -78,6 +91,10 @@ pub struct DbFilterModal {
     rows: Vec<Row>,
     /// Focused row index, or `rows.len()` for the button bar.
     focus: usize,
+    field: Field,
+    /// Operator dropdown open for the focused row.
+    op_open: bool,
+    op_cursor: usize,
     button: usize,
     scroll: usize,
 }
@@ -96,6 +113,9 @@ impl DbFilterModal {
         Self {
             rows,
             focus: 0,
+            field: Field::Operator,
+            op_open: false,
+            op_cursor: 0,
             button: BTN_APPLY,
             scroll: 0,
         }
@@ -105,7 +125,7 @@ impl DbFilterModal {
         self.focus >= self.rows.len()
     }
 
-    fn collect(&self) -> DbFilterResult {
+    fn collect(&self) -> ModalResult<DbFilterResult> {
         let conditions = self
             .rows
             .iter()
@@ -120,7 +140,7 @@ impl DbFilterModal {
                 },
             })
             .collect();
-        DbFilterResult { conditions }
+        ModalResult::Confirmed(DbFilterResult { conditions })
     }
 }
 
@@ -130,7 +150,6 @@ impl Modal for DbFilterModal {
     fn render(&mut self, area: Rect, buf: &mut Buffer, theme: &Theme) {
         let tr = termide_i18n::t();
         let width = 64u16.min(area.width.saturating_sub(2));
-        // title + rows region + buttons + padding, capped to the screen.
         let max_rows_h = area.height.saturating_sub(6).max(1);
         let rows_h = (self.rows.len() as u16).min(max_rows_h).max(1);
         let height = rows_h + 4;
@@ -142,9 +161,7 @@ impl Modal for DbFilterModal {
         let base = Style::default().fg(theme.fg);
         let focused = Style::default().fg(theme.selected_fg).bg(theme.selected_bg);
 
-        let visible = inner.height.saturating_sub(1) as usize; // last line = buttons
-        let visible = visible.max(1);
-        // Keep the focused row visible.
+        let visible = (inner.height.saturating_sub(1) as usize).max(1); // last line = buttons
         let focus_row = self.focus.min(self.rows.len());
         if focus_row < self.rows.len() {
             if focus_row < self.scroll {
@@ -161,24 +178,38 @@ impl Modal for DbFilterModal {
             .max()
             .unwrap_or(4)
             .clamp(4, 24);
+        let op_x = inner.x + name_w as u16 + 2;
+        let val_x = op_x + OP_CHIP_W as u16 + 1;
 
         let start = self.scroll.min(self.rows.len());
         let end = (start + visible).min(self.rows.len());
         for (line, i) in (start..end).enumerate() {
             let r = &self.rows[i];
             let y = inner.y + line as u16;
-            let style = if !self.buttons_focused() && i == self.focus {
+            let row_focused = !self.buttons_focused() && i == self.focus;
+            let blanks = " ".repeat(inner.width as usize);
+            buf.set_stringn(inner.x, y, &blanks, inner.width as usize, base);
+            buf.set_stringn(inner.x, y, pad(&r.name, name_w), name_w, base);
+
+            // Operator chip.
+            let op_style = if row_focused && self.field == Field::Operator {
                 focused
             } else {
                 base
             };
-            let name = pad(&r.name, name_w);
-            let value = if r.needs_value() { &r.value } else { "" };
-            let text = format!("{name}  ‹ {} ›  {value}", r.op_label());
-            // clear the row then draw
-            let blanks = " ".repeat(inner.width as usize);
-            buf.set_stringn(inner.x, y, &blanks, inner.width as usize, style);
-            buf.set_stringn(inner.x, y, &text, inner.width as usize, style);
+            let chip = format!("[ {} ▾ ]", r.op_label());
+            buf.set_stringn(op_x, y, &chip, OP_CHIP_W, op_style);
+
+            // Value field.
+            if r.needs_value() {
+                let val_style = if row_focused && self.field == Field::Value {
+                    focused
+                } else {
+                    base
+                };
+                let vw = inner.width.saturating_sub(val_x - inner.x) as usize;
+                buf.set_stringn(val_x, y, &r.value, vw, val_style);
+            }
         }
 
         // --- buttons ---
@@ -205,6 +236,21 @@ impl Modal for DbFilterModal {
             );
             bx = nx + 2;
         }
+
+        // --- operator dropdown overlay (drawn last) ---
+        if self.op_open && focus_row < self.rows.len() {
+            let r = &self.rows[focus_row];
+            let row_y = inner.y + (focus_row - start) as u16;
+            for k in 0..r.op_count() {
+                let y = row_y + 1 + k as u16;
+                if y >= area.y + area.height {
+                    break;
+                }
+                let st = if k == self.op_cursor { focused } else { base };
+                let item = format!(" {} ", r.op_label_at(k));
+                buf.set_stringn(op_x, y, pad(&item, OP_CHIP_W), OP_CHIP_W, st);
+            }
+        }
     }
 
     fn handle_key(
@@ -212,29 +258,52 @@ impl Modal for DbFilterModal {
         chord: termide_core::KeyChord,
     ) -> Result<Option<ModalResult<Self::Result>>> {
         let n = self.rows.len();
+
+        // Operator dropdown captures navigation while open.
+        if self.op_open {
+            let count = self.rows.get(self.focus).map(|r| r.op_count()).unwrap_or(1);
+            match chord.raw.code {
+                KeyCode::Up => self.op_cursor = self.op_cursor.saturating_sub(1),
+                KeyCode::Down => self.op_cursor = (self.op_cursor + 1).min(count.saturating_sub(1)),
+                KeyCode::Enter => {
+                    if let Some(r) = self.rows.get_mut(self.focus) {
+                        r.op_sel = self.op_cursor;
+                    }
+                    self.op_open = false;
+                }
+                KeyCode::Esc => self.op_open = false,
+                _ => {}
+            }
+            return Ok(None);
+        }
+
         match chord.raw.code {
             KeyCode::Esc => return Ok(Some(ModalResult::Cancelled)),
-            KeyCode::Up => {
-                self.focus = self.focus.saturating_sub(1);
-            }
-            KeyCode::Down => {
-                self.focus = (self.focus + 1).min(n); // n = buttons row
-            }
+            KeyCode::Up => self.focus = self.focus.saturating_sub(1),
+            KeyCode::Down => self.focus = (self.focus + 1).min(n),
             KeyCode::Tab => {
-                self.focus = if self.focus >= n { 0 } else { self.focus + 1 };
+                if self.buttons_focused() {
+                    self.focus = 0;
+                    self.field = Field::Operator;
+                } else if self.field == Field::Operator {
+                    self.field = Field::Value;
+                } else {
+                    self.field = Field::Operator;
+                    self.focus = (self.focus + 1).min(n);
+                }
             }
             KeyCode::Left => {
                 if self.buttons_focused() {
                     self.button = self.button.saturating_sub(1);
-                } else if let Some(r) = self.rows.get_mut(self.focus) {
-                    r.op_sel = r.op_sel.saturating_sub(1);
+                } else {
+                    self.field = Field::Operator;
                 }
             }
             KeyCode::Right => {
                 if self.buttons_focused() {
                     self.button = (self.button + 1).min(BTN_CANCEL);
-                } else if let Some(r) = self.rows.get_mut(self.focus) {
-                    r.op_sel = (r.op_sel + 1).min(r.operators.len());
+                } else {
+                    self.field = Field::Value;
                 }
             }
             KeyCode::Enter => {
@@ -242,13 +311,17 @@ impl Modal for DbFilterModal {
                     return Ok(Some(match self.button {
                         BTN_CANCEL => ModalResult::Cancelled,
                         BTN_CLEAR => ModalResult::Confirmed(DbFilterResult { conditions: vec![] }),
-                        _ => ModalResult::Confirmed(self.collect()),
+                        _ => self.collect(),
                     }));
+                } else if self.field == Field::Operator {
+                    self.op_cursor = self.rows.get(self.focus).map(|r| r.op_sel).unwrap_or(0);
+                    self.op_open = true;
+                } else {
+                    return Ok(Some(self.collect()));
                 }
-                return Ok(Some(ModalResult::Confirmed(self.collect())));
             }
             KeyCode::Char(c) => {
-                if !self.buttons_focused() {
+                if !self.buttons_focused() && self.field == Field::Value {
                     if let Some(r) = self.rows.get_mut(self.focus) {
                         if r.needs_value() {
                             r.value.push(c);
@@ -257,7 +330,7 @@ impl Modal for DbFilterModal {
                 }
             }
             KeyCode::Backspace => {
-                if !self.buttons_focused() {
+                if !self.buttons_focused() && self.field == Field::Value {
                     if let Some(r) = self.rows.get_mut(self.focus) {
                         r.value.pop();
                     }
@@ -269,7 +342,7 @@ impl Modal for DbFilterModal {
     }
 
     fn handle_paste(&mut self, text: &str) -> bool {
-        if !self.buttons_focused() {
+        if !self.op_open && !self.buttons_focused() && self.field == Field::Value {
             if let Some(r) = self.rows.get_mut(self.focus) {
                 if r.needs_value() {
                     r.value.push_str(text);

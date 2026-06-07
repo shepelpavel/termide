@@ -87,9 +87,10 @@ its header. One column at a time.
 ## Filtering
 
 `Ctrl+F` (or `F3`) opens the filter dialog, which lists **every column** — one
-row each with the column name, an operator (cycle with ←/→; the first option
-means "no condition") and a value typed in place. The available operators depend
-on the column's type:
+row each with the column name, an **operator selectbox** and a value. Within a
+row, ←/→ switch focus between the operator and the value, and ↑/↓ move between
+rows; press Enter on the operator to open its dropdown (the first option means
+"no condition"). The available operators depend on the column's type:
 
 - **Text:** contains, starts with, ends with, =, ≠, is null, is not null
 - **Numeric / date:** =, ≠, >, ≥, <, ≤, is null, is not null
