@@ -5,6 +5,11 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Database viewer (read-only).** Browse **SQLite**, **PostgreSQL** and **MySQL/MariaDB** tables from a bookmark whose path is a database URL (`sqlite:///…`, `postgres://…`, `mysql://…`). The panel connects in the background and shows rows in a 2D grid with a cell cursor, sliding-window pagination, single-column server-side sort (ascending → descending → unsorted), type-aware per-column filtering (combined with `AND`), a full-row detail dialog (copy as TSV / JSON / INSERT), and cell/row copy. Queries run on a background runtime so the UI never blocks; everything is strictly read-only (`SELECT`/catalog queries only). See [Database Viewer](doc/en/database.md).
+
 ## [0.23.11] - 2026-06-05
 
 ### Added

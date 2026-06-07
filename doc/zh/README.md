@@ -11,6 +11,7 @@
 - [文件管理器](file-manager.md) - 文件导航和操作
 - [操作面板](operations.md) - 后台传输：暂停、恢复、取消、部分上传清理
 - [远程文件系统（VFS）](vfs.md) - 通过 SFTP / FTP / FTPS 浏览和传输文件
+- [数据库查看器](database.md) - 只读浏览 SQLite / PostgreSQL / MySQL 表
 - [终端](terminal.md) - 使用集成终端
 - [文本编辑器](editor.md) - 使用语法高亮编辑文件
 - [主题](themes.md) - 使用主题自定义外观

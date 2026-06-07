@@ -11,6 +11,7 @@ Welcome to the TermIDE documentation! This guide covers installation, usage, and
 - [File Manager](file-manager.md) - File navigation and operations
 - [Operations Panel](operations.md) - Background transfers: pause, resume, cancel, partial-upload cleanup
 - [Remote Filesystems (VFS)](vfs.md) - Browsing and transferring files over SFTP / FTP / FTPS
+- [Database Viewer](database.md) - Read-only browsing of SQLite / PostgreSQL / MySQL tables
 - [Terminal](terminal.md) - Using the integrated terminal
 - [Text Editor](editor.md) - Editing files with syntax highlighting
 - [Themes](themes.md) - Customizing appearance with themes
