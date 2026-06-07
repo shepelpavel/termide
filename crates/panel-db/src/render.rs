@@ -61,32 +61,31 @@ impl DbPanel {
             height: area.height.saturating_sub(1),
         };
 
+        // Body — no early returns, so the dropdown overlay below always draws.
         match &self.conn {
             ConnState::Connecting(_) => {
+                self.center_message(buf, body, tr.db_connecting(), base.fg(theme.info));
+            }
+            ConnState::Failed(msg) => {
                 self.center_message(
                     buf,
                     body,
-                    tr.db_connecting(),
-                    base.fg(self.cached_theme.info),
+                    &tr.db_connection_failed_fmt(msg),
+                    base.fg(theme.error),
                 );
-                return;
             }
-            ConnState::Failed(msg) => {
-                let style = base.fg(self.cached_theme.error);
-                self.center_message(buf, body, &tr.db_connection_failed_fmt(msg), style);
-                return;
+            ConnState::Connected(_) => {
+                if self.needs_db_pick && self.selected_db.is_none() {
+                    self.center_message(buf, body, tr.db_select_database(), base.fg(theme.info));
+                } else if self.selected_table.is_none() {
+                    self.center_message(buf, body, tr.db_no_tables(), base);
+                } else {
+                    self.render_grid(buf, body, is_focused);
+                }
             }
-            ConnState::Connected(_) => {}
         }
 
-        if self.selected_table.is_none() {
-            self.center_message(buf, body, tr.db_no_tables(), base);
-            return;
-        }
-
-        self.render_grid(buf, body, is_focused);
-
-        // Dropdown overlay drawn last so it sits above the grid.
+        // Dropdown overlay drawn last so it sits above everything.
         if self.db_dd.open {
             self.db_dd.render(buf, area, &self.databases, &theme);
         } else if self.table_dd.open {

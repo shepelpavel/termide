@@ -158,8 +158,9 @@ impl Modal for DbFilterModal {
         if inner.width == 0 || inner.height == 0 {
             return;
         }
-        let base = Style::default().fg(theme.fg);
-        let focused = Style::default().fg(theme.selected_fg).bg(theme.selected_bg);
+        let base = Style::default().fg(theme.fg).bg(theme.bg);
+        // Focus = inverse video (matches the grid's cell cursor).
+        let focused = base.add_modifier(Modifier::REVERSED);
 
         let visible = (inner.height.saturating_sub(1) as usize).max(1); // last line = buttons
         let focus_row = self.focus.min(self.rows.len());
@@ -201,8 +202,9 @@ impl Modal for DbFilterModal {
                 "▶"
             };
             let op_style = if op_focused { focused } else { base };
+            // Highlight only the chip's own width, not the whole column slot.
             let chip = format!("[{} {}]", r.op_label(), arrow);
-            buf.set_stringn(op_x, y, pad(&chip, OP_CHIP_W), OP_CHIP_W, op_style);
+            buf.set_stringn(op_x, y, &chip, OP_CHIP_W, op_style);
 
             // Value field — always shown (so focus is visible) with a trailing
             // cursor when focused; only meaningful when the operator needs one.
