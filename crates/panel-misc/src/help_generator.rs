@@ -8,8 +8,8 @@ use ratatui::{
     text::{Line, Span},
 };
 use termide_config::{
-    Config, EditorKeybindings, FileManagerKeybindings, GitDiffKeybindings, GitLogKeybindings,
-    GitStatusKeybindings, GlobalKeybindings, KeyBinding, TerminalKeybindings,
+    Config, DatabaseKeybindings, EditorKeybindings, FileManagerKeybindings, GitDiffKeybindings,
+    GitLogKeybindings, GitStatusKeybindings, GlobalKeybindings, KeyBinding, TerminalKeybindings,
 };
 use termide_i18n;
 use termide_theme::Theme;
@@ -52,6 +52,7 @@ impl HelpGenerator {
                 t,
             ),
             Self::generate_terminal_section(&config.terminal.keybindings, t),
+            Self::generate_database_section(&config.database.keybindings, t),
             Self::generate_diagnostics_section(t),
             Self::generate_operations_section(t),
             Self::generate_outline_section(t),
@@ -688,6 +689,52 @@ impl HelpGenerator {
 
         HelpSection {
             header: t.help_terminal_keys().to_string(),
+            entries,
+        }
+    }
+
+    /// Generate database viewer keybindings section.
+    fn generate_database_section(
+        kb: &DatabaseKeybindings,
+        t: &dyn termide_i18n::Translation,
+    ) -> HelpSection {
+        let entries = vec![
+            HelpEntry {
+                keys: Self::format_keys(&kb.sort),
+                description: t.help_desc_db_sort().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.filter),
+                description: t.help_desc_db_filter().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.clear_filter),
+                description: t.help_desc_db_clear_filter().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.detail),
+                description: t.help_desc_db_detail().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.copy_cell),
+                description: t.help_desc_db_copy_cell().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.copy_row),
+                description: t.help_desc_db_copy_row().to_string(),
+            },
+            HelpEntry {
+                keys: Self::format_keys(&kb.refresh),
+                description: t.help_desc_refresh().to_string(),
+            },
+            HelpEntry {
+                keys: "Tab".to_string(),
+                description: t.help_desc_switch_focus().to_string(),
+            },
+        ];
+
+        HelpSection {
+            header: t.help_section_database().to_string(),
             entries,
         }
     }

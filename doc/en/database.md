@@ -44,7 +44,8 @@ saved verbatim to `bookmarks.toml`, so treat that file accordingly.
 
 A **table selector** sits on top; the **data grid** fills the rest. When the
 connection URL omits a database (PostgreSQL/MySQL), a **database selector**
-appears to its left — pick a database and the viewer reconnects to it. The grid
+appears to its left; the viewer auto-selects the first database so data shows
+immediately, and you can switch to another via that selector. The grid
 has a 2D cell cursor: the highlighted cell is the target for sorting, filtering
 and copying. The shared status bar shows the current range, total row count,
 active sort and filter, e.g. `app.db · users · rows 1–200 of 1203 · sort: name ↑ · filter: 1`.
@@ -96,10 +97,14 @@ rows; press Enter on the operator to open its dropdown (the first option means
 - **Numeric / date:** =, ≠, >, ≥, <, ≤, is null, is not null
 - **Boolean:** =, ≠, is null, is not null
 
-Bottom buttons: **Apply**, **Clear filters**, **Cancel**. Applying replaces the
-whole filter set; conditions on different columns combine with **AND**.
-`contains`/`starts with`/`ends with` are case-insensitive. `Alt+F` clears all
-filters without opening the dialog. Values are always sent as bound parameters.
+Typing a value auto-selects a default operator if the column was still `—`, so
+you can just type. Bottom buttons: **Apply**, **Clear filters**, **Cancel**.
+Applying replaces the whole filter set; conditions on different columns combine
+with **AND**; an operator left without a value is ignored. `contains`/`starts
+with`/`ends with` are case-insensitive. `Alt+F` clears all filters without
+opening the dialog. Values are always sent as bound parameters; if a filter
+produces a database error (e.g. a non-numeric value on a numeric column) it is
+shown as a non-fatal warning in the status bar and the current data stays.
 
 ## Row detail
 

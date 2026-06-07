@@ -249,6 +249,13 @@ pub trait Translation: Send + Sync {
     fn help_section_outline(&self) -> &str;
     fn help_section_references(&self) -> &str;
     fn help_section_image(&self) -> &str;
+    fn help_section_database(&self) -> &str;
+    fn help_desc_db_sort(&self) -> &str;
+    fn help_desc_db_filter(&self) -> &str;
+    fn help_desc_db_clear_filter(&self) -> &str;
+    fn help_desc_db_detail(&self) -> &str;
+    fn help_desc_db_copy_cell(&self) -> &str;
+    fn help_desc_db_copy_row(&self) -> &str;
     fn help_desc_toggle_filter(&self) -> &str;
     fn help_desc_pause_resume(&self) -> &str;
     fn help_desc_cancel_operation(&self) -> &str;
