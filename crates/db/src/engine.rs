@@ -122,8 +122,8 @@ pub(crate) async fn list_databases(pool: &Pool) -> Result<Vec<String>, DbError> 
         Pool::Postgres(p) => {
             // Cast to text: `datname` is the `name` type, which doesn't decode
             // straight to String.
-            let sql = "SELECT datname::text FROM pg_database \
-                       WHERE datistemplate = false AND datallowconn ORDER BY datname";
+            let sql = "SELECT datname::text FROM pg_catalog.pg_database \
+                       WHERE datistemplate = false ORDER BY 1";
             collect_first_column(sqlx::query(sql).fetch_all(p).await?)
         }
         Pool::MySql(p) => {

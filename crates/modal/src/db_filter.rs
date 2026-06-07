@@ -191,25 +191,36 @@ impl Modal for DbFilterModal {
             buf.set_stringn(inner.x, y, &blanks, inner.width as usize, base);
             buf.set_stringn(inner.x, y, pad(&r.name, name_w), name_w, base);
 
-            // Operator chip.
-            let op_style = if row_focused && self.field == Field::Operator {
-                focused
+            // Operator selectbox — same `[label ▼]` look as the panel's
+            // InlineSelector (that widget lives in a crate that can't be a
+            // dependency here without a cycle, so the format is mirrored).
+            let op_focused = row_focused && self.field == Field::Operator;
+            let arrow = if self.op_open && row_focused {
+                "▼"
             } else {
-                base
+                "▶"
             };
-            let chip = format!("[ {} ▾ ]", r.op_label());
-            buf.set_stringn(op_x, y, &chip, OP_CHIP_W, op_style);
+            let op_style = if op_focused { focused } else { base };
+            let chip = format!("[{} {}]", r.op_label(), arrow);
+            buf.set_stringn(op_x, y, pad(&chip, OP_CHIP_W), OP_CHIP_W, op_style);
 
-            // Value field.
-            if r.needs_value() {
-                let val_style = if row_focused && self.field == Field::Value {
-                    focused
-                } else {
-                    base
-                };
-                let vw = inner.width.saturating_sub(val_x - inner.x) as usize;
-                buf.set_stringn(val_x, y, &r.value, vw, val_style);
-            }
+            // Value field — always shown (so focus is visible) with a trailing
+            // cursor when focused; only meaningful when the operator needs one.
+            let val_focused = row_focused && self.field == Field::Value;
+            let val_style = if val_focused { focused } else { base };
+            let vw = inner.width.saturating_sub(val_x - inner.x) as usize;
+            let value_w = vw.min(28);
+            let shown = if r.needs_value() {
+                r.value.as_str()
+            } else {
+                ""
+            };
+            let txt = if val_focused {
+                format!("{shown}_")
+            } else {
+                shown.to_string()
+            };
+            buf.set_stringn(val_x, y, pad(&txt, value_w), value_w, val_style);
         }
 
         // --- buttons ---
@@ -323,9 +334,7 @@ impl Modal for DbFilterModal {
             KeyCode::Char(c) => {
                 if !self.buttons_focused() && self.field == Field::Value {
                     if let Some(r) = self.rows.get_mut(self.focus) {
-                        if r.needs_value() {
-                            r.value.push(c);
-                        }
+                        r.value.push(c);
                     }
                 }
             }
@@ -344,10 +353,8 @@ impl Modal for DbFilterModal {
     fn handle_paste(&mut self, text: &str) -> bool {
         if !self.op_open && !self.buttons_focused() && self.field == Field::Value {
             if let Some(r) = self.rows.get_mut(self.focus) {
-                if r.needs_value() {
-                    r.value.push_str(text);
-                    return true;
-                }
+                r.value.push_str(text);
+                return true;
             }
         }
         false

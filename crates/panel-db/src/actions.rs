@@ -16,6 +16,16 @@ impl DbPanel {
         let key = chord.raw;
         let code = key.code;
 
+        // Drain any ready async results first so a held key acts on fresh data
+        // (page turns apply as the DB responds, not only on the next tick).
+        self.poll_async();
+
+        // Refresh works regardless of focus / open dropdowns.
+        if self.hotkeys.matches("refresh", &key) {
+            self.refresh_catalog();
+            return self.redraw();
+        }
+
         // An open dropdown captures navigation.
         if self.db_dd.open {
             return match self.db_dd.handle_key(code, self.databases.len()) {
@@ -43,12 +53,6 @@ impl DbPanel {
                 DropdownKey::Nav | DropdownKey::Closed => self.redraw(),
                 DropdownKey::Unhandled => vec![],
             };
-        }
-
-        // Panel-wide action: refresh the catalog + current view.
-        if self.hotkeys.matches("refresh", &key) {
-            self.refresh_catalog();
-            return self.redraw();
         }
 
         match code {
@@ -290,6 +294,11 @@ impl DbPanel {
     }
 
     fn grid_down(&mut self) -> bool {
+        // While a page is loading the visible rows are about to be replaced —
+        // freeze the cursor so held keys can't walk the stale page.
+        if self.loading_page() {
+            return false;
+        }
         let rows = self.page.rows.len();
         if rows == 0 {
             return false;
@@ -308,6 +317,9 @@ impl DbPanel {
     }
 
     fn grid_up(&mut self) -> bool {
+        if self.loading_page() {
+            return false;
+        }
         if self.cursor_row > 0 {
             self.cursor_row -= 1;
             true
@@ -343,6 +355,9 @@ impl DbPanel {
     }
 
     fn grid_page(&mut self, down: bool) -> bool {
+        if self.loading_page() {
+            return false;
+        }
         // One window already equals one screen, so a page turn is a window turn.
         let rows = self.page.rows.len();
         if rows == 0 {
@@ -375,6 +390,9 @@ impl DbPanel {
     }
 
     fn grid_home(&mut self) -> bool {
+        if self.loading_page() {
+            return false;
+        }
         self.cursor_col = 0;
         if self.offset > 0 && !self.loading_page() {
             self.offset = 0;
@@ -390,6 +408,9 @@ impl DbPanel {
     }
 
     fn grid_end(&mut self) -> bool {
+        if self.loading_page() {
+            return false;
+        }
         let Some(total) = self.total_rows else {
             return false;
         };
