@@ -32,7 +32,8 @@ use termide_modal::ActiveModal;
 use termide_state::PendingAction;
 
 /// Default sliding-window size (rows held in memory per page fetch).
-const WINDOW: u64 = 200;
+/// Fetch-window size before the first render tells us the real viewport height.
+const DEFAULT_PAGE_ROWS: u64 = 40;
 
 /// Which zone has focus inside the panel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,13 +78,18 @@ pub struct DbPanel {
     // --- query state ---
     filters: Vec<Condition>,
     order_by: Vec<(String, SortDir)>,
+    /// Sliding-window size = the grid's visible row count (set during render),
+    /// so one fetched window is exactly one screen — paging, not scrolling.
+    page_rows: u64,
 
     // --- focus / selector ---
     section: Section,
     table_dropdown_open: bool,
     /// Absolute index of the highlighted table in the open dropdown.
     dropdown_cursor: usize,
-    /// Rows per dropdown page (set during render; drives paging navigation).
+    /// Scroll offset of the dropdown list (top visible index).
+    dropdown_scroll: usize,
+    /// Visible rows in the open dropdown (set during render; PageUp/Down step).
     dropdown_page_size: usize,
 
     // --- async receivers (polled in tick) ---
@@ -152,9 +158,11 @@ impl DbPanel {
             col_scroll: 0,
             filters: Vec::new(),
             order_by: Vec::new(),
+            page_rows: DEFAULT_PAGE_ROWS,
             section: Section::TableSelector,
             table_dropdown_open: false,
             dropdown_cursor: 0,
+            dropdown_scroll: 0,
             dropdown_page_size: 1,
             tables_rx: None,
             columns_rx: None,
@@ -255,6 +263,7 @@ impl DbPanel {
         let order_by = self.order_by.clone();
         let filters = self.filters.clone();
         let offset = self.offset;
+        let limit = self.page_rows;
         let rxs = if let ConnState::Connected(conn) = &self.conn {
             Some((
                 conn.columns(table.clone()),
@@ -263,7 +272,7 @@ impl DbPanel {
                     table,
                     filters,
                     order_by,
-                    limit: WINDOW,
+                    limit,
                     offset,
                 }),
             ))
@@ -302,12 +311,13 @@ impl DbPanel {
         let order_by = self.order_by.clone();
         let filters = self.filters.clone();
         let offset = self.offset;
+        let limit = self.page_rows;
         let rx = if let ConnState::Connected(conn) = &self.conn {
             Some(conn.page(PageRequest {
                 table,
                 filters,
                 order_by,
-                limit: WINDOW,
+                limit,
                 offset,
             }))
         } else {

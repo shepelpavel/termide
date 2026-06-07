@@ -97,6 +97,15 @@ impl DbPanel {
         let data_height = area.height.saturating_sub(1) as usize;
         self.visible_rows = data_height;
 
+        // Keep the fetch window equal to the visible height: one fetched
+        // window is exactly one screen, so we page instead of scrolling within
+        // a 200-row buffer. Re-fetch when the viewport height changes (resize).
+        let want = data_height.max(1) as u64;
+        if want != self.page_rows {
+            self.page_rows = want;
+            self.reload_page();
+        }
+
         // Vertical scroll: keep the cursor row visible.
         if self.cursor_row < self.row_scroll {
             self.row_scroll = self.cursor_row;
@@ -257,15 +266,18 @@ impl DbPanel {
         }
     }
 
-    fn render_dropdown(&self, buf: &mut Buffer, area: Rect) {
+    fn render_dropdown(&mut self, buf: &mut Buffer, area: Rect) {
         let theme = self.cached_theme;
         let base = Style::default().fg(theme.fg).bg(theme.bg);
-        // Page sized to the body height (no scrollbar): show the page that
-        // contains the cursor.
-        let page_size = self.dropdown_page_size.max(1);
-        let page = self.dropdown_cursor / page_size;
-        let start = page * page_size;
-        let end = (start + page_size).min(self.tables.len());
+        // Scrollable list: keep the cursor within the visible window.
+        let visible = self.dropdown_page_size.max(1);
+        if self.dropdown_cursor < self.dropdown_scroll {
+            self.dropdown_scroll = self.dropdown_cursor;
+        } else if self.dropdown_cursor >= self.dropdown_scroll + visible {
+            self.dropdown_scroll = self.dropdown_cursor + 1 - visible;
+        }
+        let start = self.dropdown_scroll.min(self.tables.len());
+        let end = (start + visible).min(self.tables.len());
         let y0 = area.y + 1;
         // Width adapts to the longest table name (+ side padding), clamped to
         // the panel width.
