@@ -727,6 +727,10 @@ pub trait Translation: Send + Sync {
     fn db_filter_operator(&self) -> &str;
     fn db_filter_value(&self) -> &str;
     fn db_filter_hint(&self) -> &str;
+    fn db_filter_title(&self) -> &str;
+    fn db_filter_apply(&self) -> &str;
+    fn db_filter_clear(&self) -> &str;
+    fn db_filter_cancel(&self) -> &str;
     fn db_status_connecting_fmt(&self, label: &str) -> String;
     fn db_status_failed_fmt(&self, label: &str, error: &str) -> String;
     fn db_rows_range_fmt(&self, start: u64, end: u64) -> String;

@@ -57,7 +57,7 @@ pub use command_params::{CommandParamsModal, CommandParamsResult};
 pub use commit::CommitModal;
 pub use confirm::ConfirmModal;
 pub use conflict::{ConflictModal, ConflictResolution};
-pub use db_filter::{DbFilterModal, DbFilterResult};
+pub use db_filter::{DbFilterColumn, DbFilterCondition, DbFilterModal, DbFilterResult};
 pub use directory_picker::DirectoryPickerModal;
 pub use directory_switcher::{DirectoryItem, DirectorySwitcherModal};
 pub use editable_select::{EditableSelectModal, SelectOption};

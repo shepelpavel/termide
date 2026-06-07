@@ -502,6 +502,10 @@ db_copy_insert = "Копировать INSERT"
 db_filter_operator = "Оператор"
 db_filter_value = "Значение"
 db_filter_hint = "Tab: поле · ←/→: оператор · Enter: применить · Esc: отмена"
+db_filter_title = "Фильтр"
+db_filter_apply = "Применить"
+db_filter_clear = "Сбросить фильтры"
+db_filter_cancel = "Отмена"
 
 [formats]
 batch_result_errors_fmt = "ошибок: {count}"

@@ -502,6 +502,10 @@ db_copy_insert = "Copy INSERT"
 db_filter_operator = "Operator"
 db_filter_value = "Value"
 db_filter_hint = "Tab: field · ←/→: operator · Enter: apply · Esc: cancel"
+db_filter_title = "Filter"
+db_filter_apply = "Apply"
+db_filter_clear = "Clear filters"
+db_filter_cancel = "Cancel"
 
 [formats]
 batch_result_errors_fmt = "errors: {count}"

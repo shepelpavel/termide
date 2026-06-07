@@ -61,7 +61,7 @@ pub(crate) async fn connect(url: &str) -> Result<Pool, DbError> {
             // PostgreSQL requires a database to connect to. When the URL omits
             // one, bootstrap on the standard `postgres` maintenance DB so we can
             // still enumerate databases and let the user pick.
-            if opts.get_database().is_none() {
+            if opts.get_database().is_none_or(str::is_empty) {
                 opts = opts.database("postgres");
             }
             let pool = PgPoolOptions::new()
@@ -97,7 +97,7 @@ pub(crate) async fn list_tables(pool: &Pool) -> Result<Vec<String>, DbError> {
              WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
         }
         Pool::Postgres(_) => {
-            "SELECT table_name FROM information_schema.tables \
+            "SELECT table_name::text FROM information_schema.tables \
              WHERE table_schema = current_schema() AND table_type = 'BASE TABLE' \
              ORDER BY table_name"
         }
@@ -120,7 +120,9 @@ pub(crate) async fn list_databases(pool: &Pool) -> Result<Vec<String>, DbError> 
     let names = match pool {
         Pool::Sqlite(_) => Vec::new(),
         Pool::Postgres(p) => {
-            let sql = "SELECT datname FROM pg_database \
+            // Cast to text: `datname` is the `name` type, which doesn't decode
+            // straight to String.
+            let sql = "SELECT datname::text FROM pg_database \
                        WHERE datistemplate = false AND datallowconn ORDER BY datname";
             collect_first_column(sqlx::query(sql).fetch_all(p).await?)
         }
@@ -157,7 +159,8 @@ pub(crate) async fn columns(pool: &Pool, table: &str) -> Result<Vec<ColumnInfo>,
                 .collect())
         }
         Pool::Postgres(p) => {
-            let sql = "SELECT column_name, data_type FROM information_schema.columns \
+            let sql = "SELECT column_name::text AS column_name, data_type::text AS data_type \
+                       FROM information_schema.columns \
                        WHERE table_schema = current_schema() AND table_name = $1 \
                        ORDER BY ordinal_position";
             let rows = sqlx::query(sql).bind(table).fetch_all(p).await?;

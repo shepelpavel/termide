@@ -82,6 +82,8 @@ pub struct DbPanel {
     cursor_col: usize,
     row_scroll: usize,
     col_scroll: usize,
+    /// After a page-up load, place the cursor on the last row of the new page.
+    pending_bottom: bool,
 
     // --- query state ---
     filters: Vec<Condition>,
@@ -167,6 +169,7 @@ impl DbPanel {
             cursor_col: 0,
             row_scroll: 0,
             col_scroll: 0,
+            pending_bottom: false,
             filters: Vec::new(),
             order_by: Vec::new(),
             page_rows: DEFAULT_PAGE_ROWS,
@@ -410,8 +413,9 @@ impl DbPanel {
         if let Some(rx) = &self.databases_rx {
             if let Ok(result) = rx.try_recv() {
                 self.databases_rx = None;
-                if let Ok(dbs) = result {
-                    self.databases = dbs;
+                match result {
+                    Ok(dbs) => self.databases = dbs,
+                    Err(e) => self.conn = ConnState::Failed(e.to_string()),
                 }
                 changed = true;
             }
@@ -472,6 +476,10 @@ impl DbPanel {
                 match result {
                     Ok(page) => {
                         self.page = page;
+                        if self.pending_bottom {
+                            self.cursor_row = self.page.rows.len().saturating_sub(1);
+                            self.pending_bottom = false;
+                        }
                         self.clamp_cursor();
                     }
                     Err(e) => {

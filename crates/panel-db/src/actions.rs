@@ -3,7 +3,9 @@
 use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use termide_core::{KeyChord, PanelEvent};
 use termide_db::{Condition, DbValue, FilterOp, SortDir, TypeCategory};
-use termide_modal::{ActionButton, ActiveModal, DbFilterModal, DbFilterResult, InfoActionModal};
+use termide_modal::{
+    ActionButton, ActiveModal, DbFilterColumn, DbFilterModal, DbFilterResult, InfoActionModal,
+};
 use termide_state::PendingAction;
 
 use crate::dropdown::DropdownKey;
@@ -281,6 +283,12 @@ impl DbPanel {
 
     // --- navigation primitives (scroll is recomputed in render) ---
 
+    /// True while a page fetch is in flight. Page turns are suppressed until it
+    /// lands, so holding a key can't race ahead of (or loop over) stale data.
+    fn loading_page(&self) -> bool {
+        self.page_rx.is_some()
+    }
+
     fn grid_down(&mut self) -> bool {
         let rows = self.page.rows.len();
         if rows == 0 {
@@ -289,7 +297,7 @@ impl DbPanel {
         if self.cursor_row + 1 < rows {
             self.cursor_row += 1;
             true
-        } else if self.page.has_more {
+        } else if self.page.has_more && !self.loading_page() {
             self.offset += self.page_rows;
             self.cursor_row = 0;
             self.reload_page();
@@ -303,10 +311,11 @@ impl DbPanel {
         if self.cursor_row > 0 {
             self.cursor_row -= 1;
             true
-        } else if self.offset > 0 {
+        } else if self.offset > 0 && !self.loading_page() {
             self.offset = self.offset.saturating_sub(self.page_rows);
-            // Land on the last row of the previous (full) window after it loads.
-            self.cursor_row = usize::MAX;
+            // Land on the last row of the previous window once it loads.
+            self.pending_bottom = true;
+            self.cursor_row = 0;
             self.reload_page();
             true
         } else {
@@ -334,16 +343,13 @@ impl DbPanel {
     }
 
     fn grid_page(&mut self, down: bool) -> bool {
+        // One window already equals one screen, so a page turn is a window turn.
         let rows = self.page.rows.len();
         if rows == 0 {
             return false;
         }
-        let step = self.visible_rows.max(1);
         if down {
-            if self.cursor_row + step < rows {
-                self.cursor_row += step;
-                true
-            } else if self.page.has_more {
+            if self.page.has_more && !self.loading_page() {
                 self.offset += self.page_rows;
                 self.cursor_row = 0;
                 self.reload_page();
@@ -354,12 +360,10 @@ impl DbPanel {
             } else {
                 false
             }
-        } else if self.cursor_row >= step {
-            self.cursor_row -= step;
-            true
-        } else if self.offset > 0 {
+        } else if self.offset > 0 && !self.loading_page() {
             self.offset = self.offset.saturating_sub(self.page_rows);
-            self.cursor_row = usize::MAX;
+            self.pending_bottom = true;
+            self.cursor_row = 0;
             self.reload_page();
             true
         } else if self.cursor_row != 0 {
@@ -372,16 +376,17 @@ impl DbPanel {
 
     fn grid_home(&mut self) -> bool {
         self.cursor_col = 0;
-        if self.offset > 0 {
+        if self.offset > 0 && !self.loading_page() {
             self.offset = 0;
             self.cursor_row = 0;
             self.reload_page();
+            true
         } else if self.cursor_row != 0 {
             self.cursor_row = 0;
+            true
         } else {
-            return false;
+            false
         }
-        true
     }
 
     fn grid_end(&mut self) -> bool {
@@ -392,14 +397,21 @@ impl DbPanel {
             return false;
         }
         let last_offset = ((total as u64 - 1) / self.page_rows) * self.page_rows;
-        if last_offset != self.offset {
+        if last_offset != self.offset && !self.loading_page() {
             self.offset = last_offset;
-            self.cursor_row = usize::MAX;
+            self.pending_bottom = true;
+            self.cursor_row = 0;
             self.reload_page();
+            true
         } else {
-            self.cursor_row = self.page.rows.len().saturating_sub(1);
+            let last = self.page.rows.len().saturating_sub(1);
+            if self.cursor_row != last {
+                self.cursor_row = last;
+                true
+            } else {
+                false
+            }
         }
-        true
     }
 
     fn cycle_sort(&mut self) {
@@ -499,25 +511,38 @@ impl DbPanel {
         ));
     }
 
-    /// Open the single-column filter modal for the current column.
+    /// Open the per-column filter modal listing every column.
     fn open_filter(&mut self) {
-        let names = self.column_names();
-        let Some(column) = names.get(self.cursor_col).cloned() else {
+        if self.columns.is_empty() {
             return;
-        };
-        let category = self.category_of(&column);
-        let operators: Vec<String> = operators_for(category)
+        }
+        let columns: Vec<DbFilterColumn> = self
+            .columns
             .iter()
-            .map(|s| s.to_string())
+            .map(|c| {
+                let operators: Vec<String> = operators_for(c.category)
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect();
+                // Pre-select from any existing condition on this column.
+                let existing = self.filters.iter().find(|f| f.column == c.name);
+                let op = existing.and_then(|f| {
+                    let label = label_for(f.op);
+                    operators.iter().position(|o| o == label)
+                });
+                let value = existing
+                    .and_then(|f| f.value.as_ref())
+                    .map(|v| v.display())
+                    .unwrap_or_default();
+                DbFilterColumn {
+                    name: c.name.clone(),
+                    operators,
+                    op,
+                    value,
+                }
+            })
             .collect();
-        // Prefill from an existing condition on this column.
-        let existing = self.filters.iter().find(|c| c.column == column);
-        let initial_op = existing.map(|c| label_for(c.op).to_string());
-        let initial_value = existing
-            .and_then(|c| c.value.as_ref())
-            .map(|v| v.display())
-            .unwrap_or_default();
-        let modal = DbFilterModal::new(column, operators, initial_op, initial_value);
+        let modal = DbFilterModal::new(columns);
         self.modal_request = Some((
             PendingAction::DbFilter,
             ActiveModal::DbFilter(Box::new(modal)),
@@ -537,22 +562,25 @@ impl DbPanel {
     }
 
     /// Apply a result from the filter modal (called by the app on the active
-    /// panel). Replaces any existing condition on the same column.
+    /// panel): replace the whole filter set with the modal's conditions.
     pub fn apply_filter_result(&mut self, r: DbFilterResult) {
-        let Some(op) = op_from_label(&r.op) else {
-            return;
-        };
-        let value = if matches!(op, FilterOp::IsNull | FilterOp::IsNotNull) {
-            None
-        } else {
-            Some(parse_value(self.category_of(&r.column), &r.value))
-        };
-        self.filters.retain(|c| c.column != r.column);
-        self.filters.push(Condition {
-            column: r.column,
-            op,
-            value,
-        });
+        let mut filters = Vec::new();
+        for c in r.conditions {
+            let Some(op) = op_from_label(&c.op) else {
+                continue;
+            };
+            let value = if matches!(op, FilterOp::IsNull | FilterOp::IsNotNull) {
+                None
+            } else {
+                Some(parse_value(self.category_of(&c.column), &c.value))
+            };
+            filters.push(Condition {
+                column: c.column,
+                op,
+                value,
+            });
+        }
+        self.filters = filters;
         self.offset = 0;
         self.cursor_row = 0;
         self.reload_all();

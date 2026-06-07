@@ -561,6 +561,10 @@ impl Translation for RuntimeTranslation {
         db_filter_operator,
         db_filter_value,
         db_filter_hint,
+        db_filter_title,
+        db_filter_apply,
+        db_filter_clear,
+        db_filter_cancel,
     }
 
     fn db_status_connecting_fmt(&self, label: &str) -> String {

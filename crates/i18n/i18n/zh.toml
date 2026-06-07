@@ -470,6 +470,10 @@ db_copy_insert = "复制 INSERT"
 db_filter_operator = "运算符"
 db_filter_value = "值"
 db_filter_hint = "Tab：字段 · ←/→：运算符 · Enter：应用 · Esc：取消"
+db_filter_title = "过滤"
+db_filter_apply = "应用"
+db_filter_clear = "清除过滤"
+db_filter_cancel = "取消"
 
 [formats]
 language_changed = "语言已更改为 {name}"
