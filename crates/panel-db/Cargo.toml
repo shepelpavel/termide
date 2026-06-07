@@ -1,0 +1,20 @@
+[package]
+name = "termide-panel-db"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+crossterm.workspace = true
+ratatui.workspace = true
+unicode-width.workspace = true
+
+# Workspace crates
+termide-config = { path = "../config" }
+termide-core = { path = "../core" }
+termide-db = { path = "../db" }
+termide-modal = { path = "../modal" }
+termide-state = { path = "../state" }
+termide-theme = { path = "../theme" }

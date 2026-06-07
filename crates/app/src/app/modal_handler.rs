@@ -774,6 +774,39 @@ impl App {
                         }
                     }
                 }
+                PendingAction::DbFilter => {
+                    use termide_modal::DbFilterResult;
+                    if let Some(result) = value.downcast_ref::<DbFilterResult>() {
+                        if let Some(panel) = self.layout_manager.active_panel_mut() {
+                            if let Some(db) = panel
+                                .as_any_mut()
+                                .downcast_mut::<termide_panel_db::DbPanel>()
+                            {
+                                db.apply_filter_result(result.clone());
+                            }
+                        }
+                    }
+                }
+                PendingAction::DbRowDetail { tsv, json, insert } => {
+                    use termide_modal::InfoActionResult;
+                    if let Some(InfoActionResult::Action(id)) =
+                        value.downcast_ref::<InfoActionResult>()
+                    {
+                        let text = match id.as_str() {
+                            "copy_json" => Some(json),
+                            "copy_insert" => Some(insert),
+                            "copy_tsv" => Some(tsv),
+                            _ => None,
+                        };
+                        if let Some(text) = text {
+                            if let Err(e) = termide_clipboard::copy(&text) {
+                                log::error!("Failed to copy to clipboard: {}", e);
+                            } else {
+                                self.state.set_info("Copied".to_string());
+                            }
+                        }
+                    }
+                }
             }
         }
         Ok(())

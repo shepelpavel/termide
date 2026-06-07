@@ -32,6 +32,7 @@ use std::any::Any;
 
 use termide_core::Panel;
 use termide_modal::ActiveModal;
+use termide_panel_db::DbPanel;
 use termide_panel_diagnostics::DiagnosticsPanel;
 use termide_panel_editor::Editor;
 use termide_panel_file_manager::FileManager;
@@ -140,6 +141,9 @@ impl PanelExt for dyn Panel {
         }
         if let Some(journal) = (self as &mut dyn Any).downcast_mut::<JournalPanel>() {
             return journal.editor_mut().take_modal_request();
+        }
+        if let Some(db) = (self as &mut dyn Any).downcast_mut::<DbPanel>() {
+            return db.take_modal_request();
         }
         None
     }

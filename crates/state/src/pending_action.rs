@@ -266,4 +266,18 @@ pub enum PendingAction {
     /// Confirm-modal result for "Remove project override". On `true` the
     /// `<project>/.termide/config.toml` file is deleted.
     RemoveProjectOverride,
+    /// Result of the DB single-column filter modal. The result value carries
+    /// the column/operator/value; it is applied to the active DB panel.
+    DbFilter,
+    /// Result of the DB row-detail modal: the row pre-formatted in each copy
+    /// format. The chosen button's action id selects which to put on the
+    /// clipboard ("copy_tsv" / "copy_json" / "copy_insert").
+    DbRowDetail {
+        /// Tab-separated values.
+        tsv: String,
+        /// JSON object `{col: value, …}`.
+        json: String,
+        /// `INSERT INTO … VALUES (…);` statement.
+        insert: String,
+    },
 }
