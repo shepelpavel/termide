@@ -688,6 +688,13 @@ impl Panel for DbPanel {
         WidthPreference::PreferWide
     }
 
+    fn to_session(&self, _session_dir: &std::path::Path) -> Option<termide_core::SessionPanel> {
+        Some(termide_core::SessionPanel::Database {
+            url: self.url.clone(),
+            label: self.label.clone(),
+        })
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
     }

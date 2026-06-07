@@ -117,6 +117,15 @@ pub enum SessionPanel {
     /// Diagnostics panel
     #[serde(rename = "diagnostics")]
     Diagnostics,
+    /// Database viewer panel
+    #[serde(rename = "database")]
+    Database {
+        /// Connection URL (as entered in the bookmark)
+        url: String,
+        /// Display label
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        label: String,
+    },
     // Note: Welcome panels are NOT saved (they auto-close)
 }
 

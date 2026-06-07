@@ -300,5 +300,8 @@ fn construct_panel(
         SessionPanel::Diagnostics => Some(Box::new(
             termide_panel_diagnostics::DiagnosticsPanel::new(&Theme::default()),
         )),
+        SessionPanel::Database { url, label } => {
+            Some(Box::new(termide_panel_db::DbPanel::new(url, label)))
+        }
     }
 }
