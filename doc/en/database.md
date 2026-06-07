@@ -57,12 +57,12 @@ active sort and filter, e.g. `app.db · users · rows 1–200 of 1203 · sort: n
 | `PageUp` / `PageDown` | Move a screenful; loads the next/previous window at the edges |
 | `Home` / `End` | Jump to the first / last row |
 | `S` | Sort by the current column — cycles ascending → descending → unsorted |
-| `F` | Filter the current column (opens the filter dialog) |
-| `Ctrl+F` | Clear all filters |
+| `Ctrl+F` / `F3` | Filter the current column (opens the filter dialog) |
+| `Alt+F` | Clear all filters |
 | `Space` / `F12` (on grid) | Show the full current row (key/value), with copy options |
-| `Y` | Copy the current cell value |
+| `Ctrl+C` | Copy the current cell value |
 | `Ctrl+Y` | Copy the current row as tab-separated values |
-| `F5` / `Ctrl+R` | Refresh the table list and reload the current view |
+| `Ctrl+R` | Refresh the table list and reload the current view |
 
 These action keys are configurable under `[database.keybindings]` in the config
 and appear in the Help panel. Navigation keys (Tab, arrows, PageUp/Down,

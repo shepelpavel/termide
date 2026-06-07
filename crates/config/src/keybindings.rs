@@ -511,16 +511,17 @@ impl DatabaseKeybindings {
         }
 
         set_default!(sort, "S");
-        set_default!(filter, "F");
-        set_default!(clear_filter, "Ctrl+F");
+        // Filter is the table's "search" — mirror the editor/FM find binding.
+        if self.filter.is_none() {
+            self.filter = Some(KeyBinding::Multiple(vec!["Ctrl+F".into(), "F3".into()]));
+        }
+        set_default!(clear_filter, "Alt+F");
         if self.detail.is_none() {
             self.detail = Some(KeyBinding::Multiple(vec!["Space".into(), "F12".into()]));
         }
-        set_default!(copy_cell, "Y");
+        set_default!(copy_cell, "Ctrl+C");
         set_default!(copy_row, "Ctrl+Y");
-        if self.refresh.is_none() {
-            self.refresh = Some(KeyBinding::Multiple(vec!["F5".into(), "Ctrl+R".into()]));
-        }
+        set_default!(refresh, "Ctrl+R");
     }
 }
 

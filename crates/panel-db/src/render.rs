@@ -12,7 +12,8 @@ use crate::{ConnState, DbPanel, Section};
 
 const MAX_COL_WIDTH: usize = 40;
 const MIN_COL_WIDTH: usize = 3;
-const SEP: &str = " │ ";
+/// Display width a column occupies on screen: ` content ` slot + "│" divider.
+const COL_OVERHEAD: usize = 3;
 
 impl DbPanel {
     pub(crate) fn render_content(&mut self, area: Rect, buf: &mut Buffer, is_focused: bool) {
@@ -107,18 +108,30 @@ impl DbPanel {
         }
 
         // Column widths from the visible window sample.
-        let widths = self.column_widths(&names);
+        let mut widths = self.column_widths(&names);
+        // Reserve room for the sort arrow in the sorted column header.
+        let sorted = self.order_by.first().cloned();
+        if let Some((c, _)) = &sorted {
+            if let Some(idx) = names.iter().position(|n| n == c) {
+                widths[idx] = (widths[idx] + 2).min(MAX_COL_WIDTH);
+            }
+        }
 
         // Horizontal scroll: keep the cursor column visible.
         self.adjust_col_scroll(&widths, area.width as usize);
 
+        let max_x = area.x + area.width;
+        let border = base.fg(theme.border);
+
+        // Each column is a slot ` content ` (one space of padding on each side);
+        // slots are separated by a "│" divider, so a slot highlighted edge-to-edge
+        // reads as one cell bounded by the dividers.
+
         // --- header row ---
         self.geom.header_y = Some(area.y);
         self.geom.data_y0 = area.y + 1;
-        let sorted = self.order_by.first().cloned();
         fill_line(buf, area.x, area.y, area.width, base);
         let mut x = area.x;
-        let max_x = area.x + area.width;
         for j in self.col_scroll..names.len() {
             if x >= max_x {
                 break;
@@ -130,17 +143,23 @@ impl DbPanel {
                     label.push_str(if *d == SortDir::Asc { "↑" } else { "↓" });
                 }
             }
-            let cell = pad(&label, widths[j]);
-            let hstyle = base.add_modifier(Modifier::BOLD);
-            let cell_start = x;
-            x = put(buf, x, area.y, max_x, &cell, hstyle);
-            // Record this column's clickable span (cell only, not the separator).
-            self.geom.columns.push((j, cell_start, x));
-            x = put(buf, x, area.y, max_x, SEP, base.fg(theme.border));
+            let slot = format!(" {} ", pad(&label, widths[j]));
+            let slot_start = x;
+            x = put(
+                buf,
+                x,
+                area.y,
+                max_x,
+                &slot,
+                base.add_modifier(Modifier::BOLD),
+            );
+            self.geom.columns.push((j, slot_start, x));
+            x = put(buf, x, area.y, max_x, "│", border);
         }
 
         // --- data rows ---
-        // Selected row: normal colours but bold. Selected cell: inverse video.
+        // Selected row: normal colours but bold. Selected cell: inverse video
+        // across the whole slot (border to border).
         let rows = &self.page.rows;
         for vis in 0..data_height {
             let abs = self.row_scroll + vis;
@@ -168,7 +187,7 @@ impl DbPanel {
                     Some(v) => (v.display(), false),
                     None => (String::new(), false),
                 };
-                let cell = pad(&text, widths[j]);
+                let slot = format!(" {} ", pad(&text, widths[j]));
                 let is_cur_cell = is_cur_row && j == self.cursor_col;
                 let mut style = row_style;
                 if is_null && !is_cur_cell {
@@ -177,8 +196,8 @@ impl DbPanel {
                 if is_cur_cell {
                     style = style.add_modifier(Modifier::REVERSED);
                 }
-                x = put(buf, x, y, max_x, &cell, style);
-                x = put(buf, x, y, max_x, SEP, base.fg(theme.border));
+                x = put(buf, x, y, max_x, &slot, style);
+                x = put(buf, x, y, max_x, "│", border);
             }
         }
 
@@ -225,7 +244,7 @@ impl DbPanel {
             let mut used = 0usize;
             let mut last_visible = self.col_scroll;
             for (j, w) in widths.iter().enumerate().skip(self.col_scroll) {
-                let need = w + SEP.len();
+                let need = w + COL_OVERHEAD;
                 if used + need > avail && j > self.col_scroll {
                     break;
                 }
@@ -246,7 +265,15 @@ impl DbPanel {
         let max_items = ((area.height.saturating_sub(2)) as usize).clamp(1, 12);
         let start = self.dropdown_scroll.min(self.tables.len());
         let y0 = area.y + 1;
-        let width = area.width.min(40);
+        // Width adapts to the longest table name (+ side padding), clamped to
+        // the panel width.
+        let longest = self
+            .tables
+            .iter()
+            .map(|n| UnicodeWidthStr::width(n.as_str()))
+            .max()
+            .unwrap_or(0);
+        let width = ((longest + 2) as u16).clamp(10, area.width);
         for (i, name) in self.tables.iter().enumerate().skip(start).take(max_items) {
             let y = y0 + (i - start) as u16;
             if y >= area.y + area.height {

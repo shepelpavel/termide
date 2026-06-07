@@ -74,7 +74,7 @@ impl BookmarkType {
             BookmarkType::SshConnection => "💻",
             BookmarkType::SftpPath | BookmarkType::FtpPath => "📡",
             BookmarkType::SmbPath | BookmarkType::NfsPath => "🖧",
-            BookmarkType::Database => "🗄",
+            BookmarkType::Database => "📇",
             BookmarkType::Unknown => "📌",
         }
     }
