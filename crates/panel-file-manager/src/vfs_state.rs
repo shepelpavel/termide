@@ -8,8 +8,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use termide_vfs::{
-    ConnectOptions, DirCache, VfsEntry, VfsError, VfsManager, VfsOperation, VfsPath, VfsProtocol,
-    VfsResult,
+    ConnectOptions, DirCache, VfsEntry, VfsError, VfsManager, VfsMetadata, VfsOperation, VfsPath,
+    VfsProtocol, VfsResult,
 };
 
 /// Result type for pending VFS operations.
@@ -24,6 +24,16 @@ pub enum PendingVfsOperation {
     /// Generic operation (infrastructure for future VFS operations).
     #[allow(dead_code)]
     Generic(VfsOperation<()>),
+    /// Resolve a remote symlink's target type (stat follows the link) to
+    /// decide whether to navigate into it (directory) or open it (file).
+    ResolveSymlink {
+        /// Pending metadata lookup on the symlink target.
+        op: VfsOperation<VfsMetadata>,
+        /// The symlink path (current_path joined with the entry name).
+        target: VfsPath,
+        /// Entry name, used for `navigate_down` when it resolves to a dir.
+        name: String,
+    },
 }
 
 /// VFS state for FileManager.
@@ -44,6 +54,9 @@ pub struct VfsState {
     awaiting_password: bool,
     /// When connection started (for elapsed time display).
     connection_started: Option<Instant>,
+    /// A remote symlink that resolved to a file and should be opened in
+    /// the editor. Taken by the FileManager on the next tick.
+    resolved_file_open: Option<VfsPath>,
 }
 
 impl Default for VfsState {
@@ -67,6 +80,7 @@ impl VfsState {
             connection_status: None,
             awaiting_password: false,
             connection_started: None,
+            resolved_file_open: None,
         }
     }
 
@@ -84,6 +98,7 @@ impl VfsState {
             connection_status: None,
             awaiting_password: false,
             connection_started: None,
+            resolved_file_open: None,
         }
     }
 
@@ -97,6 +112,7 @@ impl VfsState {
             connection_status: None,
             awaiting_password: false,
             connection_started: None,
+            resolved_file_open: None,
         }
     }
 
@@ -250,6 +266,29 @@ impl VfsState {
     /// Navigate into a subdirectory.
     pub fn navigate_down(&mut self, name: &str) {
         self.current_path = self.current_path.join(name);
+    }
+
+    /// Begin resolving a remote symlink entry. A remote directory listing
+    /// reports a symlink with its own type, not its target's, so we can't
+    /// tell from the listing whether it points to a directory or a file.
+    /// This issues a `stat` (which follows the link) and stores a pending
+    /// [`PendingVfsOperation::ResolveSymlink`]; `tick()` then navigates
+    /// into it (directory) or hands it back to be opened (file).
+    pub fn start_resolve_symlink(&mut self, name: &str) {
+        let target = self.current_path.join(name);
+        self.connection_status = Some("Resolving link...".to_string());
+        let op = self.manager.metadata(&target);
+        self.pending_operation = Some(PendingVfsOperation::ResolveSymlink {
+            op,
+            target,
+            name: name.to_string(),
+        });
+    }
+
+    /// Take a remote file path that a symlink resolved to, so the caller
+    /// can open it in the editor. Cleared once taken.
+    pub fn take_resolved_file_open(&mut self) -> Option<VfsPath> {
+        self.resolved_file_open.take()
     }
 
     /// Start a connection to a remote path.
@@ -418,6 +457,38 @@ impl VfsState {
                     None => {
                         // Still pending
                         self.pending_operation = Some(PendingVfsOperation::Generic(op));
+                        None
+                    }
+                }
+            }
+            PendingVfsOperation::ResolveSymlink { op, target, name } => {
+                match op.try_recv() {
+                    Some(Ok(meta)) => {
+                        if meta.file_type.is_dir() {
+                            // Symlink points to a directory — navigate into it.
+                            // Reuse the directory-listing path so an error
+                            // (e.g. permission denied) restores the prior path.
+                            self.previous_path = Some(self.current_path.clone());
+                            self.navigate_down(&name);
+                            self.start_list_dir();
+                            None
+                        } else {
+                            // Symlink points to a file — hand it back to the
+                            // FileManager to open in the editor.
+                            self.connection_status = None;
+                            self.resolved_file_open = Some(target);
+                            None
+                        }
+                    }
+                    Some(Err(e)) => {
+                        log::error!("VfsState: symlink resolve failed: {}", e);
+                        self.connection_status = None;
+                        Some(Err(e))
+                    }
+                    None => {
+                        // Still pending
+                        self.pending_operation =
+                            Some(PendingVfsOperation::ResolveSymlink { op, target, name });
                         None
                     }
                 }
@@ -615,6 +686,28 @@ mod tests {
         let state = VfsState::new();
         // Should display current path as string
         assert!(!state.display_path().is_empty());
+    }
+
+    #[test]
+    fn test_start_resolve_symlink_sets_pending_with_target() {
+        // Entering a remote symlink must resolve its target type (not open
+        // it as a file), so `start_resolve_symlink` queues a ResolveSymlink
+        // op carrying the joined target path and the entry name.
+        let mut state = VfsState::new();
+        state.set_path(termide_vfs::parse_vfs_url("sftp://host/dir").unwrap());
+
+        state.start_resolve_symlink("link");
+
+        match &state.pending_operation {
+            Some(PendingVfsOperation::ResolveSymlink { target, name, .. }) => {
+                assert_eq!(name, "link");
+                assert_eq!(target.path, PathBuf::from("/dir/link"));
+            }
+            _ => panic!("expected a pending ResolveSymlink operation"),
+        }
+        assert!(state.has_pending_operation());
+        // Nothing to hand back to the editor until the stat resolves.
+        assert!(state.take_resolved_file_open().is_none());
     }
 
     // =========================================================================

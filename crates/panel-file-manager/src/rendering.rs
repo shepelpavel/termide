@@ -36,6 +36,12 @@ const DIR_COLLAPSED_SYMLINK: &str = if cfg!(windows) { "►" } else { "▷" };
 const DIR_EXPANDED_SYMLINK: &str = if cfg!(windows) { "▼" } else { "▽" };
 const DIR_COLLAPSED_SPACE: &str = if cfg!(windows) { "► " } else { "▶ " };
 const DIR_COLLAPSED_SLASH: &str = if cfg!(windows) { "► /" } else { "▶ /" };
+// Marker for symlinks whose target is not a known directory (all file
+// symlinks, plus remote symlinks whose target type isn't resolved during
+// listing). Remote dir symlinks land here too — we can't cheaply stat
+// every entry over the network — so they show this instead of the
+// dir-symlink arrow, but at least carry a distinct symlink marker.
+const SYMLINK: &str = if cfg!(windows) { "@" } else { "↪" };
 
 /// Get icon for entry, accounting for expand/collapse state.
 fn get_icon(entry: &super::FileEntry, expanded: Option<bool>) -> &'static str {
@@ -62,6 +68,9 @@ fn get_icon(entry: &super::FileEntry, expanded: Option<bool>) -> &'static str {
                 }
             }
         };
+    }
+    if entry.is_symlink {
+        return SYMLINK;
     }
     " "
 }
@@ -179,7 +188,10 @@ impl FileManager {
                 if !entry.is_dir && entry.is_symlink {
                     style = style.add_modifier(Modifier::ITALIC);
                 }
-                if !entry.is_dir && entry.is_executable {
+                // Symlinks carry the target's permission bits (typically
+                // 0o777), so the executable bit is meaningless for them —
+                // don't render them bold like real executables.
+                if !entry.is_dir && entry.is_executable && !entry.is_symlink {
                     style = style.add_modifier(Modifier::BOLD);
                 }
                 style

@@ -618,6 +618,7 @@ fn worker_count_remote(
     handle: &SftpHandle,
     path: &Path,
     cancel: &Arc<AtomicBool>,
+    depth: usize,
 ) -> VfsResult<(usize, u64)> {
     if cancel.load(Ordering::Relaxed) {
         return Err(VfsError::Cancelled);
@@ -627,13 +628,27 @@ fn worker_count_remote(
     if !matches!(meta.file_type, VfsFileType::Directory) {
         return Ok((1, meta.size));
     }
+    // Stop descending past the recursion limit. `Stat` above follows
+    // symlinks, so without this guard a symlink cycle (e.g. `link -> ..`)
+    // makes the count walk recurse forever and the download operation
+    // appears to hang indefinitely.
+    if depth == 0 {
+        return Ok((0, 0));
+    }
     let p2 = path.to_path_buf();
     let entries = handle.dispatch(move |reply| SftpCommand::ListDir { path: p2, reply })?;
     let mut count = 0;
     let mut bytes = 0u64;
     for entry in entries {
         let child = path.join(&entry.name);
-        let (c, b) = worker_count_remote(handle, &child, cancel)?;
+        // Only descend into real directories; never follow symlinks. This
+        // mirrors what `worker_download_dir` actually transfers (it also
+        // keys off the listing's file type) and prevents cycles.
+        let (c, b) = if matches!(entry.metadata.file_type, VfsFileType::Directory) {
+            worker_count_remote(handle, &child, cancel, depth - 1)?
+        } else {
+            (1, entry.metadata.size)
+        };
         count += c;
         bytes += b;
     }
@@ -784,6 +799,7 @@ fn worker_download_file(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn worker_download_dir(
     handle: &SftpHandle,
     remote: &Path,
@@ -792,6 +808,7 @@ fn worker_download_dir(
     cancel: &Arc<AtomicBool>,
     progress_tx: &std_mpsc::Sender<DownloadProgress>,
     state: &mut DlState,
+    depth: usize,
 ) -> VfsResult<()> {
     std::fs::create_dir_all(local).map_err(VfsError::Io)?;
     let p = remote.to_path_buf();
@@ -803,6 +820,10 @@ fn worker_download_dir(
         let remote_child = remote.join(&entry.name);
         let local_child = local.join(&entry.name);
         if matches!(entry.metadata.file_type, VfsFileType::Directory) {
+            // Defensive depth guard mirroring `worker_count_remote`.
+            if depth == 0 {
+                continue;
+            }
             worker_download_dir(
                 handle,
                 &remote_child,
@@ -811,6 +832,7 @@ fn worker_download_dir(
                 cancel,
                 progress_tx,
                 state,
+                depth - 1,
             )?;
         } else {
             worker_download_file(
@@ -1653,7 +1675,12 @@ impl VfsProvider for SftpProvider {
                     bytes_done: 0,
                 };
                 if matches!(meta.file_type, VfsFileType::Directory) {
-                    let (tf, tb) = worker_count_remote(&handle, &remote_p, &cancel_flag)?;
+                    let (tf, tb) = worker_count_remote(
+                        &handle,
+                        &remote_p,
+                        &cancel_flag,
+                        crate::MAX_RECURSION_DEPTH,
+                    )?;
                     state.total_files = tf;
                     state.total_bytes = tb;
                     worker_download_dir(
@@ -1664,6 +1691,7 @@ impl VfsProvider for SftpProvider {
                         &cancel_flag,
                         &_progress_tx,
                         &mut state,
+                        crate::MAX_RECURSION_DEPTH,
                     )?;
                 } else {
                     worker_download_file(
@@ -1822,7 +1850,12 @@ impl VfsProvider for SftpProvider {
                 let meta = handle.dispatch(move |reply| SftpCommand::Stat { path: p, reply })?;
                 let is_dir = matches!(meta.file_type, VfsFileType::Directory);
                 let (total_files, total_bytes) = if is_dir {
-                    worker_count_remote(&handle, &remote_p, &cancel_for_worker)?
+                    worker_count_remote(
+                        &handle,
+                        &remote_p,
+                        &cancel_for_worker,
+                        crate::MAX_RECURSION_DEPTH,
+                    )?
                 } else {
                     (1usize, meta.size)
                 };
@@ -1841,6 +1874,7 @@ impl VfsProvider for SftpProvider {
                         &cancel_for_worker,
                         &progress_tx,
                         &mut state,
+                        crate::MAX_RECURSION_DEPTH,
                     )?;
                 } else {
                     worker_download_file(

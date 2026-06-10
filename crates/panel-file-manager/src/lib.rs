@@ -1995,6 +1995,14 @@ impl Panel for FileManager {
             }
         }
 
+        // A remote symlink resolved to a file — open it in the editor.
+        if let Some(remote) = self.vfs.take_resolved_file_open() {
+            events.push(PanelEvent::ClearStatus);
+            events.push(PanelEvent::OpenRemoteFile(remote.to_url_string()));
+            events.push(PanelEvent::NeedsRedraw);
+            return events;
+        }
+
         // Drain git status receiver — redraw if statuses changed
         if self.check_git_status_async() && !self.is_stale {
             events.push(PanelEvent::NeedsRedraw);

@@ -196,6 +196,7 @@ impl FileManager {
         let is_deleted = te.file_entry.git_status == GitStatus::Deleted;
         let is_parent = te.file_entry.name == "..";
         let is_dir = te.file_entry.is_dir;
+        let is_symlink = te.file_entry.is_symlink;
         let entry_name = te.file_entry.name.clone();
         let full_path = te.full_path.clone();
 
@@ -229,6 +230,18 @@ impl FileManager {
                 self.current_path = full_path;
                 let _ = self.load_directory();
             }
+            return None;
+        }
+
+        // Remote symlink: the listing reports the link itself, not its
+        // target, so `is_dir` is false even when it points to a directory.
+        // Resolve the target type async (stat follows the link); tick()
+        // then navigates into it (directory) or opens it (file). Without
+        // this, Enter would treat it as a file and kick off a recursive
+        // download of the target tree.
+        if is_symlink && self.vfs.is_remote() {
+            self.navigation.prepare_for_going_down();
+            self.vfs.start_resolve_symlink(&entry_name);
             return None;
         }
 
