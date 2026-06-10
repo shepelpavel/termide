@@ -933,6 +933,9 @@ impl App {
             termide_core::ConfirmAction::DiscardChanges(_path) => PendingAction::ClosePanel,
             termide_core::ConfirmAction::CloseWithoutSaving => PendingAction::CloseEditorWithSave,
             termide_core::ConfirmAction::QuitApplication => PendingAction::QuitApplication,
+            termide_core::ConfirmAction::CancelOperation(op_id) => {
+                PendingAction::CancelOperation(op_id)
+            }
         };
 
         // Create confirmation modal

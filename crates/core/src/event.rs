@@ -578,6 +578,9 @@ pub enum ConfirmAction {
 
     /// Quit application
     QuitApplication,
+
+    /// Cancel a running background operation
+    CancelOperation(termide_file_ops::OperationId),
 }
 
 /// Input dialog actions.

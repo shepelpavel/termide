@@ -16,8 +16,8 @@ use ratatui::{buffer::Buffer, layout::Rect, widgets::Widget};
 
 use termide_config::Config;
 use termide_core::{
-    CommandResult, HotkeyTable, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel,
-    ThemeColors, WidthPreference,
+    CommandResult, ConfirmAction, HotkeyTable, Panel, PanelCommand, PanelEvent, RenderContext,
+    SessionPanel, ThemeColors, WidthPreference,
 };
 use termide_file_ops::OperationId;
 use termide_state::{ActiveOperation, OperationProgress, OperationType};
@@ -136,6 +136,19 @@ impl OperationsPanel {
     /// Get the currently selected operation ID.
     pub fn selected_operation_id(&self) -> Option<OperationId> {
         self.operations.get(self.selected_index).map(|op| op.id)
+    }
+
+    /// Build the "confirm cancel" event for the selected operation, if any.
+    /// Cancelling an operation is always gated behind a confirmation modal
+    /// (Esc and Delete/Backspace alike); the actual cancel runs only after
+    /// the user accepts. Returns `None` when nothing is selected.
+    fn cancel_confirm(&self) -> Option<PanelEvent> {
+        let op_id = self.selected_operation_id()?;
+        let t = termide_i18n::t();
+        Some(PanelEvent::ShowConfirm {
+            message: t.operation_cancel_confirm().to_string(),
+            on_confirm: ConfirmAction::CancelOperation(op_id),
+        })
     }
 
     /// Get operations snapshot for rendering.
@@ -316,10 +329,11 @@ impl Panel for OperationsPanel {
                 }
             }
 
-            // Cancel operation (Delete/Backspace)
+            // Cancel operation (Delete/Backspace). Like Escape, cancelling
+            // always asks for confirmation first — see `cancel_confirm`.
             KeyCode::Delete | KeyCode::Backspace => {
-                if let Some(op_id) = self.selected_operation_id() {
-                    events.push(PanelEvent::CancelOperation(op_id));
+                if let Some(event) = self.cancel_confirm() {
+                    events.push(event);
                 }
             }
 
@@ -328,8 +342,8 @@ impl Panel for OperationsPanel {
             // matching captures_escape() impl keeps the app's default
             // close-panel-on-Esc from firing in that case.
             KeyCode::Esc => {
-                if let Some(op_id) = self.selected_operation_id() {
-                    events.push(PanelEvent::CancelOperation(op_id));
+                if let Some(event) = self.cancel_confirm() {
+                    events.push(event);
                 }
             }
 
@@ -427,5 +441,80 @@ impl OperationsPanel {
     /// Store card areas for mouse click detection
     pub fn set_card_areas(&mut self, areas: Vec<(usize, Rect)>) {
         self.card_areas = areas;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    use termide_core::{ConfirmAction, KeyChord, Panel, PanelEvent};
+    use termide_state::OperationProgress;
+
+    fn key(code: KeyCode) -> KeyChord {
+        KeyChord::identity(KeyEvent {
+            code,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        })
+    }
+
+    fn panel_with_one_op(id: u64) -> OperationsPanel {
+        let mut panel = OperationsPanel::new();
+        panel.operations.push(OperationSnapshot {
+            id: OperationId(id),
+            op_type: OperationType::CopyDownload,
+            source: "remote".into(),
+            dest: "local".into(),
+            progress: OperationProgress::default(),
+            is_paused: false,
+            is_scanning: false,
+            started_at: Instant::now(),
+            speed: 0.0,
+        });
+        panel.selected_index = 0;
+        panel
+    }
+
+    /// Cancelling is always gated behind a confirmation modal: the key must
+    /// emit `ShowConfirm(CancelOperation)` and never cancel directly.
+    fn assert_requests_confirmation(code: KeyCode, id: u64) {
+        // The cancel path pulls the confirmation message from i18n.
+        let _ = termide_i18n::init();
+        let mut panel = panel_with_one_op(id);
+        let events = panel.handle_key(key(code));
+
+        assert!(
+            events.iter().any(|e| matches!(
+                e,
+                PanelEvent::ShowConfirm {
+                    on_confirm: ConfirmAction::CancelOperation(op),
+                    ..
+                } if op.0 == id
+            )),
+            "{code:?} should emit ShowConfirm(CancelOperation), got {events:?}"
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, PanelEvent::CancelOperation(_))),
+            "{code:?} must not cancel without confirmation, got {events:?}"
+        );
+    }
+
+    #[test]
+    fn esc_requests_confirmation() {
+        assert_requests_confirmation(KeyCode::Esc, 7);
+    }
+
+    #[test]
+    fn delete_requests_confirmation() {
+        assert_requests_confirmation(KeyCode::Delete, 9);
+    }
+
+    #[test]
+    fn backspace_requests_confirmation() {
+        assert_requests_confirmation(KeyCode::Backspace, 11);
     }
 }

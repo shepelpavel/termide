@@ -22,11 +22,12 @@ keybindings below.
 | `↑` / `↓` (or `k` / `j`)       | Move the cursor between operations                |
 | `Home` / `End` (or `g` / `G`)  | Jump to the first / last operation                |
 | `Space`                        | Pause or resume the selected operation            |
-| `Esc` / `Delete` / `Backspace` | Cancel the selected operation                     |
+| `Esc` / `Delete` / `Backspace` | Cancel the selected operation (asks to confirm)   |
 
-`Esc` only cancels when an operation is highlighted; with no
-selection it falls through to the application's default
-close-panel-on-Esc.
+Cancelling an operation always asks for confirmation first,
+regardless of which key (or the popup menu) triggers it. `Esc` only
+cancels when an operation is highlighted; with no selection it falls
+through to the application's default close-panel-on-Esc.
 
 ## Per-operation popup menu
 
@@ -36,7 +37,7 @@ operation:
 
 - **Pause** / **Resume** — same effect as `Space`. Toggles the paused
   state of the operation.
-- **Cancel** — same effect as `Esc` / `Delete`.
+- **Cancel** — same as `Esc` / `Delete`; asks for confirmation first.
 
 While an operation is paused a small `⏸` indicator appears between
 the bracketed type icon and the label (for example

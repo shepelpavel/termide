@@ -266,6 +266,9 @@ pub enum PendingAction {
     /// Confirm-modal result for "Remove project override". On `true` the
     /// `<project>/.termide/config.toml` file is deleted.
     RemoveProjectOverride,
+    /// Confirm-modal result for cancelling a running background operation
+    /// (triggered by Escape in the operations panel).
+    CancelOperation(termide_file_ops::OperationId),
     /// Result of the DB single-column filter modal. The result value carries
     /// the column/operator/value; it is applied to the active DB panel.
     DbFilter,

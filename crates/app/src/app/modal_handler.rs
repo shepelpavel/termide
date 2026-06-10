@@ -372,6 +372,12 @@ impl App {
                     // User confirmed quit - exit application
                     self.state.quit();
                 }
+                PendingAction::CancelOperation(op_id) => {
+                    // User confirmed cancelling the background operation.
+                    if value.downcast_ref::<bool>().copied().unwrap_or(false) {
+                        self.event_cancel_operation(op_id);
+                    }
+                }
                 PendingAction::SwitchSession => {
                     self.handle_switch_session(value)?;
                 }

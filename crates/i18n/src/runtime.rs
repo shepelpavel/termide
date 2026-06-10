@@ -470,6 +470,7 @@ impl Translation for RuntimeTranslation {
         diagnostics_filter_errors,
         diagnostics_filter_ew,
         terminal_kill_confirm,
+        operation_cancel_confirm,
         panel_image,
         resource_cpu_top_title,
         resource_ram_top_title,

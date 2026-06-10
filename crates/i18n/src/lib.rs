@@ -680,6 +680,9 @@ pub trait Translation: Send + Sync {
     // Terminal
     fn terminal_kill_confirm(&self) -> &str;
 
+    // Operations panel
+    fn operation_cancel_confirm(&self) -> &str;
+
     // Image panel
     fn panel_image(&self) -> &str;
     fn image_error_fmt(&self, error: &str) -> String;

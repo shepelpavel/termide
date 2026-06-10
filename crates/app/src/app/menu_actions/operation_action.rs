@@ -111,7 +111,13 @@ impl App {
                 self.process_panel_events(vec![PanelEvent::ToggleOperationPause(op_id)])?;
             }
             OPERATION_ACTION_CANCEL => {
-                self.process_panel_events(vec![PanelEvent::CancelOperation(op_id)])?;
+                // Cancelling always asks for confirmation first, same as the
+                // keyboard shortcuts.
+                let t = termide_i18n::t();
+                self.process_panel_events(vec![PanelEvent::ShowConfirm {
+                    message: t.operation_cancel_confirm().to_string(),
+                    on_confirm: termide_core::ConfirmAction::CancelOperation(op_id),
+                }])?;
             }
             _ => {}
         }
