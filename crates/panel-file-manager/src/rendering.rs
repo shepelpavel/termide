@@ -36,15 +36,20 @@ const DIR_COLLAPSED_SYMLINK: &str = if cfg!(windows) { "►" } else { "▷" };
 const DIR_EXPANDED_SYMLINK: &str = if cfg!(windows) { "▼" } else { "▽" };
 const DIR_COLLAPSED_SPACE: &str = if cfg!(windows) { "► " } else { "▶ " };
 const DIR_COLLAPSED_SLASH: &str = if cfg!(windows) { "► /" } else { "▶ /" };
-// Marker for symlinks whose target is not a known directory (all file
-// symlinks, plus remote symlinks whose target type isn't resolved during
-// listing). Remote dir symlinks land here too — we can't cheaply stat
-// every entry over the network — so they show this instead of the
-// dir-symlink arrow, but at least carry a distinct symlink marker.
-const SYMLINK: &str = if cfg!(windows) { "@" } else { "↪" };
+// Marker for a remote symlink whose target type couldn't be resolved from
+// the directory listing (SFTP/FTP report the link, not its target). Local
+// symlinks don't use this — local listings already classify them (dir
+// symlinks get the dir-symlink arrow, file symlinks render in italic). A
+// plain ASCII `@` (the `ls -F` convention) is used deliberately: it's one
+// column on every terminal, unlike ambiguous-width arrows that some
+// terminals draw two cells wide and break column alignment.
+const SYMLINK: &str = "@";
 
 /// Get icon for entry, accounting for expand/collapse state.
-fn get_icon(entry: &super::FileEntry, expanded: Option<bool>) -> &'static str {
+/// `is_remote` marks entries from a remote filesystem, where a symlink's
+/// target type is unknown — those get a symlink marker; local symlinks rely
+/// on the dir-symlink arrow / italic name styling instead.
+fn get_icon(entry: &super::FileEntry, expanded: Option<bool>, is_remote: bool) -> &'static str {
     if entry.git_status == GitStatus::Deleted {
         return "✗";
     }
@@ -69,7 +74,7 @@ fn get_icon(entry: &super::FileEntry, expanded: Option<bool>) -> &'static str {
             }
         };
     }
-    if entry.is_symlink {
+    if is_remote && entry.is_symlink {
         return SYMLINK;
     }
     " "
@@ -111,7 +116,7 @@ impl FileManager {
             let is_cursor = vis_i == self.selected;
 
             let attr = utils::get_attribute(entry, is_selected);
-            let icon = get_icon(entry, tree_entry.expanded);
+            let icon = get_icon(entry, tree_entry.expanded, self.is_remote());
             let attr_width = 1; // always 1 character
             let icon_width = 1; // always 1 character
             let dir_prefix = if entry.is_dir && entry.name != ".." {
@@ -231,12 +236,15 @@ impl FileManager {
 
                 let time_str = utils::format_modified_time(entry.modified);
 
+                // Attribute gutter (selection/read-only marker) sits in the
+                // leftmost column; the tree connector then leads straight into
+                // the icon with no gap between the two.
                 let mut spans = Vec::with_capacity(10);
+                spans.push(Span::styled(attr, attr_style));
                 if !tree_prefix.is_empty() {
                     spans.push(Span::styled(tree_prefix.as_str(), prefix_style));
                 }
                 spans.extend([
-                    Span::styled(attr, attr_style),
                     Span::styled(icon, icon_style),
                     Span::styled(" ", bg_style),
                     Span::styled(full_name, name_style),
@@ -254,11 +262,11 @@ impl FileManager {
                 let padding = &PAD[..padding_len.min(PAD.len())];
 
                 let mut spans = Vec::with_capacity(6);
+                spans.push(Span::styled(attr, attr_style));
                 if !tree_prefix.is_empty() {
                     spans.push(Span::styled(tree_prefix.as_str(), prefix_style));
                 }
                 spans.extend([
-                    Span::styled(attr, attr_style),
                     Span::styled(icon, icon_style),
                     Span::styled(" ", bg_style),
                     Span::styled(full_name, name_style),

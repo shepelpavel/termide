@@ -53,7 +53,9 @@ pub(crate) fn compute_visible(tree: &[TreeEntry]) -> Vec<usize> {
 /// Compute tree-drawing prefixes for visible nodes in O(n) time.
 ///
 /// Only generates prefixes for depth > 0 nodes. Depth 0 nodes get empty prefixes.
-/// Same algorithm as `panel-git-status/src/tree.rs::compute_tree_prefixes`.
+/// Same traversal as `panel-git-status/src/tree.rs::compute_tree_prefixes`, but
+/// uses a two-column-per-level connector (`├─`, no leading space) because this
+/// panel renders an icon column the connector must line up under.
 pub(crate) fn compute_prefixes(tree: &[TreeEntry], visible: &[usize]) -> Vec<String> {
     if visible.is_empty() {
         return Vec::new();
@@ -87,19 +89,25 @@ pub(crate) fn compute_prefixes(tree: &[TreeEntry], visible: &[usize]) -> Vec<Str
             continue;
         }
 
-        let mut prefix = String::with_capacity(depth * 3);
+        // Two columns per level so the connector sits directly under the
+        // parent's icon: the row layout renders `[attr][prefix][icon]`, where
+        // the attr gutter occupies the first column and `├─`/`└─` is exactly
+        // as wide as the gap from a connector to the next level's icon. A
+        // leading space here would push the whole tree one column off the
+        // top-level glyph.
+        let mut prefix = String::with_capacity(depth * 2);
         for (lvl, has_next) in has_next_at_level[1..=depth].iter().enumerate() {
             let lvl = lvl + 1; // offset since we sliced from index 1
             if lvl == depth {
                 if *has_next {
-                    prefix.push_str(" ├─");
+                    prefix.push_str("├─");
                 } else {
-                    prefix.push_str(" └─");
+                    prefix.push_str("└─");
                 }
             } else if *has_next {
-                prefix.push_str(" │ ");
+                prefix.push_str("│ ");
             } else {
-                prefix.push_str("   ");
+                prefix.push_str("  ");
             }
         }
         prefixes.push(prefix);
@@ -233,8 +241,8 @@ mod tests {
         let visible = compute_visible(&tree);
         let prefixes = compute_prefixes(&tree, &visible);
         assert_eq!(prefixes[0], ""); // src (depth 0)
-        assert_eq!(prefixes[1], " ├─"); // main.rs (has sibling)
-        assert_eq!(prefixes[2], " └─"); // lib.rs (last child)
+        assert_eq!(prefixes[1], "├─"); // main.rs (has sibling)
+        assert_eq!(prefixes[2], "└─"); // lib.rs (last child)
         assert_eq!(prefixes[3], ""); // Cargo.toml (depth 0)
     }
 
@@ -249,9 +257,9 @@ mod tests {
         let visible = compute_visible(&tree);
         let prefixes = compute_prefixes(&tree, &visible);
         assert_eq!(prefixes[0], ""); // src
-        assert_eq!(prefixes[1], " ├─"); // components (has sibling main.rs)
-        assert_eq!(prefixes[2], " │  └─"); // button.rs (inside components, which has sibling)
-        assert_eq!(prefixes[3], " └─"); // main.rs (last child of src)
+        assert_eq!(prefixes[1], "├─"); // components (has sibling main.rs)
+        assert_eq!(prefixes[2], "│ └─"); // button.rs (inside components, which has sibling)
+        assert_eq!(prefixes[3], "└─"); // main.rs (last child of src)
     }
 
     #[test]
