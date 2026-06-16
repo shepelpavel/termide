@@ -134,8 +134,15 @@ impl Editor {
     // =========================================================================
 
     /// Start search with replace
-    pub fn start_replace(&mut self, query: String, replace_with: String, case_sensitive: bool) {
-        let mut search_state = SearchState::new_with_replace(query, replace_with, case_sensitive);
+    pub fn start_replace(
+        &mut self,
+        query: String,
+        replace_with: String,
+        case_sensitive: bool,
+        use_regex: bool,
+    ) {
+        let mut search_state = SearchState::new_with_replace(query, replace_with, case_sensitive)
+            .with_regex(use_regex);
 
         // Perform search throughout document
         self.perform_search(&mut search_state);

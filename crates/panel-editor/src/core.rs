@@ -1060,7 +1060,7 @@ impl Editor {
         // If there's saved find text - execute search immediately
         if let Some(ref find) = self.search.last_replace_find {
             let replace_with = self.search.last_replace_with.clone().unwrap_or_default();
-            self.start_replace(find.clone(), replace_with, false);
+            self.start_replace(find.clone(), replace_with, false, false);
 
             // Update match info in modal
             if let Some((current, total)) = self.get_search_match_info() {

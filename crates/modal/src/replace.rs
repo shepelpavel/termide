@@ -19,6 +19,10 @@ pub struct ReplaceModalResult {
     pub find_query: String,
     pub replace_with: String,
     pub action: ReplaceAction,
+    /// Treat the find query as a regular expression.
+    pub use_regex: bool,
+    /// Case-sensitive matching.
+    pub case_sensitive: bool,
 }
 
 /// Replace action
@@ -53,11 +57,17 @@ pub struct ReplaceModal {
     selected_button: usize, // 0 = Replace, 1 = Replace All, 2 = Previous, 3 = Next
     /// Match count display (e.g. "3 of 12")
     match_info: Option<(usize, usize)>, // (current, total)
+    /// Treat the find query as a regular expression (Alt+R).
+    use_regex: bool,
+    /// Case-sensitive matching (Alt+C).
+    case_sensitive: bool,
     /// Last rendered areas for mouse handling
     last_button_areas: Vec<(Rect, usize)>, // (area, button_idx)
     last_close_button_area: Option<Rect>,
     last_find_input_area: Option<Rect>,
     last_replace_input_area: Option<Rect>,
+    /// Clickable areas for the regex / case toggles (area, is_regex)
+    last_toggle_areas: Vec<(Rect, bool)>,
 }
 
 impl ReplaceModal {
@@ -69,10 +79,13 @@ impl ReplaceModal {
             focus: FocusArea::FindInput,
             selected_button: 3, // Next button selected by default
             match_info: None,
+            use_regex: false,
+            case_sensitive: false,
             last_button_areas: Vec::new(),
             last_close_button_area: None,
             last_find_input_area: None,
             last_replace_input_area: None,
+            last_toggle_areas: Vec::new(),
         }
     }
 
@@ -106,6 +119,33 @@ impl ReplaceModal {
         let height = 5;
 
         (width, height.min(screen_height))
+    }
+
+    /// Build a result for `action` from the current state.
+    fn make_result(&self, action: ReplaceAction) -> ReplaceModalResult {
+        ReplaceModalResult {
+            find_query: self.find_input_handler.text().to_string(),
+            replace_with: self.replace_input_handler.text().to_string(),
+            action,
+            use_regex: self.use_regex,
+            case_sensitive: self.case_sensitive,
+        }
+    }
+
+    /// Toggle regex / case and, when there's a query, re-run so results refresh.
+    fn toggle_result(&mut self, regex: bool) -> Result<Option<ModalResult<ReplaceModalResult>>> {
+        if regex {
+            self.use_regex = !self.use_regex;
+        } else {
+            self.case_sensitive = !self.case_sensitive;
+        }
+        self.match_info = None;
+        if !self.find_input_handler.is_empty() {
+            return Ok(Some(ModalResult::Confirmed(
+                self.make_result(ReplaceAction::Search),
+            )));
+        }
+        Ok(None)
     }
 }
 
@@ -230,6 +270,38 @@ impl Modal for ReplaceModal {
             buf.set_string(x_offset, buttons_area.y, &button_text, button_style);
             x_offset += button_width + 1;
         }
+
+        // Regex / case toggles (Alt+R / Alt+C, or click)
+        self.last_toggle_areas.clear();
+        let counter_left = buttons_area.x + buttons_area.width.saturating_sub(match_text_width);
+        for (label, on, is_regex) in [
+            (".*", self.use_regex, true),
+            ("Aa", self.case_sensitive, false),
+        ] {
+            let text = format!("[{}]", label);
+            let w = text.len() as u16;
+            if x_offset + w >= counter_left {
+                break;
+            }
+            let style = if on {
+                Style::default()
+                    .fg(theme.accented_fg)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(theme.disabled)
+            };
+            buf.set_string(x_offset, buttons_area.y, &text, style);
+            self.last_toggle_areas.push((
+                Rect {
+                    x: x_offset,
+                    y: buttons_area.y,
+                    width: w,
+                    height: 1,
+                },
+                is_regex,
+            ));
+            x_offset += w + 1;
+        }
     }
 
     fn handle_key(
@@ -237,6 +309,14 @@ impl Modal for ReplaceModal {
         chord: termide_core::KeyChord,
     ) -> Result<Option<ModalResult<Self::Result>>> {
         let key = chord.raw;
+        // Global toggles (any focus): Alt+R regex, Alt+C case.
+        if key.modifiers.contains(KeyModifiers::ALT) {
+            match key.code {
+                KeyCode::Char('r') | KeyCode::Char('R') => return self.toggle_result(true),
+                KeyCode::Char('c') | KeyCode::Char('C') => return self.toggle_result(false),
+                _ => {}
+            }
+        }
         match self.focus {
             FocusArea::FindInput => self.handle_find_input_key(key),
             FocusArea::ReplaceInput => self.handle_replace_input_key(key),
@@ -266,6 +346,16 @@ impl Modal for ReplaceModal {
                     }
                 }
 
+                // Check regex / case toggles
+                for (area, is_regex) in self.last_toggle_areas.clone() {
+                    if mouse_pos.0 >= area.x
+                        && mouse_pos.0 < area.x + area.width
+                        && mouse_pos.1 == area.y
+                    {
+                        return self.toggle_result(is_regex);
+                    }
+                }
+
                 // Check if clicked on any button
                 for (area, idx) in &self.last_button_areas {
                     if mouse_pos.0 >= area.x
@@ -283,6 +373,8 @@ impl Modal for ReplaceModal {
                             return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
                                 find_query: self.find_input_handler.text().to_string(),
                                 replace_with: self.replace_input_handler.text().to_string(),
+                                use_regex: self.use_regex,
+                                case_sensitive: self.case_sensitive,
                                 action,
                             })));
                         }
@@ -372,6 +464,8 @@ impl ReplaceModal {
                     return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
                         find_query: self.find_input_handler.text().to_string(),
                         replace_with: self.replace_input_handler.text().to_string(),
+                        use_regex: self.use_regex,
+                        case_sensitive: self.case_sensitive,
                         action: ReplaceAction::Next,
                     })));
                 } else {
@@ -385,6 +479,8 @@ impl ReplaceModal {
                     return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
                         find_query: self.find_input_handler.text().to_string(),
                         replace_with: self.replace_input_handler.text().to_string(),
+                        use_regex: self.use_regex,
+                        case_sensitive: self.case_sensitive,
                         action: ReplaceAction::Previous,
                     })));
                 }
@@ -395,6 +491,8 @@ impl ReplaceModal {
                     return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
                         find_query: self.find_input_handler.text().to_string(),
                         replace_with: self.replace_input_handler.text().to_string(),
+                        use_regex: self.use_regex,
+                        case_sensitive: self.case_sensitive,
                         action: ReplaceAction::Replace,
                     })));
                 }
@@ -409,6 +507,8 @@ impl ReplaceModal {
                     return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
                         find_query: self.find_input_handler.text().to_string(),
                         replace_with: self.replace_input_handler.text().to_string(),
+                        use_regex: self.use_regex,
+                        case_sensitive: self.case_sensitive,
                         action: ReplaceAction::Next,
                     })));
                 }
@@ -419,6 +519,8 @@ impl ReplaceModal {
                     return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
                         find_query: self.find_input_handler.text().to_string(),
                         replace_with: self.replace_input_handler.text().to_string(),
+                        use_regex: self.use_regex,
+                        case_sensitive: self.case_sensitive,
                         action: ReplaceAction::Previous,
                     })));
                 }
@@ -429,6 +531,8 @@ impl ReplaceModal {
                     return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
                         find_query: self.find_input_handler.text().to_string(),
                         replace_with: self.replace_input_handler.text().to_string(),
+                        use_regex: self.use_regex,
+                        case_sensitive: self.case_sensitive,
                         action: ReplaceAction::Replace,
                     })));
                 }
@@ -442,6 +546,8 @@ impl ReplaceModal {
                     return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
                         find_query: self.find_input_handler.text().to_string(),
                         replace_with: self.replace_input_handler.text().to_string(),
+                        use_regex: self.use_regex,
+                        case_sensitive: self.case_sensitive,
                         action: ReplaceAction::ReplaceAll,
                     })));
                 }
@@ -454,6 +560,8 @@ impl ReplaceModal {
                         return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
                             find_query: self.find_input_handler.text().to_string(),
                             replace_with: self.replace_input_handler.text().to_string(),
+                            use_regex: self.use_regex,
+                            case_sensitive: self.case_sensitive,
                             action: ReplaceAction::Search,
                         })));
                     }
@@ -467,6 +575,8 @@ impl ReplaceModal {
                         return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
                             find_query: self.find_input_handler.text().to_string(),
                             replace_with: self.replace_input_handler.text().to_string(),
+                            use_regex: self.use_regex,
+                            case_sensitive: self.case_sensitive,
                             action: ReplaceAction::Search,
                         })));
                     }
@@ -517,6 +627,8 @@ impl ReplaceModal {
                         return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
                             find_query: self.find_input_handler.text().to_string(),
                             replace_with: self.replace_input_handler.text().to_string(),
+                            use_regex: self.use_regex,
+                            case_sensitive: self.case_sensitive,
                             action: ReplaceAction::Search,
                         })));
                     }
@@ -542,6 +654,8 @@ impl ReplaceModal {
                         return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
                             find_query: self.find_input_handler.text().to_string(),
                             replace_with: self.replace_input_handler.text().to_string(),
+                            use_regex: self.use_regex,
+                            case_sensitive: self.case_sensitive,
                             action: ReplaceAction::Search,
                         })));
                     }
@@ -555,6 +669,8 @@ impl ReplaceModal {
                         return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
                             find_query: self.find_input_handler.text().to_string(),
                             replace_with: self.replace_input_handler.text().to_string(),
+                            use_regex: self.use_regex,
+                            case_sensitive: self.case_sensitive,
                             action: ReplaceAction::Search,
                         })));
                     }
@@ -568,6 +684,8 @@ impl ReplaceModal {
                         return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
                             find_query: self.find_input_handler.text().to_string(),
                             replace_with: self.replace_input_handler.text().to_string(),
+                            use_regex: self.use_regex,
+                            case_sensitive: self.case_sensitive,
                             action: ReplaceAction::Search,
                         })));
                     }
@@ -581,6 +699,8 @@ impl ReplaceModal {
                 return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
                     find_query: self.find_input_handler.text().to_string(),
                     replace_with: self.replace_input_handler.text().to_string(),
+                    use_regex: self.use_regex,
+                    case_sensitive: self.case_sensitive,
                     action: ReplaceAction::Search,
                 })));
             }
@@ -609,6 +729,8 @@ impl ReplaceModal {
                     return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
                         find_query: self.find_input_handler.text().to_string(),
                         replace_with: self.replace_input_handler.text().to_string(),
+                        use_regex: self.use_regex,
+                        case_sensitive: self.case_sensitive,
                         action: ReplaceAction::Replace,
                     })));
                 }
@@ -623,6 +745,8 @@ impl ReplaceModal {
                     return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
                         find_query: self.find_input_handler.text().to_string(),
                         replace_with: self.replace_input_handler.text().to_string(),
+                        use_regex: self.use_regex,
+                        case_sensitive: self.case_sensitive,
                         action: ReplaceAction::Next,
                     })));
                 }
@@ -633,6 +757,8 @@ impl ReplaceModal {
                     return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
                         find_query: self.find_input_handler.text().to_string(),
                         replace_with: self.replace_input_handler.text().to_string(),
+                        use_regex: self.use_regex,
+                        case_sensitive: self.case_sensitive,
                         action: ReplaceAction::Previous,
                     })));
                 }
@@ -643,6 +769,8 @@ impl ReplaceModal {
                     return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
                         find_query: self.find_input_handler.text().to_string(),
                         replace_with: self.replace_input_handler.text().to_string(),
+                        use_regex: self.use_regex,
+                        case_sensitive: self.case_sensitive,
                         action: ReplaceAction::Replace,
                     })));
                 }
@@ -656,6 +784,8 @@ impl ReplaceModal {
                     return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
                         find_query: self.find_input_handler.text().to_string(),
                         replace_with: self.replace_input_handler.text().to_string(),
+                        use_regex: self.use_regex,
+                        case_sensitive: self.case_sensitive,
                         action: ReplaceAction::ReplaceAll,
                     })));
                 }
@@ -774,6 +904,8 @@ impl ReplaceModal {
                     return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
                         find_query: self.find_input_handler.text().to_string(),
                         replace_with: self.replace_input_handler.text().to_string(),
+                        use_regex: self.use_regex,
+                        case_sensitive: self.case_sensitive,
                         action,
                     })));
                 }

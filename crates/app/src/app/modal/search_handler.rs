@@ -48,7 +48,8 @@ impl App {
                     editor.start_replace(
                         replace_result.find_query.clone(),
                         replace_result.replace_with.clone(),
-                        false,
+                        replace_result.case_sensitive,
+                        replace_result.use_regex,
                     );
                 }
                 ReplaceAction::Next => {
@@ -76,7 +77,8 @@ impl App {
                     editor.start_replace(
                         replace_result.find_query.clone(),
                         replace_result.replace_with.clone(),
-                        false,
+                        replace_result.case_sensitive,
+                        replace_result.use_regex,
                     );
                     // Replace all matches (now uses updated replace_with)
                     editor.replace_all()?;
