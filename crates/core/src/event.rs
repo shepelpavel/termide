@@ -637,6 +637,9 @@ pub enum ConfirmAction {
 
     /// Cancel a running background operation
     CancelOperation(termide_file_ops::OperationId),
+
+    /// Replace every content-search match in the file manager with this text.
+    ReplaceInContent(String),
 }
 
 /// Input dialog actions.

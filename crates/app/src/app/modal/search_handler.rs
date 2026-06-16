@@ -19,6 +19,12 @@ pub(super) enum SearchReplaceResult {
     Close,
     /// Modal cancelled — close and clear search.
     Cancelled,
+    /// Content-mode Replace All: close the search modal and ask the user to
+    /// confirm replacing across the matched files.
+    ReplaceConfirm {
+        message: String,
+        replace_with: String,
+    },
     /// Not a search/replace modal.
     NotApplicable,
 }
@@ -116,6 +122,7 @@ impl App {
                         SearchAction::CloseWithSelection => {
                             // Selection is already set by editor methods
                         }
+                        SearchAction::ReplaceAll => {}
                     }
                 }
             }
@@ -134,6 +141,7 @@ impl App {
                         SearchAction::CloseWithSelection => {
                             fm.close_search_with_selection();
                         }
+                        SearchAction::ReplaceAll => {}
                     }
                 }
             }
@@ -159,7 +167,12 @@ impl App {
                         SearchAction::CloseWithSelection => {
                             open_event = fm.close_search_with_selection();
                         }
+                        // ReplaceAll is handled (with confirmation) in
+                        // process_search_modal_result.
+                        SearchAction::ReplaceAll => {}
                     }
+                    // Keep the replacement preview in sync with the modal.
+                    fm.set_content_replace(search_result.replace_query.clone());
                 }
                 if let Some(event) = open_event {
                     self.process_single_event(event)?;
@@ -178,6 +191,26 @@ impl App {
 
         if let ModalResult::Confirmed(value) = result {
             if let Some(search_result) = value.downcast_ref::<SearchModalResult>() {
+                // Content-mode "Replace all": close the search modal and ask
+                // for confirmation before writing files.
+                if search_result.action == SearchAction::ReplaceAll {
+                    let summary = self
+                        .active_file_manager_mut()
+                        .and_then(|fm| fm.content_search_summary());
+                    if let Some((files, matches)) = summary {
+                        if matches > 0 {
+                            return SearchReplaceResult::ReplaceConfirm {
+                                message: termide_i18n::t().replace_confirm_fmt(matches, files),
+                                replace_with: search_result
+                                    .replace_query
+                                    .clone()
+                                    .unwrap_or_default(),
+                            };
+                        }
+                    }
+                    return SearchReplaceResult::KeepOpen;
+                }
+
                 // Handle search action based on mode
                 if self.handle_search_action(search_result).is_err() {
                     return SearchReplaceResult::Close;
@@ -292,6 +325,18 @@ impl App {
                     }
                     return Some(());
                 }
+                SearchReplaceResult::ReplaceConfirm {
+                    message,
+                    replace_with,
+                } => {
+                    // Close the search modal, then ask to confirm the writes.
+                    self.state.close_modal();
+                    self.event_show_confirm(
+                        message,
+                        termide_core::ConfirmAction::ReplaceInContent(replace_with),
+                    );
+                    return Some(());
+                }
                 SearchReplaceResult::NotApplicable => {}
             }
         }
@@ -311,6 +356,8 @@ impl App {
                     }
                     return Some(());
                 }
+                // Produced only by the search path, never the replace path.
+                SearchReplaceResult::ReplaceConfirm { .. } => {}
                 SearchReplaceResult::NotApplicable => {}
             }
         }

@@ -908,7 +908,11 @@ impl App {
     }
 
     /// Handle ShowConfirm event - show confirmation modal
-    fn event_show_confirm(&mut self, message: String, on_confirm: termide_core::ConfirmAction) {
+    pub(in crate::app) fn event_show_confirm(
+        &mut self,
+        message: String,
+        on_confirm: termide_core::ConfirmAction,
+    ) {
         use crate::state::{ActiveModal, PendingAction};
         use termide_modal::ConfirmModal;
 
@@ -935,6 +939,9 @@ impl App {
             termide_core::ConfirmAction::QuitApplication => PendingAction::QuitApplication,
             termide_core::ConfirmAction::CancelOperation(op_id) => {
                 PendingAction::CancelOperation(op_id)
+            }
+            termide_core::ConfirmAction::ReplaceInContent(replace_with) => {
+                PendingAction::ReplaceInContent { replace_with }
             }
         };
 

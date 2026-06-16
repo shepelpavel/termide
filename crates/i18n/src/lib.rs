@@ -683,6 +683,11 @@ pub trait Translation: Send + Sync {
     // Operations panel
     fn operation_cancel_confirm(&self) -> &str;
 
+    // Content replace
+    fn replace_done_title(&self) -> &str;
+    fn replace_done_fmt(&self, count: usize, files: usize) -> String;
+    fn replace_confirm_fmt(&self, count: usize, files: usize) -> String;
+
     // Image panel
     fn panel_image(&self) -> &str;
     fn image_error_fmt(&self, error: &str) -> String;

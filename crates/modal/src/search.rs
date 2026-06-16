@@ -26,6 +26,8 @@ pub struct SearchModalResult {
     pub mode: SearchMode,
     pub query: String,
     pub content_query: Option<String>,
+    /// Replace-with text (Content mode only).
+    pub replace_query: Option<String>,
     pub action: SearchAction,
     /// Treat the query as a regular expression.
     pub use_regex: bool,
@@ -42,6 +44,8 @@ pub enum SearchAction {
     Next,
     /// Navigate to previous match
     Previous,
+    /// Replace every match (Content mode) — uses `replace_query`.
+    ReplaceAll,
     /// Close modal with selection active
     CloseWithSelection,
 }
@@ -51,8 +55,10 @@ pub enum SearchAction {
 enum FocusArea {
     /// Main input field (query for Text, mask for FileGlob/Content)
     Input,
-    /// Content regex field (Content mode only)
+    /// Content query field (Content mode only)
     ContentInput,
+    /// Replace-with field (Content mode only)
+    ReplaceInput,
     /// Navigation buttons
     Buttons,
 }
@@ -63,6 +69,8 @@ pub struct SearchModal {
     mode: SearchMode,
     input_handler: TextInputHandler,
     content_input_handler: TextInputHandler,
+    /// Replace-with field (Content mode only).
+    replace_input_handler: TextInputHandler,
     focus: FocusArea,
     selected_button: usize, // 0 = Previous, 1 = Next
     /// Match count display (e.g. "3 of 12")
@@ -76,6 +84,9 @@ pub struct SearchModal {
     last_close_button_area: Option<Rect>,
     last_input_area: Option<Rect>,
     last_content_input_area: Option<Rect>,
+    last_replace_input_area: Option<Rect>,
+    /// Clickable area for the "Replace all" button (Content mode).
+    last_replace_all_area: Option<Rect>,
     /// Clickable areas for the regex / case toggles (area, is_regex)
     last_toggle_areas: Vec<(Rect, bool)>,
 }
@@ -87,6 +98,7 @@ impl SearchModal {
             mode,
             input_handler: TextInputHandler::new(),
             content_input_handler: TextInputHandler::new(),
+            replace_input_handler: TextInputHandler::new(),
             focus: FocusArea::Input,
             selected_button: 1, // Next button selected by default
             match_info: None,
@@ -96,6 +108,8 @@ impl SearchModal {
             last_close_button_area: None,
             last_input_area: None,
             last_content_input_area: None,
+            last_replace_input_area: None,
+            last_replace_all_area: None,
             last_toggle_areas: Vec::new(),
         }
     }
@@ -154,7 +168,7 @@ impl SearchModal {
         let height = match self.mode {
             SearchMode::Text => 4,     // border + input + buttons + border
             SearchMode::FileGlob => 4, // border + mask + buttons + border
-            SearchMode::Content => 5,  // border + mask + content + buttons + border
+            SearchMode::Content => 6,  // border + mask + find + replace + buttons + border
         };
 
         (width, height.min(screen_height))
@@ -167,6 +181,11 @@ impl SearchModal {
             query: self.input_handler.text().to_string(),
             content_query: if self.mode == SearchMode::Content {
                 Some(self.content_input_handler.text().to_string())
+            } else {
+                None
+            },
+            replace_query: if self.mode == SearchMode::Content {
+                Some(self.replace_input_handler.text().to_string())
             } else {
                 None
             },
@@ -218,6 +237,7 @@ impl SearchModal {
         let handler = match self.focus {
             FocusArea::Input => &mut self.input_handler,
             FocusArea::ContentInput => &mut self.content_input_handler,
+            FocusArea::ReplaceInput => &mut self.replace_input_handler,
             _ => return false,
         };
 
@@ -249,7 +269,8 @@ impl Modal for SearchModal {
             ],
             SearchMode::Content => vec![
                 Constraint::Length(1), // Mask input line
-                Constraint::Length(1), // Content input line
+                Constraint::Length(1), // Find input line
+                Constraint::Length(1), // Replace input line
                 Constraint::Length(1), // Buttons line
             ],
         };
@@ -355,7 +376,32 @@ impl Modal for SearchModal {
                     theme,
                 );
 
-                self.render_buttons_and_counter(chunks[2], buf, theme);
+                // === Replace input ===
+                let replace_area = chunks[2];
+                self.last_replace_input_area = Some(replace_area);
+                let rlabel = "Repl: ";
+                let rlabel_width = rlabel.len() as u16;
+                buf.set_string(
+                    replace_area.x,
+                    replace_area.y,
+                    rlabel,
+                    Style::default().fg(theme.fg),
+                );
+                let rfield_x = replace_area.x + rlabel_width;
+                let rfield_w = replace_area.width.saturating_sub(rlabel_width);
+                base::render_input_field(
+                    buf,
+                    rfield_x,
+                    replace_area.y,
+                    rfield_w,
+                    self.replace_input_handler.text(),
+                    self.replace_input_handler.cursor_pos(),
+                    self.replace_input_handler.selection_range(),
+                    matches!(self.focus, FocusArea::ReplaceInput),
+                    theme,
+                );
+
+                self.render_buttons_and_counter(chunks[3], buf, theme);
             }
         }
     }
@@ -374,7 +420,9 @@ impl Modal for SearchModal {
             }
         }
         match self.focus {
-            FocusArea::Input | FocusArea::ContentInput => self.handle_input_focus_key(key),
+            FocusArea::Input | FocusArea::ContentInput | FocusArea::ReplaceInput => {
+                self.handle_input_focus_key(key)
+            }
             FocusArea::Buttons => self.handle_buttons_focus_key(key),
         }
     }
@@ -407,6 +455,38 @@ impl Modal for SearchModal {
                         && mouse_pos.1 == area.y
                     {
                         return self.toggle_result(is_regex);
+                    }
+                }
+
+                // Check the "Replace all" button (Content mode)
+                if let Some(area) = self.last_replace_all_area {
+                    if mouse_pos.0 >= area.x
+                        && mouse_pos.0 < area.x + area.width
+                        && mouse_pos.1 == area.y
+                        && self.has_input()
+                    {
+                        return Ok(Some(ModalResult::Confirmed(
+                            self.make_result(SearchAction::ReplaceAll),
+                        )));
+                    }
+                }
+
+                // Check the replace input field — focus it on click
+                if let Some(area) = self.last_replace_input_area {
+                    if mouse_pos.1 == area.y
+                        && mouse_pos.0 >= area.x
+                        && mouse_pos.0 < area.x + area.width
+                    {
+                        self.focus = FocusArea::ReplaceInput;
+                        let label_len = "Repl: ".len();
+                        let click_x = (mouse_pos.0 - area.x) as usize;
+                        let char_pos = screen_x_to_char_pos(
+                            self.replace_input_handler.text(),
+                            click_x.saturating_sub(label_len),
+                        );
+                        self.replace_input_handler
+                            .set_cursor_with_selection_start(char_pos);
+                        return Ok(None);
                     }
                 }
 
@@ -504,6 +584,10 @@ impl Modal for SearchModal {
                 self.content_input_handler.insert_str(text);
                 true
             }
+            FocusArea::ReplaceInput => {
+                self.replace_input_handler.insert_str(text);
+                true
+            }
             FocusArea::Buttons => false,
         }
     }
@@ -567,6 +651,27 @@ impl SearchModal {
 
             buf.set_string(x_offset, buttons_area.y, &button_text, button_style);
             x_offset += button_width + 2;
+        }
+
+        // Content mode: a click-only "Replace all" button (Enter in the
+        // replace field does the same).
+        self.last_replace_all_area = None;
+        if self.mode == SearchMode::Content {
+            let text = "[ Replace all ]";
+            let w = text.len() as u16;
+            buf.set_string(
+                x_offset,
+                buttons_area.y,
+                text,
+                Style::default().fg(theme.warning),
+            );
+            self.last_replace_all_area = Some(Rect {
+                x: x_offset,
+                y: buttons_area.y,
+                width: w,
+                height: 1,
+            });
+            x_offset += w + 2;
         }
 
         // Regex / case toggles (Alt+R / Alt+C, or click)
@@ -636,6 +741,9 @@ impl SearchModal {
                     self.focus = FocusArea::ContentInput;
                 }
                 (SearchMode::Content, FocusArea::ContentInput) => {
+                    self.focus = FocusArea::ReplaceInput;
+                }
+                (SearchMode::Content, FocusArea::ReplaceInput) => {
                     if self.has_input() {
                         self.focus = FocusArea::Buttons;
                     }
@@ -648,13 +756,24 @@ impl SearchModal {
                 _ => {}
             },
             // Up - move focus
-            (KeyCode::Up, KeyModifiers::NONE) => {
-                if let (SearchMode::Content, FocusArea::ContentInput) = (self.mode, self.focus) {
+            (KeyCode::Up, KeyModifiers::NONE) => match (self.mode, self.focus) {
+                (SearchMode::Content, FocusArea::ContentInput) => {
                     self.focus = FocusArea::Input;
                 }
-            }
+                (SearchMode::Content, FocusArea::ReplaceInput) => {
+                    self.focus = FocusArea::ContentInput;
+                }
+                _ => {}
+            },
             // Enter
             (KeyCode::Enter, KeyModifiers::NONE) => {
+                // In the replace field, Enter applies the replacement to all
+                // matches (the app gates it behind a confirmation).
+                if self.focus == FocusArea::ReplaceInput && self.has_input() {
+                    return Ok(Some(ModalResult::Confirmed(
+                        self.make_result(SearchAction::ReplaceAll),
+                    )));
+                }
                 if self.mode == SearchMode::Text {
                     // Text mode: close with selection
                     if self.has_input() {

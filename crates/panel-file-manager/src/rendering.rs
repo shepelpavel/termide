@@ -408,7 +408,7 @@ impl FileManager {
         let line_num_width = 5usize;
         let separator = " \u{2502} ";
         let separator_len = 3usize;
-        let indent = 1usize; // match rows sit one column in from the header
+        let indent = 1usize;
         let max_text_width = content_width.saturating_sub(indent + line_num_width + separator_len);
 
         let dim = Style::default().fg(theme.disabled).bg(theme.bg);
@@ -418,18 +418,24 @@ impl FileManager {
             .fg(theme.bg)
             .bg(theme.accented_fg)
             .add_modifier(Modifier::BOLD);
+        let removed = Style::default().fg(theme.error).bg(theme.bg);
+        let added = Style::default().fg(theme.success).bg(theme.bg);
 
-        for (rendered, (idx, node)) in search
+        let mut line = 0usize;
+        for (idx, node) in search
             .tree_nodes
             .iter()
             .enumerate()
             .skip(search.scroll_offset)
-            .enumerate()
         {
-            if rendered >= max_lines {
+            let node_lines = search.node_display_lines(idx);
+            if node_lines == 0 {
+                continue;
+            }
+            if line + node_lines > max_lines {
                 break;
             }
-            let y = area.y + rendered as u16;
+            let y = area.y + line as u16;
             let is_selected = idx == search.cursor;
 
             if node.is_file_header {
@@ -459,50 +465,76 @@ impl FileManager {
                 let count_style = if is_selected { base } else { dim };
                 buf.set_string(x, y, &count_text, count_style);
             } else if let Some(cm) = &node.content_match {
-                let row_bg = if is_selected {
-                    Style::default().bg(theme.selected_bg)
+                if node_lines == 2 {
+                    // -old / +new preview for the cursor match.
+                    let new_line = search
+                        .preview_replacement(&cm.matched_line)
+                        .unwrap_or_else(|| cm.matched_line.clone());
+                    for (off, (gutter, text, style)) in [
+                        ("-", cm.matched_line.as_str(), removed),
+                        ("+", new_line.as_str(), added),
+                    ]
+                    .into_iter()
+                    .enumerate()
+                    {
+                        let ry = y + off as u16;
+                        let mut x = area.x + indent as u16;
+                        buf.set_string(x, ry, gutter, style);
+                        x += 1;
+                        buf.set_string(x, ry, " ", style);
+                        x += 1;
+                        let shown =
+                            truncate_from_start(text, content_width.saturating_sub(indent + 2));
+                        buf.set_string(x, ry, &shown, style);
+                    }
                 } else {
-                    Style::default().bg(theme.bg)
-                };
-                for col in 0..content_width {
-                    buf.set_string(area.x + col as u16, y, " ", row_bg);
-                }
-
-                let line_num = format!("{:>width$}", cm.line_number, width = line_num_width);
-                let lnum_style = if is_selected {
-                    row_bg.fg(theme.fg)
-                } else {
-                    dim
-                };
-                let sep_style = if is_selected {
-                    row_bg.fg(theme.disabled)
-                } else {
-                    dim
-                };
-                let text_style = if is_selected { row_bg.fg(theme.fg) } else { fg };
-
-                let mut x = area.x + indent as u16;
-                buf.set_string(x, y, &line_num, lnum_style);
-                x += line_num_width as u16;
-                buf.set_string(x, y, separator, sep_style);
-                x += separator_len as u16;
-
-                let (display_line, match_start_g, match_end_g) = prepare_matched_line(
-                    &cm.matched_line,
-                    cm.match_start,
-                    cm.match_end,
-                    max_text_width,
-                );
-                for (grapheme_idx, grapheme) in display_line.graphemes(true).enumerate() {
-                    let style = if grapheme_idx >= match_start_g && grapheme_idx < match_end_g {
-                        highlight
+                    let row_bg = if is_selected {
+                        Style::default().bg(theme.selected_bg)
                     } else {
-                        text_style
+                        Style::default().bg(theme.bg)
                     };
-                    buf.set_string(x, y, grapheme, style);
-                    x += grapheme.width() as u16;
+                    for col in 0..content_width {
+                        buf.set_string(area.x + col as u16, y, " ", row_bg);
+                    }
+
+                    let line_num = format!("{:>width$}", cm.line_number, width = line_num_width);
+                    let lnum_style = if is_selected {
+                        row_bg.fg(theme.fg)
+                    } else {
+                        dim
+                    };
+                    let sep_style = if is_selected {
+                        row_bg.fg(theme.disabled)
+                    } else {
+                        dim
+                    };
+                    let text_style = if is_selected { row_bg.fg(theme.fg) } else { fg };
+
+                    let mut x = area.x + indent as u16;
+                    buf.set_string(x, y, &line_num, lnum_style);
+                    x += line_num_width as u16;
+                    buf.set_string(x, y, separator, sep_style);
+                    x += separator_len as u16;
+
+                    let (display_line, match_start_g, match_end_g) = prepare_matched_line(
+                        &cm.matched_line,
+                        cm.match_start,
+                        cm.match_end,
+                        max_text_width,
+                    );
+                    for (grapheme_idx, grapheme) in display_line.graphemes(true).enumerate() {
+                        let style = if grapheme_idx >= match_start_g && grapheme_idx < match_end_g {
+                            highlight
+                        } else {
+                            text_style
+                        };
+                        buf.set_string(x, y, grapheme, style);
+                        x += grapheme.width() as u16;
+                    }
                 }
             }
+
+            line += node_lines;
         }
     }
 }

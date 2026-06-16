@@ -574,6 +574,31 @@ impl FileManager {
         self.file_search.is_some()
     }
 
+    /// Set the in-progress replacement text for the content search (drives the
+    /// `-old/+new` preview on the cursor match).
+    pub fn set_content_replace(&mut self, text: Option<String>) {
+        if let Some(ref mut state) = self.file_search {
+            state.set_replace_text(text);
+        }
+    }
+
+    /// (files, matches) for the active content search — for the confirm prompt.
+    pub fn content_search_summary(&self) -> Option<(usize, usize)> {
+        let state = self.file_search.as_ref()?;
+        let (_, matches) = state.get_match_info()?;
+        let files = state.file_header_count();
+        Some((files, matches))
+    }
+
+    /// Apply `replace_with` to every matched file of the active content search.
+    /// Returns (files_changed, occurrences_replaced).
+    pub fn replace_all_in_content_results(&mut self, replace_with: &str) -> (usize, usize) {
+        match self.file_search.as_ref() {
+            Some(state) => state.replace_all(replace_with),
+            None => (0, 0),
+        }
+    }
+
     /// Close search and apply the selected result.
     /// For FileGlob: navigates to the file in the tree.
     /// For Content: returns `Some(PanelEvent::OpenFileAt { .. })` so the caller can open the file.

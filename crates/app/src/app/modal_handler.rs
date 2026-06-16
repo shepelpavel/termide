@@ -378,6 +378,21 @@ impl App {
                         self.event_cancel_operation(op_id);
                     }
                 }
+                PendingAction::ReplaceInContent { replace_with } => {
+                    // User confirmed replacing all content-search matches.
+                    if value.downcast_ref::<bool>().copied().unwrap_or(false) {
+                        if let Some(fm) = self.active_file_manager_mut() {
+                            let (files, count) = fm.replace_all_in_content_results(&replace_with);
+                            fm.close_file_search();
+                            let t = termide_i18n::t();
+                            let lines = vec![(String::new(), t.replace_done_fmt(count, files))];
+                            let modal =
+                                termide_modal::InfoModal::new(t.replace_done_title(), lines);
+                            self.state.active_modal =
+                                Some(termide_modal::ActiveModal::Info(Box::new(modal)));
+                        }
+                    }
+                }
                 PendingAction::SwitchSession => {
                     self.handle_switch_session(value)?;
                 }

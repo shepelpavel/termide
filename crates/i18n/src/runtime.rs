@@ -471,6 +471,7 @@ impl Translation for RuntimeTranslation {
         diagnostics_filter_ew,
         terminal_kill_confirm,
         operation_cancel_confirm,
+        replace_done_title,
         panel_image,
         resource_cpu_top_title,
         resource_ram_top_title,
@@ -1076,6 +1077,20 @@ impl Translation for RuntimeTranslation {
 
     fn image_error_fmt(&self, error: &str) -> String {
         self.format("image_error_fmt", &[("error", error)])
+    }
+
+    fn replace_done_fmt(&self, count: usize, files: usize) -> String {
+        self.format(
+            "replace_done_fmt",
+            &[("count", &count.to_string()), ("files", &files.to_string())],
+        )
+    }
+
+    fn replace_confirm_fmt(&self, count: usize, files: usize) -> String {
+        self.format(
+            "replace_confirm_fmt",
+            &[("count", &count.to_string()), ("files", &files.to_string())],
+        )
     }
 
     // Calendar

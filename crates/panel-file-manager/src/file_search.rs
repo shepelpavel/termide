@@ -87,6 +87,15 @@ pub(crate) struct FileSearchState {
     search_cancel: Option<Arc<AtomicBool>>,
     base_path: PathBuf,
     max_file_size: u64,
+    /// Content replace: text typed in the Replace field (for preview/apply).
+    replace_text: Option<String>,
+    /// Effective regex pattern used by the last content search (escaped when
+    /// literal), kept so replace can re-match files.
+    search_pattern: String,
+    /// Whether the last content search treated the query as a regex.
+    search_use_regex: bool,
+    /// Case sensitivity of the last content search.
+    search_case_sensitive: bool,
 }
 
 impl std::fmt::Debug for FileSearchState {
@@ -115,6 +124,10 @@ impl FileSearchState {
             search_cancel: None,
             base_path,
             max_file_size: 0,
+            replace_text: None,
+            search_pattern: String::new(),
+            search_use_regex: false,
+            search_case_sensitive: false,
         }
     }
 
@@ -132,6 +145,10 @@ impl FileSearchState {
             search_cancel: None,
             base_path,
             max_file_size,
+            replace_text: None,
+            search_pattern: String::new(),
+            search_use_regex: false,
+            search_case_sensitive: false,
         }
     }
 
@@ -207,6 +224,12 @@ impl FileSearchState {
         {
             return;
         }
+
+        // Remember how this search matched, so replace can re-match files.
+        self.search_pattern = pattern.clone();
+        self.search_use_regex = use_regex;
+        self.search_case_sensitive = case_sensitive;
+        self.replace_text = None;
 
         // Cancel previous search
         if let Some(cancel) = self.search_cancel.take() {
@@ -376,6 +399,14 @@ impl FileSearchState {
         if idx >= self.tree_nodes.len() || self.is_hidden_by_collapse(idx) {
             return 0;
         }
+        // The cursor match expands to a two-line -old/+new preview while a
+        // replacement is being composed.
+        if idx == self.cursor
+            && self.has_replace_preview()
+            && self.tree_nodes[idx].content_match.is_some()
+        {
+            return 2;
+        }
         1
     }
 
@@ -503,6 +534,82 @@ impl FileSearchState {
             }
         }
         false
+    }
+
+    /// Number of file-group headers (i.e. distinct files with matches).
+    pub fn file_header_count(&self) -> usize {
+        self.tree_nodes.iter().filter(|n| n.is_file_header).count()
+    }
+
+    /// Store the in-progress replacement text (Content mode), used for the
+    /// preview and as the default for apply.
+    pub fn set_replace_text(&mut self, text: Option<String>) {
+        self.replace_text = text;
+    }
+
+    /// True when a non-empty replacement is being composed — the cursor match
+    /// then shows a `-old/+new` preview.
+    pub fn has_replace_preview(&self) -> bool {
+        self.replace_text.as_deref().is_some_and(|t| !t.is_empty())
+    }
+
+    /// Compute the post-replace version of `matched_line` for the preview.
+    /// Returns `None` when no replacement is active.
+    pub fn preview_replacement(&self, matched_line: &str) -> Option<String> {
+        let rep = self.replace_text.as_deref()?;
+        if rep.is_empty() {
+            return None;
+        }
+        let re = RegexBuilder::new(&self.search_pattern)
+            .case_insensitive(!self.search_case_sensitive)
+            .build()
+            .ok()?;
+        let new = if self.search_use_regex {
+            re.replace_all(matched_line, rep).into_owned()
+        } else {
+            re.replace_all(matched_line, regex::NoExpand(rep))
+                .into_owned()
+        };
+        Some(new)
+    }
+
+    /// Apply `replace_with` to every matched file on disk, re-matching at
+    /// apply time. Returns (files_changed, occurrences_replaced).
+    pub fn replace_all(&self, replace_with: &str) -> (usize, usize) {
+        if self.mode != FileSearchMode::Content || self.search_pattern.is_empty() {
+            return (0, 0);
+        }
+        let re = match RegexBuilder::new(&self.search_pattern)
+            .case_insensitive(!self.search_case_sensitive)
+            .build()
+        {
+            Ok(r) => r,
+            Err(_) => return (0, 0),
+        };
+
+        let mut files_changed = 0;
+        let mut occurrences = 0;
+        for node in self.tree_nodes.iter().filter(|n| n.is_file_header) {
+            let content = match std::fs::read_to_string(&node.full_path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            let n = re.find_iter(&content).count();
+            if n == 0 {
+                continue;
+            }
+            let new_content = if self.search_use_regex {
+                re.replace_all(&content, replace_with).into_owned()
+            } else {
+                re.replace_all(&content, regex::NoExpand(replace_with))
+                    .into_owned()
+            };
+            if new_content != content && std::fs::write(&node.full_path, new_content).is_ok() {
+                files_changed += 1;
+                occurrences += n;
+            }
+        }
+        (files_changed, occurrences)
     }
 }
 
@@ -874,4 +981,88 @@ fn should_skip_file(path: &Path, max_size: u64, min_size: u64) -> bool {
         return true;
     }
     is_binary_file(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn header(path: PathBuf) -> ResultTreeNode {
+        ResultTreeNode {
+            name: path.display().to_string(),
+            full_path: path,
+            depth: 0,
+            is_dir: false,
+            git_status: GitStatus::Unmodified,
+            content_match: None,
+            is_file_header: true,
+            match_count: 1,
+            collapsed: false,
+        }
+    }
+
+    #[test]
+    fn replace_all_literal_rewrites_matched_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("a.txt");
+        std::fs::write(&f, "foo bar foo\nbaz\n").unwrap();
+
+        let mut state = FileSearchState::new_content(dir.path().to_path_buf(), 1 << 20);
+        state.tree_nodes = vec![header(f.clone())];
+        state.search_pattern = regex::escape("foo");
+        state.search_use_regex = false;
+        state.search_case_sensitive = true;
+
+        assert_eq!(state.replace_all("X"), (1, 2));
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "X bar X\nbaz\n");
+    }
+
+    #[test]
+    fn replace_all_regex_expands_capture_groups() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("b.rs");
+        std::fs::write(&f, "get_user(id)\n").unwrap();
+
+        let mut state = FileSearchState::new_content(dir.path().to_path_buf(), 1 << 20);
+        state.tree_nodes = vec![header(f.clone())];
+        state.search_pattern = r"get_(\w+)".to_string();
+        state.search_use_regex = true;
+        state.search_case_sensitive = true;
+
+        assert_eq!(state.replace_all("fetch_$1"), (1, 1));
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "fetch_user(id)\n");
+    }
+
+    #[test]
+    fn literal_replace_treats_dollar_verbatim() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("c.txt");
+        std::fs::write(&f, "a.b\n").unwrap();
+
+        let mut state = FileSearchState::new_content(dir.path().to_path_buf(), 1 << 20);
+        state.tree_nodes = vec![header(f.clone())];
+        state.search_pattern = regex::escape(".");
+        state.search_use_regex = false;
+        state.search_case_sensitive = true;
+
+        assert_eq!(state.replace_all("$1"), (1, 1));
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "a$1b\n");
+    }
+
+    #[test]
+    fn preview_replacement_builds_new_line() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut state = FileSearchState::new_content(dir.path().to_path_buf(), 1 << 20);
+        state.search_pattern = regex::escape("foo");
+        state.search_use_regex = false;
+        state.search_case_sensitive = true;
+        state.set_replace_text(Some("bar".to_string()));
+        assert_eq!(
+            state.preview_replacement("foo x foo").as_deref(),
+            Some("bar x bar")
+        );
+        // No preview when replacement is empty.
+        state.set_replace_text(Some(String::new()));
+        assert!(state.preview_replacement("foo").is_none());
+    }
 }
