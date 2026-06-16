@@ -200,6 +200,11 @@ impl FindBar {
             || self.button_areas.iter().any(|(a, _)| hit(*a, col, row))
     }
 
+    /// Whether the bar exposes `field`.
+    pub fn has_field(&self, field: FindField) -> bool {
+        self.fields.contains(&field)
+    }
+
     /// The field that currently has focus, if any (vs a button).
     pub fn focused_field(&self) -> Option<FindField> {
         match self.current() {

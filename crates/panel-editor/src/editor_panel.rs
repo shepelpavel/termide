@@ -124,8 +124,25 @@ impl Panel for Editor {
         // Use cached theme and config (updated by app layer before rendering)
         let theme = self.render_cache.theme;
         let config = self.render_cache.config.clone();
+
+        // Dock the inline find/replace bar at the bottom, shrinking the content
+        // area so the viewport/scroll/mouse math all see the reduced height.
+        let mut content_area = area;
+        if let Some(mut bar) = self.find_bar.take() {
+            let bar_h = bar.height().min(area.height);
+            content_area.height = area.height.saturating_sub(bar_h);
+            let bar_area = Rect {
+                x: area.x,
+                y: area.y + content_area.height,
+                width: area.width,
+                height: bar_h,
+            };
+            bar.render(bar_area, buf, &theme, true);
+            self.find_bar = Some(bar);
+        }
+
         self.render_content(
-            area,
+            content_area,
             buf,
             &theme,
             &config,
@@ -160,6 +177,12 @@ impl Panel for Editor {
 
         // Note: Key translation should be done at app level before calling handle_key
         // If you need translation, call translate_hotkey from termide-core or keyboard module
+
+        // The inline find/replace bar owns the keyboard while it is open
+        // (before vim / command processing).
+        if self.find_bar.is_some() {
+            return self.handle_find_bar_key(key);
+        }
 
         // Collect events from internal state
         let mut events = Vec::new();
@@ -437,8 +460,10 @@ impl Panel for Editor {
     }
 
     fn captures_escape(&self) -> bool {
-        // Capture Escape when search is active, popups are open, or vim is in INSERT mode
-        self.search.state.is_some()
+        // Capture Escape when the inline find bar is open, search is active,
+        // popups are open, or vim is in INSERT mode
+        self.find_bar.is_some()
+            || self.search.state.is_some()
             || self.lsp.completion_popup.is_some()
             || self.lsp.hover_popup.is_some()
             || self
