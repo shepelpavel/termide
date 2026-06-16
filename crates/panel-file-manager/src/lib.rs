@@ -122,6 +122,15 @@ use termide_theme::Theme;
 use termide_ui::{clipboard, path_utils, IndexClickTracker, ScrollBar};
 use termide_vfs::{VfsEntry, VfsError, VfsFileType, VfsOperation, VfsResult};
 
+/// Which kind of search the inline bar drives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SearchBarKind {
+    /// File-name search by glob mask (Ctrl+F): single Find field.
+    Name,
+    /// In-file content search/replace (Ctrl+Shift+F): Mask/Find/Repl.
+    Content,
+}
+
 /// Where keyboard focus sits while the inline content bar is open.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BarFocus {
@@ -191,10 +200,12 @@ pub struct FileManager {
     show_hidden: bool,
     /// File/content search state (replaces TreeSearchModal results display)
     file_search: Option<file_search::FileSearchState>,
-    /// Inline content search/replace bar, docked at the top of the panel while
-    /// open. `None` when no content search is active. (File-name search still
-    /// uses the floating modal.)
-    content_bar: Option<FindBar>,
+    /// Inline search/replace bar, docked at the top of the panel while open.
+    /// `None` when no search is active. Serves both file-name (glob) and
+    /// content search — see [`bar_kind`](Self::bar_kind).
+    search_bar: Option<FindBar>,
+    /// Which kind of search the open bar drives.
+    bar_kind: SearchBarKind,
     /// Whether the inline bar's inputs hold focus (vs. the results list below).
     bar_focus: BarFocus,
     /// Hotkey table for configurable keyboard shortcuts
@@ -479,7 +490,8 @@ impl FileManager {
             is_stale: false,
             show_hidden: true,
             file_search: None,
-            content_bar: None,
+            search_bar: None,
+            bar_kind: SearchBarKind::Content,
             bar_focus: BarFocus::Input,
             hotkeys: HotkeyTable::default(),
             last_config_ptr: 0,
@@ -527,7 +539,8 @@ impl FileManager {
             is_stale: false,
             show_hidden: true,
             file_search: None,
-            content_bar: None,
+            search_bar: None,
+            bar_kind: SearchBarKind::Content,
             bar_focus: BarFocus::Input,
             hotkeys: HotkeyTable::default(),
             last_config_ptr: 0,
@@ -643,19 +656,46 @@ impl FileManager {
 
     // === Inline content search / replace bar (Ctrl+Shift+F) ===
 
-    /// Open (or re-focus) the inline content search bar. When `focus_replace`
-    /// is true the Replace field is focused, otherwise Find. The mask defaults
-    /// to `*` (all files) on first open.
+    /// Open (or re-focus) the inline content search/replace bar. When
+    /// `focus_replace` is true the Replace field is focused, otherwise Find.
     pub fn open_content_bar(&mut self, focus_replace: bool) {
-        if self.content_bar.is_none() {
-            let mut bar = FindBar::new(FindBarConfig {
-                fields: vec![FindField::Mask, FindField::Find, FindField::Replace],
-                action_buttons: vec![FindBarBtn::Prev, FindBarBtn::Next, FindBarBtn::ReplaceAll],
-            });
-            bar.set_text(FindField::Mask, "*".to_string());
-            self.content_bar = Some(bar);
+        self.open_search_bar(SearchBarKind::Content, focus_replace);
+    }
+
+    /// Open (or re-focus) the inline file-name search bar (single glob field).
+    pub fn open_name_bar(&mut self) {
+        self.open_search_bar(SearchBarKind::Name, false);
+    }
+
+    /// Open the inline bar for `kind`, rebuilding it if a different kind was
+    /// open. Content seeds the mask to `*` (all files) on first build.
+    fn open_search_bar(&mut self, kind: SearchBarKind, focus_replace: bool) {
+        if self.search_bar.is_none() || self.bar_kind != kind {
+            let bar = match kind {
+                SearchBarKind::Name => FindBar::new(FindBarConfig {
+                    fields: vec![FindField::Find],
+                    action_buttons: vec![FindBarBtn::Prev, FindBarBtn::Next],
+                    toggles: false,
+                }),
+                SearchBarKind::Content => {
+                    let mut bar = FindBar::new(FindBarConfig {
+                        fields: vec![FindField::Mask, FindField::Find, FindField::Replace],
+                        action_buttons: vec![
+                            FindBarBtn::Prev,
+                            FindBarBtn::Next,
+                            FindBarBtn::ReplaceAll,
+                        ],
+                        toggles: true,
+                    });
+                    bar.set_text(FindField::Mask, "*".to_string());
+                    bar
+                }
+            };
+            self.search_bar = Some(bar);
+            self.bar_kind = kind;
+            self.close_file_search();
         }
-        if let Some(bar) = self.content_bar.as_mut() {
+        if let Some(bar) = self.search_bar.as_mut() {
             bar.focus_field(if focus_replace {
                 FindField::Replace
             } else {
@@ -666,17 +706,17 @@ impl FileManager {
     }
 
     /// Close the inline bar and clear its search results.
-    fn close_content_bar(&mut self) -> Vec<PanelEvent> {
-        self.content_bar = None;
+    fn close_search_bar(&mut self) -> Vec<PanelEvent> {
+        self.search_bar = None;
         self.close_file_search();
         self.bar_focus = BarFocus::Input;
         vec![PanelEvent::NeedsRedraw]
     }
 
-    /// Re-run the content search from the bar's current fields (called on every
-    /// edit / toggle). An empty query clears the results.
-    fn rerun_content_search(&mut self) {
-        let Some(bar) = self.content_bar.as_ref() else {
+    /// Re-run the search from the bar's current fields (called on every edit /
+    /// toggle). An empty query clears the results. Dispatches on the bar kind.
+    fn rerun_search(&mut self) {
+        let Some(bar) = self.search_bar.as_ref() else {
             return;
         };
         let query = bar.find_text().to_string();
@@ -684,20 +724,25 @@ impl FileManager {
             self.file_search = None;
             return;
         }
-        let mask = bar.mask_text().to_string();
-        let mask = if mask.is_empty() { "*" } else { mask.as_str() };
-        let use_regex = bar.use_regex();
-        let case_sensitive = bar.case_sensitive();
-        let replace = bar.replace_text().to_string();
-        self.start_content_search(mask, &query, use_regex, case_sensitive);
-        self.set_content_replace((!replace.is_empty()).then_some(replace));
+        match self.bar_kind {
+            SearchBarKind::Name => self.start_file_search(&query),
+            SearchBarKind::Content => {
+                let mask = bar.mask_text().to_string();
+                let mask = if mask.is_empty() { "*" } else { mask.as_str() };
+                let use_regex = bar.use_regex();
+                let case_sensitive = bar.case_sensitive();
+                let replace = bar.replace_text().to_string();
+                self.start_content_search(mask, &query, use_regex, case_sensitive);
+                self.set_content_replace((!replace.is_empty()).then_some(replace));
+            }
+        }
     }
 
     /// Update only the replacement-preview text without restarting the search
     /// (editing the Replace field must not re-run the query or reset the
     /// cursor).
     fn sync_replace_preview(&mut self) {
-        let replace = match self.content_bar.as_ref() {
+        let replace = match self.search_bar.as_ref() {
             Some(bar) => bar.replace_text().to_string(),
             None => return,
         };
@@ -707,7 +752,7 @@ impl FileManager {
     /// Build the "replace all in N files?" confirmation event from the current
     /// results, or nothing if there are no matches.
     fn content_replace_all_event(&self) -> Vec<PanelEvent> {
-        let Some(bar) = self.content_bar.as_ref() else {
+        let Some(bar) = self.search_bar.as_ref() else {
             return vec![];
         };
         let replace = bar.replace_text().to_string();
@@ -722,7 +767,7 @@ impl FileManager {
 
     /// Route a key to the inline bar (called from `handle_key` while the bar is
     /// open). Returns the panel events produced.
-    fn handle_content_bar_key(&mut self, key: crossterm::event::KeyEvent) -> Vec<PanelEvent> {
+    fn handle_search_bar_key(&mut self, key: crossterm::event::KeyEvent) -> Vec<PanelEvent> {
         match self.bar_focus {
             BarFocus::Input => self.handle_bar_input_key(key),
             BarFocus::Results => self.handle_bar_results_key(key),
@@ -730,12 +775,12 @@ impl FileManager {
     }
 
     fn handle_bar_input_key(&mut self, key: crossterm::event::KeyEvent) -> Vec<PanelEvent> {
-        let Some(mut bar) = self.content_bar.take() else {
+        let Some(mut bar) = self.search_bar.take() else {
             return vec![];
         };
         let action = bar.handle_key(key);
         let field = bar.focused_field();
-        self.content_bar = Some(bar);
+        self.search_bar = Some(bar);
 
         match action {
             Some(FindBarAction::QueryChanged) => {
@@ -744,7 +789,7 @@ impl FileManager {
                 if field == Some(FindField::Replace) {
                     self.sync_replace_preview();
                 } else {
-                    self.rerun_content_search();
+                    self.rerun_search();
                 }
                 vec![PanelEvent::NeedsRedraw]
             }
@@ -767,7 +812,7 @@ impl FileManager {
                     vec![PanelEvent::NeedsRedraw]
                 }
             }
-            Some(FindBarAction::Close) => self.close_content_bar(),
+            Some(FindBarAction::Close) => self.close_search_bar(),
             // No per-match Replace button is configured for the file manager.
             Some(FindBarAction::Replace) | None => vec![PanelEvent::NeedsRedraw],
         }
@@ -785,7 +830,7 @@ impl FileManager {
                 vec![PanelEvent::NeedsRedraw]
             }
             KeyCode::Tab => {
-                if let Some(bar) = self.content_bar.as_mut() {
+                if let Some(bar) = self.search_bar.as_mut() {
                     bar.focus_field(FindField::Find);
                 }
                 self.bar_focus = BarFocus::Input;
@@ -793,13 +838,13 @@ impl FileManager {
             }
             KeyCode::Enter => {
                 let open = self.close_search_with_selection();
-                self.content_bar = None;
+                self.search_bar = None;
                 self.bar_focus = BarFocus::Input;
                 let mut out = vec![PanelEvent::NeedsRedraw];
                 out.extend(open);
                 out
             }
-            KeyCode::Esc => self.close_content_bar(),
+            KeyCode::Esc => self.close_search_bar(),
             _ => vec![],
         }
     }
@@ -1828,7 +1873,7 @@ impl Panel for FileManager {
         self.visible_height = content_height;
 
         // Inline content bar: dock it at the top, render results below.
-        if let Some(mut bar) = self.content_bar.take() {
+        if let Some(mut bar) = self.search_bar.take() {
             let bar_h = bar.height().min(area.height);
             let bar_area = Rect {
                 x: area.x,
@@ -1838,7 +1883,7 @@ impl Panel for FileManager {
             };
             let active = self.bar_focus == BarFocus::Input;
             bar.render(bar_area, buf, &self.cached_theme, active);
-            self.content_bar = Some(bar);
+            self.search_bar = Some(bar);
 
             let results_area = Rect {
                 x: area.x,
@@ -1902,9 +1947,9 @@ impl Panel for FileManager {
         let key = chord.raw;
         use keyboard::FmCommand;
 
-        // While the inline content bar is open it owns the keyboard.
-        if self.content_bar.is_some() {
-            return self.handle_content_bar_key(key);
+        // While the inline search bar is open it owns the keyboard.
+        if self.search_bar.is_some() {
+            return self.handle_search_bar_key(key);
         }
 
         // Raw key — HotkeyTable.matches() handles Cyrillic normalization internally.
@@ -1922,21 +1967,21 @@ impl Panel for FileManager {
         // A click on the inline content bar is owned by the bar. Areas were
         // recorded in absolute screen coordinates during render, so the click
         // coordinates compare directly.
-        if self.content_bar.is_some()
+        if self.search_bar.is_some()
             && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
         {
             let on_bar = self
-                .content_bar
+                .search_bar
                 .as_ref()
                 .is_some_and(|b| b.click_hits_bar(mouse.column, mouse.row));
             if on_bar {
-                let mut bar = self.content_bar.take().unwrap();
+                let mut bar = self.search_bar.take().unwrap();
                 let action = bar.handle_mouse(mouse);
-                self.content_bar = Some(bar);
+                self.search_bar = Some(bar);
                 self.bar_focus = BarFocus::Input;
                 return match action {
                     Some(FindBarAction::QueryChanged) => {
-                        self.rerun_content_search();
+                        self.rerun_search();
                         vec![PanelEvent::NeedsRedraw]
                     }
                     Some(FindBarAction::Next) => {
@@ -2216,7 +2261,7 @@ impl Panel for FileManager {
     fn captures_escape(&self) -> bool {
         // Capture Escape when the inline content bar is open (Esc closes the
         // bar), or there's a pending VFS operation or active selection.
-        self.content_bar.is_some()
+        self.search_bar.is_some()
             || self.vfs.has_pending_operation()
             || !self.selection.items.is_empty()
     }
@@ -2725,10 +2770,9 @@ impl FileManager {
 
             // Search
             FmCommand::Search => {
-                events.push(PanelEvent::ShowSearch {
-                    mode: termide_core::SearchMode::FileGlob,
-                    initial_query: None,
-                });
+                // File-name search is an inline bar docked in the panel.
+                self.open_name_bar();
+                events.push(PanelEvent::NeedsRedraw);
             }
             FmCommand::SearchContent => {
                 // Content search/replace is an inline bar docked in the panel,
@@ -2905,11 +2949,11 @@ mod tests {
         let (mut fm, _t) = create_file_manager_in_temp();
 
         fm.open_content_bar(false);
-        assert!(fm.content_bar.is_some());
+        assert!(fm.search_bar.is_some());
         assert_eq!(fm.bar_focus, BarFocus::Input);
 
-        fm.handle_content_bar_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-        assert!(fm.content_bar.is_none());
+        fm.handle_search_bar_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(fm.search_bar.is_none());
         assert!(fm.file_search.is_none());
     }
 
@@ -2919,14 +2963,14 @@ mod tests {
         let (mut fm, _t) = create_file_manager_in_temp();
 
         fm.open_content_bar(false); // focus lands on the Find field
-        fm.handle_content_bar_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+        fm.handle_search_bar_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
         assert!(
             fm.file_search.is_some(),
             "typing a query should start a content search"
         );
 
         // Enter on Find jumps focus into the results list for arrow navigation.
-        fm.handle_content_bar_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        fm.handle_search_bar_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         assert_eq!(fm.bar_focus, BarFocus::Results);
     }
 
@@ -2936,10 +2980,10 @@ mod tests {
         let (mut fm, _t) = create_file_manager_in_temp();
 
         fm.open_content_bar(false);
-        fm.handle_content_bar_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+        fm.handle_search_bar_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
         assert!(fm.file_search.is_some());
 
-        fm.handle_content_bar_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+        fm.handle_search_bar_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
         assert!(
             fm.file_search.is_none(),
             "emptying the query should clear the results"

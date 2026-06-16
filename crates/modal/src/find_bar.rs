@@ -97,9 +97,11 @@ pub enum FindBarAction {
 pub struct FindBarConfig {
     /// Fields to show, top to bottom.
     pub fields: Vec<FindField>,
-    /// Action buttons (Replace / ReplaceAll / Prev / Next), in order. The regex
-    /// and case toggles are appended automatically.
+    /// Action buttons (Replace / ReplaceAll / Prev / Next), in order.
     pub action_buttons: Vec<Btn>,
+    /// Append the regex / case toggles. Set false for searches where they have
+    /// no effect (e.g. glob file-name search).
+    pub toggles: bool,
 }
 
 /// A focusable control: either a field or a button-row entry (by index into
@@ -132,11 +134,14 @@ impl FindBar {
         let FindBarConfig {
             fields,
             action_buttons,
+            toggles,
         } = config;
         let inputs = fields.iter().map(|_| TextInputHandler::new()).collect();
         let mut buttons = action_buttons;
-        buttons.push(Btn::Regex);
-        buttons.push(Btn::Case);
+        if toggles {
+            buttons.push(Btn::Regex);
+            buttons.push(Btn::Case);
+        }
         Self {
             fields,
             inputs,
@@ -519,6 +524,7 @@ mod tests {
         FindBar::new(FindBarConfig {
             fields: vec![FindField::Mask, FindField::Find, FindField::Replace],
             action_buttons: vec![Btn::Prev, Btn::Next, Btn::ReplaceAll],
+            toggles: true,
         })
     }
 
@@ -528,6 +534,7 @@ mod tests {
         let find_only = FindBar::new(FindBarConfig {
             fields: vec![FindField::Find],
             action_buttons: vec![Btn::Prev, Btn::Next],
+            toggles: true,
         });
         assert_eq!(find_only.height(), 2);
     }
