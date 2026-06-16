@@ -5,6 +5,16 @@ All notable changes to TermIDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Regex & case toggles in search and replace.** The editor's search (`Ctrl+F`) and replace (`Ctrl+H`) and the file manager's content search now have `[.*] Regex` and `[Aa] Case` toggles (`Alt+R` / `Alt+C`, or click). With regex on, the replacement field supports `$1` / `${name}` capture groups.
+- **Project-wide find & replace** in the file manager's content search. Compose a replacement in the new `Repl:` field; the match under the cursor shows a `-old/+new` preview, and **Replace all** rewrites every matched file (after a confirmation), with regex capture groups when regex is on.
+
+### Changed
+- **Content-search results are grouped by file.** Each file is one header row with a match count, followed by one line per match (line number + matched line); the path is no longer repeated for every match.
+- **BREAKING (search behavior):** file-manager content search is now **literal by default** — the query is matched verbatim. Enable `[.*] Regex` for pattern search. Previously the query was always a regular expression.
+
 ## [0.24.1] - 2026-06-12
 
 ### Changed

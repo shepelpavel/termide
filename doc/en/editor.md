@@ -71,6 +71,8 @@ Press `Ctrl+F` to open an interactive search modal with live preview:
 - Live search preview as you type
 - Match counter display (e.g., "3 of 12")
 - Navigation buttons: ◄ Prev, Next ►
+- `[.*] Regex` (`Alt+R`) and `[Aa] Case` (`Alt+C`) toggles — click or use the
+  shortcuts. Regex is **off by default** (literal search).
 - `[X]` close button in modal title
 - Search query is preserved when modal is closed
 
@@ -102,6 +104,9 @@ Press `Ctrl+H` to open an interactive replace modal with two input fields:
 - Live search preview as you type in Find field
 - Match counter display (e.g., "3 of 12")
 - Four buttons: Replace, All, ◄ Prev, Next ►
+- `[.*] Regex` (`Alt+R`) and `[Aa] Case` (`Alt+C`) toggles. With regex on, the
+  Replace field supports `$1` / `${name}` capture groups; off (the default) it
+  is literal.
 - `[X]` close button in modal title
 - Both find and replace text are preserved when modal is closed
 
