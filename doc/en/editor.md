@@ -51,79 +51,64 @@ The text editor panel provides a functional editor for working with text files w
 
 ## Search and Replace
 
-### Interactive Search Modal (Ctrl+F)
+### Inline Search Bar (Ctrl+F)
 
-Press `Ctrl+F` to open an interactive search modal with live preview:
+Press `Ctrl+F` to open a find bar **docked at the bottom of the editor** (not a
+floating modal). The buffer stays visible above it and matches highlight as you
+type.
 
 | Shortcut           | Action                                     |
 |-------------------|--------------------------------------------|
-| `Ctrl+F`          | Open search modal                          |
+| `Ctrl+F`          | Open the find bar                          |
 | Type text         | Live search updates as you type            |
-| `Tab`             | Go to next match                           |
-| `Shift+Tab`       | Go to previous match                       |
-| `F3`              | Go to next match                           |
+| `F3` / `Enter`    | Go to next match                           |
 | `Shift+F3`        | Go to previous match                       |
-| `Enter`           | Close modal, keep current match selected   |
-| `Escape`          | Close search modal                         |
-| Mouse click       | Click navigation buttons or `[X]` to close |
+| `Tab` / arrows    | Move between the field and the buttons     |
+| `Escape`          | Close the bar                              |
+| Mouse click       | Click the buttons / toggles                |
 
 **Features:**
-- Live search preview as you type
-- Match counter display (e.g., "3 of 12")
+- Live search preview as you type; match counter (e.g., "3 of 12")
 - Navigation buttons: ◄ Prev, Next ►
 - `[.*] Regex` and `[Aa] Case` toggles — click them, or focus the buttons row
   and press `Enter` / `Space`. Regex is **off by default** (literal search).
-- `[X]` close button in modal title
-- Search query is preserved when modal is closed
+- The query is preserved when the bar is closed
 
-**Search behavior outside modal:**
-- `F3` / `Shift+F3` - Navigate through matches with modal closed
-- `Tab` / `Shift+Tab` - Navigate matches when search is active
-- Any navigation/editing key - Deactivates search mode
-- Reopening with `F3` restores the last search query
+**Search behavior with the bar closed:**
+- `F3` / `Shift+F3` step through matches in the buffer
+- Any navigation/editing key deactivates search mode
+- Reopening with `F3` restores the last query
 
-### Interactive Replace Modal (Ctrl+H)
+### Inline Replace Bar (Ctrl+H)
 
-Press `Ctrl+H` to open an interactive replace modal with two input fields:
+Press `Ctrl+H` to open the find bar with a Replace field added.
 
 | Shortcut           | Action                                     |
 |-------------------|--------------------------------------------|
-| `Ctrl+H`          | Open replace modal                         |
+| `Ctrl+H`          | Open the find/replace bar                  |
 | Type in Find      | Live search updates as you type            |
-| `Tab`             | Next match (in Find) or move to Replace field |
-| `Shift+Tab`       | Previous match (in Find) or move to Find field |
-| `Up` / `Down`     | Navigate between Find and Replace fields   |
+| `Tab` / arrows    | Move between Find, Replace and the buttons |
 | `F3`              | Go to next match                           |
 | `Shift+F3`        | Go to previous match                       |
-| `Enter`           | Replace current match and move to next     |
-| `Escape`          | Close replace modal                        |
-| Mouse click       | Click buttons (Replace, All, Prev, Next) or `[X]` |
+| `Enter` (in Find) | Go to next match                           |
+| `Enter` (in Repl) | Replace the current match                  |
+| `Escape`          | Close the bar                              |
+| Mouse click       | Click buttons (Replace, All, Prev, Next) or toggles |
 
 **Features:**
-- Two input fields: Find and Replace
-- Live search preview as you type in Find field
-- Match counter display (e.g., "3 of 12")
-- Four buttons: Replace, All, ◄ Prev, Next ►
-- `[.*] Regex` and `[Aa] Case` toggles (click, or focus the buttons row and
-  press `Enter` / `Space`). With regex on, the Replace field supports `$1` /
-  `${name}` capture groups; off (the default) it is literal.
-- `[X]` close button in modal title
-- Both find and replace text are preserved when modal is closed
+- Two input fields: Find and Replace; live preview + match counter
+- Buttons: Replace, All, ◄ Prev, Next ► (focus the buttons row with `Tab` /
+  arrows, then `Enter` / `Space`, or click):
+  - **Replace** — replace the current match and move to the next
+  - **All** — replace every match (the status bar reports the count)
+  - **◄ Prev** / **Next ►** — navigate matches
+- `[.*] Regex` and `[Aa] Case` toggles. With regex on, the Replace field
+  supports `$1` / `${name}` capture groups; off (the default) it is literal.
+- Both find and replace text are preserved when the bar is closed.
 
-**Buttons** (focus the buttons row with `Tab` / arrow keys, then `Enter` /
-`Space`, or click):
-- **Replace** - Replace current match and move to next
-- **All** - Replace all matches, show count, and close modal
-- **◄ Prev** - Navigate to previous match
-- **Next ►** - Navigate to next match
-
-Outside the modal, the configurable `replace_current` and `replace_all`
-editor keybindings act on the active search directly (see
+The configurable `replace_current` and `replace_all` editor keybindings still
+act on the active search directly, with or without the bar (see
 [Keybindings](keybindings.md)).
-
-**Replace All Feedback:**
-- After using "Replace All", the status bar shows how many replacements were made
-- Example: "Replaced 5 occurrences"
 
 ## Clipboard
 
