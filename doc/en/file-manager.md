@@ -71,8 +71,9 @@ Opens a modal for quick file search by name using glob patterns:
 ### Content Search & Replace (Ctrl+Shift+F)
 
 Opens a modal for searching text within files:
-- Matching is **literal by default**; toggle `[.*] Regex` (`Alt+R`) for regular
-  expressions and `[Aa] Case` (`Alt+C`) for case sensitivity (or click them).
+- Matching is **literal by default**; toggle `[.*] Regex` for regular
+  expressions and `[Aa] Case` for case sensitivity by clicking them, or by
+  focusing the buttons row and pressing `Enter` / `Space`.
 - Searches only in text files (binary files are skipped); large files are
   skipped (configurable limit in settings).
 - Results are **grouped by file**: a header row with the match count, then one

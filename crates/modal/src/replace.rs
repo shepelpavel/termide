@@ -48,6 +48,18 @@ enum FocusArea {
     Buttons,
 }
 
+/// A focusable control on the buttons row (←/→ to move, Enter/Space to
+/// activate, or click).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Btn {
+    Replace,
+    ReplaceAll,
+    Prev,
+    Next,
+    Regex,
+    Case,
+}
+
 /// Interactive replace modal with live preview and navigation
 #[derive(Debug)]
 pub struct ReplaceModal {
@@ -66,8 +78,6 @@ pub struct ReplaceModal {
     last_close_button_area: Option<Rect>,
     last_find_input_area: Option<Rect>,
     last_replace_input_area: Option<Rect>,
-    /// Clickable areas for the regex / case toggles (area, is_regex)
-    last_toggle_areas: Vec<(Rect, bool)>,
 }
 
 impl ReplaceModal {
@@ -85,7 +95,6 @@ impl ReplaceModal {
             last_close_button_area: None,
             last_find_input_area: None,
             last_replace_input_area: None,
-            last_toggle_areas: Vec::new(),
         }
     }
 
@@ -146,6 +155,40 @@ impl ReplaceModal {
             )));
         }
         Ok(None)
+    }
+
+    /// Ordered list of focusable controls on the buttons row.
+    fn buttons(&self) -> [Btn; 6] {
+        [
+            Btn::Replace,
+            Btn::ReplaceAll,
+            Btn::Prev,
+            Btn::Next,
+            Btn::Regex,
+            Btn::Case,
+        ]
+    }
+
+    /// Activate a control: confirm an action button, or flip a toggle.
+    fn activate_button(&mut self, btn: Btn) -> Result<Option<ModalResult<ReplaceModalResult>>> {
+        let has_input = !self.find_input_handler.is_empty();
+        match btn {
+            Btn::Replace if has_input => Ok(Some(ModalResult::Confirmed(
+                self.make_result(ReplaceAction::Replace),
+            ))),
+            Btn::ReplaceAll if has_input => Ok(Some(ModalResult::Confirmed(
+                self.make_result(ReplaceAction::ReplaceAll),
+            ))),
+            Btn::Prev if has_input => Ok(Some(ModalResult::Confirmed(
+                self.make_result(ReplaceAction::Previous),
+            ))),
+            Btn::Next if has_input => Ok(Some(ModalResult::Confirmed(
+                self.make_result(ReplaceAction::Next),
+            ))),
+            Btn::Regex => self.toggle_result(true),
+            Btn::Case => self.toggle_result(false),
+            _ => Ok(None),
+        }
     }
 }
 
@@ -230,76 +273,70 @@ impl Modal for ReplaceModal {
             );
         }
 
-        // Buttons on the left
-        let buttons = vec![("Replace", 0), ("All", 1), ("◄ Prev", 2), ("Next ►", 3)];
-
+        // All controls (action buttons + regex/case toggles) live in one
+        // focus row. Navigate with ←/→, activate with Enter/Space, or click.
         let buttons_focused = matches!(self.focus, FocusArea::Buttons);
         let mut x_offset = buttons_area.x;
         self.last_button_areas.clear();
-
-        for (label, idx) in buttons {
-            let is_selected = buttons_focused && self.selected_button == idx;
-            let button_style = if is_selected {
-                Style::default()
-                    .fg(theme.fg)
-                    .bg(theme.bg)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(theme.fg)
-            };
-
-            let button_text = if is_selected {
-                format!("[ {} ]", label)
-            } else {
-                format!("  {}  ", label)
-            };
-
-            let button_width = button_text.len() as u16;
-
-            // Save button area for mouse handling
-            self.last_button_areas.push((
-                Rect {
-                    x: x_offset,
-                    y: buttons_area.y,
-                    width: button_width,
-                    height: 1,
-                },
-                idx,
-            ));
-
-            buf.set_string(x_offset, buttons_area.y, &button_text, button_style);
-            x_offset += button_width + 1;
-        }
-
-        // Regex / case toggles (Alt+R / Alt+C, or click)
-        self.last_toggle_areas.clear();
         let counter_left = buttons_area.x + buttons_area.width.saturating_sub(match_text_width);
-        for (label, on, is_regex) in [
-            (".*", self.use_regex, true),
-            ("Aa", self.case_sensitive, false),
-        ] {
-            let text = format!("[{}]", label);
-            let w = text.len() as u16;
+
+        for (idx, btn) in self.buttons().into_iter().enumerate() {
+            let focused = buttons_focused && self.selected_button == idx;
+            let (text, style) = match btn {
+                Btn::Replace | Btn::ReplaceAll | Btn::Prev | Btn::Next => {
+                    let label = match btn {
+                        Btn::Replace => "Replace",
+                        Btn::ReplaceAll => "All",
+                        Btn::Prev => "◄ Prev",
+                        Btn::Next => "Next ►",
+                        _ => unreachable!(),
+                    };
+                    let text = if focused {
+                        format!("[ {} ]", label)
+                    } else {
+                        format!("  {}  ", label)
+                    };
+                    let mut style = Style::default().fg(theme.fg);
+                    if focused {
+                        style = style.add_modifier(Modifier::BOLD | Modifier::REVERSED);
+                    }
+                    (text, style)
+                }
+                Btn::Regex | Btn::Case => {
+                    let (label, on) = match btn {
+                        Btn::Regex => (".*", self.use_regex),
+                        Btn::Case => ("Aa", self.case_sensitive),
+                        _ => unreachable!(),
+                    };
+                    let text = format!("[{}]", label);
+                    let mut style = if on {
+                        Style::default()
+                            .fg(theme.accented_fg)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(theme.disabled)
+                    };
+                    if focused {
+                        style = style.add_modifier(Modifier::REVERSED);
+                    }
+                    (text, style)
+                }
+            };
+
+            let w = text.chars().count() as u16;
             if x_offset + w >= counter_left {
                 break;
             }
-            let style = if on {
-                Style::default()
-                    .fg(theme.accented_fg)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(theme.disabled)
-            };
-            buf.set_string(x_offset, buttons_area.y, &text, style);
-            self.last_toggle_areas.push((
+            self.last_button_areas.push((
                 Rect {
                     x: x_offset,
                     y: buttons_area.y,
                     width: w,
                     height: 1,
                 },
-                is_regex,
+                idx,
             ));
+            buf.set_string(x_offset, buttons_area.y, &text, style);
             x_offset += w + 1;
         }
     }
@@ -309,14 +346,6 @@ impl Modal for ReplaceModal {
         chord: termide_core::KeyChord,
     ) -> Result<Option<ModalResult<Self::Result>>> {
         let key = chord.raw;
-        // Global toggles (any focus): Alt+R regex, Alt+C case.
-        if key.modifiers.contains(KeyModifiers::ALT) {
-            match key.code {
-                KeyCode::Char('r') | KeyCode::Char('R') => return self.toggle_result(true),
-                KeyCode::Char('c') | KeyCode::Char('C') => return self.toggle_result(false),
-                _ => {}
-            }
-        }
         match self.focus {
             FocusArea::FindInput => self.handle_find_input_key(key),
             FocusArea::ReplaceInput => self.handle_replace_input_key(key),
@@ -346,38 +375,17 @@ impl Modal for ReplaceModal {
                     }
                 }
 
-                // Check regex / case toggles
-                for (area, is_regex) in self.last_toggle_areas.clone() {
-                    if mouse_pos.0 >= area.x
+                // Check if clicked on any control (button or toggle)
+                let clicked = self.last_button_areas.iter().find_map(|(area, idx)| {
+                    (mouse_pos.0 >= area.x
                         && mouse_pos.0 < area.x + area.width
-                        && mouse_pos.1 == area.y
-                    {
-                        return self.toggle_result(is_regex);
-                    }
-                }
-
-                // Check if clicked on any button
-                for (area, idx) in &self.last_button_areas {
-                    if mouse_pos.0 >= area.x
-                        && mouse_pos.0 < area.x + area.width
-                        && mouse_pos.1 == area.y
-                    {
-                        // Trigger corresponding action
-                        if !self.find_input_handler.is_empty() {
-                            let action = match idx {
-                                0 => ReplaceAction::Replace,
-                                1 => ReplaceAction::ReplaceAll,
-                                2 => ReplaceAction::Previous,
-                                _ => ReplaceAction::Next,
-                            };
-                            return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
-                                find_query: self.find_input_handler.text().to_string(),
-                                replace_with: self.replace_input_handler.text().to_string(),
-                                use_regex: self.use_regex,
-                                case_sensitive: self.case_sensitive,
-                                action,
-                            })));
-                        }
+                        && mouse_pos.1 == area.y)
+                        .then_some(*idx)
+                });
+                if let Some(idx) = clicked {
+                    if let Some(&btn) = self.buttons().get(idx) {
+                        self.selected_button = idx;
+                        return self.activate_button(btn);
                     }
                 }
 
@@ -522,33 +530,6 @@ impl ReplaceModal {
                         use_regex: self.use_regex,
                         case_sensitive: self.case_sensitive,
                         action: ReplaceAction::Previous,
-                    })));
-                }
-            }
-            // Ctrl+R - replace current
-            (KeyCode::Char('r'), KeyModifiers::CONTROL) => {
-                if !self.find_input_handler.is_empty() {
-                    return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
-                        find_query: self.find_input_handler.text().to_string(),
-                        replace_with: self.replace_input_handler.text().to_string(),
-                        use_regex: self.use_regex,
-                        case_sensitive: self.case_sensitive,
-                        action: ReplaceAction::Replace,
-                    })));
-                }
-            }
-            // Ctrl+Alt+R - replace all
-            (KeyCode::Char('r'), modifiers)
-                if modifiers.contains(KeyModifiers::CONTROL)
-                    && modifiers.contains(KeyModifiers::ALT) =>
-            {
-                if !self.find_input_handler.is_empty() {
-                    return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
-                        find_query: self.find_input_handler.text().to_string(),
-                        replace_with: self.replace_input_handler.text().to_string(),
-                        use_regex: self.use_regex,
-                        case_sensitive: self.case_sensitive,
-                        action: ReplaceAction::ReplaceAll,
                     })));
                 }
             }
@@ -763,33 +744,6 @@ impl ReplaceModal {
                     })));
                 }
             }
-            // Ctrl+R - replace current
-            (KeyCode::Char('r'), KeyModifiers::CONTROL) => {
-                if !self.find_input_handler.is_empty() {
-                    return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
-                        find_query: self.find_input_handler.text().to_string(),
-                        replace_with: self.replace_input_handler.text().to_string(),
-                        use_regex: self.use_regex,
-                        case_sensitive: self.case_sensitive,
-                        action: ReplaceAction::Replace,
-                    })));
-                }
-            }
-            // Ctrl+Alt+R - replace all
-            (KeyCode::Char('r'), modifiers)
-                if modifiers.contains(KeyModifiers::CONTROL)
-                    && modifiers.contains(KeyModifiers::ALT) =>
-            {
-                if !self.find_input_handler.is_empty() {
-                    return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
-                        find_query: self.find_input_handler.text().to_string(),
-                        replace_with: self.replace_input_handler.text().to_string(),
-                        use_regex: self.use_regex,
-                        case_sensitive: self.case_sensitive,
-                        action: ReplaceAction::ReplaceAll,
-                    })));
-                }
-            }
             // Backspace - delete character
             (KeyCode::Backspace, KeyModifiers::NONE) => {
                 self.replace_input_handler.backspace();
@@ -883,31 +837,20 @@ impl ReplaceModal {
         &mut self,
         key: KeyEvent,
     ) -> Result<Option<ModalResult<ReplaceModalResult>>> {
+        let len = self.buttons().len();
         match key.code {
             KeyCode::Left => {
-                self.selected_button = self.selected_button.saturating_sub(1);
+                self.selected_button = (self.selected_button + len - 1) % len;
             }
             KeyCode::Right => {
-                self.selected_button = (self.selected_button + 1).min(3);
+                self.selected_button = (self.selected_button + 1) % len;
             }
             KeyCode::Up => {
                 self.focus = FocusArea::ReplaceInput;
             }
-            KeyCode::Enter => {
-                if !self.find_input_handler.is_empty() {
-                    let action = match self.selected_button {
-                        0 => ReplaceAction::Replace,
-                        1 => ReplaceAction::ReplaceAll,
-                        2 => ReplaceAction::Previous,
-                        _ => ReplaceAction::Next,
-                    };
-                    return Ok(Some(ModalResult::Confirmed(ReplaceModalResult {
-                        find_query: self.find_input_handler.text().to_string(),
-                        replace_with: self.replace_input_handler.text().to_string(),
-                        use_regex: self.use_regex,
-                        case_sensitive: self.case_sensitive,
-                        action,
-                    })));
+            KeyCode::Enter | KeyCode::Char(' ') => {
+                if let Some(&btn) = self.buttons().get(self.selected_button) {
+                    return self.activate_button(btn);
                 }
             }
             KeyCode::Esc => {

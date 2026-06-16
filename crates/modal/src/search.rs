@@ -63,6 +63,17 @@ enum FocusArea {
     Buttons,
 }
 
+/// A focusable control on the buttons row (navigated with ←/→, activated with
+/// Enter/Space, or clicked).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Btn {
+    Prev,
+    Next,
+    ReplaceAll,
+    Regex,
+    Case,
+}
+
 /// Interactive search modal with live preview and navigation
 #[derive(Debug)]
 pub struct SearchModal {
@@ -75,20 +86,17 @@ pub struct SearchModal {
     selected_button: usize, // 0 = Previous, 1 = Next
     /// Match count display (e.g. "3 of 12")
     match_info: Option<(usize, usize)>, // (current, total)
-    /// Treat the query as a regular expression (toggle with Alt+R).
+    /// Treat the query as a regular expression (the `[.*]` toggle).
     use_regex: bool,
-    /// Case-sensitive matching (toggle with Alt+C).
+    /// Case-sensitive matching (the `[Aa]` toggle).
     case_sensitive: bool,
-    /// Last rendered areas for mouse handling
-    last_button_areas: Vec<(Rect, usize)>, // (area, button_idx)
+    /// Last rendered areas of the buttons-row controls; the index points into
+    /// `buttons()` so clicks dispatch the same control as keyboard focus.
+    last_button_areas: Vec<(Rect, usize)>,
     last_close_button_area: Option<Rect>,
     last_input_area: Option<Rect>,
     last_content_input_area: Option<Rect>,
     last_replace_input_area: Option<Rect>,
-    /// Clickable area for the "Replace all" button (Content mode).
-    last_replace_all_area: Option<Rect>,
-    /// Clickable areas for the regex / case toggles (area, is_regex)
-    last_toggle_areas: Vec<(Rect, bool)>,
 }
 
 impl SearchModal {
@@ -109,8 +117,6 @@ impl SearchModal {
             last_input_area: None,
             last_content_input_area: None,
             last_replace_input_area: None,
-            last_replace_all_area: None,
-            last_toggle_areas: Vec::new(),
         }
     }
 
@@ -210,6 +216,36 @@ impl SearchModal {
             )));
         }
         Ok(None)
+    }
+
+    /// The focusable controls on the buttons row, left to right. Order must
+    /// match the render order so focus highlight and clicks line up.
+    fn buttons(&self) -> Vec<Btn> {
+        let mut items = vec![Btn::Prev, Btn::Next];
+        if self.mode == SearchMode::Content {
+            items.push(Btn::ReplaceAll);
+        }
+        items.push(Btn::Regex);
+        items.push(Btn::Case);
+        items
+    }
+
+    /// Activate a button (from Enter/Space on the focused control, or a click).
+    fn activate_button(&mut self, btn: Btn) -> Result<Option<ModalResult<SearchModalResult>>> {
+        match btn {
+            Btn::Prev if self.has_input() => Ok(Some(ModalResult::Confirmed(
+                self.make_result(SearchAction::Previous),
+            ))),
+            Btn::Next if self.has_input() => Ok(Some(ModalResult::Confirmed(
+                self.make_result(SearchAction::Next),
+            ))),
+            Btn::ReplaceAll if self.has_input() => Ok(Some(ModalResult::Confirmed(
+                self.make_result(SearchAction::ReplaceAll),
+            ))),
+            Btn::Regex => self.toggle_result(true),
+            Btn::Case => self.toggle_result(false),
+            _ => Ok(None),
+        }
     }
 
     /// Check if can produce a result (has non-empty input)
@@ -411,14 +447,6 @@ impl Modal for SearchModal {
         chord: termide_core::KeyChord,
     ) -> Result<Option<ModalResult<Self::Result>>> {
         let key = chord.raw;
-        // Global toggles (work regardless of focus): Alt+R regex, Alt+C case.
-        if key.modifiers.contains(KeyModifiers::ALT) {
-            match key.code {
-                KeyCode::Char('r') | KeyCode::Char('R') => return self.toggle_result(true),
-                KeyCode::Char('c') | KeyCode::Char('C') => return self.toggle_result(false),
-                _ => {}
-            }
-        }
         match self.focus {
             FocusArea::Input | FocusArea::ContentInput | FocusArea::ReplaceInput => {
                 self.handle_input_focus_key(key)
@@ -448,29 +476,6 @@ impl Modal for SearchModal {
                     }
                 }
 
-                // Check regex / case toggles
-                for (area, is_regex) in self.last_toggle_areas.clone() {
-                    if mouse_pos.0 >= area.x
-                        && mouse_pos.0 < area.x + area.width
-                        && mouse_pos.1 == area.y
-                    {
-                        return self.toggle_result(is_regex);
-                    }
-                }
-
-                // Check the "Replace all" button (Content mode)
-                if let Some(area) = self.last_replace_all_area {
-                    if mouse_pos.0 >= area.x
-                        && mouse_pos.0 < area.x + area.width
-                        && mouse_pos.1 == area.y
-                        && self.has_input()
-                    {
-                        return Ok(Some(ModalResult::Confirmed(
-                            self.make_result(SearchAction::ReplaceAll),
-                        )));
-                    }
-                }
-
                 // Check the replace input field — focus it on click
                 if let Some(area) = self.last_replace_input_area {
                     if mouse_pos.1 == area.y
@@ -490,18 +495,16 @@ impl Modal for SearchModal {
                     }
                 }
 
-                // Check if clicked on any button
-                for (area, idx) in &self.last_button_areas {
-                    if mouse_pos.0 >= area.x
+                // Check if clicked on any button / toggle
+                let clicked = self.last_button_areas.iter().find_map(|(area, idx)| {
+                    (mouse_pos.0 >= area.x
                         && mouse_pos.0 < area.x + area.width
-                        && mouse_pos.1 == area.y
-                        && self.has_input()
-                    {
-                        let action = match idx {
-                            0 => SearchAction::Previous,
-                            _ => SearchAction::Next,
-                        };
-                        return Ok(Some(ModalResult::Confirmed(self.make_result(action))));
+                        && mouse_pos.1 == area.y)
+                        .then_some(*idx)
+                });
+                if let Some(idx) = clicked {
+                    if let Some(&btn) = self.buttons().get(idx) {
+                        return self.activate_button(btn);
                     }
                 }
 
@@ -596,7 +599,7 @@ impl Modal for SearchModal {
 impl SearchModal {
     /// Render buttons and match counter line
     fn render_buttons_and_counter(&mut self, buttons_area: Rect, buf: &mut Buffer, theme: &Theme) {
-        // Match counter on the right
+        // Match counter on the right.
         let match_text = if let Some((current, total)) = self.match_info {
             if total == 0 {
                 "No matches".to_string()
@@ -606,104 +609,81 @@ impl SearchModal {
         } else {
             String::new()
         };
-
         let right_width = match_text.len() as u16;
         if right_width > 0 && buttons_area.width > right_width {
             let right_x = buttons_area.x + buttons_area.width - right_width;
-            let style = Style::default().fg(theme.fg);
-            buf.set_string(right_x, buttons_area.y, &match_text, style);
-        }
-
-        // Buttons on the left
-        let buttons = vec![("◄ Prev", 0), ("Next ►", 1)];
-        let buttons_focused = matches!(self.focus, FocusArea::Buttons);
-        let mut x_offset = buttons_area.x;
-        self.last_button_areas.clear();
-
-        for (label, idx) in buttons {
-            let is_selected = buttons_focused && self.selected_button == idx;
-            let button_style = if is_selected {
-                Style::default()
-                    .fg(theme.fg)
-                    .bg(theme.bg)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(theme.fg)
-            };
-
-            let button_text = if is_selected {
-                format!("[ {} ]", label)
-            } else {
-                format!("  {}  ", label)
-            };
-
-            let button_width = button_text.len() as u16;
-
-            self.last_button_areas.push((
-                Rect {
-                    x: x_offset,
-                    y: buttons_area.y,
-                    width: button_width,
-                    height: 1,
-                },
-                idx,
-            ));
-
-            buf.set_string(x_offset, buttons_area.y, &button_text, button_style);
-            x_offset += button_width + 2;
-        }
-
-        // Content mode: a click-only "Replace all" button (Enter in the
-        // replace field does the same).
-        self.last_replace_all_area = None;
-        if self.mode == SearchMode::Content {
-            let text = "[ Replace all ]";
-            let w = text.len() as u16;
             buf.set_string(
-                x_offset,
+                right_x,
                 buttons_area.y,
-                text,
-                Style::default().fg(theme.warning),
+                &match_text,
+                Style::default().fg(theme.fg),
             );
-            self.last_replace_all_area = Some(Rect {
-                x: x_offset,
-                y: buttons_area.y,
-                width: w,
-                height: 1,
-            });
-            x_offset += w + 2;
         }
-
-        // Regex / case toggles (Alt+R / Alt+C, or click)
-        self.last_toggle_areas.clear();
         let counter_left = buttons_area.x + buttons_area.width.saturating_sub(right_width);
-        for (label, on, is_regex) in [
-            (".*", self.use_regex, true),
-            ("Aa", self.case_sensitive, false),
-        ] {
-            let text = format!("[{}]", label);
-            let w = text.len() as u16;
-            if x_offset + w >= counter_left {
+
+        let buttons_focused = matches!(self.focus, FocusArea::Buttons);
+        self.last_button_areas.clear();
+        let mut x = buttons_area.x;
+
+        for (idx, item) in self.buttons().into_iter().enumerate() {
+            let focused = buttons_focused && self.selected_button == idx;
+            let (text, style): (String, Style) = match item {
+                Btn::Prev | Btn::Next | Btn::ReplaceAll => {
+                    let label = match item {
+                        Btn::Prev => "\u{25c4} Prev",
+                        Btn::Next => "Next \u{25ba}",
+                        _ => "Replace all",
+                    };
+                    let text = if focused {
+                        format!("[ {} ]", label)
+                    } else {
+                        format!("  {}  ", label)
+                    };
+                    let mut st = if item == Btn::ReplaceAll {
+                        Style::default().fg(theme.warning)
+                    } else {
+                        Style::default().fg(theme.fg)
+                    };
+                    if focused {
+                        st = st.add_modifier(Modifier::BOLD | Modifier::REVERSED);
+                    }
+                    (text, st)
+                }
+                Btn::Regex | Btn::Case => {
+                    let (label, on) = if item == Btn::Regex {
+                        (".*", self.use_regex)
+                    } else {
+                        ("Aa", self.case_sensitive)
+                    };
+                    let mut st = if on {
+                        Style::default()
+                            .fg(theme.accented_fg)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(theme.disabled)
+                    };
+                    if focused {
+                        st = st.add_modifier(Modifier::REVERSED);
+                    }
+                    (format!("[{}]", label), st)
+                }
+            };
+
+            let w = text.chars().count() as u16;
+            if x + w >= counter_left {
                 break;
             }
-            let style = if on {
-                Style::default()
-                    .fg(theme.accented_fg)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(theme.disabled)
-            };
-            buf.set_string(x_offset, buttons_area.y, &text, style);
-            self.last_toggle_areas.push((
+            buf.set_string(x, buttons_area.y, &text, style);
+            self.last_button_areas.push((
                 Rect {
-                    x: x_offset,
+                    x,
                     y: buttons_area.y,
                     width: w,
                     height: 1,
                 },
-                is_regex,
+                idx,
             ));
-            x_offset += w + 1;
+            x += w + 1;
         }
     }
 
@@ -941,19 +921,17 @@ impl SearchModal {
     ) -> Result<Option<ModalResult<SearchModalResult>>> {
         match (key.code, key.modifiers) {
             (KeyCode::Left, KeyModifiers::NONE) => {
-                self.selected_button = 0;
+                let len = self.buttons().len();
+                self.selected_button = (self.selected_button + len - 1) % len;
             }
             (KeyCode::Right, KeyModifiers::NONE) => {
-                self.selected_button = 1;
+                let len = self.buttons().len();
+                self.selected_button = (self.selected_button + 1) % len;
             }
-            (KeyCode::Enter, KeyModifiers::NONE) => {
-                if self.has_input() {
-                    let action = if self.selected_button == 0 {
-                        SearchAction::Previous
-                    } else {
-                        SearchAction::Next
-                    };
-                    return Ok(Some(ModalResult::Confirmed(self.make_result(action))));
+            // Activate the focused control (button or toggle).
+            (KeyCode::Enter, KeyModifiers::NONE) | (KeyCode::Char(' '), KeyModifiers::NONE) => {
+                if let Some(&btn) = self.buttons().get(self.selected_button) {
+                    return self.activate_button(btn);
                 }
             }
             (KeyCode::Tab, KeyModifiers::NONE) => {

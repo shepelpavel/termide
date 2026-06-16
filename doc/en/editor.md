@@ -71,8 +71,8 @@ Press `Ctrl+F` to open an interactive search modal with live preview:
 - Live search preview as you type
 - Match counter display (e.g., "3 of 12")
 - Navigation buttons: ◄ Prev, Next ►
-- `[.*] Regex` (`Alt+R`) and `[Aa] Case` (`Alt+C`) toggles — click or use the
-  shortcuts. Regex is **off by default** (literal search).
+- `[.*] Regex` and `[Aa] Case` toggles — click them, or focus the buttons row
+  and press `Enter` / `Space`. Regex is **off by default** (literal search).
 - `[X]` close button in modal title
 - Search query is preserved when modal is closed
 
@@ -104,17 +104,22 @@ Press `Ctrl+H` to open an interactive replace modal with two input fields:
 - Live search preview as you type in Find field
 - Match counter display (e.g., "3 of 12")
 - Four buttons: Replace, All, ◄ Prev, Next ►
-- `[.*] Regex` (`Alt+R`) and `[Aa] Case` (`Alt+C`) toggles. With regex on, the
-  Replace field supports `$1` / `${name}` capture groups; off (the default) it
-  is literal.
+- `[.*] Regex` and `[Aa] Case` toggles (click, or focus the buttons row and
+  press `Enter` / `Space`). With regex on, the Replace field supports `$1` /
+  `${name}` capture groups; off (the default) it is literal.
 - `[X]` close button in modal title
 - Both find and replace text are preserved when modal is closed
 
-**Replace button actions:**
-- **Replace** (`Ctrl+R`) - Replace current match and move to next
-- **All** (`Ctrl+Alt+R`) - Replace all matches, show count, and close modal
+**Buttons** (focus the buttons row with `Tab` / arrow keys, then `Enter` /
+`Space`, or click):
+- **Replace** - Replace current match and move to next
+- **All** - Replace all matches, show count, and close modal
 - **◄ Prev** - Navigate to previous match
 - **Next ►** - Navigate to next match
+
+Outside the modal, the configurable `replace_current` and `replace_all`
+editor keybindings act on the active search directly (see
+[Keybindings](keybindings.md)).
 
 **Replace All Feedback:**
 - After using "Replace All", the status bar shows how many replacements were made
