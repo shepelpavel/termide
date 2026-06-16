@@ -71,7 +71,6 @@ impl App {
                 // Check modal type before taking state references
                 let is_rename_pattern = matches!(modal, ActiveModal::RenamePattern(_));
                 let is_search = matches!(modal, ActiveModal::Search(_));
-                let is_replace = matches!(modal, ActiveModal::Replace(_));
                 let is_progress = matches!(modal, ActiveModal::Progress(_));
 
                 // Handle Progress modal pause/cancel/resume
@@ -120,7 +119,7 @@ impl App {
 
                 // Handle search/replace modals with shared helper
                 if self
-                    .handle_search_replace_modal(is_search, is_replace, &result)
+                    .handle_search_replace_modal(is_search, &result)
                     .is_some()
                 {
                     return Ok(());
@@ -207,7 +206,6 @@ impl App {
             if let Some(result) = modal_result {
                 // Check modal type before taking state references
                 let is_search = matches!(modal, ActiveModal::Search(_));
-                let is_replace = matches!(modal, ActiveModal::Replace(_));
                 let is_progress = matches!(modal, ActiveModal::Progress(_));
 
                 // Handle Progress modal pause/cancel/resume
@@ -219,7 +217,7 @@ impl App {
 
                 // Handle search/replace modals with shared helper
                 if self
-                    .handle_search_replace_modal(is_search, is_replace, &result)
+                    .handle_search_replace_modal(is_search, &result)
                     .is_some()
                 {
                     return Ok(());
@@ -350,11 +348,6 @@ impl App {
                 }
                 PendingAction::Search => {
                     self.handle_search(value)?;
-                }
-                PendingAction::Replace => {
-                    // ReplaceModal is handled entirely through handle_replace_action
-                    // called from handle_modal_key/handle_modal_mouse (lines 183-233, 383-434).
-                    // No additional processing needed here, similar to how SearchModal works.
                 }
                 PendingAction::ChangeEditorTabSize => {
                     if let Some(text) = value.downcast_ref::<String>() {

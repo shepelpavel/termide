@@ -189,10 +189,6 @@ impl App {
                 self.event_show_search(mode, initial_query);
             }
 
-            PanelEvent::ShowReplace { find, replace } => {
-                self.event_show_replace(find, replace);
-            }
-
             PanelEvent::ShowConflict {
                 source,
                 destination,
@@ -818,20 +814,6 @@ impl App {
             .set_pending_action(PendingAction::Search, ActiveModal::Search(Box::new(modal)));
     }
 
-    /// Handle ShowReplace event - show replace modal
-    fn event_show_replace(&mut self, _find: Option<String>, _replace: Option<String>) {
-        use crate::state::{ActiveModal, PendingAction};
-        use termide_modal::ReplaceModal;
-
-        // Note: ReplaceModal doesn't support initial values yet
-        let modal = ReplaceModal::new();
-
-        self.state.set_pending_action(
-            PendingAction::Replace,
-            ActiveModal::Replace(Box::new(modal)),
-        );
-    }
-
     /// Handle ShowInput event - show input modal
     pub(super) fn event_show_input(
         &mut self,
@@ -857,7 +839,6 @@ impl App {
                 }
             }
             termide_core::InputAction::SearchInFile => PendingAction::Search,
-            termide_core::InputAction::SearchReplace => PendingAction::Replace,
             termide_core::InputAction::GotoLine => {
                 // GotoLine is handled directly, not through modal
                 return;

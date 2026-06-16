@@ -819,26 +819,6 @@ impl App {
     // ===== Panel downcast helpers =====
     // These helper methods reduce boilerplate for accessing specific panel types
 
-    /// Get mutable reference to editor for search operations.
-    /// Also checks JournalPanel's inner editor.
-    fn active_searchable_editor_mut(&mut self) -> Option<&mut termide_panel_editor::Editor> {
-        let panel = self.layout_manager.active_panel_mut()?;
-        let is_editor = panel.as_any().is::<termide_panel_editor::Editor>();
-        let is_journal = panel.as_any().is::<termide_panel_misc::JournalPanel>();
-        if is_editor {
-            panel
-                .as_any_mut()
-                .downcast_mut::<termide_panel_editor::Editor>()
-        } else if is_journal {
-            panel
-                .as_any_mut()
-                .downcast_mut::<termide_panel_misc::JournalPanel>()
-                .map(|j| j.editor_mut())
-        } else {
-            None
-        }
-    }
-
     /// Get mutable reference to any Searchable panel (Editor, Journal, Terminal).
     fn active_searchable_mut(&mut self) -> Option<&mut dyn termide_core::Searchable> {
         let panel = self.layout_manager.active_panel_mut()?;

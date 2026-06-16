@@ -39,7 +39,6 @@ pub mod info_action;
 pub mod input;
 pub mod progress;
 pub mod rename_pattern;
-pub mod replace;
 pub mod save_as;
 pub mod search;
 pub mod select;
@@ -70,7 +69,6 @@ pub use info_action::{
 pub use input::InputModal;
 pub use progress::ProgressModal;
 pub use rename_pattern::RenamePatternModal;
-pub use replace::{ReplaceAction, ReplaceModal, ReplaceModalResult};
 pub use save_as::{SaveAsModal, SaveAsResult};
 pub use search::{SearchAction, SearchModal, SearchModalResult};
 pub use select::SelectModal;
@@ -104,8 +102,6 @@ pub enum ActiveModal {
     EditableSelect(Box<EditableSelectModal>),
     /// Interactive search modal
     Search(Box<SearchModal>),
-    /// Interactive replace modal
-    Replace(Box<ReplaceModal>),
     /// Sessions selection modal
     Sessions(Box<SessionsModal>),
     /// Directory picker modal
@@ -157,7 +153,6 @@ macro_rules! dispatch_modal {
             ActiveModal::RenamePattern(m) => m.$method($($arg),*),
             ActiveModal::EditableSelect(m) => m.$method($($arg),*),
             ActiveModal::Search(m) => m.$method($($arg),*),
-            ActiveModal::Replace(m) => m.$method($($arg),*),
             ActiveModal::Sessions(m) => m.$method($($arg),*),
             ActiveModal::DirectoryPicker(m) => m.$method($($arg),*),
             ActiveModal::SaveAs(m) => m.$method($($arg),*),
@@ -189,7 +184,6 @@ macro_rules! dispatch_modal_erased {
             ActiveModal::RenamePattern(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::EditableSelect(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::Search(m) => m.$method($($arg),*)?.map(erase_modal_result),
-            ActiveModal::Replace(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::Sessions(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::DirectoryPicker(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::SaveAs(m) => m.$method($($arg),*)?.map(erase_modal_result),

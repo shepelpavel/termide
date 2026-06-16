@@ -62,8 +62,6 @@ pub enum PendingAction {
     },
     /// Text search in editor
     Search,
-    /// Text replace in editor
-    Replace,
     /// Override tab_size for the active editor panel (runtime only, not persisted).
     ChangeEditorTabSize,
     /// Switch to next panel
