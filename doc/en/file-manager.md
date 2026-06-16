@@ -60,31 +60,39 @@ In tree view, selecting a directory with `Insert` cascades the selection to all 
 | `Ctrl+Shift+F`    | Search/replace in file contents            |
 | `/`              | In-tree incremental search (filter as you type) |
 
+Both searches use an **inline bar docked at the top of the panel** (not a
+floating modal): the form and its results share the panel, and you can walk the
+matches with the form still open. `Tab` / arrow keys move between the bar's
+fields and buttons; `Esc` closes the bar.
+
 ### File Search (Ctrl+F)
 
-Opens a modal for quick file search by name using glob patterns:
-- Type to filter files in real-time
-- Results show relative paths with git status colors
-- Press Enter to open selected file
-- Press Escape or click outside to close
+Opens an inline bar with a single glob field for quick file search by name:
+- Type to filter files in real-time; results show relative paths with git
+  status colors below the bar.
+- Press `Enter` to jump focus into the results list, then `↑` / `↓` to move the
+  cursor and `Enter` to open the selected file. `Tab` returns to the field;
+  `Escape` closes.
 
 ### Content Search & Replace (Ctrl+Shift+F)
 
-Opens a modal for searching text within files:
+Opens an inline bar with `Mask:` / `Find:` / `Repl:` fields for searching text
+within files:
 - Matching is **literal by default**; toggle `[.*] Regex` for regular
   expressions and `[Aa] Case` for case sensitivity by clicking them, or by
   focusing the buttons row and pressing `Enter` / `Space`.
 - Searches only in text files (binary files are skipped); large files are
   skipped (configurable limit in settings).
-- Results are **grouped by file**: a header row with the match count, then one
-  line per match (line number + matched line, hit highlighted). Press `Enter`
-  on a match to open the file at that line; `Escape` closes.
+- Results are **grouped by file** below the bar: a header row with the match
+  count, then one line per match (line number + matched line, hit highlighted).
+  Press `Enter` on `Find` to move focus into the results, then `↑` / `↓` to
+  navigate and `Enter` to open the file at that line; `Escape` closes.
 
 **Replace across files.** Type a replacement in the `Repl:` field. The match
-under the cursor shows a `-old/+new` preview. Press `Enter` in the field (or
-click `[ Replace all ]`) to replace **every** match across all listed files —
-after a confirmation showing how many occurrences in how many files. With
-`[.*] Regex` on, the replacement supports `$1` / `${name}` capture groups;
+under the cursor shows a `-old/+new` preview. Press `Enter` in the `Repl:` field
+(or activate the `All` button) to replace **every** match across all listed
+files — after a confirmation showing how many occurrences in how many files.
+With `[.*] Regex` on, the replacement supports `$1` / `${name}` capture groups;
 otherwise it is inserted verbatim. Replacements are written to disk.
 
 ### In-tree Search (/)
