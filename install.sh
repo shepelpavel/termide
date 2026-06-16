@@ -116,8 +116,12 @@ install_homebrew() {
 
 # Install using Cargo
 install_cargo() {
-    info "Installing via Cargo..."
-    cargo install termide
+    # Build from the Git repository, not crates.io: TermIDE is a Cargo
+    # workspace and is not published to crates.io (the name there points at
+    # an obsolete early release). `--locked` builds against the committed
+    # Cargo.lock for a reproducible result.
+    info "Installing via Cargo (compiling from source)..."
+    cargo install --git https://github.com/termide/termide --locked termide
 }
 
 # Install using Nix

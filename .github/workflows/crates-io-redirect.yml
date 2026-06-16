@@ -1,0 +1,72 @@
+name: crates.io redirect
+
+# One-off / on-demand maintenance of the obsolete `termide` package on
+# crates.io. TermIDE is a workspace and is not published there; this yanks
+# the old real releases and publishes the redirect "tombstone" crate from
+# packaging/crates-io-redirect so `cargo install termide` points users to
+# GitHub instead of fetching ancient code.
+#
+# Run manually from the Actions tab. Needs the CARGO_REGISTRY_TOKEN secret
+# (a crates.io token with the publish-new / publish-update / yank scopes).
+
+on:
+  workflow_dispatch:
+    inputs:
+      yank_versions:
+        description: "Space-separated old versions to yank, e.g. '0.2.0 0.2.1'. Empty = skip yanking."
+        required: false
+        default: ""
+      publish:
+        description: "Publish the redirect tombstone crate."
+        type: boolean
+        default: true
+      redirect_version:
+        description: "Version to publish the tombstone as. Must be higher than the current crates.io max. Required when publishing."
+        required: false
+        default: ""
+
+jobs:
+  redirect:
+    runs-on: ubuntu-latest
+    env:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.91.1
+
+      - name: Yank old versions
+        if: ${{ inputs.yank_versions != '' }}
+        env:
+          YANK_VERSIONS: ${{ inputs.yank_versions }}
+        run: |
+          set -euo pipefail
+          for v in $YANK_VERSIONS; do
+            echo "::group::yank termide@$v"
+            cargo yank --version "$v" termide
+            echo "::endgroup::"
+          done
+
+      - name: Validate publish inputs
+        if: ${{ inputs.publish }}
+        env:
+          REDIRECT_VERSION: ${{ inputs.redirect_version }}
+        run: |
+          if [ -z "$REDIRECT_VERSION" ]; then
+            echo "::error::redirect_version is required when publish is enabled." >&2
+            exit 1
+          fi
+
+      - name: Publish redirect tombstone
+        if: ${{ inputs.publish }}
+        working-directory: packaging/crates-io-redirect
+        env:
+          REDIRECT_VERSION: ${{ inputs.redirect_version }}
+        run: |
+          set -euo pipefail
+          # Stamp the requested version into the standalone crate, then publish.
+          sed -i -E "s/^version = .*/version = \"$REDIRECT_VERSION\"/" Cargo.toml
+          echo "Publishing redirect termide@$REDIRECT_VERSION"
+          cargo publish --allow-dirty

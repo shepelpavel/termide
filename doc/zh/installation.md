@@ -132,7 +132,14 @@ cargo build --release
 
 # 可选：安装到 ~/.cargo/bin
 cargo install --path .
+
+# 或者无需克隆，直接从仓库安装：
+cargo install --git https://github.com/termide/termide --locked
 ```
+
+> **注意：** TermIDE **未**发布到 crates.io。`cargo install termide` 会拉取一个
+> 过时且不相关的早期版本——请始终从源码构建（上面的克隆方式）或使用
+> `cargo install --git …`。
 
 ### 使用 Nix（配合 Flakes）
 

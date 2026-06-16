@@ -132,7 +132,14 @@ cargo build --release
 
 # Optional: Install to ~/.cargo/bin
 cargo install --path .
+
+# Or install directly from the repository, without cloning first:
+cargo install --git https://github.com/termide/termide --locked
 ```
+
+> **Note:** TermIDE is **not** published to crates.io. `cargo install termide`
+> would fetch an obsolete, unrelated early release — always build from source
+> (the clone above) or use `cargo install --git …`.
 
 ### Using Nix (with Flakes)
 
