@@ -529,12 +529,19 @@ impl FileManager {
         self.file_search = Some(state);
     }
 
-    /// Start content search (glob mask + regex pattern)
-    pub fn start_content_search(&mut self, glob_mask: &str, regex_pattern: &str) {
+    /// Start content search (glob mask + query). `use_regex` treats the query
+    /// as a regular expression; otherwise it is matched literally.
+    pub fn start_content_search(
+        &mut self,
+        glob_mask: &str,
+        query: &str,
+        use_regex: bool,
+        case_sensitive: bool,
+    ) {
         let max_file_size = self.cached_config.content_search_max_file_size_mb * 1024 * 1024;
         let mut state =
             file_search::FileSearchState::new_content(self.current_path.clone(), max_file_size);
-        state.start_content_search(glob_mask, regex_pattern);
+        state.start_content_search(glob_mask, query, use_regex, case_sensitive);
         self.file_search = Some(state);
     }
 

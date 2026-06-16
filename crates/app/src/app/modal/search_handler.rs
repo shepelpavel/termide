@@ -27,9 +27,9 @@ impl App {
     /// Handle search result
     pub(in crate::app) fn handle_search(&mut self, value: Box<dyn std::any::Any>) -> Result<()> {
         if let Some(query) = value.downcast_ref::<String>() {
-            // Start search in active panel (case insensitive by default)
+            // Start search in active panel (case insensitive, literal by default)
             if let Some(searchable) = self.active_searchable_mut() {
-                searchable.start_search(query.clone(), false);
+                searchable.start_search(query.clone(), false, false);
             }
         }
         Ok(())
@@ -99,7 +99,11 @@ impl App {
                 if let Some(searchable) = self.active_searchable_mut() {
                     match search_result.action {
                         SearchAction::Search => {
-                            searchable.start_search(search_result.query.clone(), false);
+                            searchable.start_search(
+                                search_result.query.clone(),
+                                search_result.case_sensitive,
+                                search_result.use_regex,
+                            );
                         }
                         SearchAction::Next => {
                             searchable.search_next();
@@ -137,7 +141,12 @@ impl App {
                     let content_query = search_result.content_query.as_deref().unwrap_or("");
                     match search_result.action {
                         SearchAction::Search => {
-                            fm.start_content_search(&search_result.query, content_query);
+                            fm.start_content_search(
+                                &search_result.query,
+                                content_query,
+                                search_result.use_regex,
+                                search_result.case_sensitive,
+                            );
                         }
                         SearchAction::Next => {
                             fm.search_next();

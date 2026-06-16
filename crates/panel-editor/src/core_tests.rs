@@ -275,7 +275,7 @@ fn test_large_file_search() {
     let (mut editor, _file) = create_large_file(1_000);
 
     // Search for a line in the middle
-    editor.start_search("Line 500:".to_string(), false);
+    editor.start_search("Line 500:".to_string(), false, false);
     editor.search_next();
 
     // Cursor should move to line 500 (0-indexed: line 499)

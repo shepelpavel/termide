@@ -1508,7 +1508,8 @@ impl Terminal {
 }
 
 impl Searchable for Terminal {
-    fn start_search(&mut self, query: String, case_sensitive: bool) {
+    // Terminal search is literal only; `use_regex` is ignored.
+    fn start_search(&mut self, query: String, case_sensitive: bool, _use_regex: bool) {
         if query.is_empty() {
             self.search_state = None;
             self.cached_lines = None;

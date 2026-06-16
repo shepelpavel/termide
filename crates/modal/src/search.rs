@@ -27,6 +27,10 @@ pub struct SearchModalResult {
     pub query: String,
     pub content_query: Option<String>,
     pub action: SearchAction,
+    /// Treat the query as a regular expression.
+    pub use_regex: bool,
+    /// Case-sensitive matching.
+    pub case_sensitive: bool,
 }
 
 /// Search action
@@ -63,11 +67,17 @@ pub struct SearchModal {
     selected_button: usize, // 0 = Previous, 1 = Next
     /// Match count display (e.g. "3 of 12")
     match_info: Option<(usize, usize)>, // (current, total)
+    /// Treat the query as a regular expression (toggle with Alt+R).
+    use_regex: bool,
+    /// Case-sensitive matching (toggle with Alt+C).
+    case_sensitive: bool,
     /// Last rendered areas for mouse handling
     last_button_areas: Vec<(Rect, usize)>, // (area, button_idx)
     last_close_button_area: Option<Rect>,
     last_input_area: Option<Rect>,
     last_content_input_area: Option<Rect>,
+    /// Clickable areas for the regex / case toggles (area, is_regex)
+    last_toggle_areas: Vec<(Rect, bool)>,
 }
 
 impl SearchModal {
@@ -80,10 +90,13 @@ impl SearchModal {
             focus: FocusArea::Input,
             selected_button: 1, // Next button selected by default
             match_info: None,
+            use_regex: false,
+            case_sensitive: false,
             last_button_areas: Vec::new(),
             last_close_button_area: None,
             last_input_area: None,
             last_content_input_area: None,
+            last_toggle_areas: Vec::new(),
         }
     }
 
@@ -158,7 +171,26 @@ impl SearchModal {
                 None
             },
             action,
+            use_regex: self.use_regex,
+            case_sensitive: self.case_sensitive,
         }
+    }
+
+    /// Toggle regex / case and, if there's input, re-run the search so the
+    /// results reflect the new mode immediately.
+    fn toggle_result(&mut self, regex: bool) -> Result<Option<ModalResult<SearchModalResult>>> {
+        if regex {
+            self.use_regex = !self.use_regex;
+        } else {
+            self.case_sensitive = !self.case_sensitive;
+        }
+        self.clear_match_info();
+        if self.has_input() {
+            return Ok(Some(ModalResult::Confirmed(
+                self.make_result(SearchAction::Search),
+            )));
+        }
+        Ok(None)
     }
 
     /// Check if can produce a result (has non-empty input)
@@ -333,6 +365,14 @@ impl Modal for SearchModal {
         chord: termide_core::KeyChord,
     ) -> Result<Option<ModalResult<Self::Result>>> {
         let key = chord.raw;
+        // Global toggles (work regardless of focus): Alt+R regex, Alt+C case.
+        if key.modifiers.contains(KeyModifiers::ALT) {
+            match key.code {
+                KeyCode::Char('r') | KeyCode::Char('R') => return self.toggle_result(true),
+                KeyCode::Char('c') | KeyCode::Char('C') => return self.toggle_result(false),
+                _ => {}
+            }
+        }
         match self.focus {
             FocusArea::Input | FocusArea::ContentInput => self.handle_input_focus_key(key),
             FocusArea::Buttons => self.handle_buttons_focus_key(key),
@@ -357,6 +397,16 @@ impl Modal for SearchModal {
                         && mouse_pos.1 == close_area.y
                     {
                         return Ok(Some(ModalResult::Cancelled));
+                    }
+                }
+
+                // Check regex / case toggles
+                for (area, is_regex) in self.last_toggle_areas.clone() {
+                    if mouse_pos.0 >= area.x
+                        && mouse_pos.0 < area.x + area.width
+                        && mouse_pos.1 == area.y
+                    {
+                        return self.toggle_result(is_regex);
                     }
                 }
 
@@ -517,6 +567,38 @@ impl SearchModal {
 
             buf.set_string(x_offset, buttons_area.y, &button_text, button_style);
             x_offset += button_width + 2;
+        }
+
+        // Regex / case toggles (Alt+R / Alt+C, or click)
+        self.last_toggle_areas.clear();
+        let counter_left = buttons_area.x + buttons_area.width.saturating_sub(right_width);
+        for (label, on, is_regex) in [
+            (".*", self.use_regex, true),
+            ("Aa", self.case_sensitive, false),
+        ] {
+            let text = format!("[{}]", label);
+            let w = text.len() as u16;
+            if x_offset + w >= counter_left {
+                break;
+            }
+            let style = if on {
+                Style::default()
+                    .fg(theme.accented_fg)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(theme.disabled)
+            };
+            buf.set_string(x_offset, buttons_area.y, &text, style);
+            self.last_toggle_areas.push((
+                Rect {
+                    x: x_offset,
+                    y: buttons_area.y,
+                    width: w,
+                    height: 1,
+                },
+                is_regex,
+            ));
+            x_offset += w + 1;
         }
     }
 

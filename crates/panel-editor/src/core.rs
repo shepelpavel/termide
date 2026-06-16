@@ -907,7 +907,7 @@ impl Editor {
 
             if execute_search {
                 // Execute search immediately
-                self.start_search(query.clone(), false);
+                self.start_search(query.clone(), false, false);
 
                 // Update match info in modal
                 if let Some((current, total)) = self.get_search_match_info() {

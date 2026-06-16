@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 
-use regex::Regex;
+use regex::RegexBuilder;
 use termide_core::util::is_binary_file;
 use termide_git::{get_git_status, GitStatus, GitStatusCache};
 
@@ -172,7 +172,13 @@ impl FileSearchState {
     }
 
     /// Start content search in background thread
-    pub fn start_content_search(&mut self, mask: &str, content_pattern: &str) {
+    pub fn start_content_search(
+        &mut self,
+        mask: &str,
+        content_pattern: &str,
+        use_regex: bool,
+        case_sensitive: bool,
+    ) {
         if mask.is_empty() || content_pattern.is_empty() {
             self.tree_nodes.clear();
             self.tree_prefixes.clear();
@@ -183,8 +189,19 @@ impl FileSearchState {
             return;
         }
 
-        // Validate regex
-        if Regex::new(content_pattern).is_err() {
+        // Literal search escapes the query; regex uses it verbatim.
+        let pattern = if use_regex {
+            content_pattern.to_string()
+        } else {
+            regex::escape(content_pattern)
+        };
+
+        // Validate the (effective) regex with the requested case sensitivity.
+        if RegexBuilder::new(&pattern)
+            .case_insensitive(!case_sensitive)
+            .build()
+            .is_err()
+        {
             return;
         }
 
@@ -199,7 +216,6 @@ impl FileSearchState {
         let (tx, rx) = mpsc::channel();
         let base_path = self.base_path.clone();
         let mask = mask.to_string();
-        let content_pattern = content_pattern.to_string();
         let max_file_size = self.max_file_size;
 
         self.search_receiver = Some(rx);
@@ -210,7 +226,8 @@ impl FileSearchState {
             let results = search_content(
                 &base_path,
                 &mask,
-                &content_pattern,
+                &pattern,
+                case_sensitive,
                 &cancel,
                 git_cache.as_ref(),
                 max_file_size,
@@ -667,13 +684,17 @@ fn search_content(
     base_path: &Path,
     mask: &str,
     content_pattern: &str,
+    case_sensitive: bool,
     cancel: &AtomicBool,
     git_cache: Option<&GitStatusCache>,
     max_file_size: u64,
 ) -> Vec<ContentResult> {
     use ignore::WalkBuilder;
 
-    let regex = match Regex::new(content_pattern) {
+    let regex = match RegexBuilder::new(content_pattern)
+        .case_insensitive(!case_sensitive)
+        .build()
+    {
         Ok(r) => r,
         Err(_) => return Vec::new(),
     };

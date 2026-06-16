@@ -16,8 +16,8 @@ use crate::search;
 use super::Editor;
 
 impl Searchable for Editor {
-    fn start_search(&mut self, query: String, case_sensitive: bool) {
-        self.start_search(query, case_sensitive);
+    fn start_search(&mut self, query: String, case_sensitive: bool, use_regex: bool) {
+        self.start_search(query, case_sensitive, use_regex);
     }
 
     fn search_next(&mut self) {
@@ -43,8 +43,8 @@ impl Editor {
     // =========================================================================
 
     /// Start search
-    pub fn start_search(&mut self, query: String, case_sensitive: bool) {
-        let mut search_state = SearchState::new(query, case_sensitive);
+    pub fn start_search(&mut self, query: String, case_sensitive: bool, use_regex: bool) {
+        let mut search_state = SearchState::new(query, case_sensitive).with_regex(use_regex);
 
         // Perform search throughout document
         self.perform_search(&mut search_state);
