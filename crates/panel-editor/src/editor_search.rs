@@ -53,11 +53,13 @@ impl Editor {
         search_state.find_closest_match(&self.cursor);
 
         // Move cursor to end of match and create selection
-        if let Some(match_cursor) = search_state.current_match_cursor() {
-            let query_len = search_state.query.chars().count();
-            let (selection, end_cursor) = search::get_match_selection(match_cursor, query_len);
-            self.cursor = end_cursor;
-            self.selection = Some(selection);
+        if let Some(idx) = search_state.current_match {
+            if let Some(match_cursor) = search_state.matches.get(idx).cloned() {
+                let match_len = search_state.match_len_at(idx);
+                let (selection, end_cursor) = search::get_match_selection(&match_cursor, match_len);
+                self.cursor = end_cursor;
+                self.selection = Some(selection);
+            }
         }
 
         self.search.state = Some(search_state);
@@ -72,11 +74,14 @@ impl Editor {
     pub fn search_next(&mut self) {
         if let Some(ref mut search_state) = self.search.state {
             search_state.next_match();
-            if let Some(match_cursor) = search_state.current_match_cursor() {
-                let query_len = search_state.query.chars().count();
-                let (selection, end_cursor) = search::get_match_selection(match_cursor, query_len);
-                self.cursor = end_cursor;
-                self.selection = Some(selection);
+            if let Some(idx) = search_state.current_match {
+                if let Some(match_cursor) = search_state.matches.get(idx).cloned() {
+                    let match_len = search_state.match_len_at(idx);
+                    let (selection, end_cursor) =
+                        search::get_match_selection(&match_cursor, match_len);
+                    self.cursor = end_cursor;
+                    self.selection = Some(selection);
+                }
             }
         }
     }
@@ -85,11 +90,14 @@ impl Editor {
     pub fn search_prev(&mut self) {
         if let Some(ref mut search_state) = self.search.state {
             search_state.prev_match();
-            if let Some(match_cursor) = search_state.current_match_cursor() {
-                let query_len = search_state.query.chars().count();
-                let (selection, end_cursor) = search::get_match_selection(match_cursor, query_len);
-                self.cursor = end_cursor;
-                self.selection = Some(selection);
+            if let Some(idx) = search_state.current_match {
+                if let Some(match_cursor) = search_state.matches.get(idx).cloned() {
+                    let match_len = search_state.match_len_at(idx);
+                    let (selection, end_cursor) =
+                        search::get_match_selection(&match_cursor, match_len);
+                    self.cursor = end_cursor;
+                    self.selection = Some(selection);
+                }
             }
         }
     }
@@ -136,11 +144,13 @@ impl Editor {
         search_state.find_closest_match(&self.cursor);
 
         // Move cursor to first match and create selection
-        if let Some(match_cursor) = search_state.current_match_cursor() {
-            let query_len = search_state.query.chars().count();
-            let (selection, end_cursor) = search::get_match_selection(match_cursor, query_len);
-            self.cursor = end_cursor;
-            self.selection = Some(selection);
+        if let Some(idx) = search_state.current_match {
+            if let Some(match_cursor) = search_state.matches.get(idx).cloned() {
+                let match_len = search_state.match_len_at(idx);
+                let (selection, end_cursor) = search::get_match_selection(&match_cursor, match_len);
+                self.cursor = end_cursor;
+                self.selection = Some(selection);
+            }
         }
 
         self.search.state = Some(search_state);
@@ -155,49 +165,49 @@ impl Editor {
 
     /// Replace current match
     pub fn replace_current(&mut self) -> Result<()> {
-        // Collect data from search_state
-        let (match_cursor, replace_with, query_len) =
-            if let Some(ref search_state) = self.search.state {
-                if let (Some(replace_with), Some(idx)) =
-                    (&search_state.replace_with, search_state.current_match)
-                {
-                    if let Some(match_cursor) = search_state.matches.get(idx).cloned() {
-                        (
-                            match_cursor,
-                            replace_with.clone(),
-                            search_state.query.chars().count(),
-                        )
-                    } else {
-                        return Ok(());
-                    }
-                } else {
-                    return Ok(());
-                }
-            } else {
+        // Collect what we need (regex-aware: per-match length + expanded
+        // text) before mutating the buffer.
+        let (match_cursor, match_len, replace_text) = {
+            let Some(search_state) = self.search.state.as_ref() else {
                 return Ok(());
             };
+            let (Some(_), Some(idx)) = (&search_state.replace_with, search_state.current_match)
+            else {
+                return Ok(());
+            };
+            let Some(match_cursor) = search_state.matches.get(idx).cloned() else {
+                return Ok(());
+            };
+            let match_len = search_state.match_len_at(idx);
+            let replace_text =
+                search::expand_replacement(&self.buffer, &match_cursor, match_len, search_state);
+            (match_cursor, match_len, replace_text)
+        };
 
         // Perform replacement
         let result =
-            search::replace_at_position(&mut self.buffer, &match_cursor, query_len, &replace_with)?;
+            search::replace_at_position(&mut self.buffer, &match_cursor, match_len, &replace_text)?;
         self.cursor = result.new_cursor;
 
         // Invalidate caches (highlight + wrap) for changed lines
-        let is_multiline = replace_with.contains('\n');
+        let is_multiline = replace_text.contains('\n');
         self.invalidate_cache_after_edit(result.start_line, is_multiline);
 
         // Update search_state
         if let Some(ref mut search_state) = self.search.state {
             if let Some(idx) = search_state.current_match {
-                // Remove this match from list
+                // Remove this match (and its recorded length) from the lists
                 search_state.matches.remove(idx);
+                if idx < search_state.match_lengths.len() {
+                    search_state.match_lengths.remove(idx);
+                }
 
-                // Update positions of remaining matches on the same line after replacement point
+                // Shift remaining same-line matches by the length delta
                 search::update_match_positions_after_replace(
                     &mut search_state.matches,
                     &match_cursor,
-                    query_len,
-                    replace_with.chars().count(),
+                    match_len,
+                    replace_text.chars().count(),
                 );
 
                 // Update current match index
@@ -208,12 +218,14 @@ impl Editor {
                 }
 
                 // Move cursor to next match and create selection
-                if let Some(match_cursor) = search_state.current_match_cursor() {
-                    let query_len = search_state.query.chars().count();
-                    let (selection, end_cursor) =
-                        search::get_match_selection(match_cursor, query_len);
-                    self.cursor = end_cursor;
-                    self.selection = Some(selection);
+                if let Some(cidx) = search_state.current_match {
+                    if let Some(next_cursor) = search_state.matches.get(cidx).cloned() {
+                        let next_len = search_state.match_len_at(cidx);
+                        let (selection, end_cursor) =
+                            search::get_match_selection(&next_cursor, next_len);
+                        self.cursor = end_cursor;
+                        self.selection = Some(selection);
+                    }
                 }
             }
         }
@@ -228,19 +240,14 @@ impl Editor {
             return Ok(0);
         };
 
-        let Some(replace_with) = &search_state.replace_with else {
+        if search_state.replace_with.is_none() {
             // Restore state if no replace_with
             self.search.state = Some(search_state);
             return Ok(0);
-        };
+        }
 
-        // Perform all replacements
-        let count = search::replace_all_matches(
-            &mut self.buffer,
-            &search_state.matches,
-            search_state.query.chars().count(),
-            replace_with,
-        )?;
+        // Perform all replacements (regex-aware per-match length + expansion)
+        let count = search::replace_all_matches(&mut self.buffer, &search_state)?;
 
         // Invalidate caches (highlight + wrap) for all affected lines
         if count > 0 {

@@ -9,10 +9,17 @@ pub struct SearchState {
     pub replace_with: Option<String>,
     /// Current position in results
     pub current_match: Option<usize>,
-    /// All found matches (line, column)
+    /// All found matches (line, column) — the start of each match
     pub matches: Vec<Cursor>,
+    /// Grapheme length of each match, parallel to `matches`. For literal
+    /// search every entry equals the query length; for regex search the
+    /// lengths vary per match, so they must be tracked explicitly.
+    pub match_lengths: Vec<usize>,
     /// Case sensitivity
     pub case_sensitive: bool,
+    /// Treat `query` as a regular expression (capture groups usable in
+    /// `replace_with` as `$1` / `${name}`). When false, `query` is literal.
+    pub use_regex: bool,
 }
 
 impl SearchState {
@@ -23,7 +30,9 @@ impl SearchState {
             replace_with: None,
             current_match: None,
             matches: Vec::new(),
+            match_lengths: Vec::new(),
             case_sensitive,
+            use_regex: false,
         }
     }
 
@@ -34,8 +43,25 @@ impl SearchState {
             replace_with: Some(replace_with),
             current_match: None,
             matches: Vec::new(),
+            match_lengths: Vec::new(),
             case_sensitive,
+            use_regex: false,
         }
+    }
+
+    /// Builder: enable/disable regex mode.
+    pub fn with_regex(mut self, use_regex: bool) -> Self {
+        self.use_regex = use_regex;
+        self
+    }
+
+    /// Grapheme length of the match at `idx`, falling back to the query's
+    /// grapheme length (literal search) when not explicitly recorded.
+    pub fn match_len_at(&self, idx: usize) -> usize {
+        self.match_lengths
+            .get(idx)
+            .copied()
+            .unwrap_or_else(|| self.query.chars().count())
     }
 
     /// Check if search is active
