@@ -35,7 +35,6 @@ const DIR_COLLAPSED: &str = if cfg!(windows) { "►" } else { "▶" };
 const DIR_COLLAPSED_SYMLINK: &str = if cfg!(windows) { "►" } else { "▷" };
 const DIR_EXPANDED_SYMLINK: &str = if cfg!(windows) { "▼" } else { "▽" };
 const DIR_COLLAPSED_SPACE: &str = if cfg!(windows) { "► " } else { "▶ " };
-const DIR_COLLAPSED_SLASH: &str = if cfg!(windows) { "► /" } else { "▶ /" };
 // Marker for a remote symlink whose target type couldn't be resolved from
 // the directory listing (SFTP/FTP report the link, not its target). Local
 // symlinks don't use this — local listings already classify them (dir
@@ -405,203 +404,104 @@ impl FileManager {
     ) {
         let max_lines = area.height as usize;
         let content_width = area.width as usize;
-        let mut y = area.y;
-        let mut lines_rendered = 0;
 
-        let editor_bg = theme.bg;
-        let line_num_style = Style::default().fg(theme.disabled).bg(editor_bg);
-        let context_text_style = Style::default().fg(theme.fg).bg(editor_bg);
-        let matched_text_style = Style::default().fg(theme.fg).bg(editor_bg);
-        let highlight_style = Style::default().bg(theme.selected_bg).fg(theme.selected_fg);
-        let separator_style = Style::default().fg(theme.disabled).bg(editor_bg);
+        let line_num_width = 5usize;
+        let separator = " \u{2502} ";
+        let separator_len = 3usize;
+        let indent = 1usize; // match rows sit one column in from the header
+        let max_text_width = content_width.saturating_sub(indent + line_num_width + separator_len);
 
-        let line_num_width = 4usize;
-        let separator = " │ ";
-        let separator_len = 3;
-        let max_text_width = content_width.saturating_sub(line_num_width + separator_len);
+        let dim = Style::default().fg(theme.disabled).bg(theme.bg);
+        let fg = Style::default().fg(theme.fg).bg(theme.bg);
+        let highlight = Style::default().bg(theme.selected_bg).fg(theme.selected_fg);
+        let header_sel = Style::default()
+            .fg(theme.bg)
+            .bg(theme.accented_fg)
+            .add_modifier(Modifier::BOLD);
 
-        for (idx, node) in search
+        for (rendered, (idx, node)) in search
             .tree_nodes
             .iter()
             .enumerate()
             .skip(search.scroll_offset)
+            .enumerate()
         {
-            if lines_rendered >= max_lines || y >= area.y + area.height {
+            if rendered >= max_lines {
                 break;
             }
-
+            let y = area.y + rendered as u16;
             let is_selected = idx == search.cursor;
 
-            if node.is_dir {
-                let prefix = &search.tree_prefixes[idx];
-                let style = if is_selected {
-                    Style::default()
-                        .fg(theme.bg)
-                        .bg(theme.accented_fg)
-                        .add_modifier(Modifier::BOLD)
+            if node.is_file_header {
+                let base = if is_selected {
+                    header_sel
                 } else {
-                    Style::default().fg(theme.fg)
+                    fg.add_modifier(Modifier::BOLD)
                 };
-                let prefix_style = if is_selected {
-                    style
-                } else {
-                    Style::default().fg(theme.disabled)
-                };
+                let marker = "\u{25be} ";
+                let count_text = format!(" {}", node.match_count);
+                let avail = content_width.saturating_sub(marker.width() + count_text.width());
+                let name = truncate_from_start(&node.name, avail);
 
                 let mut x = area.x;
-                if !prefix.is_empty() {
-                    buf.set_string(x, y, prefix, prefix_style);
-                    x += prefix.width() as u16;
-                }
-                let dir_prefix = DIR_COLLAPSED_SLASH;
-                buf.set_string(x, y, dir_prefix, style);
-                x += dir_prefix.width() as u16;
-                buf.set_string(x, y, &node.name, style);
-                x += node.name.width() as u16;
-                let pad = content_width.saturating_sub((x - area.x) as usize);
-                if pad > 0 {
-                    buf.set_string(x, y, &PAD[..pad.min(PAD.len())], style);
-                }
+                buf.set_string(x, y, marker, base);
+                x += marker.width() as u16;
+                buf.set_string(x, y, &name, base);
+                x += name.width() as u16;
 
-                y += 1;
-                lines_rendered += 1;
-            } else if let Some(ref cm) = node.content_match {
-                if y + 4 > area.y + area.height {
-                    break;
+                let used = (x - area.x) as usize;
+                let pad_len = content_width.saturating_sub(used + count_text.width());
+                let fill = if is_selected { base } else { fg };
+                if pad_len > 0 {
+                    buf.set_string(x, y, &PAD[..pad_len.min(PAD.len())], fill);
+                    x += pad_len as u16;
                 }
-
-                // Line 1: path:line_number
-                let prefix = &search.tree_prefixes[idx];
-                let path_text = format!("{}{}:{}", prefix, node.name, cm.line_number);
-                let path_style = if is_selected {
-                    Style::default()
-                        .fg(theme.bg)
-                        .bg(theme.accented_fg)
-                        .add_modifier(Modifier::BOLD)
+                let count_style = if is_selected { base } else { dim };
+                buf.set_string(x, y, &count_text, count_style);
+            } else if let Some(cm) = &node.content_match {
+                let row_bg = if is_selected {
+                    Style::default().bg(theme.selected_bg)
                 } else {
-                    Style::default().fg(theme.fg)
+                    Style::default().bg(theme.bg)
                 };
-                let padding = content_width.saturating_sub(path_text.width());
-                buf.set_string(area.x, y, &path_text, path_style);
-                if padding > 0 {
-                    buf.set_string(
-                        area.x + path_text.width() as u16,
-                        y,
-                        &PAD[..padding.min(PAD.len())],
-                        path_style,
-                    );
+                for col in 0..content_width {
+                    buf.set_string(area.x + col as u16, y, " ", row_bg);
                 }
-                y += 1;
 
-                let fill_bg = |buf: &mut Buffer, row: u16| {
-                    for col in 0..content_width {
-                        buf.set_string(
-                            area.x + col as u16,
-                            row,
-                            " ",
-                            Style::default().bg(editor_bg),
-                        );
-                    }
+                let line_num = format!("{:>width$}", cm.line_number, width = line_num_width);
+                let lnum_style = if is_selected {
+                    row_bg.fg(theme.fg)
+                } else {
+                    dim
                 };
+                let sep_style = if is_selected {
+                    row_bg.fg(theme.disabled)
+                } else {
+                    dim
+                };
+                let text_style = if is_selected { row_bg.fg(theme.fg) } else { fg };
 
-                // Line 2: previous line
-                fill_bg(buf, y);
-                if let Some(ref line_before) = cm.line_before {
-                    let line_num = format!("{:>4}", cm.line_number - 1);
-                    let content = truncate_from_start(line_before, max_text_width);
-                    buf.set_string(area.x, y, &line_num, line_num_style);
-                    buf.set_string(
-                        area.x + line_num_width as u16,
-                        y,
-                        separator,
-                        separator_style,
-                    );
-                    buf.set_string(
-                        area.x + (line_num_width + separator_len) as u16,
-                        y,
-                        &content,
-                        context_text_style,
-                    );
-                }
-                y += 1;
+                let mut x = area.x + indent as u16;
+                buf.set_string(x, y, &line_num, lnum_style);
+                x += line_num_width as u16;
+                buf.set_string(x, y, separator, sep_style);
+                x += separator_len as u16;
 
-                // Line 3: matched line with highlight
-                fill_bg(buf, y);
-                let line_num = format!("{:>4}", cm.line_number);
-                buf.set_string(area.x, y, &line_num, line_num_style);
-                buf.set_string(
-                    area.x + line_num_width as u16,
-                    y,
-                    separator,
-                    separator_style,
-                );
-
-                let content_start_x = area.x + (line_num_width + separator_len) as u16;
                 let (display_line, match_start_g, match_end_g) = prepare_matched_line(
                     &cm.matched_line,
                     cm.match_start,
                     cm.match_end,
                     max_text_width,
                 );
-
-                let mut x = content_start_x;
                 for (grapheme_idx, grapheme) in display_line.graphemes(true).enumerate() {
                     let style = if grapheme_idx >= match_start_g && grapheme_idx < match_end_g {
-                        highlight_style
+                        highlight
                     } else {
-                        matched_text_style
+                        text_style
                     };
                     buf.set_string(x, y, grapheme, style);
                     x += grapheme.width() as u16;
                 }
-                y += 1;
-
-                // Line 4: next line
-                fill_bg(buf, y);
-                if let Some(ref line_after) = cm.line_after {
-                    let line_num = format!("{:>4}", cm.line_number + 1);
-                    let content = truncate_from_start(line_after, max_text_width);
-                    buf.set_string(area.x, y, &line_num, line_num_style);
-                    buf.set_string(
-                        area.x + line_num_width as u16,
-                        y,
-                        separator,
-                        separator_style,
-                    );
-                    buf.set_string(
-                        area.x + (line_num_width + separator_len) as u16,
-                        y,
-                        &content,
-                        context_text_style,
-                    );
-                }
-                y += 1;
-
-                lines_rendered += 4;
-            } else {
-                // File without content match
-                let prefix = &search.tree_prefixes[idx];
-                let style = if is_selected {
-                    Style::default()
-                        .fg(theme.bg)
-                        .bg(theme.accented_fg)
-                        .add_modifier(Modifier::BOLD)
-                } else {
-                    git_status_style(node.git_status, theme)
-                };
-                let text = format!("{}  {}", prefix, node.name);
-                let padding = content_width.saturating_sub(text.width());
-                buf.set_string(area.x, y, &text, style);
-                if padding > 0 {
-                    buf.set_string(
-                        area.x + text.width() as u16,
-                        y,
-                        &PAD[..padding.min(PAD.len())],
-                        style,
-                    );
-                }
-                y += 1;
-                lines_rendered += 1;
             }
         }
     }

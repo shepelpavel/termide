@@ -19,11 +19,9 @@ const MAX_RESULTS: usize = 500;
 #[derive(Debug, Clone)]
 pub(crate) struct ContentMatch {
     pub line_number: usize,
-    pub line_before: Option<String>,
     pub matched_line: String,
     pub match_start: usize,
     pub match_end: usize,
-    pub line_after: Option<String>,
 }
 
 /// A node in the search result tree
@@ -35,6 +33,13 @@ pub(crate) struct ResultTreeNode {
     pub is_dir: bool,
     pub git_status: GitStatus,
     pub content_match: Option<ContentMatch>,
+    /// Content mode only: this node is a per-file group header (path + count),
+    /// not a match row. Its `match_count` matches rows follow it.
+    pub is_file_header: bool,
+    /// Number of matches in the file (only meaningful for `is_file_header`).
+    pub match_count: usize,
+    /// Content mode only: a collapsed header hides its match rows.
+    pub collapsed: bool,
 }
 
 /// Search mode for file search
@@ -63,11 +68,9 @@ struct ContentResult {
     full_path: PathBuf,
     relative_path: String,
     line_number: usize,
-    line_before: Option<String>,
     matched_line: String,
     match_start: usize,
     match_end: usize,
-    line_after: Option<String>,
     git_status: GitStatus,
 }
 
@@ -255,12 +258,9 @@ impl FileSearchState {
                     self.scroll_offset = 0;
                     self.is_searching = false;
                     self.search_receiver = None;
-                    // Move cursor to first non-dir result
-                    for (i, node) in self.tree_nodes.iter().enumerate() {
-                        if !node.is_dir {
-                            self.cursor = i;
-                            break;
-                        }
+                    // Move cursor to the first selectable result row.
+                    if let Some(i) = self.tree_nodes.iter().position(|n| self.is_result_row(n)) {
+                        self.cursor = i;
                     }
                     return true;
                 }
@@ -283,7 +283,7 @@ impl FileSearchState {
         let len = self.tree_nodes.len();
         let mut pos = (start + 1) % len;
         while pos != start {
-            if !self.tree_nodes[pos].is_dir {
+            if self.is_result_row(&self.tree_nodes[pos]) && !self.is_hidden_by_collapse(pos) {
                 self.cursor = pos;
                 self.ensure_visible();
                 return;
@@ -301,7 +301,7 @@ impl FileSearchState {
         let len = self.tree_nodes.len();
         let mut pos = if start == 0 { len - 1 } else { start - 1 };
         while pos != start {
-            if !self.tree_nodes[pos].is_dir {
+            if self.is_result_row(&self.tree_nodes[pos]) && !self.is_hidden_by_collapse(pos) {
                 self.cursor = pos;
                 self.ensure_visible();
                 return;
@@ -310,18 +310,27 @@ impl FileSearchState {
         }
     }
 
+    /// A selectable result row: a matched file in FileGlob mode, a match line
+    /// in Content mode (file-group headers are not result rows).
+    fn is_result_row(&self, node: &ResultTreeNode) -> bool {
+        match self.mode {
+            FileSearchMode::FileGlob => !node.is_dir,
+            FileSearchMode::Content => node.content_match.is_some(),
+        }
+    }
+
     /// Get match info: (current_index, total_count)
     pub fn get_match_info(&self) -> Option<(usize, usize)> {
         if self.result_count == 0 {
             return None;
         }
-        // Count how many non-dir results precede cursor
+        // Count how many result rows precede the cursor.
         let mut current = 0;
         for (idx, node) in self.tree_nodes.iter().enumerate() {
-            if idx == self.cursor && !node.is_dir {
-                return Some((current, self.result_count));
+            if idx == self.cursor {
+                return Some((current.min(self.result_count - 1), self.result_count));
             }
-            if !node.is_dir {
+            if self.is_result_row(node) {
                 current += 1;
             }
         }
@@ -360,19 +369,14 @@ impl FileSearchState {
         }
     }
 
-    /// How many display lines a node takes
+    /// How many display lines a node takes. Every visible node is a single
+    /// line now (file header, match row, or file/dir); rows hidden under a
+    /// collapsed header take none.
     pub fn node_display_lines(&self, idx: usize) -> usize {
-        if idx >= self.tree_nodes.len() {
+        if idx >= self.tree_nodes.len() || self.is_hidden_by_collapse(idx) {
             return 0;
         }
-        let node = &self.tree_nodes[idx];
-        if node.is_dir {
-            1
-        } else if self.mode == FileSearchMode::Content && node.content_match.is_some() {
-            4
-        } else {
-            1
-        }
+        1
     }
 
     fn ensure_visible(&mut self) {
@@ -429,29 +433,76 @@ impl FileSearchState {
         self.tree_prefixes = prefixes;
     }
 
+    /// Build the content-search display list: one collapsible header row per
+    /// file (relative path + match count) followed by one row per match
+    /// (line number + matched line). `items` arrive sorted by relative path,
+    /// so files are already grouped.
     fn build_content_tree(&mut self, items: Vec<ContentResult>) {
         self.result_count = items.len();
-        let (nodes, prefixes) = build_tree_nodes(
-            items
-                .iter()
-                .map(|i| TreeBuildItem {
-                    relative_path: &i.relative_path,
-                    full_path: &i.full_path,
-                    git_status: i.git_status,
+
+        // Count matches per file so the header can show the total.
+        let mut counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+        for it in &items {
+            *counts.entry(it.relative_path.as_str()).or_default() += 1;
+        }
+
+        let mut nodes: Vec<ResultTreeNode> = Vec::new();
+        let mut current_file: Option<String> = None;
+        for it in &items {
+            if current_file.as_deref() != Some(it.relative_path.as_str()) {
+                current_file = Some(it.relative_path.clone());
+                nodes.push(ResultTreeNode {
+                    name: it.relative_path.clone(),
+                    full_path: it.full_path.clone(),
+                    depth: 0,
                     is_dir: false,
-                    content_match: Some(ContentMatch {
-                        line_number: i.line_number,
-                        line_before: i.line_before.clone(),
-                        matched_line: i.matched_line.clone(),
-                        match_start: i.match_start,
-                        match_end: i.match_end,
-                        line_after: i.line_after.clone(),
-                    }),
-                })
-                .collect(),
-        );
+                    git_status: it.git_status,
+                    content_match: None,
+                    is_file_header: true,
+                    match_count: counts.get(it.relative_path.as_str()).copied().unwrap_or(0),
+                    collapsed: false,
+                });
+            }
+            nodes.push(ResultTreeNode {
+                name: String::new(),
+                full_path: it.full_path.clone(),
+                depth: 1,
+                is_dir: false,
+                git_status: it.git_status,
+                content_match: Some(ContentMatch {
+                    line_number: it.line_number,
+                    matched_line: it.matched_line.clone(),
+                    match_start: it.match_start,
+                    match_end: it.match_end,
+                }),
+                is_file_header: false,
+                match_count: 0,
+                collapsed: false,
+            });
+        }
+
+        self.tree_prefixes = vec![String::new(); nodes.len()];
         self.tree_nodes = nodes;
-        self.tree_prefixes = prefixes;
+    }
+
+    /// Whether the match row at `idx` is hidden because its file header is
+    /// collapsed.
+    fn is_hidden_by_collapse(&self, idx: usize) -> bool {
+        if self
+            .tree_nodes
+            .get(idx)
+            .map(|n| n.is_file_header)
+            .unwrap_or(true)
+        {
+            return false;
+        }
+        // Walk back to the owning header.
+        for j in (0..idx).rev() {
+            if self.tree_nodes[j].is_file_header {
+                return self.tree_nodes[j].collapsed;
+            }
+        }
+        false
     }
 }
 
@@ -501,6 +552,9 @@ fn build_tree_nodes(items: Vec<TreeBuildItem<'_>>) -> (Vec<ResultTreeNode>, Vec<
                     is_dir: true,
                     git_status: GitStatus::Unmodified,
                     content_match: None,
+                    is_file_header: false,
+                    match_count: 0,
+                    collapsed: false,
                 });
             }
         }
@@ -519,6 +573,9 @@ fn build_tree_nodes(items: Vec<TreeBuildItem<'_>>) -> (Vec<ResultTreeNode>, Vec<
             is_dir: item.is_dir,
             git_status: item.git_status,
             content_match: item.content_match.clone(),
+            is_file_header: false,
+            match_count: 0,
+            collapsed: false,
         });
     }
 
@@ -780,26 +837,13 @@ fn search_content(
             }
 
             if let Some(m) = regex.find(line) {
-                let line_before = if line_idx > 0 {
-                    Some(lines[line_idx - 1].to_string())
-                } else {
-                    None
-                };
-                let line_after = if line_idx + 1 < lines.len() {
-                    Some(lines[line_idx + 1].to_string())
-                } else {
-                    None
-                };
-
                 results.push(ContentResult {
                     full_path: path.to_path_buf(),
                     relative_path: relative_path.clone(),
                     line_number: line_idx + 1,
-                    line_before,
                     matched_line: line.to_string(),
                     match_start: m.start(),
                     match_end: m.end(),
-                    line_after,
                     git_status,
                 });
 
