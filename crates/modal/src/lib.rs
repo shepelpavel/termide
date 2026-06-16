@@ -33,6 +33,7 @@ pub mod db_filter;
 pub mod directory_picker;
 pub mod directory_switcher;
 pub mod editable_select;
+pub mod find_bar;
 pub mod info;
 pub mod info_action;
 pub mod input;
@@ -61,6 +62,7 @@ pub use db_filter::{DbFilterColumn, DbFilterCondition, DbFilterModal, DbFilterRe
 pub use directory_picker::DirectoryPickerModal;
 pub use directory_switcher::{DirectoryItem, DirectorySwitcherModal};
 pub use editable_select::{EditableSelectModal, SelectOption};
+pub use find_bar::{Btn as FindBarBtn, FindBar, FindBarAction, FindBarConfig, FindField};
 pub use info::{InfoModal, ModalValue, SegmentStyle, StyledSegment};
 pub use info_action::{
     ActionButton, InfoActionModal, InfoActionResult, PermAccess, PermissionsState,
