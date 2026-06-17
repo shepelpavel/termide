@@ -660,6 +660,14 @@ impl FileManager {
                 line,
                 column: 0,
             }),
+            SelectedSearchResult::OpenDir(path) => {
+                // Enter (cd into) the directory.
+                self.current_path = std::fs::canonicalize(&path).unwrap_or(path);
+                self.selected = 0;
+                self.scroll_offset = 0;
+                let _ = self.load_directory();
+                None
+            }
         }
     }
 
@@ -714,6 +722,9 @@ impl FileManager {
                     let mut buttons = vec![];
                     if replace {
                         fields.push(FindField::Replace);
+                        // Per-file selection helpers + the replace action.
+                        buttons.push(FindBarBtn::SelectAll);
+                        buttons.push(FindBarBtn::SelectNone);
                         buttons.push(FindBarBtn::ReplaceAll);
                     }
                     let mut bar = FindBar::new(FindBarConfig {
@@ -751,6 +762,7 @@ impl FileManager {
         }
         self.bar_focus = BarFocus::Input;
         self.rerun_search();
+        self.sync_bar_status();
     }
 
     /// Close the inline bar and clear its search results.
@@ -824,19 +836,48 @@ impl FileManager {
     /// Route a key to the inline bar (called from `handle_key` while the bar is
     /// open). Returns the panel events produced.
     fn handle_search_bar_key(&mut self, key: crossterm::event::KeyEvent) -> Vec<PanelEvent> {
-        match self.bar_focus {
+        let events = match self.bar_focus {
             BarFocus::Input => self.handle_bar_input_key(key),
             BarFocus::Results => self.handle_bar_results_key(key),
+        };
+        self.sync_bar_status();
+        events
+    }
+
+    /// Refresh the bar's right-aligned status: the "N of M" found counter, and
+    /// in replace mode the selected-files / replacement summary.
+    fn sync_bar_status(&mut self) {
+        let data = self
+            .file_search
+            .as_ref()
+            .map(|s| (s.get_match_info(), s.show_checkboxes, s.selected_summary()));
+        if let Some(bar) = self.search_bar.as_mut() {
+            let (info, replace_mode, (sel_files, sel_matches)) =
+                data.unwrap_or((None, false, (0, 0)));
+            match info {
+                Some((c, t)) => bar.set_match_info(c + 1, t),
+                None => bar.clear_match_info(),
+            }
+            if replace_mode {
+                let total = info.map(|(_, t)| t).unwrap_or(0);
+                bar.set_info_text(Some(termide_i18n::t().replace_selection_fmt(
+                    sel_files,
+                    total,
+                    sel_matches,
+                )));
+            } else {
+                bar.set_info_text(None);
+            }
         }
     }
 
     fn handle_bar_input_key(&mut self, key: crossterm::event::KeyEvent) -> Vec<PanelEvent> {
         use crossterm::event::KeyCode;
 
-        // Tab moves to the results zone (where arrows walk the matches), like
-        // section switching in the git-status panel. Within the bar, fields and
-        // buttons are reached with arrow keys.
-        if key.code == KeyCode::Tab && key.modifiers.is_empty() {
+        // Tab / Shift+Tab switch to the results zone (where arrows walk the
+        // matches), like section switching in the git-status panel. Within the
+        // bar, fields and buttons are reached with arrow keys.
+        if matches!(key.code, KeyCode::Tab | KeyCode::BackTab) {
             if self.file_search.is_some() {
                 self.bar_focus = BarFocus::Results;
             }
@@ -870,6 +911,18 @@ impl FileManager {
                 vec![PanelEvent::NeedsRedraw]
             }
             Some(FindBarAction::ReplaceAll) => self.content_replace_all_event(),
+            Some(FindBarAction::SelectAll) => {
+                if let Some(s) = self.file_search.as_mut() {
+                    s.set_all_selected(true);
+                }
+                vec![PanelEvent::NeedsRedraw]
+            }
+            Some(FindBarAction::SelectNone) => {
+                if let Some(s) = self.file_search.as_mut() {
+                    s.set_all_selected(false);
+                }
+                vec![PanelEvent::NeedsRedraw]
+            }
             // Enter on the Replace field replaces all (with confirmation);
             // Enter on Mask/Find jumps focus into the results list.
             Some(FindBarAction::Submit) => {
@@ -942,7 +995,7 @@ impl FileManager {
                 }
                 vec![PanelEvent::NeedsRedraw]
             }
-            KeyCode::Tab => {
+            KeyCode::Tab | KeyCode::BackTab => {
                 if let Some(bar) = self.search_bar.as_mut() {
                     bar.focus_first();
                 }
@@ -2208,10 +2261,12 @@ impl Panel for FileManager {
                         } else {
                             self.click_tracker.record(idx);
                         }
+                        self.sync_bar_status();
                         return vec![PanelEvent::NeedsRedraw];
                     }
                     _ => {}
                 }
+                self.sync_bar_status();
             }
             // Don't let other mouse events fall through to the tree handler.
             return vec![];
@@ -2559,10 +2614,16 @@ impl Panel for FileManager {
         }
 
         // Poll file search results
+        let mut search_updated = false;
         if let Some(ref mut search) = self.file_search {
             if search.poll_results() {
+                search_updated = true;
                 events.push(PanelEvent::NeedsRedraw);
             }
+        }
+        if search_updated {
+            // Refresh the bar counter now that results (and their count) landed.
+            self.sync_bar_status();
         }
 
         // Skip remaining work when collapsed (stale)

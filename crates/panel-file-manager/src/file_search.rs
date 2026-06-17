@@ -621,7 +621,7 @@ impl FileSearchState {
         match self.mode {
             FileSearchMode::FileGlob => {
                 if node.is_dir {
-                    return None;
+                    return Some(SelectedSearchResult::OpenDir(node.full_path.clone()));
                 }
                 Some(SelectedSearchResult::NavigateToFile(node.full_path.clone()))
             }
@@ -923,7 +923,12 @@ impl FileSearchState {
 #[derive(Debug, Clone)]
 pub(crate) enum SelectedSearchResult {
     NavigateToFile(PathBuf),
-    OpenAtLine { path: PathBuf, line: usize },
+    OpenAtLine {
+        path: PathBuf,
+        line: usize,
+    },
+    /// Enter (cd into) a directory result.
+    OpenDir(PathBuf),
 }
 
 // ─── Tree building ───────────────────────────────────────────────────────

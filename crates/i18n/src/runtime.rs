@@ -1094,5 +1094,16 @@ impl Translation for RuntimeTranslation {
         )
     }
 
+    fn replace_selection_fmt(&self, selected: usize, total: usize, matches: usize) -> String {
+        self.format(
+            "replace_selection_fmt",
+            &[
+                ("selected", &selected.to_string()),
+                ("total", &total.to_string()),
+                ("matches", &matches.to_string()),
+            ],
+        )
+    }
+
     // Calendar
 }

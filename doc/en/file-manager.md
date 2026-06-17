@@ -102,14 +102,15 @@ replacement is typed, every shown match renders as a `-old/+new` preview.
 
 Each file header gets a **selection checkbox** (`[ ]` right of the collapse
 triangle), and replacement applies **only to checked files** — nothing is
-checked by default. In the results zone, `Space` toggles the file at the cursor,
-`a` toggles all on/off, and clicking a checkbox toggles it.
+checked by default. Toggle the file at the cursor with `Space`, all on/off with
+`a` or the **✓ all** / **✗ none** buttons, or click a checkbox. The bar's
+right-hand status shows the live `selected / total files · matches` count.
 
 Press `Enter` in the `Repl:` field (or activate the **Replace** button) to
 replace every match in the **selected** files — after a confirmation showing how
-many occurrences in how many files. With `[.*] Regex` on, the replacement
-supports `$1` / `${name}` capture groups; otherwise it is inserted verbatim.
-Replacements are written to disk.
+many occurrences in how many files (nothing selected shows a hint instead). With
+`[.*] Regex` on, the replacement supports `$1` / `${name}` capture groups;
+otherwise it is inserted verbatim. Replacements are written to disk.
 
 ### In-tree Search (/)
 

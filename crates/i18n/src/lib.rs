@@ -688,6 +688,7 @@ pub trait Translation: Send + Sync {
     fn replace_done_fmt(&self, count: usize, files: usize) -> String;
     fn replace_confirm_fmt(&self, count: usize, files: usize) -> String;
     fn replace_no_files_selected(&self) -> &str;
+    fn replace_selection_fmt(&self, selected: usize, total: usize, matches: usize) -> String;
 
     // Image panel
     fn panel_image(&self) -> &str;

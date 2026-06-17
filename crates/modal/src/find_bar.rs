@@ -60,6 +60,10 @@ pub enum Btn {
     ReplaceAll,
     Prev,
     Next,
+    /// Select all entries (host-defined meaning, e.g. all files for replace).
+    SelectAll,
+    /// Clear the selection.
+    SelectNone,
     Regex,
     Case,
 }
@@ -89,6 +93,10 @@ pub enum FindBarAction {
     /// `Enter` on a field — the host decides what to do based on
     /// [`FindBar::focused_field`].
     Submit,
+    /// Select all entries.
+    SelectAll,
+    /// Clear the selection.
+    SelectNone,
     /// Close the bar.
     Close,
 }
@@ -129,6 +137,8 @@ pub struct FindBar {
     /// Index into the focus ring (`ring()`).
     focus: usize,
     match_info: Option<(usize, usize)>,
+    /// Free-form right-aligned status that overrides the match counter.
+    info_text: Option<String>,
     /// Per-field rendered areas, parallel to `fields` (for mouse).
     field_areas: Vec<Rect>,
     /// Rendered button areas: (area, index into `buttons`).
@@ -160,6 +170,7 @@ impl FindBar {
             case_sensitive: false,
             focus: 0,
             match_info: None,
+            info_text: None,
             field_areas: Vec::new(),
             button_areas: Vec::new(),
         }
@@ -286,6 +297,11 @@ impl FindBar {
         self.match_info = None;
     }
 
+    /// Set (or clear) the free-form status text shown in place of the counter.
+    pub fn set_info_text(&mut self, text: Option<String>) {
+        self.info_text = text;
+    }
+
     // === Input ===
 
     /// Handle a key while the bar holds focus. Returns the host action, if any.
@@ -361,6 +377,8 @@ impl FindBar {
             Some(Btn::ReplaceAll) => Some(FindBarAction::ReplaceAll),
             Some(Btn::Prev) => Some(FindBarAction::Previous),
             Some(Btn::Next) => Some(FindBarAction::Next),
+            Some(Btn::SelectAll) => Some(FindBarAction::SelectAll),
+            Some(Btn::SelectNone) => Some(FindBarAction::SelectNone),
             Some(Btn::Regex) => {
                 self.use_regex = !self.use_regex;
                 Some(FindBarAction::QueryChanged)
@@ -467,11 +485,13 @@ impl FindBar {
     ) {
         self.button_areas.clear();
 
-        // Counter ("3 of 12") right-aligned.
-        let counter = self
-            .match_info
-            .map(|(cur, total)| format!("{} of {}", cur, total))
-            .unwrap_or_default();
+        // Right-aligned status: an explicit info string (e.g. the replace
+        // selection summary) wins over the "3 of 12" match counter.
+        let counter = self.info_text.clone().unwrap_or_else(|| {
+            self.match_info
+                .map(|(cur, total)| format!("{} of {}", cur, total))
+                .unwrap_or_default()
+        });
         let counter_w = counter.chars().count() as u16;
         let counter_left = area.x + area.width.saturating_sub(counter_w);
         if !counter.is_empty() {
@@ -535,6 +555,8 @@ impl FindBar {
                     Btn::ReplaceAll => "All",
                     Btn::Prev => "◄ Prev",
                     Btn::Next => "Next ►",
+                    Btn::SelectAll => "✓ all",
+                    Btn::SelectNone => "✗ none",
                     _ => unreachable!(),
                 });
             let text = if focused {
