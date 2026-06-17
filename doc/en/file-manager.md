@@ -64,9 +64,12 @@ In tree view, selecting a directory with `Insert` cascades the selection to all 
 These searches use an **inline bar docked at the top of the panel** (not a
 floating modal), with a separator line above the results. The bar and the
 results are two **zones**: `Tab` switches between them (like the git-status
-panel). In the bar zone, arrow keys move between the fields and toggles; in the
-results zone, `↑` / `↓` walk the matches and `Enter` opens the selection.
-`Esc` exits the search (it does not close the panel).
+panel). In the bar zone, arrow keys move between the fields and toggles. In the
+results zone: `↑` / `↓` walk the matches, `PageUp` / `PageDown` page through
+them, `←` / `→` collapse / expand the file group at the cursor (content
+search), and `Enter` opens the selection (or toggles a file header). A mouse
+click selects a result, a double-click opens it (or toggles a header), and the
+wheel scrolls. `Esc` exits the search (it does not close the panel).
 
 ### File Search (Ctrl+F)
 

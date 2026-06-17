@@ -444,7 +444,16 @@ impl FileManager {
                 } else {
                     fg.add_modifier(Modifier::BOLD)
                 };
-                let marker = "\u{25be} ";
+                // ▸ collapsed / ▾ expanded (► on Windows, outside WGL4 otherwise).
+                let marker = if node.collapsed {
+                    if cfg!(windows) {
+                        "\u{25ba} "
+                    } else {
+                        "\u{25b8} "
+                    }
+                } else {
+                    "\u{25be} "
+                };
                 let count_text = format!(" {}", node.match_count);
                 let avail = content_width.saturating_sub(marker.width() + count_text.width());
                 let name = truncate_from_start(&node.name, avail);

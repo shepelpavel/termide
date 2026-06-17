@@ -209,6 +209,9 @@ pub struct FileManager {
     bar_kind: SearchBarKind,
     /// Whether the inline bar's inputs hold focus (vs. the results list below).
     bar_focus: BarFocus,
+    /// Screen rect of the results zone below the bar (set during render; used
+    /// for mouse hit-testing and PgUp/PgDn page size).
+    search_results_area: Option<Rect>,
     /// Hotkey table for configurable keyboard shortcuts
     hotkeys: HotkeyTable,
     /// Pointer of the last Arc<Config> used to build hotkeys (skip rebuild when unchanged)
@@ -494,6 +497,7 @@ impl FileManager {
             search_bar: None,
             bar_kind: SearchBarKind::Content,
             bar_focus: BarFocus::Input,
+            search_results_area: None,
             hotkeys: HotkeyTable::default(),
             last_config_ptr: 0,
             async_reload_receiver: None,
@@ -543,6 +547,7 @@ impl FileManager {
             search_bar: None,
             bar_kind: SearchBarKind::Content,
             bar_focus: BarFocus::Input,
+            search_results_area: None,
             hotkeys: HotkeyTable::default(),
             last_config_ptr: 0,
             async_reload_receiver: None,
@@ -868,6 +873,12 @@ impl FileManager {
 
     fn handle_bar_results_key(&mut self, key: crossterm::event::KeyEvent) -> Vec<PanelEvent> {
         use crossterm::event::KeyCode;
+        // Page size = the visible results height (fallback to a sane default).
+        let page = self
+            .search_results_area
+            .map(|r| r.height as usize)
+            .unwrap_or(10)
+            .max(1);
         match key.code {
             KeyCode::Up => {
                 self.search_prev();
@@ -875,6 +886,31 @@ impl FileManager {
             }
             KeyCode::Down => {
                 self.search_next();
+                vec![PanelEvent::NeedsRedraw]
+            }
+            KeyCode::PageUp => {
+                if let Some(s) = self.file_search.as_mut() {
+                    s.page_up(page);
+                }
+                vec![PanelEvent::NeedsRedraw]
+            }
+            KeyCode::PageDown => {
+                if let Some(s) = self.file_search.as_mut() {
+                    s.page_down(page);
+                }
+                vec![PanelEvent::NeedsRedraw]
+            }
+            // Collapse / expand the file group at the cursor (content mode).
+            KeyCode::Left | KeyCode::Char('h') => {
+                if let Some(s) = self.file_search.as_mut() {
+                    s.set_collapse_at_cursor(true);
+                }
+                vec![PanelEvent::NeedsRedraw]
+            }
+            KeyCode::Right | KeyCode::Char('l') => {
+                if let Some(s) = self.file_search.as_mut() {
+                    s.set_collapse_at_cursor(false);
+                }
                 vec![PanelEvent::NeedsRedraw]
             }
             KeyCode::Tab => {
@@ -885,6 +921,20 @@ impl FileManager {
                 vec![PanelEvent::NeedsRedraw]
             }
             KeyCode::Enter => {
+                // Enter on a file header toggles its collapse; on a match it
+                // opens the file.
+                let on_header = self
+                    .file_search
+                    .as_ref()
+                    .map(|s| s.cursor_on_header())
+                    .unwrap_or(false);
+                if on_header {
+                    if let Some(s) = self.file_search.as_mut() {
+                        let collapsed = s.cursor_collapsed();
+                        s.set_collapse_at_cursor(!collapsed);
+                    }
+                    return vec![PanelEvent::NeedsRedraw];
+                }
                 let open = self.close_search_with_selection();
                 self.search_bar = None;
                 self.bar_focus = BarFocus::Input;
@@ -1951,6 +2001,7 @@ impl Panel for FileManager {
                 width: area.width,
                 height: area.height.saturating_sub(used),
             };
+            self.search_results_area = Some(results_area);
             if results_area.height > 0 {
                 if let Some(ref search) = self.file_search {
                     self.render_search_results(results_area, buf, search, &self.cached_theme);
@@ -1958,6 +2009,7 @@ impl Panel for FileManager {
             }
             return;
         }
+        self.search_results_area = None;
 
         // If file search is active, render search results instead of normal tree
         if let Some(ref search) = self.file_search {
@@ -2056,6 +2108,71 @@ impl Panel for FileManager {
                     _ => vec![PanelEvent::NeedsRedraw],
                 };
             }
+        }
+
+        // While the inline search bar is open it owns the panel's mouse: clicks
+        // in the results zone move/select the result, double-click opens it (or
+        // toggles a file header), and the wheel walks matches.
+        if self.search_bar.is_some() {
+            if let Some(rarea) = self.search_results_area {
+                match mouse.kind {
+                    MouseEventKind::ScrollUp => {
+                        if let Some(s) = self.file_search.as_mut() {
+                            s.prev_result();
+                        }
+                        return vec![PanelEvent::NeedsRedraw];
+                    }
+                    MouseEventKind::ScrollDown => {
+                        if let Some(s) = self.file_search.as_mut() {
+                            s.next_result();
+                        }
+                        return vec![PanelEvent::NeedsRedraw];
+                    }
+                    MouseEventKind::Down(MouseButton::Left)
+                        if mouse.column >= rarea.x
+                            && mouse.column < rarea.x + rarea.width
+                            && mouse.row >= rarea.y
+                            && mouse.row < rarea.y + rarea.height =>
+                    {
+                        self.bar_focus = BarFocus::Results;
+                        let line = (mouse.row - rarea.y) as usize;
+                        let on_result = self
+                            .file_search
+                            .as_mut()
+                            .map(|s| s.cursor_at_visual_line(line))
+                            .unwrap_or(false);
+                        let idx = self.file_search.as_ref().map(|s| s.cursor).unwrap_or(0);
+                        let on_header = self
+                            .file_search
+                            .as_ref()
+                            .map(|s| s.cursor_on_header())
+                            .unwrap_or(false);
+
+                        if self.click_tracker.is_double_click(&idx) {
+                            self.click_tracker.reset();
+                            if on_header {
+                                if let Some(s) = self.file_search.as_mut() {
+                                    let collapsed = s.cursor_collapsed();
+                                    s.set_collapse_at_cursor(!collapsed);
+                                }
+                            } else if on_result {
+                                let open = self.close_search_with_selection();
+                                self.search_bar = None;
+                                self.bar_focus = BarFocus::Input;
+                                let mut out = vec![PanelEvent::NeedsRedraw];
+                                out.extend(open);
+                                return out;
+                            }
+                        } else {
+                            self.click_tracker.record(idx);
+                        }
+                        return vec![PanelEvent::NeedsRedraw];
+                    }
+                    _ => {}
+                }
+            }
+            // Don't let other mouse events fall through to the tree handler.
+            return vec![];
         }
 
         // Handle scroll first (works anywhere in panel)

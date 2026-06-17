@@ -182,7 +182,10 @@ impl FindBar {
     /// Number of terminal rows the bar needs: one per field plus the buttons
     /// row.
     pub fn height(&self) -> u16 {
-        self.fields.len() as u16 + 1
+        // The buttons/toggles row is omitted entirely when there are none
+        // (e.g. the file-name search has neither buttons nor toggles), so the
+        // bar doesn't leave a blank row above the separator.
+        self.fields.len() as u16 + if self.buttons.is_empty() { 0 } else { 1 }
     }
 
     /// Move focus to the first field (host calls this when entering the bar).
@@ -427,10 +430,17 @@ impl FindBar {
             );
         }
 
-        // Buttons + counter on the last reserved row.
+        // Buttons + counter row. With buttons it's a dedicated row below the
+        // fields; without (name search), the counter shares the last field row
+        // so no blank row is left above the separator.
+        let row_y = if self.buttons.is_empty() {
+            area.y + (self.fields.len() as u16).saturating_sub(1)
+        } else {
+            area.y + self.fields.len() as u16
+        };
         let buttons_row = Rect {
             x: area.x,
-            y: area.y + self.fields.len() as u16,
+            y: row_y,
             width: area.width,
             height: 1,
         };

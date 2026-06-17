@@ -333,6 +333,108 @@ impl FileSearchState {
         }
     }
 
+    /// Move the cursor down by up to `page` result rows (no wrap).
+    pub fn page_down(&mut self, page: usize) {
+        let len = self.tree_nodes.len();
+        let mut pos = self.cursor;
+        for _ in 0..page.max(1) {
+            match ((pos + 1)..len).find(|&p| {
+                self.is_result_row(&self.tree_nodes[p]) && !self.is_hidden_by_collapse(p)
+            }) {
+                Some(p) => pos = p,
+                None => break,
+            }
+        }
+        if pos != self.cursor {
+            self.cursor = pos;
+            self.ensure_visible();
+        }
+    }
+
+    /// Move the cursor up by up to `page` result rows (no wrap).
+    pub fn page_up(&mut self, page: usize) {
+        let mut pos = self.cursor;
+        for _ in 0..page.max(1) {
+            match (0..pos).rev().find(|&p| {
+                self.is_result_row(&self.tree_nodes[p]) && !self.is_hidden_by_collapse(p)
+            }) {
+                Some(p) => pos = p,
+                None => break,
+            }
+        }
+        if pos != self.cursor {
+            self.cursor = pos;
+            self.ensure_visible();
+        }
+    }
+
+    /// Collapse (or expand) the file group at or above the cursor. Content mode
+    /// only. When collapsing, the cursor moves onto the header so it stays
+    /// visible.
+    pub fn set_collapse_at_cursor(&mut self, collapse: bool) -> bool {
+        if self.mode != FileSearchMode::Content || self.tree_nodes.is_empty() {
+            return false;
+        }
+        let mut h = self.cursor.min(self.tree_nodes.len() - 1);
+        while !self.tree_nodes[h].is_file_header {
+            if h == 0 {
+                return false;
+            }
+            h -= 1;
+        }
+        if self.tree_nodes[h].collapsed == collapse {
+            return false;
+        }
+        self.tree_nodes[h].collapsed = collapse;
+        if collapse {
+            self.cursor = h;
+        }
+        self.ensure_visible();
+        true
+    }
+
+    /// Whether the cursor currently rests on a file-group header.
+    pub fn cursor_on_header(&self) -> bool {
+        self.tree_nodes
+            .get(self.cursor)
+            .map(|n| n.is_file_header)
+            .unwrap_or(false)
+    }
+
+    /// Collapsed state of the file group at or above the cursor.
+    pub fn cursor_collapsed(&self) -> bool {
+        let mut h = self.cursor.min(self.tree_nodes.len().saturating_sub(1));
+        loop {
+            match self.tree_nodes.get(h) {
+                Some(n) if n.is_file_header => return n.collapsed,
+                _ if h == 0 => return false,
+                _ => h -= 1,
+            }
+        }
+    }
+
+    /// Set the cursor to the row rendered `line_offset` visual lines below the
+    /// current scroll position (for mouse clicks). Returns true if it landed on
+    /// a selectable result row.
+    pub fn cursor_at_visual_line(&mut self, line_offset: usize) -> bool {
+        let mut acc = 0usize;
+        let mut idx = self.scroll_offset;
+        while idx < self.tree_nodes.len() {
+            let h = self.node_display_lines(idx);
+            if h == 0 {
+                idx += 1;
+                continue;
+            }
+            if line_offset < acc + h {
+                self.cursor = idx;
+                return self.is_result_row(&self.tree_nodes[idx]);
+            }
+            acc += h;
+            idx += 1;
+        }
+        false
+    }
+
     /// A selectable result row: a matched file in FileGlob mode, a match line
     /// in Content mode (file-group headers are not result rows).
     fn is_result_row(&self, node: &ResultTreeNode) -> bool {
@@ -999,6 +1101,74 @@ mod tests {
             match_count: 1,
             collapsed: false,
         }
+    }
+
+    fn match_row(path: PathBuf, line: usize) -> ResultTreeNode {
+        ResultTreeNode {
+            name: String::new(),
+            full_path: path,
+            depth: 1,
+            is_dir: false,
+            git_status: GitStatus::Unmodified,
+            content_match: Some(ContentMatch {
+                line_number: line,
+                matched_line: "hit".to_string(),
+                match_start: 0,
+                match_end: 3,
+            }),
+            is_file_header: false,
+            match_count: 0,
+            collapsed: false,
+        }
+    }
+
+    /// [H0, m1, m2, H3, m4] — two files, three matches.
+    fn grouped_state() -> FileSearchState {
+        let f1 = PathBuf::from("a.txt");
+        let f2 = PathBuf::from("b.txt");
+        let mut s = FileSearchState::new_content(PathBuf::from("."), 1 << 20);
+        s.tree_nodes = vec![
+            header(f1.clone()),
+            match_row(f1.clone(), 1),
+            match_row(f1, 2),
+            header(f2.clone()),
+            match_row(f2, 3),
+        ];
+        s.result_count = 3;
+        s.cursor = 1; // first match
+        s
+    }
+
+    #[test]
+    fn collapsing_a_header_hides_its_matches_from_navigation() {
+        let mut s = grouped_state();
+        // Cursor on first match of file 1; collapse it.
+        assert!(s.set_collapse_at_cursor(true));
+        assert_eq!(s.cursor, 0, "cursor moves onto the header when collapsing");
+        assert!(s.tree_nodes[0].collapsed);
+        // Next result skips the hidden matches and lands in file 2.
+        s.next_result();
+        assert_eq!(s.cursor, 4);
+    }
+
+    #[test]
+    fn cursor_at_visual_line_maps_clicks_to_rows() {
+        let mut s = grouped_state();
+        // Lines (no collapse, no preview): 0=H0,1=m1,2=m2,3=H3,4=m4.
+        assert!(!s.cursor_at_visual_line(0)); // header → not a result row
+        assert!(s.cursor_on_header());
+        assert!(s.cursor_at_visual_line(2)); // m2 → result row
+        assert_eq!(s.cursor, 2);
+    }
+
+    #[test]
+    fn page_nav_stops_at_ends_without_wrapping() {
+        let mut s = grouped_state();
+        s.cursor = 1;
+        s.page_down(10); // clamps at the last result row
+        assert_eq!(s.cursor, 4);
+        s.page_up(10); // back to the first
+        assert_eq!(s.cursor, 1);
     }
 
     #[test]
