@@ -735,7 +735,7 @@ impl FileSearchState {
         }
 
         // Show at most this many match rows per file; the rest collapse into a
-        // single "… N more" row (the header keeps the true total).
+        // single "+ N more" row (the header keeps the true total).
         const MAX_SHOWN_PER_FILE: usize = 5;
 
         let mut nodes: Vec<ResultTreeNode> = Vec::new();
@@ -780,9 +780,9 @@ impl FileSearchState {
                 shown += 1;
             } else if !overflow_added {
                 overflow_added = true;
-                // An "… N more" context row (no content_match → not selectable).
+                // A "+ N more" context row (no content_match → not selectable).
                 nodes.push(ResultTreeNode {
-                    name: format!("… {} more", total - MAX_SHOWN_PER_FILE),
+                    name: format!("+ {} more", total - MAX_SHOWN_PER_FILE),
                     full_path: it.full_path.clone(),
                     depth: 1,
                     is_dir: false,

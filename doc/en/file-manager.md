@@ -92,7 +92,7 @@ query) fields:
 - Results are **grouped by file** below the separator, like the diff panel: the
   cursor moves between **file headers** (`[▼]`/`[▶]` collapse marker + path +
   match count), with up to 5 match lines shown under each (line number + matched
-  line, hit highlighted) and a `… N more` row when a file has more. `←` / `→`
+  line, hit highlighted) and a `+ N more` row when a file has more. `←` / `→`
   collapse / expand a file, `Enter` opens it at its first match.
 
 ### Content Replace (Ctrl+Shift+H)
@@ -103,7 +103,7 @@ replacement is typed, every shown match renders as a `-old/+new` preview.
 Each file header gets a **selection checkbox** (`[ ]` right of the collapse
 triangle), and replacement applies **only to checked files** — nothing is
 checked by default. Toggle the file at the cursor with `Space`, all on/off with
-`a` or the **✓ all** / **✗ none** buttons, or click a checkbox. The bar's
+`a` or the **[✓] all** / **[ ] none** buttons, or click a checkbox. The bar's
 right-hand status shows the live `selected / total files · matches` count.
 
 Press `Enter` in the `Repl:` field (or activate the **Replace** button) to

@@ -577,7 +577,8 @@ impl FileManager {
                     }
                 }
             } else {
-                // "… N more" overflow row (no content match): dim, indented.
+                // "+ N more" overflow row (no content match): dim, aligned at
+                // the line-number column.
                 let style = if is_selected { fg } else { dim };
                 let shown = truncate_from_start(&node.name, content_width.saturating_sub(indent));
                 buf.set_string(area.x + indent as u16, y, &shown, style);
