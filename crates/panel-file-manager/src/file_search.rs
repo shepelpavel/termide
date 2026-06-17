@@ -364,20 +364,23 @@ impl FileSearchState {
     /// mode, or the directory under the cursor in file-name mode.
     fn collapsible_index(&self) -> Option<usize> {
         match self.mode {
-            FileSearchMode::Content => {
-                let mut h = self.cursor.min(self.tree_nodes.len().checked_sub(1)?);
-                loop {
-                    if self.tree_nodes.get(h)?.is_file_header {
-                        return Some(h);
-                    }
-                    h = h.checked_sub(1)?;
-                }
-            }
+            FileSearchMode::Content => self.header_above(self.cursor),
             FileSearchMode::FileGlob => self
                 .tree_nodes
                 .get(self.cursor)
                 .filter(|n| n.is_dir)
                 .map(|_| self.cursor),
+        }
+    }
+
+    /// Walk back from `from` to the nearest content file-header node.
+    fn header_above(&self, from: usize) -> Option<usize> {
+        let mut h = from.min(self.tree_nodes.len().checked_sub(1)?);
+        loop {
+            if self.tree_nodes.get(h)?.is_file_header {
+                return Some(h);
+            }
+            h = h.checked_sub(1)?;
         }
     }
 
@@ -411,22 +414,13 @@ impl FileSearchState {
     /// current scroll position (for mouse clicks). Returns true if it landed on
     /// a selectable row.
     pub fn cursor_at_visual_line(&mut self, line_offset: usize) -> bool {
-        let mut acc = 0usize;
-        let mut idx = self.scroll_offset;
-        while idx < self.tree_nodes.len() {
-            let h = self.node_display_lines(idx);
-            if h == 0 {
-                idx += 1;
-                continue;
-            }
-            if line_offset < acc + h {
+        match self.node_at_visual_line(line_offset) {
+            Some(idx) => {
                 self.cursor = idx;
-                return self.is_selectable(idx);
+                self.is_selectable(idx)
             }
-            acc += h;
-            idx += 1;
+            None => false,
         }
-        false
     }
 
     /// If a click at (`line_offset`, `col_offset`) — relative to the results
@@ -519,13 +513,7 @@ impl FileSearchState {
         if self.mode != FileSearchMode::Content {
             return None;
         }
-        let mut h = self.cursor.min(self.tree_nodes.len().checked_sub(1)?);
-        loop {
-            if self.tree_nodes.get(h)?.is_file_header {
-                return Some(h);
-            }
-            h = h.checked_sub(1)?;
-        }
+        self.header_above(self.cursor)
     }
 
     /// Toggle selection of the file group at or above the cursor.
