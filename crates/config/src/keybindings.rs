@@ -339,6 +339,7 @@ pub struct FileManagerKeybindings {
     // Search
     pub search: Option<KeyBinding>,
     pub search_content: Option<KeyBinding>,
+    pub search_replace: Option<KeyBinding>,
 
     // Navigation
     pub refresh: Option<KeyBinding>,
@@ -748,6 +749,7 @@ impl FileManagerKeybindings {
         // Search
         set_default!(search, "Ctrl+F");
         set_default!(search_content, "Ctrl+Shift+F");
+        set_default!(search_replace, "Ctrl+H");
 
         // Navigation
         set_default!(refresh, "Ctrl+R");

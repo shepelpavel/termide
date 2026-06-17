@@ -53,9 +53,11 @@ The text editor panel provides a functional editor for working with text files w
 
 ### Inline Search Bar (Ctrl+F)
 
-Press `Ctrl+F` to open a find bar **docked at the bottom of the editor** (not a
-floating modal). The buffer stays visible above it and matches highlight as you
-type.
+Press `Ctrl+F` to open a find bar **docked at the top of the editor** (like the
+file manager), with a separator line below it; the buffer stays visible and
+matches highlight as you type. `Tab` switches focus between the bar and the
+buffer zone: in the buffer zone the cursor moves and scrolls normally while the
+bar stays open; `Tab` returns to the bar.
 
 | Shortcut           | Action                                     |
 |-------------------|--------------------------------------------|
@@ -63,7 +65,8 @@ type.
 | Type text         | Live search updates as you type            |
 | `F3` / `Enter`    | Go to next match                           |
 | `Shift+F3`        | Go to previous match                       |
-| `Tab` / arrows    | Move between the field and the buttons     |
+| `Tab`             | Switch between the bar and the buffer zone |
+| Arrows            | Move between fields/buttons (bar zone)     |
 | `Escape`          | Close the bar                              |
 | Mouse click       | Click the buttons / toggles                |
 

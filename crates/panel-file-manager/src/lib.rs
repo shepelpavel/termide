@@ -39,6 +39,7 @@ pub(crate) fn build_fm_hotkey_table(config: &Config) -> HotkeyTable {
     // Search
     t.insert("search", &kb.search);
     t.insert("search_content", &kb.search_content);
+    t.insert("search_replace", &kb.search_replace);
 
     // Navigation
     t.insert("refresh", &kb.refresh);
@@ -656,10 +657,10 @@ impl FileManager {
 
     // === Inline content search / replace bar (Ctrl+Shift+F) ===
 
-    /// Open (or re-focus) the inline content search/replace bar. When
-    /// `focus_replace` is true the Replace field is focused, otherwise Find.
-    pub fn open_content_bar(&mut self, focus_replace: bool) {
-        self.open_search_bar(SearchBarKind::Content, focus_replace);
+    /// Open the inline content bar. `replace = false` is a pure search
+    /// (Ctrl+Shift+F); `replace = true` adds the replacement field (Ctrl+H).
+    pub fn open_content_bar(&mut self, replace: bool) {
+        self.open_search_bar(SearchBarKind::Content, replace);
     }
 
     /// Open (or re-focus) the inline file-name search bar (single glob field).
@@ -667,42 +668,77 @@ impl FileManager {
         self.open_search_bar(SearchBarKind::Name, false);
     }
 
-    /// Open the inline bar for `kind`, rebuilding it if a different kind was
-    /// open. Content seeds the mask to `*` (all files) on first build.
-    fn open_search_bar(&mut self, kind: SearchBarKind, focus_replace: bool) {
-        if self.search_bar.is_none() || self.bar_kind != kind {
-            let bar = match kind {
+    /// Open the inline bar for `kind`, rebuilding it if the kind or the
+    /// search/replace shape changed. Field texts are preserved across a
+    /// rebuild. The file manager has no left-hand content, so navigation lives
+    /// in the results zone (Tab) rather than Prev/Next buttons.
+    fn open_search_bar(&mut self, kind: SearchBarKind, replace: bool) {
+        let has_replace = self
+            .search_bar
+            .as_ref()
+            .map(|b| b.has_field(FindField::Replace));
+        let rebuild = self.search_bar.is_none()
+            || self.bar_kind != kind
+            || (kind == SearchBarKind::Content && has_replace != Some(replace));
+
+        if rebuild {
+            // Preserve typed text across a rebuild (e.g. Search → Replace).
+            let (mask, find, repl) = self
+                .search_bar
+                .as_ref()
+                .map(|b| {
+                    (
+                        b.mask_text().to_string(),
+                        b.find_text().to_string(),
+                        b.replace_text().to_string(),
+                    )
+                })
+                .unwrap_or_default();
+
+            let mut bar = match kind {
                 SearchBarKind::Name => FindBar::new(FindBarConfig {
                     fields: vec![FindField::Find],
-                    action_buttons: vec![FindBarBtn::Prev, FindBarBtn::Next],
+                    action_buttons: vec![],
                     toggles: false,
                 }),
                 SearchBarKind::Content => {
+                    let mut fields = vec![FindField::Mask, FindField::Find];
+                    let mut buttons = vec![];
+                    if replace {
+                        fields.push(FindField::Replace);
+                        buttons.push(FindBarBtn::ReplaceAll);
+                    }
                     let mut bar = FindBar::new(FindBarConfig {
-                        fields: vec![FindField::Mask, FindField::Find, FindField::Replace],
-                        action_buttons: vec![
-                            FindBarBtn::Prev,
-                            FindBarBtn::Next,
-                            FindBarBtn::ReplaceAll,
-                        ],
+                        fields,
+                        action_buttons: buttons,
                         toggles: true,
                     });
-                    bar.set_text(FindField::Mask, "*".to_string());
+                    // The glob field reads as "Find:" (matching the name
+                    // search), the content query as "Text:".
+                    bar.set_label(FindField::Mask, "Find: ");
+                    bar.set_label(FindField::Find, "Text: ");
+                    bar.set_text(
+                        FindField::Mask,
+                        if mask.is_empty() { "*".into() } else { mask },
+                    );
                     bar
                 }
             };
+            if !find.is_empty() {
+                bar.set_text(FindField::Find, find);
+            }
+            if replace && !repl.is_empty() {
+                bar.set_text(FindField::Replace, repl);
+            }
             self.search_bar = Some(bar);
             self.bar_kind = kind;
-            self.close_file_search();
         }
         if let Some(bar) = self.search_bar.as_mut() {
-            bar.focus_field(if focus_replace {
-                FindField::Replace
-            } else {
-                FindField::Find
-            });
+            // Focus the query field (Find = the text/glob you type first).
+            bar.focus_field(FindField::Find);
         }
         self.bar_focus = BarFocus::Input;
+        self.rerun_search();
     }
 
     /// Close the inline bar and clear its search results.
@@ -775,6 +811,18 @@ impl FileManager {
     }
 
     fn handle_bar_input_key(&mut self, key: crossterm::event::KeyEvent) -> Vec<PanelEvent> {
+        use crossterm::event::KeyCode;
+
+        // Tab moves to the results zone (where arrows walk the matches), like
+        // section switching in the git-status panel. Within the bar, fields and
+        // buttons are reached with arrow keys.
+        if key.code == KeyCode::Tab && key.modifiers.is_empty() {
+            if self.file_search.is_some() {
+                self.bar_focus = BarFocus::Results;
+            }
+            return vec![PanelEvent::NeedsRedraw];
+        }
+
         let Some(mut bar) = self.search_bar.take() else {
             return vec![];
         };
@@ -831,7 +879,7 @@ impl FileManager {
             }
             KeyCode::Tab => {
                 if let Some(bar) = self.search_bar.as_mut() {
-                    bar.focus_field(FindField::Find);
+                    bar.focus_first();
                 }
                 self.bar_focus = BarFocus::Input;
                 vec![PanelEvent::NeedsRedraw]
@@ -1885,11 +1933,23 @@ impl Panel for FileManager {
             bar.render(bar_area, buf, &self.cached_theme, active);
             self.search_bar = Some(bar);
 
+            // Pseudographic separator between the form and the results.
+            let sep_y = area.y + bar_h;
+            let mut drew_sep = false;
+            if sep_y < area.y + area.height {
+                let style = ratatui::style::Style::default().fg(self.cached_theme.disabled);
+                for dx in 0..area.width {
+                    buf[(area.x + dx, sep_y)].set_symbol("─").set_style(style);
+                }
+                drew_sep = true;
+            }
+
+            let used = bar_h + u16::from(drew_sep);
             let results_area = Rect {
                 x: area.x,
-                y: area.y + bar_h,
+                y: area.y + used,
                 width: area.width,
-                height: area.height.saturating_sub(bar_h),
+                height: area.height.saturating_sub(used),
             };
             if results_area.height > 0 {
                 if let Some(ref search) = self.file_search {
@@ -2775,9 +2835,13 @@ impl FileManager {
                 events.push(PanelEvent::NeedsRedraw);
             }
             FmCommand::SearchContent => {
-                // Content search/replace is an inline bar docked in the panel,
-                // not a floating modal.
+                // Content search is an inline bar docked in the panel.
                 self.open_content_bar(false);
+                events.push(PanelEvent::NeedsRedraw);
+            }
+            FmCommand::SearchReplace => {
+                // Content replace: same inline bar with the Replace field.
+                self.open_content_bar(true);
                 events.push(PanelEvent::NeedsRedraw);
             }
 

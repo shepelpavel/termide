@@ -87,9 +87,12 @@ pub struct Editor {
     pub(crate) vfs_manager: Option<Arc<VfsManager>>,
 
     // === UI state ===
-    /// Inline find/replace bar, docked at the bottom of the panel while open.
+    /// Inline find/replace bar, docked at the top of the panel while open.
     /// Replaces the floating search/replace modals for the editor.
     pub(crate) find_bar: Option<FindBar>,
+    /// While the bar is open, whether focus is in the buffer (navigate matches
+    /// with the cursor) rather than the bar's fields. Toggled with Tab.
+    pub(crate) find_bar_focus_buffer: bool,
     /// Modal window request
     modal_request: Option<(PendingAction, ActiveModal)>,
     /// Pending upload operation (for regular Ctrl+S saves of remote files)
@@ -165,6 +168,7 @@ impl Editor {
             lsp: LspState::new(),
             vfs_manager: None,
             find_bar: None,
+            find_bar_focus_buffer: false,
             modal_request: None,
             pending_upload: None,
             pending_remote_open: None,
@@ -608,6 +612,7 @@ impl Editor {
             lsp: LspState::new(),
             vfs_manager: None,
             find_bar: None,
+            find_bar_focus_buffer: false,
             modal_request: None,
             pending_upload: None,
             pending_remote_open: None,
@@ -648,6 +653,7 @@ impl Editor {
             lsp: LspState::new(),
             vfs_manager: None,
             find_bar: None,
+            find_bar_focus_buffer: false,
             modal_request: None,
             pending_upload: None,
             pending_remote_open: None,

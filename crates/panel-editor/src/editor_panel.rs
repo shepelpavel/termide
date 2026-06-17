@@ -125,20 +125,39 @@ impl Panel for Editor {
         let theme = self.render_cache.theme;
         let config = self.render_cache.config.clone();
 
-        // Dock the inline find/replace bar at the bottom, shrinking the content
-        // area so the viewport/scroll/mouse math all see the reduced height.
+        // Dock the inline find/replace bar at the TOP (consistent with the file
+        // manager), with a pseudographic separator, shrinking the content area
+        // so the viewport/scroll/mouse math see the reduced height.
         let mut content_area = area;
         if let Some(mut bar) = self.find_bar.take() {
             let bar_h = bar.height().min(area.height);
-            content_area.height = area.height.saturating_sub(bar_h);
             let bar_area = Rect {
                 x: area.x,
-                y: area.y + content_area.height,
+                y: area.y,
                 width: area.width,
                 height: bar_h,
             };
-            bar.render(bar_area, buf, &theme, true);
+            let active = !self.find_bar_focus_buffer;
+            bar.render(bar_area, buf, &theme, active);
             self.find_bar = Some(bar);
+
+            // Separator row below the bar.
+            let sep_y = area.y + bar_h;
+            let mut used = bar_h;
+            if sep_y < area.y + area.height {
+                let style = ratatui::style::Style::default().fg(theme.disabled);
+                for dx in 0..area.width {
+                    buf[(area.x + dx, sep_y)].set_symbol("─").set_style(style);
+                }
+                used += 1;
+            }
+
+            content_area = Rect {
+                x: area.x,
+                y: area.y + used,
+                width: area.width,
+                height: area.height.saturating_sub(used),
+            };
         }
 
         self.render_content(
@@ -178,10 +197,27 @@ impl Panel for Editor {
         // Note: Key translation should be done at app level before calling handle_key
         // If you need translation, call translate_hotkey from termide-core or keyboard module
 
-        // The inline find/replace bar owns the keyboard while it is open
-        // (before vim / command processing).
+        // The inline find/replace bar (before vim / command processing). Tab
+        // toggles focus between the bar and the buffer "results" zone, like the
+        // file manager. In the bar zone the bar owns keys; in the buffer zone
+        // keys fall through to normal editor handling (cursor navigation, F3
+        // stepping), with Esc closing the bar.
         if self.find_bar.is_some() {
-            return self.handle_find_bar_key(key);
+            use crossterm::event::KeyCode;
+            let plain = key.modifiers.is_empty();
+            if plain && key.code == KeyCode::Tab {
+                self.find_bar_focus_buffer = !self.find_bar_focus_buffer;
+                return vec![PanelEvent::NeedsRedraw];
+            }
+            if self.find_bar_focus_buffer {
+                if plain && key.code == KeyCode::Esc {
+                    self.close_find_bar();
+                    return vec![PanelEvent::NeedsRedraw];
+                }
+                // else fall through to normal buffer handling below
+            } else {
+                return self.handle_find_bar_key(key);
+            }
         }
 
         // Collect events from internal state

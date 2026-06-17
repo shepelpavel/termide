@@ -115,6 +115,10 @@ enum Control {
 /// Inline find / replace bar.
 pub struct FindBar {
     fields: Vec<FindField>,
+    /// Display label per field (defaults to the field's own label), parallel
+    /// to `fields`. Lets a host align labels across bars (e.g. the file
+    /// manager labels its glob field "Find:" in both searches).
+    labels: Vec<String>,
     inputs: Vec<TextInputHandler>,
     buttons: Vec<Btn>,
     use_regex: bool,
@@ -137,6 +141,7 @@ impl FindBar {
             toggles,
         } = config;
         let inputs = fields.iter().map(|_| TextInputHandler::new()).collect();
+        let labels = fields.iter().map(|f| f.label().to_string()).collect();
         let mut buttons = action_buttons;
         if toggles {
             buttons.push(Btn::Regex);
@@ -144,6 +149,7 @@ impl FindBar {
         }
         Self {
             fields,
+            labels,
             inputs,
             buttons,
             use_regex: false,
@@ -203,6 +209,14 @@ impl FindBar {
     /// Whether the bar exposes `field`.
     pub fn has_field(&self, field: FindField) -> bool {
         self.fields.contains(&field)
+    }
+
+    /// Override the display label of a field (include the trailing space, e.g.
+    /// `"Find: "`). No-op if the bar doesn't expose the field.
+    pub fn set_label(&mut self, field: FindField, label: impl Into<String>) {
+        if let Some(i) = self.field_index(field) {
+            self.labels[i] = label.into();
+        }
     }
 
     /// The field that currently has focus, if any (vs a button).
@@ -359,7 +373,7 @@ impl FindBar {
             if hit(area, col, row) {
                 // Fields occupy the leading slots of the focus ring.
                 self.focus = i;
-                let label_w = self.fields[i].label().len() as u16;
+                let label_w = self.labels[i].len() as u16;
                 let start_x = area.x + label_w;
                 if col >= start_x {
                     let click_x = (col - start_x) as usize;
@@ -392,7 +406,7 @@ impl FindBar {
         let focused_control = self.current();
 
         // One row per field.
-        for (i, &field) in self.fields.iter().enumerate() {
+        for i in 0..self.fields.len() {
             let row = Rect {
                 x: area.x,
                 y: area.y + i as u16,
@@ -404,7 +418,7 @@ impl FindBar {
             render_labeled_input(
                 buf,
                 row,
-                field.label(),
+                &self.labels[i],
                 self.inputs[i].text(),
                 self.inputs[i].cursor_pos(),
                 self.inputs[i].selection_range(),

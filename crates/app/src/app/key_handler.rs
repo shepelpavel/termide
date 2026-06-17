@@ -99,12 +99,17 @@ impl App {
         let (events, modal_request, config_update, escape_close) = if let Some(panel) =
             self.layout_manager.active_panel_mut()
         {
+            // Escape: decide BEFORE handling the key, because handling it may
+            // clear the very state that captures Escape (e.g. close an inline
+            // search bar). The question is whether the panel had a mode to exit
+            // when Escape arrived, not after.
+            let captured_escape = panel.captures_escape();
             let mut events = panel.handle_key(chord);
 
-            // Escape: if panel didn't capture it, request close with confirmation
+            // If the panel had nothing to capture, Escape requests panel close.
             let escape_close = key.code == crossterm::event::KeyCode::Esc
                 && key.modifiers.is_empty()
-                && !panel.captures_escape();
+                && !captured_escape;
 
             // Legacy methods still in use
             let modal_request = panel.take_modal_request();

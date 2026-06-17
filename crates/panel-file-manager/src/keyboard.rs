@@ -53,6 +53,7 @@ pub enum FmCommand {
     // Search
     Search,
     SearchContent,
+    SearchReplace,
 
     // Clipboard
     ClipboardCopy,
@@ -130,6 +131,9 @@ impl FmCommand {
         }
         if hotkeys.matches("search_content", &key) {
             return Self::SearchContent;
+        }
+        if hotkeys.matches("search_replace", &key) {
+            return Self::SearchReplace;
         }
         if hotkeys.matches("refresh", &key) {
             return Self::Refresh;

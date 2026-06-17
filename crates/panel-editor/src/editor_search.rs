@@ -348,12 +348,14 @@ impl Editor {
                 bar.focus_field(FindField::Find);
             }
         }
+        self.find_bar_focus_buffer = false;
         self.rerun_bar_search();
     }
 
     /// Close the inline bar and clear the search highlight.
     pub(crate) fn close_find_bar(&mut self) {
         self.find_bar = None;
+        self.find_bar_focus_buffer = false;
         self.close_search();
     }
 

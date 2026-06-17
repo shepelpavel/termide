@@ -131,11 +131,15 @@ impl Editor {
             height: panel_area.height.saturating_sub(2),
         };
 
+        // The inline find bar (when open) is docked at the top with a
+        // separator row, pushing the buffer content down by that many rows.
+        let bar_offset = self.find_bar.as_ref().map(|b| b.height() + 1).unwrap_or(0);
+
         let line_number_width = rendering::LINE_NUMBER_WIDTH as u16;
         let content_x = inner.x + line_number_width;
-        let content_y = inner.y;
+        let content_y = inner.y + bar_offset;
         let content_width = inner.width.saturating_sub(line_number_width);
-        let content_height = inner.height;
+        let content_height = inner.height.saturating_sub(bar_offset);
 
         // Save content bounds for auto-scroll in tick()
         self.input.content_bounds = Some((content_x, content_y, content_width, content_height));

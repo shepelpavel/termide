@@ -57,42 +57,44 @@ In tree view, selecting a directory with `Insert` cascades the selection to all 
 | Shortcut           | Action                                     |
 |-------------------|--------------------------------------------|
 | `Ctrl+F`          | Search files by name (glob patterns)       |
-| `Ctrl+Shift+F`    | Search/replace in file contents            |
+| `Ctrl+Shift+F`    | Search in file contents                    |
+| `Ctrl+H`          | Search & replace in file contents          |
 | `/`              | In-tree incremental search (filter as you type) |
 
-Both searches use an **inline bar docked at the top of the panel** (not a
-floating modal): the form and its results share the panel, and you can walk the
-matches with the form still open. `Tab` / arrow keys move between the bar's
-fields and buttons; `Esc` closes the bar.
+These searches use an **inline bar docked at the top of the panel** (not a
+floating modal), with a separator line above the results. The bar and the
+results are two **zones**: `Tab` switches between them (like the git-status
+panel). In the bar zone, arrow keys move between the fields and toggles; in the
+results zone, `↑` / `↓` walk the matches and `Enter` opens the selection.
+`Esc` exits the search (it does not close the panel).
 
 ### File Search (Ctrl+F)
 
-Opens an inline bar with a single glob field for quick file search by name:
-- Type to filter files in real-time; results show relative paths with git
-  status colors below the bar.
-- Press `Enter` to jump focus into the results list, then `↑` / `↓` to move the
-  cursor and `Enter` to open the selected file. `Tab` returns to the field;
-  `Escape` closes.
+An inline bar with a single `Find:` field that filters files by glob in real
+time; results (relative paths with git-status colors) appear below the
+separator. `Tab` into the results, `↑` / `↓` to move, `Enter` to open.
 
-### Content Search & Replace (Ctrl+Shift+F)
+### Content Search (Ctrl+Shift+F)
 
-Opens an inline bar with `Mask:` / `Find:` / `Repl:` fields for searching text
-within files:
+An inline bar with `Find:` (glob mask, defaults to `*`) and `Text:` (the content
+query) fields:
 - Matching is **literal by default**; toggle `[.*] Regex` for regular
-  expressions and `[Aa] Case` for case sensitivity by clicking them, or by
-  focusing the buttons row and pressing `Enter` / `Space`.
+  expressions and `[Aa] Case` for case sensitivity (click, or focus the toggle
+  and press `Enter` / `Space`).
 - Searches only in text files (binary files are skipped); large files are
   skipped (configurable limit in settings).
-- Results are **grouped by file** below the bar: a header row with the match
-  count, then one line per match (line number + matched line, hit highlighted).
-  Press `Enter` on `Find` to move focus into the results, then `↑` / `↓` to
-  navigate and `Enter` to open the file at that line; `Escape` closes.
+- Results are **grouped by file** below the separator: a header row with the
+  match count, then one line per match (line number + matched line, hit
+  highlighted). `Tab` into the results, `↑` / `↓` to navigate, `Enter` to open
+  the file at that line.
 
-**Replace across files.** Type a replacement in the `Repl:` field. The match
-under the cursor shows a `-old/+new` preview. Press `Enter` in the `Repl:` field
-(or activate the `All` button) to replace **every** match across all listed
-files — after a confirmation showing how many occurrences in how many files.
-With `[.*] Regex` on, the replacement supports `$1` / `${name}` capture groups;
+### Content Replace (Ctrl+H)
+
+`Ctrl+H` opens the same content bar with an extra `Repl:` field. The match under
+the cursor shows a `-old/+new` preview. Press `Enter` in the `Repl:` field (or
+activate the `All` button) to replace **every** match across all listed files —
+after a confirmation showing how many occurrences in how many files. With
+`[.*] Regex` on, the replacement supports `$1` / `${name}` capture groups;
 otherwise it is inserted verbatim. Replacements are written to disk.
 
 ### In-tree Search (/)

@@ -193,6 +193,12 @@ pub fn enumerate_bindings(config: &Config) -> Vec<(BindingLocation, ParsedKeyBin
         "search_content",
         &f.search_content,
     );
+    push(
+        &mut out,
+        "file_manager",
+        "search_replace",
+        &f.search_replace,
+    );
     push(&mut out, "file_manager", "refresh", &f.refresh);
     push(&mut out, "file_manager", "go_parent", &f.go_parent);
     push(&mut out, "file_manager", "go_home", &f.go_home);
