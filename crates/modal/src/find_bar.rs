@@ -60,10 +60,9 @@ pub enum Btn {
     ReplaceAll,
     Prev,
     Next,
-    /// Select all entries (host-defined meaning, e.g. all files for replace).
+    /// A "select all" checkbox (host-defined meaning, e.g. all files for
+    /// replace). Renders as `[x]/[ ] Select all` and toggles on activation.
     SelectAll,
-    /// Clear the selection.
-    SelectNone,
     Regex,
     Case,
 }
@@ -93,10 +92,8 @@ pub enum FindBarAction {
     /// `Enter` on a field — the host decides what to do based on
     /// [`FindBar::focused_field`].
     Submit,
-    /// Select all entries.
+    /// Toggle the "select all" checkbox.
     SelectAll,
-    /// Clear the selection.
-    SelectNone,
     /// Close the bar.
     Close,
 }
@@ -134,6 +131,8 @@ pub struct FindBar {
     button_labels: Vec<(Btn, String)>,
     use_regex: bool,
     case_sensitive: bool,
+    /// State of the "select all" checkbox button (host-driven).
+    select_all_on: bool,
     /// Index into the focus ring (`ring()`).
     focus: usize,
     match_info: Option<(usize, usize)>,
@@ -168,6 +167,7 @@ impl FindBar {
             button_labels: Vec::new(),
             use_regex: false,
             case_sensitive: false,
+            select_all_on: false,
             focus: 0,
             match_info: None,
             info_text: None,
@@ -302,6 +302,11 @@ impl FindBar {
         self.info_text = text;
     }
 
+    /// Set the state of the "select all" checkbox button.
+    pub fn set_select_all(&mut self, on: bool) {
+        self.select_all_on = on;
+    }
+
     // === Input ===
 
     /// Handle a key while the bar holds focus. Returns the host action, if any.
@@ -378,7 +383,6 @@ impl FindBar {
             Some(Btn::Prev) => Some(FindBarAction::Previous),
             Some(Btn::Next) => Some(FindBarAction::Next),
             Some(Btn::SelectAll) => Some(FindBarAction::SelectAll),
-            Some(Btn::SelectNone) => Some(FindBarAction::SelectNone),
             Some(Btn::Regex) => {
                 self.use_regex = !self.use_regex;
                 Some(FindBarAction::QueryChanged)
@@ -526,13 +530,19 @@ impl FindBar {
     }
 
     fn button_render(&self, btn: Btn, focused: bool, theme: &Theme) -> (String, Style) {
-        if btn.is_toggle() {
-            let (label, on) = match btn {
-                Btn::Regex => (".*", self.use_regex),
-                Btn::Case => ("Aa", self.case_sensitive),
+        // Toggle-style controls (regex/case, and the "select all" checkbox)
+        // render their own brackets and invert when focused — no `[ … ]` frame
+        // (which would otherwise double up the brackets in their labels).
+        if btn.is_toggle() || btn == Btn::SelectAll {
+            let (text, on) = match btn {
+                Btn::Regex => ("[.*]".to_string(), self.use_regex),
+                Btn::Case => ("[Aa]".to_string(), self.case_sensitive),
+                Btn::SelectAll => {
+                    let mark = if self.select_all_on { "x" } else { " " };
+                    (format!("[{}] Select all", mark), self.select_all_on)
+                }
                 _ => unreachable!(),
             };
-            let text = format!("[{}]", label);
             let mut style = if on {
                 Style::default()
                     .fg(theme.accented_fg)
@@ -555,8 +565,6 @@ impl FindBar {
                     Btn::ReplaceAll => "All",
                     Btn::Prev => "◄ Prev",
                     Btn::Next => "Next ►",
-                    Btn::SelectAll => "[✓] all",
-                    Btn::SelectNone => "[ ] none",
                     _ => unreachable!(),
                 });
             let text = if focused {

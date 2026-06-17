@@ -722,9 +722,8 @@ impl FileManager {
                     let mut buttons = vec![];
                     if replace {
                         fields.push(FindField::Replace);
-                        // Per-file selection helpers + the replace action.
+                        // "Select all" checkbox + the replace action.
                         buttons.push(FindBarBtn::SelectAll);
-                        buttons.push(FindBarBtn::SelectNone);
                         buttons.push(FindBarBtn::ReplaceAll);
                     }
                     let mut bar = FindBar::new(FindBarConfig {
@@ -847,17 +846,22 @@ impl FileManager {
     /// Refresh the bar's right-aligned status: the "N of M" found counter, and
     /// in replace mode the selected-files / replacement summary.
     fn sync_bar_status(&mut self) {
-        let data = self
-            .file_search
-            .as_ref()
-            .map(|s| (s.get_match_info(), s.show_checkboxes, s.selected_summary()));
+        let data = self.file_search.as_ref().map(|s| {
+            (
+                s.get_match_info(),
+                s.show_checkboxes,
+                s.selected_summary(),
+                s.all_selected(),
+            )
+        });
         if let Some(bar) = self.search_bar.as_mut() {
-            let (info, replace_mode, (sel_files, sel_matches)) =
-                data.unwrap_or((None, false, (0, 0)));
+            let (info, replace_mode, (sel_files, sel_matches), all_selected) =
+                data.unwrap_or((None, false, (0, 0), false));
             match info {
                 Some((c, t)) => bar.set_match_info(c + 1, t),
                 None => bar.clear_match_info(),
             }
+            bar.set_select_all(all_selected);
             if replace_mode {
                 let total = info.map(|(_, t)| t).unwrap_or(0);
                 bar.set_info_text(Some(termide_i18n::t().replace_selection_fmt(
@@ -912,14 +916,10 @@ impl FileManager {
             }
             Some(FindBarAction::ReplaceAll) => self.content_replace_all_event(),
             Some(FindBarAction::SelectAll) => {
+                // Toggle: select all when not everything is selected, else clear.
                 if let Some(s) = self.file_search.as_mut() {
-                    s.set_all_selected(true);
-                }
-                vec![PanelEvent::NeedsRedraw]
-            }
-            Some(FindBarAction::SelectNone) => {
-                if let Some(s) = self.file_search.as_mut() {
-                    s.set_all_selected(false);
+                    let all = s.all_selected();
+                    s.set_all_selected(!all);
                 }
                 vec![PanelEvent::NeedsRedraw]
             }
@@ -977,8 +977,8 @@ impl FileManager {
             }
             KeyCode::Char('a') => {
                 if let Some(s) = self.file_search.as_mut() {
-                    let all = !s.any_selected();
-                    s.set_all_selected(all);
+                    let all = s.all_selected();
+                    s.set_all_selected(!all);
                 }
                 vec![PanelEvent::NeedsRedraw]
             }

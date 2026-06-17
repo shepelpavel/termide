@@ -456,7 +456,7 @@ impl Editor {
                 vec![PanelEvent::NeedsRedraw]
             }
             // The editor's find bar has no per-file selection.
-            Some(FindBarAction::SelectAll) | Some(FindBarAction::SelectNone) | None => {
+            Some(FindBarAction::SelectAll) | None => {
                 vec![PanelEvent::NeedsRedraw]
             }
         }

@@ -102,8 +102,8 @@ replacement is typed, every shown match renders as a `-old/+new` preview.
 
 Each file header gets a **selection checkbox** (`[ ]` right of the collapse
 triangle), and replacement applies **only to checked files** — nothing is
-checked by default. Toggle the file at the cursor with `Space`, all on/off with
-`a` or the **[✓] all** / **[ ] none** buttons, or click a checkbox. The bar's
+checked by default. Toggle the file at the cursor with `Space` or a click; the **`[ ] Select all`**
+checkbox button (or `a`) selects/clears every file at once. The bar's
 right-hand status shows the live `selected / total files · matches` count.
 
 Press `Enter` in the `Repl:` field (or activate the **Replace** button) to

@@ -493,9 +493,18 @@ impl FileSearchState {
         self.selected_headers.contains(&idx)
     }
 
-    /// Whether any file is selected.
-    pub fn any_selected(&self) -> bool {
-        !self.selected_headers.is_empty()
+    /// Whether every file header is selected (and there is at least one).
+    pub fn all_selected(&self) -> bool {
+        let mut any = false;
+        for (i, n) in self.tree_nodes.iter().enumerate() {
+            if n.is_file_header {
+                any = true;
+                if !self.selected_headers.contains(&i) {
+                    return false;
+                }
+            }
+        }
+        any
     }
 
     /// The content file header at or above the cursor.
@@ -1395,16 +1404,17 @@ mod tests {
 
         s.set_all_selected(true);
         assert!(s.is_header_selected(0) && s.is_header_selected(3));
+        assert!(s.all_selected());
         assert_eq!(s.selected_summary().0, 2);
 
         s.set_all_selected(false);
-        assert!(!s.any_selected());
+        assert_eq!(s.selected_summary().0, 0);
 
         // Leaving replace mode clears the selection.
         s.toggle_selected_at_cursor();
-        assert!(s.any_selected());
+        assert_eq!(s.selected_summary().0, 1);
         s.set_replace_mode(false);
-        assert!(!s.any_selected());
+        assert_eq!(s.selected_summary().0, 0);
     }
 
     #[test]
