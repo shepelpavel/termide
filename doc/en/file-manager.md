@@ -80,6 +80,11 @@ separator as a tree. `Tab` into the results; `↑` / `↓` move across files **a
 folders**, `←` / `→` collapse / expand a folder, `Enter` opens the file
 (placing the cursor on it in the tree).
 
+Matching is a **case-insensitive substring** by default; the `[Aa] Case` and
+`[.*] Regex` toggles change it: `[Aa]` makes matching case-sensitive, and
+`[.*]` treats the query as a regular expression over the file name (click a
+toggle, or focus it and press `Enter` / `Space`).
+
 ### Content Search (Ctrl+Shift+F)
 
 An inline bar with `Find:` (glob mask, defaults to `*`) and `Text:` (the content

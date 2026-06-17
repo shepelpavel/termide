@@ -75,7 +75,7 @@ impl App {
                 if let Some(fm) = self.active_file_manager_mut() {
                     match search_result.action {
                         SearchAction::Search => {
-                            fm.start_file_search(&search_result.query);
+                            fm.start_file_search(&search_result.query, false, false);
                         }
                         SearchAction::Next => {
                             fm.search_next();

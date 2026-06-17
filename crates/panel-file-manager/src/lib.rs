@@ -564,9 +564,9 @@ impl FileManager {
     // ── File/content search methods ─────────────────────────────────────
 
     /// Start file glob search
-    pub fn start_file_search(&mut self, glob_mask: &str) {
+    pub fn start_file_search(&mut self, glob_mask: &str, use_regex: bool, case_sensitive: bool) {
         let mut state = file_search::FileSearchState::new_file_glob(self.current_path.clone());
-        state.start_file_search(glob_mask);
+        state.start_file_search(glob_mask, use_regex, case_sensitive);
         self.file_search = Some(state);
     }
 
@@ -714,7 +714,8 @@ impl FileManager {
             let mut bar = match kind {
                 SearchBarKind::Name => FindBar::new(FindBarConfig {
                     fields: vec![FindField::Find],
-                    buttons: vec![],
+                    // `[Aa]` case + `[.*]` regex, like the content form.
+                    buttons: vec![FindBarBtn::Case, FindBarBtn::Regex],
                 }),
                 SearchBarKind::Content => {
                     let mut fields = vec![FindField::Mask, FindField::Find];
@@ -779,7 +780,9 @@ impl FileManager {
             return;
         }
         match self.bar_kind {
-            SearchBarKind::Name => self.start_file_search(&query),
+            SearchBarKind::Name => {
+                self.start_file_search(&query, bar.use_regex(), bar.case_sensitive())
+            }
             SearchBarKind::Content => {
                 let mask = bar.mask_text().to_string();
                 let mask = if mask.is_empty() { "*" } else { mask.as_str() };

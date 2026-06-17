@@ -161,7 +161,7 @@ impl FileSearchState {
     }
 
     /// Start file search in background thread
-    pub fn start_file_search(&mut self, mask: &str) {
+    pub fn start_file_search(&mut self, mask: &str, use_regex: bool, case_sensitive: bool) {
         if mask.is_empty() {
             self.tree_nodes.clear();
             self.tree_prefixes.clear();
@@ -192,7 +192,14 @@ impl FileSearchState {
             // search panel opens without blocking the UI on a slow
             // `git status` (large or network-mounted repos).
             let git_cache = get_git_status(&base_path);
-            let results = search_files(&base_path, &mask, &cancel, git_cache.as_ref());
+            let results = search_files(
+                &base_path,
+                &mask,
+                use_regex,
+                case_sensitive,
+                &cancel,
+                git_cache.as_ref(),
+            );
             if !cancel.load(Ordering::Relaxed) {
                 let _ = tx.send(SearchResults::FileResults(results));
             }
@@ -1071,6 +1078,8 @@ fn compute_tree_prefixes(nodes: &[ResultTreeNode]) -> Vec<String> {
 fn search_files(
     base_path: &Path,
     mask: &str,
+    use_regex: bool,
+    case_sensitive: bool,
     cancel: &AtomicBool,
     git_cache: Option<&GitStatusCache>,
 ) -> Vec<FileResult> {
@@ -1079,9 +1088,32 @@ fn search_files(
     let has_path_sep = mask.contains('/') || mask.contains('\\');
     let has_wildcards = mask.contains('*') || mask.contains('?');
 
-    let glob_pattern = glob::Pattern::new(mask).ok();
+    // Regex mode: match the name (or relative path when the pattern spans
+    // separators) against the compiled regex; bail out on an invalid pattern.
+    let regex = if use_regex {
+        match RegexBuilder::new(mask)
+            .case_insensitive(!case_sensitive)
+            .build()
+        {
+            Ok(r) => Some(r),
+            Err(_) => return Vec::new(),
+        }
+    } else {
+        None
+    };
 
-    let mask_lower = mask.to_lowercase();
+    // Glob / substring mode: fold case into the needle when Case is off so the
+    // pattern and the candidate are compared in the same case.
+    let needle = if case_sensitive {
+        mask.to_string()
+    } else {
+        mask.to_lowercase()
+    };
+    let glob_pattern = if use_regex {
+        None
+    } else {
+        glob::Pattern::new(&needle).ok()
+    };
     let mut results = Vec::new();
 
     let walker = WalkBuilder::new(base_path)
@@ -1111,26 +1143,50 @@ fn search_files(
             .map(|r| r.display().to_string())
             .unwrap_or_default();
 
-        let matches = if has_path_sep {
+        let matches = if let Some(re) = regex.as_ref() {
+            // Match the path when the pattern spans separators, else the name.
+            if has_path_sep {
+                re.is_match(&relative_path)
+            } else {
+                match path.file_name() {
+                    Some(n) => re.is_match(&n.to_string_lossy()),
+                    None => continue,
+                }
+            }
+        } else if has_path_sep {
+            let hay = if case_sensitive {
+                relative_path.clone()
+            } else {
+                relative_path.to_lowercase()
+            };
             glob_pattern
                 .as_ref()
-                .map(|g| g.matches(&relative_path))
+                .map(|g| g.matches(&hay))
                 .unwrap_or(false)
         } else if has_wildcards {
             let name = match path.file_name() {
                 Some(n) => n.to_string_lossy(),
                 None => continue,
             };
+            let hay = if case_sensitive {
+                name.into_owned()
+            } else {
+                name.to_lowercase()
+            };
             glob_pattern
                 .as_ref()
-                .map(|g| g.matches(&name))
+                .map(|g| g.matches(&hay))
                 .unwrap_or(false)
         } else {
             let name = match path.file_name() {
                 Some(n) => n.to_string_lossy(),
                 None => continue,
             };
-            name.to_lowercase().contains(&mask_lower)
+            if case_sensitive {
+                name.contains(&needle)
+            } else {
+                name.to_lowercase().contains(&needle)
+            }
         };
 
         if !matches {
@@ -1506,6 +1562,39 @@ mod tests {
 
         assert_eq!(state.replace_all("$1"), (1, 1));
         assert_eq!(std::fs::read_to_string(&f).unwrap(), "a$1b\n");
+    }
+
+    #[test]
+    fn name_search_honors_case_and_regex_toggles() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("README.md"), "").unwrap();
+        std::fs::write(dir.path().join("readme.txt"), "").unwrap();
+        std::fs::write(dir.path().join("notes.rs"), "").unwrap();
+
+        let names = |mask: &str, regex: bool, case: bool| -> Vec<String> {
+            let cancel = AtomicBool::new(false);
+            let mut out: Vec<String> = search_files(dir.path(), mask, regex, case, &cancel, None)
+                .into_iter()
+                .map(|r| r.relative_path)
+                .collect();
+            out.sort();
+            out
+        };
+
+        // Substring, case-insensitive (default): both readme files.
+        assert_eq!(
+            names("readme", false, false),
+            vec!["README.md", "readme.txt"]
+        );
+        // Substring, case-sensitive: only the lowercase one.
+        assert_eq!(names("readme", false, true), vec!["readme.txt"]);
+        // Regex, case-insensitive: anchored extension match on both readmes.
+        assert_eq!(
+            names(r"readme\.(md|txt)$", true, false),
+            vec!["README.md", "readme.txt"]
+        );
+        // Regex, case-sensitive: only the uppercase README.
+        assert_eq!(names(r"^README", true, true), vec!["README.md"]);
     }
 
     #[test]
