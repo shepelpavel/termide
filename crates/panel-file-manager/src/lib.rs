@@ -714,23 +714,18 @@ impl FileManager {
             let mut bar = match kind {
                 SearchBarKind::Name => FindBar::new(FindBarConfig {
                     fields: vec![FindField::Find],
-                    action_buttons: vec![],
-                    toggles: false,
+                    buttons: vec![],
                 }),
                 SearchBarKind::Content => {
                     let mut fields = vec![FindField::Mask, FindField::Find];
-                    let mut buttons = vec![];
+                    // Toggles first (`[Aa] [.*]`), then selection + replace.
+                    let mut buttons = vec![FindBarBtn::Case, FindBarBtn::Regex];
                     if replace {
                         fields.push(FindField::Replace);
-                        // "Select all" checkbox + the replace action.
                         buttons.push(FindBarBtn::SelectAll);
                         buttons.push(FindBarBtn::ReplaceAll);
                     }
-                    let mut bar = FindBar::new(FindBarConfig {
-                        fields,
-                        action_buttons: buttons,
-                        toggles: true,
-                    });
+                    let mut bar = FindBar::new(FindBarConfig { fields, buttons });
                     // The glob field reads as "Find:" (matching the name
                     // search), the content query as "Text:".
                     bar.set_label(FindField::Mask, "Find: ");

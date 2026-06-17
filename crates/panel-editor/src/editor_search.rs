@@ -304,19 +304,25 @@ impl Editor {
             let bar = if replace {
                 FindBar::new(FindBarConfig {
                     fields: vec![FindField::Find, FindField::Replace],
-                    action_buttons: vec![
-                        FindBarBtn::Replace,
-                        FindBarBtn::ReplaceAll,
+                    // [.*] [Aa]  ◄ Prev  Next ►  Replace  Replace all
+                    buttons: vec![
+                        FindBarBtn::Regex,
+                        FindBarBtn::Case,
                         FindBarBtn::Prev,
                         FindBarBtn::Next,
+                        FindBarBtn::Replace,
+                        FindBarBtn::ReplaceAll,
                     ],
-                    toggles: true,
                 })
             } else {
                 FindBar::new(FindBarConfig {
                     fields: vec![FindField::Find],
-                    action_buttons: vec![FindBarBtn::Prev, FindBarBtn::Next],
-                    toggles: true,
+                    buttons: vec![
+                        FindBarBtn::Regex,
+                        FindBarBtn::Case,
+                        FindBarBtn::Prev,
+                        FindBarBtn::Next,
+                    ],
                 })
             };
             self.find_bar = Some(bar);

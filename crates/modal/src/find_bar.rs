@@ -102,11 +102,10 @@ pub enum FindBarAction {
 pub struct FindBarConfig {
     /// Fields to show, top to bottom.
     pub fields: Vec<FindField>,
-    /// Action buttons (Replace / ReplaceAll / Prev / Next), in order.
-    pub action_buttons: Vec<Btn>,
-    /// Append the regex / case toggles. Set false for searches where they have
-    /// no effect (e.g. glob file-name search).
-    pub toggles: bool,
+    /// The complete, ordered button row — including the `Regex`/`Case` toggles
+    /// and any `SelectAll` checkbox where the host wants them. Empty for a bar
+    /// with no buttons (e.g. glob file-name search).
+    pub buttons: Vec<Btn>,
 }
 
 /// A focusable control: either a field or a button-row entry (by index into
@@ -147,18 +146,9 @@ pub struct FindBar {
 impl FindBar {
     /// Create a bar from a config. The first field is focused by default.
     pub fn new(config: FindBarConfig) -> Self {
-        let FindBarConfig {
-            fields,
-            action_buttons,
-            toggles,
-        } = config;
+        let FindBarConfig { fields, buttons } = config;
         let inputs = fields.iter().map(|_| TextInputHandler::new()).collect();
         let labels = fields.iter().map(|f| f.label().to_string()).collect();
-        let mut buttons = action_buttons;
-        if toggles {
-            buttons.push(Btn::Regex);
-            buttons.push(Btn::Case);
-        }
         Self {
             fields,
             labels,
@@ -562,7 +552,7 @@ impl FindBar {
                 .map(|(_, l)| l.as_str())
                 .unwrap_or(match btn {
                     Btn::Replace => "Replace",
-                    Btn::ReplaceAll => "All",
+                    Btn::ReplaceAll => "Replace all",
                     Btn::Prev => "◄ Prev",
                     Btn::Next => "Next ►",
                     _ => unreachable!(),
@@ -597,8 +587,7 @@ mod tests {
     fn content_bar() -> FindBar {
         FindBar::new(FindBarConfig {
             fields: vec![FindField::Mask, FindField::Find, FindField::Replace],
-            action_buttons: vec![Btn::Prev, Btn::Next, Btn::ReplaceAll],
-            toggles: true,
+            buttons: vec![Btn::Case, Btn::Regex, Btn::Prev, Btn::Next, Btn::ReplaceAll],
         })
     }
 
@@ -607,18 +596,17 @@ mod tests {
         assert_eq!(content_bar().height(), 4);
         let find_only = FindBar::new(FindBarConfig {
             fields: vec![FindField::Find],
-            action_buttons: vec![Btn::Prev, Btn::Next],
-            toggles: true,
+            buttons: vec![Btn::Case, Btn::Regex, Btn::Prev, Btn::Next],
         });
         assert_eq!(find_only.height(), 2);
     }
 
     #[test]
-    fn toggles_are_appended_after_action_buttons() {
+    fn toggles_lead_the_button_row() {
         let bar = content_bar();
         assert_eq!(
             bar.buttons,
-            vec![Btn::Prev, Btn::Next, Btn::ReplaceAll, Btn::Regex, Btn::Case]
+            vec![Btn::Case, Btn::Regex, Btn::Prev, Btn::Next, Btn::ReplaceAll]
         );
     }
 
@@ -671,18 +659,18 @@ mod tests {
     #[test]
     fn activating_buttons_yields_actions() {
         let mut bar = content_bar();
-        // Focus the Prev button (index 0 among buttons -> ring index 3).
-        bar.focus = 3;
+        // Ring: 0..3 fields, then [Case, Regex, Prev, Next, ReplaceAll].
+        bar.focus = 5; // Prev
         assert_eq!(
             bar.handle_key(key(KeyCode::Enter)),
             Some(FindBarAction::Previous)
         );
-        bar.focus = 4; // Next
+        bar.focus = 6; // Next
         assert_eq!(
             bar.handle_key(key(KeyCode::Char(' '))),
             Some(FindBarAction::Next)
         );
-        bar.focus = 5; // ReplaceAll
+        bar.focus = 7; // ReplaceAll
         assert_eq!(
             bar.handle_key(key(KeyCode::Enter)),
             Some(FindBarAction::ReplaceAll)
@@ -692,14 +680,14 @@ mod tests {
     #[test]
     fn toggles_flip_state_and_report_query_change() {
         let mut bar = content_bar();
-        bar.focus = 6; // Regex toggle
+        bar.focus = 4; // Regex toggle
         assert!(!bar.use_regex());
         assert_eq!(
             bar.handle_key(key(KeyCode::Enter)),
             Some(FindBarAction::QueryChanged)
         );
         assert!(bar.use_regex());
-        bar.focus = 7; // Case toggle
+        bar.focus = 3; // Case toggle
         assert!(!bar.case_sensitive());
         assert_eq!(
             bar.handle_key(key(KeyCode::Char(' '))),

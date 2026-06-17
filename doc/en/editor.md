@@ -100,11 +100,12 @@ Press `Ctrl+H` to open the find bar with a Replace field added.
 
 **Features:**
 - Two input fields: Find and Replace; live preview + match counter
-- Buttons: Replace, All, ◄ Prev, Next ► (focus the buttons row with `Tab` /
-  arrows, then `Enter` / `Space`, or click):
-  - **Replace** — replace the current match and move to the next
-  - **All** — replace every match (the status bar reports the count)
+- Button row, in order: `[.*]` / `[Aa]` toggles, **◄ Prev**, **Next ►**,
+  **Replace**, **Replace all** (focus the row with `Tab` / arrows, then
+  `Enter` / `Space`, or click):
   - **◄ Prev** / **Next ►** — navigate matches
+  - **Replace** — replace the current match and move to the next
+  - **Replace all** — replace every match (the status bar reports the count)
 - `[.*] Regex` and `[Aa] Case` toggles. With regex on, the Replace field
   supports `$1` / `${name}` capture groups; off (the default) it is literal.
 - Both find and replace text are preserved when the bar is closed.

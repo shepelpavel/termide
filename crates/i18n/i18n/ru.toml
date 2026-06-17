@@ -518,8 +518,8 @@ db_filter_clear = "Сбросить фильтры"
 db_filter_cancel = "Отмена"
 
 [formats]
-replace_done_fmt = "Заменено вхождений: {count} в файлах: {files}."
-replace_confirm_fmt = "Заменить вхождений: {count} в файлах: {files}?"
+replace_done_fmt = "Заменено {count} вхождений в {files} файлах."
+replace_confirm_fmt = "Заменить {count} вхождений в {files} файлах?"
 replace_selection_fmt = "{selected}/{total} файлов · {matches} замен"
 batch_result_errors_fmt = "ошибок: {count}"
 batch_result_skipped_fmt = "пропущено: {count}"
