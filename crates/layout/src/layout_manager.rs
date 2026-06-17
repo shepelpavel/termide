@@ -8,6 +8,9 @@ use termide_core::{Panel, WidthPreference};
 
 use crate::PanelGroup;
 
+/// Minimum width, in columns, that a panel group may be shrunk to.
+pub const MIN_GROUP_WIDTH: u16 = 20;
+
 /// Compute per-panel rectangles inside `main_area` using the same Layout
 /// constraints as the renderer. Returns
 /// `Vec<(group_idx, panel_idx, rect, is_expanded)>` — the authoritative
@@ -25,7 +28,7 @@ pub fn calculate_panel_rects(
         .iter()
         .map(|g| {
             let width = g.width.unwrap_or(main_area.width);
-            Constraint::Length(width.max(20))
+            Constraint::Length(width.max(MIN_GROUP_WIDTH))
         })
         .collect();
 
@@ -382,6 +385,7 @@ impl LayoutManager {
         }
 
         let current_group = self.panel_groups.remove(active_group_idx);
+        let current_width = current_group.width;
         let mut panels = current_group.take_panels();
         let panel = panels.pop().ok_or_else(|| anyhow!("No panel to merge"))?;
 
@@ -389,6 +393,11 @@ impl LayoutManager {
         if let Some(left_group) = self.panel_groups.get_mut(left_group_idx) {
             left_group.add_panel(panel);
             left_group.set_expanded(left_group.len() - 1);
+            // The target reclaims the merged group's column so the
+            // other groups keep their widths.
+            if let (Some(lw), Some(cw)) = (left_group.width, current_width) {
+                left_group.width = Some(lw + cw);
+            }
         }
 
         self.focus = left_group_idx;
@@ -402,12 +411,17 @@ impl LayoutManager {
         }
 
         let current_group = self.panel_groups.remove(active_group_idx);
+        let current_width = current_group.width;
         let mut panels = current_group.take_panels();
         let panel = panels.pop().ok_or_else(|| anyhow!("No panel to merge"))?;
 
         if let Some(right_group) = self.panel_groups.get_mut(active_group_idx) {
             right_group.add_panel(panel);
             right_group.set_expanded(right_group.len() - 1);
+            // Reclaim the merged group's column (see `merge_into_left`).
+            if let (Some(rw), Some(cw)) = (right_group.width, current_width) {
+                right_group.width = Some(rw + cw);
+            }
         }
 
         self.focus = active_group_idx;
@@ -434,8 +448,17 @@ impl LayoutManager {
             .remove_panel(expanded_idx)
             .ok_or_else(|| anyhow!("No panel to unstack"))?;
 
+        // The unstacked panel moves into a new group beside the source group,
+        // sharing the horizontal space the source group already occupies.
+        let source_width = self.calculate_actual_widths(available_width)[active_group_idx];
         let new_group = PanelGroup::new(panel_to_extract);
         self.panel_groups.insert(active_group_idx + 1, new_group);
+
+        let left_width = (source_width / 2).max(MIN_GROUP_WIDTH);
+        let right_width = source_width.saturating_sub(left_width).max(MIN_GROUP_WIDTH);
+        self.panel_groups[active_group_idx].width = Some(left_width);
+        self.panel_groups[active_group_idx + 1].width = Some(right_width);
+
         self.focus = active_group_idx + 1;
         self.redistribute_widths_proportionally(available_width);
         Ok(())
@@ -887,7 +910,7 @@ impl LayoutManager {
         }
 
         if self.panel_groups.len() == 1 {
-            self.panel_groups[0].width = Some(available_width.max(20));
+            self.panel_groups[0].width = Some(available_width.max(MIN_GROUP_WIDTH));
             return;
         }
 
@@ -904,7 +927,7 @@ impl LayoutManager {
             if !fixed_groups.is_empty() && auto_count > 0 {
                 let fixed_total: u16 = fixed_groups.iter().sum();
                 let remaining = available_width.saturating_sub(fixed_total);
-                let per_auto = (remaining / auto_count as u16).max(20);
+                let per_auto = (remaining / auto_count as u16).max(MIN_GROUP_WIDTH);
                 for group in self.panel_groups.iter_mut() {
                     if group.width.is_none() {
                         group.width = Some(per_auto);
@@ -914,7 +937,7 @@ impl LayoutManager {
                 let actual_widths_before_freeze = self.calculate_actual_widths(available_width);
                 for (idx, &width) in actual_widths_before_freeze.iter().enumerate() {
                     if self.panel_groups[idx].width.is_none() {
-                        self.panel_groups[idx].width = Some(width.max(20));
+                        self.panel_groups[idx].width = Some(width.max(MIN_GROUP_WIDTH));
                     }
                 }
             }
@@ -927,7 +950,7 @@ impl LayoutManager {
             return;
         }
 
-        let min_width: u16 = 20;
+        let min_width = MIN_GROUP_WIDTH;
         let n = actual_widths.len();
         let min_total = min_width * n as u16;
 
@@ -1205,6 +1228,100 @@ mod tests {
         lm.toggle_panel_stacking(200).unwrap();
         assert_eq!(lm.group_count(), 2);
         assert_eq!(lm.panel_count(), 2);
+    }
+
+    #[test]
+    fn test_repeated_toggle_keeps_even_split() {
+        let mut lm = LayoutManager::new();
+        let config = make_config(80);
+        // Two panels stacked in a single group.
+        lm.add_panel(panel("a"), &config, 100);
+        lm.add_panel(panel("b"), &config, 100);
+        assert_eq!(lm.group_count(), 1);
+
+        // Repeatedly toggle between stacked and side-by-side. Every time the
+        // panels land side-by-side they should keep an even split, not collapse
+        // the group to the minimum width.
+        for cycle in 0..5 {
+            lm.toggle_panel_stacking(200).unwrap();
+            assert_eq!(lm.group_count(), 2, "cycle {cycle}: should be side-by-side");
+            let widths = lm.calculate_actual_widths(200);
+            assert_eq!(
+                widths,
+                vec![100, 100],
+                "cycle {cycle}: unstack should be even"
+            );
+
+            lm.toggle_panel_stacking(200).unwrap();
+            assert_eq!(
+                lm.group_count(),
+                1,
+                "cycle {cycle}: should be stacked again"
+            );
+        }
+    }
+
+    #[test]
+    fn test_unstack_preserves_other_group_widths() {
+        let mut lm = LayoutManager::new();
+        let config = make_config(20);
+        // Three side-by-side groups at 100 each (300 wide), then stack a second
+        // panel into the middle group.
+        lm.add_panel(panel("a"), &config, 300);
+        lm.add_panel(panel("b"), &config, 300);
+        lm.add_panel(panel("c"), &config, 300);
+        assert_eq!(lm.group_count(), 3);
+        // Normalise to an even 100/100/100 baseline.
+        lm.panel_groups[0].width = Some(100);
+        lm.panel_groups[1].width = Some(100);
+        lm.panel_groups[2].width = Some(100);
+        lm.focus = 1;
+        lm.panel_groups[1].add_panel(panel("b2"));
+        assert_eq!(lm.panel_groups[1].len(), 2);
+
+        // Unstacking the middle group splits *its* column in two and leaves the
+        // outer groups untouched.
+        lm.toggle_panel_stacking(300).unwrap();
+        assert_eq!(lm.group_count(), 4);
+        let widths = lm.calculate_actual_widths(300);
+        assert_eq!(widths, vec![100, 50, 50, 100]);
+    }
+
+    #[test]
+    fn test_three_panel_toggle_is_stable() {
+        let mut lm = LayoutManager::new();
+        let config = make_config(40);
+        // Two panels side by side, normalised to an even baseline.
+        lm.add_panel(panel("a"), &config, 200);
+        lm.add_panel(panel("b"), &config, 200);
+        assert_eq!(lm.group_count(), 2);
+        lm.panel_groups[0].width = Some(100);
+        lm.panel_groups[1].width = Some(100);
+        // Stack a third panel under the right group.
+        lm.focus = 1;
+        lm.panel_groups[1].add_panel(panel("c"));
+        assert_eq!(lm.panel_groups[1].len(), 2);
+
+        // Toggling back and forth must be a round-trip: the right stack
+        // splits to [100, 50, 50] when unstacked and recombines to [100, 100]
+        // when re-stacked.
+        for cycle in 0..5 {
+            lm.toggle_panel_stacking(200).unwrap();
+            assert_eq!(lm.group_count(), 3, "cycle {cycle}: should be unstacked");
+            assert_eq!(
+                lm.calculate_actual_widths(200),
+                vec![100, 50, 50],
+                "cycle {cycle}: unstacked widths"
+            );
+
+            lm.toggle_panel_stacking(200).unwrap();
+            assert_eq!(lm.group_count(), 2, "cycle {cycle}: should be re-stacked");
+            assert_eq!(
+                lm.calculate_actual_widths(200),
+                vec![100, 100],
+                "cycle {cycle}: re-stacked widths"
+            );
+        }
     }
 
     #[test]
