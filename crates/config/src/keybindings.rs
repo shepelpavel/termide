@@ -749,7 +749,7 @@ impl FileManagerKeybindings {
         // Search
         set_default!(search, "Ctrl+F");
         set_default!(search_content, "Ctrl+Shift+F");
-        set_default!(search_replace, "Ctrl+H");
+        set_default!(search_replace, "Ctrl+Shift+H");
 
         // Navigation
         set_default!(refresh, "Ctrl+R");

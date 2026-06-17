@@ -58,7 +58,7 @@ In tree view, selecting a directory with `Insert` cascades the selection to all 
 |-------------------|--------------------------------------------|
 | `Ctrl+F`          | Search files by name (glob patterns)       |
 | `Ctrl+Shift+F`    | Search in file contents                    |
-| `Ctrl+H`          | Search & replace in file contents          |
+| `Ctrl+Shift+H`    | Search & replace in file contents          |
 | `/`              | In-tree incremental search (filter as you type) |
 
 These searches use an **inline bar docked at the top of the panel** (not a
@@ -88,9 +88,9 @@ query) fields:
   highlighted). `Tab` into the results, `↑` / `↓` to navigate, `Enter` to open
   the file at that line.
 
-### Content Replace (Ctrl+H)
+### Content Replace (Ctrl+Shift+H)
 
-`Ctrl+H` opens the same content bar with an extra `Repl:` field. The match under
+`Ctrl+Shift+H` opens the same content bar with an extra `Repl:` field. The match under
 the cursor shows a `-old/+new` preview. Press `Enter` in the `Repl:` field (or
 activate the `All` button) to replace **every** match across all listed files —
 after a confirmation showing how many occurrences in how many files. With
