@@ -15,6 +15,12 @@ use termide_git::{get_git_status, GitStatus, GitStatusCache};
 /// Maximum total results to collect
 const MAX_RESULTS: usize = 500;
 
+/// Content-header hit-test columns (must match the renderer): the
+/// `[▼]`/`[▶]` collapse triangle occupies columns 0..4, the `[ ]`/`[x]`
+/// selection checkbox columns 4..8.
+const TRIANGLE_COLS: std::ops::Range<usize> = 0..4;
+const CHECKBOX_COLS: std::ops::Range<usize> = 4..8;
+
 /// Content match info for a single line match
 #[derive(Debug, Clone)]
 pub(crate) struct ContentMatch {
@@ -437,7 +443,9 @@ impl FileSearchState {
         };
         let node = &self.tree_nodes[idx];
         let marker = match self.mode {
-            FileSearchMode::Content if node.is_file_header => Some((0usize, 4usize)),
+            FileSearchMode::Content if node.is_file_header => {
+                Some((TRIANGLE_COLS.start, TRIANGLE_COLS.end))
+            }
             FileSearchMode::FileGlob if node.is_dir => {
                 let p = self
                     .tree_prefixes
@@ -553,7 +561,7 @@ impl FileSearchState {
     }
 
     /// If a click lands on a file's selection checkbox (just after the collapse
-    /// marker, columns 4..8), toggle its selection and return true.
+    /// marker, `CHECKBOX_COLS`), toggle its selection and return true.
     pub fn toggle_selection_at_visual_click(
         &mut self,
         line_offset: usize,
@@ -567,7 +575,7 @@ impl FileSearchState {
         };
         if self.mode == FileSearchMode::Content
             && self.tree_nodes[idx].is_file_header
-            && (4..8).contains(&col_offset)
+            && CHECKBOX_COLS.contains(&col_offset)
         {
             self.cursor = idx;
             if !self.selected_headers.remove(&idx) {
@@ -860,6 +868,24 @@ impl FileSearchState {
         self.replace_text.as_deref().is_some_and(|t| !t.is_empty())
     }
 
+    /// Compile the stored content pattern with the active case sensitivity.
+    fn compiled_pattern(&self) -> Option<regex::Regex> {
+        RegexBuilder::new(&self.search_pattern)
+            .case_insensitive(!self.search_case_sensitive)
+            .build()
+            .ok()
+    }
+
+    /// Apply the replacement to `hay`: regex mode expands `$1` / `${name}`
+    /// capture groups, literal mode inserts `rep` verbatim.
+    fn apply_replacement(&self, re: &regex::Regex, hay: &str, rep: &str) -> String {
+        if self.search_use_regex {
+            re.replace_all(hay, rep).into_owned()
+        } else {
+            re.replace_all(hay, regex::NoExpand(rep)).into_owned()
+        }
+    }
+
     /// Compute the post-replace version of `matched_line` for the preview.
     /// Returns `None` when no replacement is active.
     pub fn preview_replacement(&self, matched_line: &str) -> Option<String> {
@@ -867,17 +893,8 @@ impl FileSearchState {
         if rep.is_empty() {
             return None;
         }
-        let re = RegexBuilder::new(&self.search_pattern)
-            .case_insensitive(!self.search_case_sensitive)
-            .build()
-            .ok()?;
-        let new = if self.search_use_regex {
-            re.replace_all(matched_line, rep).into_owned()
-        } else {
-            re.replace_all(matched_line, regex::NoExpand(rep))
-                .into_owned()
-        };
-        Some(new)
+        let re = self.compiled_pattern()?;
+        Some(self.apply_replacement(&re, matched_line, rep))
     }
 
     /// Apply `replace_with` to every matched file on disk, re-matching at
@@ -886,12 +903,9 @@ impl FileSearchState {
         if self.mode != FileSearchMode::Content || self.search_pattern.is_empty() {
             return (0, 0);
         }
-        let re = match RegexBuilder::new(&self.search_pattern)
-            .case_insensitive(!self.search_case_sensitive)
-            .build()
-        {
-            Ok(r) => r,
-            Err(_) => return (0, 0),
+        let re = match self.compiled_pattern() {
+            Some(r) => r,
+            None => return (0, 0),
         };
 
         let mut files_changed = 0;
@@ -908,12 +922,7 @@ impl FileSearchState {
             if n == 0 {
                 continue;
             }
-            let new_content = if self.search_use_regex {
-                re.replace_all(&content, replace_with).into_owned()
-            } else {
-                re.replace_all(&content, regex::NoExpand(replace_with))
-                    .into_owned()
-            };
+            let new_content = self.apply_replacement(&re, &content, replace_with);
             if new_content != content && std::fs::write(&node.full_path, new_content).is_ok() {
                 files_changed += 1;
                 occurrences += n;
