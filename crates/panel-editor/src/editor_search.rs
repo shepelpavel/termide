@@ -385,6 +385,18 @@ impl Editor {
         }
     }
 
+    /// Replace the current match, surfacing a failure in the status bar
+    /// (matches how `replace_all` reports, instead of silently dropping it).
+    fn replace_current_event(&mut self) -> Vec<PanelEvent> {
+        match self.replace_current() {
+            Ok(()) => vec![PanelEvent::NeedsRedraw],
+            Err(e) => vec![PanelEvent::SetStatusMessage {
+                message: format!("Replace failed: {e}"),
+                is_error: true,
+            }],
+        }
+    }
+
     /// Route a key to the inline bar while it is open. Returns panel events.
     pub(crate) fn handle_find_bar_key(
         &mut self,
@@ -433,10 +445,7 @@ impl Editor {
                 self.search_prev();
                 vec![PanelEvent::NeedsRedraw]
             }
-            Some(FindBarAction::Replace) => {
-                let _ = self.replace_current();
-                vec![PanelEvent::NeedsRedraw]
-            }
+            Some(FindBarAction::Replace) => self.replace_current_event(),
             Some(FindBarAction::ReplaceAll) => {
                 let count = self.replace_all().unwrap_or(0);
                 vec![PanelEvent::SetStatusMessage {
@@ -451,11 +460,11 @@ impl Editor {
             // Enter on Replace replaces the current match; otherwise step next.
             Some(FindBarAction::Submit) => {
                 if field == Some(FindField::Replace) {
-                    let _ = self.replace_current();
+                    self.replace_current_event()
                 } else {
                     self.search_next();
+                    vec![PanelEvent::NeedsRedraw]
                 }
-                vec![PanelEvent::NeedsRedraw]
             }
             Some(FindBarAction::Close) => {
                 self.close_find_bar();
