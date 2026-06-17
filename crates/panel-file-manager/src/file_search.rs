@@ -414,6 +414,61 @@ impl FileSearchState {
         false
     }
 
+    /// If a click at (`line_offset`, `col_offset`) — relative to the results
+    /// area — lands on a collapse triangle, toggle that group and return true.
+    /// Content headers carry the `[▼]` marker at column 0; file-name directories
+    /// carry a `▶`/`▼` marker just after their tree prefix.
+    pub fn toggle_collapse_at_visual_click(
+        &mut self,
+        line_offset: usize,
+        col_offset: usize,
+    ) -> bool {
+        // Locate the node rendered at this visual line.
+        let mut acc = 0usize;
+        let mut hit = None;
+        let mut idx = self.scroll_offset;
+        while idx < self.tree_nodes.len() {
+            let h = self.node_display_lines(idx);
+            if h == 0 {
+                idx += 1;
+                continue;
+            }
+            if line_offset < acc + h {
+                hit = Some(idx);
+                break;
+            }
+            acc += h;
+            idx += 1;
+        }
+        let Some(idx) = hit else {
+            return false;
+        };
+
+        let node = &self.tree_nodes[idx];
+        let marker = match self.mode {
+            FileSearchMode::Content if node.is_file_header => Some((0usize, 4usize)),
+            FileSearchMode::FileGlob if node.is_dir => {
+                let p = self
+                    .tree_prefixes
+                    .get(idx)
+                    .map(|s| s.chars().count())
+                    .unwrap_or(0);
+                Some((p, p + 2))
+            }
+            _ => None,
+        };
+        let Some((lo, hi)) = marker else {
+            return false;
+        };
+        if col_offset >= lo && col_offset < hi {
+            self.cursor = idx;
+            self.tree_nodes[idx].collapsed = !self.tree_nodes[idx].collapsed;
+            self.ensure_visible();
+            return true;
+        }
+        false
+    }
+
     /// Whether row `idx` can hold the navigation cursor: a file header in
     /// content mode, any visible node in file-name mode. Rows hidden under a
     /// collapsed group are never selectable.
@@ -1214,6 +1269,20 @@ mod tests {
         assert!(s.cursor_at_visual_line(3)); // H3 → selectable
         assert_eq!(s.cursor, 3);
         assert!(!s.cursor_at_visual_line(2)); // a match row → not selectable
+    }
+
+    #[test]
+    fn clicking_the_triangle_toggles_collapse() {
+        let mut s = grouped_state();
+        // Line 0 = header H0; the [▼] marker spans columns 0..4.
+        assert!(s.toggle_collapse_at_visual_click(0, 1));
+        assert!(s.tree_nodes[0].collapsed);
+        // Clicking again expands.
+        assert!(s.toggle_collapse_at_visual_click(0, 0));
+        assert!(!s.tree_nodes[0].collapsed);
+        // Outside the marker, or on a match line, does nothing.
+        assert!(!s.toggle_collapse_at_visual_click(0, 20));
+        assert!(!s.toggle_collapse_at_visual_click(1, 1));
     }
 
     #[test]

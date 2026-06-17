@@ -2139,8 +2139,18 @@ impl Panel for FileManager {
                     {
                         self.bar_focus = BarFocus::Results;
                         let line = (mouse.row - rarea.y) as usize;
-                        // Place the cursor on the clicked row (snaps to the
-                        // nearest selectable row).
+                        let col = mouse.column.saturating_sub(rarea.x) as usize;
+                        // A click on the collapse triangle toggles that group.
+                        if self
+                            .file_search
+                            .as_mut()
+                            .map(|s| s.toggle_collapse_at_visual_click(line, col))
+                            .unwrap_or(false)
+                        {
+                            return vec![PanelEvent::NeedsRedraw];
+                        }
+                        // Otherwise place the cursor on the clicked row (snaps to
+                        // the nearest selectable row).
                         if let Some(s) = self.file_search.as_mut() {
                             s.cursor_at_visual_line(line);
                         }
