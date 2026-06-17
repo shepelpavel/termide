@@ -903,7 +903,7 @@ impl App {
         let title = if is_quit {
             t.app_quit_title()
         } else {
-            t.modal_yes()
+            t.modal_confirm_title()
         };
 
         // Map ConfirmAction to PendingAction

@@ -555,8 +555,8 @@ impl FindBar {
                     Btn::ReplaceAll => "All",
                     Btn::Prev => "◄ Prev",
                     Btn::Next => "Next ►",
-                    Btn::SelectAll => "✓ all",
-                    Btn::SelectNone => "✗ none",
+                    Btn::SelectAll => "[✓] all",
+                    Btn::SelectNone => "[ ] none",
                     _ => unreachable!(),
                 });
             let text = if focused {
