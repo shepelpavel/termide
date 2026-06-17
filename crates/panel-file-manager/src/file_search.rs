@@ -96,6 +96,10 @@ pub(crate) struct FileSearchState {
     search_use_regex: bool,
     /// Case sensitivity of the last content search.
     search_case_sensitive: bool,
+    /// Content replace mode: show per-file selection checkboxes.
+    pub show_checkboxes: bool,
+    /// Indices of selected file headers (content replace; default empty).
+    selected_headers: std::collections::HashSet<usize>,
 }
 
 impl std::fmt::Debug for FileSearchState {
@@ -128,6 +132,8 @@ impl FileSearchState {
             search_pattern: String::new(),
             search_use_regex: false,
             search_case_sensitive: false,
+            show_checkboxes: false,
+            selected_headers: std::collections::HashSet::new(),
         }
     }
 
@@ -149,6 +155,8 @@ impl FileSearchState {
             search_pattern: String::new(),
             search_use_regex: false,
             search_case_sensitive: false,
+            show_checkboxes: false,
+            selected_headers: std::collections::HashSet::new(),
         }
     }
 
@@ -423,27 +431,9 @@ impl FileSearchState {
         line_offset: usize,
         col_offset: usize,
     ) -> bool {
-        // Locate the node rendered at this visual line.
-        let mut acc = 0usize;
-        let mut hit = None;
-        let mut idx = self.scroll_offset;
-        while idx < self.tree_nodes.len() {
-            let h = self.node_display_lines(idx);
-            if h == 0 {
-                idx += 1;
-                continue;
-            }
-            if line_offset < acc + h {
-                hit = Some(idx);
-                break;
-            }
-            acc += h;
-            idx += 1;
-        }
-        let Some(idx) = hit else {
+        let Some(idx) = self.node_at_visual_line(line_offset) else {
             return false;
         };
-
         let node = &self.tree_nodes[idx];
         let marker = match self.mode {
             FileSearchMode::Content if node.is_file_header => Some((0usize, 4usize)),
@@ -464,6 +454,121 @@ impl FileSearchState {
             self.cursor = idx;
             self.tree_nodes[idx].collapsed = !self.tree_nodes[idx].collapsed;
             self.ensure_visible();
+            return true;
+        }
+        false
+    }
+
+    /// The node rendered at visual line `line_offset` below the scroll offset.
+    fn node_at_visual_line(&self, line_offset: usize) -> Option<usize> {
+        let mut acc = 0usize;
+        let mut idx = self.scroll_offset;
+        while idx < self.tree_nodes.len() {
+            let h = self.node_display_lines(idx);
+            if h == 0 {
+                idx += 1;
+                continue;
+            }
+            if line_offset < acc + h {
+                return Some(idx);
+            }
+            acc += h;
+            idx += 1;
+        }
+        None
+    }
+
+    // === Content replace: per-file selection ===
+
+    /// Enable/disable per-file selection checkboxes (content replace mode).
+    pub fn set_replace_mode(&mut self, on: bool) {
+        self.show_checkboxes = on;
+        if !on {
+            self.selected_headers.clear();
+        }
+    }
+
+    /// Whether the file header at `idx` is selected for replacement.
+    pub fn is_header_selected(&self, idx: usize) -> bool {
+        self.selected_headers.contains(&idx)
+    }
+
+    /// Whether any file is selected.
+    pub fn any_selected(&self) -> bool {
+        !self.selected_headers.is_empty()
+    }
+
+    /// The content file header at or above the cursor.
+    fn header_index_at_cursor(&self) -> Option<usize> {
+        if self.mode != FileSearchMode::Content {
+            return None;
+        }
+        let mut h = self.cursor.min(self.tree_nodes.len().checked_sub(1)?);
+        loop {
+            if self.tree_nodes.get(h)?.is_file_header {
+                return Some(h);
+            }
+            h = h.checked_sub(1)?;
+        }
+    }
+
+    /// Toggle selection of the file group at or above the cursor.
+    pub fn toggle_selected_at_cursor(&mut self) {
+        if let Some(h) = self.header_index_at_cursor() {
+            if !self.selected_headers.remove(&h) {
+                self.selected_headers.insert(h);
+            }
+        }
+    }
+
+    /// Select or deselect every file group.
+    pub fn set_all_selected(&mut self, on: bool) {
+        self.selected_headers.clear();
+        if on {
+            for (i, n) in self.tree_nodes.iter().enumerate() {
+                if n.is_file_header {
+                    self.selected_headers.insert(i);
+                }
+            }
+        }
+    }
+
+    /// (files, matches) over the selected files — for the replace confirmation.
+    pub fn selected_summary(&self) -> (usize, usize) {
+        let mut files = 0;
+        let mut matches = 0;
+        for &i in &self.selected_headers {
+            if let Some(n) = self.tree_nodes.get(i) {
+                if n.is_file_header {
+                    files += 1;
+                    matches += n.match_count;
+                }
+            }
+        }
+        (files, matches)
+    }
+
+    /// If a click lands on a file's selection checkbox (just after the collapse
+    /// marker, columns 4..8), toggle its selection and return true.
+    pub fn toggle_selection_at_visual_click(
+        &mut self,
+        line_offset: usize,
+        col_offset: usize,
+    ) -> bool {
+        if !self.show_checkboxes {
+            return false;
+        }
+        let Some(idx) = self.node_at_visual_line(line_offset) else {
+            return false;
+        };
+        if self.mode == FileSearchMode::Content
+            && self.tree_nodes[idx].is_file_header
+            && (4..8).contains(&col_offset)
+        {
+            self.cursor = idx;
+            if !self.selected_headers.remove(&idx) {
+                self.selected_headers.insert(idx);
+            }
             return true;
         }
         false
@@ -787,7 +892,10 @@ impl FileSearchState {
 
         let mut files_changed = 0;
         let mut occurrences = 0;
-        for node in self.tree_nodes.iter().filter(|n| n.is_file_header) {
+        for (idx, node) in self.tree_nodes.iter().enumerate() {
+            if !node.is_file_header || !self.selected_headers.contains(&idx) {
+                continue;
+            }
             let content = match std::fs::read_to_string(&node.full_path) {
                 Ok(c) => c,
                 Err(_) => continue,
@@ -1272,6 +1380,45 @@ mod tests {
     }
 
     #[test]
+    fn per_file_selection_toggles_and_summarizes() {
+        let mut s = grouped_state();
+        s.set_replace_mode(true);
+        s.cursor = 0;
+        s.toggle_selected_at_cursor();
+        assert!(s.is_header_selected(0));
+        assert_eq!(s.selected_summary(), (1, 1)); // 1 file, 1 match
+
+        s.set_all_selected(true);
+        assert!(s.is_header_selected(0) && s.is_header_selected(3));
+        assert_eq!(s.selected_summary().0, 2);
+
+        s.set_all_selected(false);
+        assert!(!s.any_selected());
+
+        // Leaving replace mode clears the selection.
+        s.toggle_selected_at_cursor();
+        assert!(s.any_selected());
+        s.set_replace_mode(false);
+        assert!(!s.any_selected());
+    }
+
+    #[test]
+    fn checkbox_click_toggles_selection_only_in_replace_mode() {
+        let mut s = grouped_state();
+        // Not in replace mode → checkbox clicks are ignored.
+        assert!(!s.toggle_selection_at_visual_click(0, 5));
+
+        s.set_replace_mode(true);
+        // Header at line 0; the checkbox spans columns 4..8.
+        assert!(s.toggle_selection_at_visual_click(0, 5));
+        assert!(s.is_header_selected(0));
+        assert!(s.toggle_selection_at_visual_click(0, 5));
+        assert!(!s.is_header_selected(0));
+        // A click on the triangle region (cols 0..4) is not a checkbox click.
+        assert!(!s.toggle_selection_at_visual_click(0, 1));
+    }
+
+    #[test]
     fn clicking_the_triangle_toggles_collapse() {
         let mut s = grouped_state();
         // Line 0 = header H0; the [▼] marker spans columns 0..4.
@@ -1303,6 +1450,7 @@ mod tests {
 
         let mut state = FileSearchState::new_content(dir.path().to_path_buf(), 1 << 20);
         state.tree_nodes = vec![header(f.clone())];
+        state.selected_headers.insert(0);
         state.search_pattern = regex::escape("foo");
         state.search_use_regex = false;
         state.search_case_sensitive = true;
@@ -1319,6 +1467,7 @@ mod tests {
 
         let mut state = FileSearchState::new_content(dir.path().to_path_buf(), 1 << 20);
         state.tree_nodes = vec![header(f.clone())];
+        state.selected_headers.insert(0);
         state.search_pattern = r"get_(\w+)".to_string();
         state.search_use_regex = true;
         state.search_case_sensitive = true;
@@ -1335,6 +1484,7 @@ mod tests {
 
         let mut state = FileSearchState::new_content(dir.path().to_path_buf(), 1 << 20);
         state.tree_nodes = vec![header(f.clone())];
+        state.selected_headers.insert(0);
         state.search_pattern = regex::escape(".");
         state.search_use_regex = false;
         state.search_case_sensitive = true;

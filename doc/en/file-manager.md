@@ -97,12 +97,19 @@ query) fields:
 
 ### Content Replace (Ctrl+Shift+H)
 
-`Ctrl+Shift+H` opens the same content bar with an extra `Repl:` field. The match under
-the cursor shows a `-old/+new` preview. Press `Enter` in the `Repl:` field (or
-activate the `All` button) to replace **every** match across all listed files —
-after a confirmation showing how many occurrences in how many files. With
-`[.*] Regex` on, the replacement supports `$1` / `${name}` capture groups;
-otherwise it is inserted verbatim. Replacements are written to disk.
+`Ctrl+Shift+H` opens the same content bar with an extra `Repl:` field. Once a
+replacement is typed, every shown match renders as a `-old/+new` preview.
+
+Each file header gets a **selection checkbox** (`[ ]` right of the collapse
+triangle), and replacement applies **only to checked files** — nothing is
+checked by default. In the results zone, `Space` toggles the file at the cursor,
+`a` toggles all on/off, and clicking a checkbox toggles it.
+
+Press `Enter` in the `Repl:` field (or activate the **Replace** button) to
+replace every match in the **selected** files — after a confirmation showing how
+many occurrences in how many files. With `[.*] Regex` on, the replacement
+supports `$1` / `${name}` capture groups; otherwise it is inserted verbatim.
+Replacements are written to disk.
 
 ### In-tree Search (/)
 

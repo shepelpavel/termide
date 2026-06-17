@@ -472,6 +472,7 @@ impl Translation for RuntimeTranslation {
         terminal_kill_confirm,
         operation_cancel_confirm,
         replace_done_title,
+        replace_no_files_selected,
         panel_image,
         resource_cpu_top_title,
         resource_ram_top_title,

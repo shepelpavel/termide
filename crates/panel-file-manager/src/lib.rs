@@ -725,6 +725,10 @@ impl FileManager {
                     // search), the content query as "Text:".
                     bar.set_label(FindField::Mask, "Find: ");
                     bar.set_label(FindField::Find, "Text: ");
+                    // The replace-all button acts on selected files → "Replace".
+                    if replace {
+                        bar.set_button_label(FindBarBtn::ReplaceAll, "Replace");
+                    }
                     bar.set_text(
                         FindField::Mask,
                         if mask.is_empty() { "*".into() } else { mask },
@@ -776,8 +780,13 @@ impl FileManager {
                 let use_regex = bar.use_regex();
                 let case_sensitive = bar.case_sensitive();
                 let replace = bar.replace_text().to_string();
+                // Replace bar (it has the Repl field) → per-file selection.
+                let replace_mode = bar.has_field(FindField::Replace);
                 self.start_content_search(mask, &query, use_regex, case_sensitive);
                 self.set_content_replace((!replace.is_empty()).then_some(replace));
+                if let Some(s) = self.file_search.as_mut() {
+                    s.set_replace_mode(replace_mode);
+                }
             }
         }
     }
@@ -793,19 +802,22 @@ impl FileManager {
         self.set_content_replace((!replace.is_empty()).then_some(replace));
     }
 
-    /// Build the "replace all in N files?" confirmation event from the current
-    /// results, or nothing if there are no matches.
+    /// Build the "replace N matches in M files?" confirmation event from the
+    /// **selected** files, or a hint when nothing is selected.
     fn content_replace_all_event(&self) -> Vec<PanelEvent> {
         let Some(bar) = self.search_bar.as_ref() else {
             return vec![];
         };
         let replace = bar.replace_text().to_string();
-        match self.content_search_summary() {
-            Some((files, matches)) if matches > 0 => vec![PanelEvent::ShowConfirm {
+        let summary = self.file_search.as_ref().map(|s| s.selected_summary());
+        match summary {
+            Some((files, matches)) if files > 0 && matches > 0 => vec![PanelEvent::ShowConfirm {
                 message: termide_i18n::t().replace_confirm_fmt(matches, files),
                 on_confirm: termide_core::ConfirmAction::ReplaceInContent(replace),
             }],
-            _ => vec![],
+            _ => vec![PanelEvent::ShowMessage(
+                termide_i18n::t().replace_no_files_selected().to_string(),
+            )],
         }
     }
 
@@ -900,6 +912,20 @@ impl FileManager {
             KeyCode::PageDown => {
                 if let Some(s) = self.file_search.as_mut() {
                     s.page_down(page);
+                }
+                vec![PanelEvent::NeedsRedraw]
+            }
+            // Replace mode: Space toggles the file's checkbox, `a` toggles all.
+            KeyCode::Char(' ') => {
+                if let Some(s) = self.file_search.as_mut() {
+                    s.toggle_selected_at_cursor();
+                }
+                vec![PanelEvent::NeedsRedraw]
+            }
+            KeyCode::Char('a') => {
+                if let Some(s) = self.file_search.as_mut() {
+                    let all = !s.any_selected();
+                    s.set_all_selected(all);
                 }
                 vec![PanelEvent::NeedsRedraw]
             }
@@ -2140,11 +2166,15 @@ impl Panel for FileManager {
                         self.bar_focus = BarFocus::Results;
                         let line = (mouse.row - rarea.y) as usize;
                         let col = mouse.column.saturating_sub(rarea.x) as usize;
-                        // A click on the collapse triangle toggles that group.
+                        // A click on the collapse triangle toggles that group;
+                        // a click on the selection checkbox toggles selection.
                         if self
                             .file_search
                             .as_mut()
-                            .map(|s| s.toggle_collapse_at_visual_click(line, col))
+                            .map(|s| {
+                                s.toggle_collapse_at_visual_click(line, col)
+                                    || s.toggle_selection_at_visual_click(line, col)
+                            })
                             .unwrap_or(false)
                         {
                             return vec![PanelEvent::NeedsRedraw];

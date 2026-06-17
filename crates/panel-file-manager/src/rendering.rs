@@ -469,13 +469,33 @@ impl FileManager {
                 } else {
                     "[▼] "
                 };
+                // Per-file selection checkbox (content replace mode only).
+                let checkbox = if search.show_checkboxes {
+                    if search.is_header_selected(idx) {
+                        "[x] "
+                    } else {
+                        "[ ] "
+                    }
+                } else {
+                    ""
+                };
                 let count_text = format!(" {}", node.match_count);
-                let avail = content_width.saturating_sub(marker.width() + count_text.width());
+                let avail = content_width
+                    .saturating_sub(marker.width() + checkbox.width() + count_text.width());
                 let name = truncate_from_start(&node.name, avail);
 
                 let mut x = area.x;
                 buf.set_string(x, y, marker, base);
                 x += marker.width() as u16;
+                if !checkbox.is_empty() {
+                    let cb_style = if is_selected {
+                        base
+                    } else {
+                        Style::default().fg(theme.accented_fg)
+                    };
+                    buf.set_string(x, y, checkbox, cb_style);
+                    x += checkbox.width() as u16;
+                }
                 buf.set_string(x, y, &name, base);
                 x += name.width() as u16;
 

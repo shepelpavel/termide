@@ -121,6 +121,9 @@ pub struct FindBar {
     labels: Vec<String>,
     inputs: Vec<TextInputHandler>,
     buttons: Vec<Btn>,
+    /// Optional per-button label overrides (e.g. the file manager labels its
+    /// `ReplaceAll` button "Replace").
+    button_labels: Vec<(Btn, String)>,
     use_regex: bool,
     case_sensitive: bool,
     /// Index into the focus ring (`ring()`).
@@ -152,6 +155,7 @@ impl FindBar {
             labels,
             inputs,
             buttons,
+            button_labels: Vec::new(),
             use_regex: false,
             case_sensitive: false,
             focus: 0,
@@ -220,6 +224,12 @@ impl FindBar {
         if let Some(i) = self.field_index(field) {
             self.labels[i] = label.into();
         }
+    }
+
+    /// Override an action button's label (e.g. `ReplaceAll` → "Replace").
+    pub fn set_button_label(&mut self, btn: Btn, label: impl Into<String>) {
+        self.button_labels.retain(|(b, _)| *b != btn);
+        self.button_labels.push((btn, label.into()));
     }
 
     /// The field that currently has focus, if any (vs a button).
@@ -515,13 +525,18 @@ impl FindBar {
             }
             (text, style)
         } else {
-            let label = match btn {
-                Btn::Replace => "Replace",
-                Btn::ReplaceAll => "All",
-                Btn::Prev => "◄ Prev",
-                Btn::Next => "Next ►",
-                _ => unreachable!(),
-            };
+            let label = self
+                .button_labels
+                .iter()
+                .find(|(b, _)| *b == btn)
+                .map(|(_, l)| l.as_str())
+                .unwrap_or(match btn {
+                    Btn::Replace => "Replace",
+                    Btn::ReplaceAll => "All",
+                    Btn::Prev => "◄ Prev",
+                    Btn::Next => "Next ►",
+                    _ => unreachable!(),
+                });
             let text = if focused {
                 format!("[ {} ]", label)
             } else {
