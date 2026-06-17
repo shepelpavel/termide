@@ -674,7 +674,8 @@ impl FileManager {
     // === Inline content search / replace bar (Ctrl+Shift+F) ===
 
     /// Open the inline content bar. `replace = false` is a pure search
-    /// (Ctrl+Shift+F); `replace = true` adds the replacement field (Ctrl+H).
+    /// (Ctrl+Shift+F); `replace = true` adds the replacement field
+    /// (Ctrl+Shift+H).
     pub fn open_content_bar(&mut self, replace: bool) {
         self.open_search_bar(SearchBarKind::Content, replace);
     }

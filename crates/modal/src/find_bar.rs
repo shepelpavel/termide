@@ -31,6 +31,11 @@ use crate::input_keys::{handle_input_key, InputKeyResult};
 use crate::TextInputHandler;
 
 /// An input field the bar can expose, in render order.
+///
+/// Variant names describe the field's *role*, not its on-screen label: hosts
+/// override labels via [`FindBar::set_label`]. The file-manager content bar,
+/// for instance, shows `Mask` as "Find:" (the glob) and `Find` as "Text:"
+/// (the query), while the editor shows `Find` as "Find:".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FindField {
     /// Glob mask (file-manager content search).
@@ -51,9 +56,10 @@ impl FindField {
     }
 }
 
-/// A control on the buttons row. Action buttons confirm an operation; the two
-/// trailing toggles flip regex / case. The host supplies the action buttons it
-/// wants; the toggles are always appended.
+/// A control on the buttons row. Action buttons confirm an operation; the
+/// `Regex` / `Case` toggles flip search behavior. The host supplies the
+/// complete, ordered button row (see [`FindBarConfig::buttons`]) — including
+/// the toggles, in whatever position it wants them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Btn {
     Replace,
@@ -103,8 +109,8 @@ pub struct FindBarConfig {
     /// Fields to show, top to bottom.
     pub fields: Vec<FindField>,
     /// The complete, ordered button row — including the `Regex`/`Case` toggles
-    /// and any `SelectAll` checkbox where the host wants them. Empty for a bar
-    /// with no buttons (e.g. glob file-name search).
+    /// and any `SelectAll` checkbox where the host wants them. May be empty for
+    /// a bar with no buttons.
     pub buttons: Vec<Btn>,
 }
 
