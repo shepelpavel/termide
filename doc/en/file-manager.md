@@ -65,17 +65,20 @@ These searches use an **inline bar docked at the top of the panel** (not a
 floating modal), with a separator line above the results. The bar and the
 results are two **zones**: `Tab` switches between them (like the git-status
 panel). In the bar zone, arrow keys move between the fields and toggles. In the
-results zone: `↑` / `↓` walk the matches, `PageUp` / `PageDown` page through
-them, `←` / `→` collapse / expand the file group at the cursor (content
-search), and `Enter` opens the selection (or toggles a file header). A mouse
-click selects a result, a double-click opens it (or toggles a header), and the
-wheel scrolls. `Esc` exits the search (it does not close the panel).
+results zone the cursor lands on the **entry rows** (files/folders, or file
+groups), like the diff panel: `↑` / `↓` move between them, `PageUp` / `PageDown`
+page, `←` / `→` collapse / expand the entry at the cursor, and `Enter` opens it
+(a folder/file header toggles or opens). A mouse click selects a row, a
+double-click opens it (or toggles a group), and the wheel scrolls. `Esc` exits
+the search (it does not close the panel).
 
 ### File Search (Ctrl+F)
 
 An inline bar with a single `Find:` field that filters files by glob in real
 time; results (relative paths with git-status colors) appear below the
-separator. `Tab` into the results, `↑` / `↓` to move, `Enter` to open.
+separator as a tree. `Tab` into the results; `↑` / `↓` move across files **and
+folders**, `←` / `→` collapse / expand a folder, `Enter` opens the file
+(placing the cursor on it in the tree).
 
 ### Content Search (Ctrl+Shift+F)
 
@@ -86,10 +89,11 @@ query) fields:
   and press `Enter` / `Space`).
 - Searches only in text files (binary files are skipped); large files are
   skipped (configurable limit in settings).
-- Results are **grouped by file** below the separator: a header row with the
-  match count, then one line per match (line number + matched line, hit
-  highlighted). `Tab` into the results, `↑` / `↓` to navigate, `Enter` to open
-  the file at that line.
+- Results are **grouped by file** below the separator, like the diff panel: the
+  cursor moves between **file headers** (`[▼]`/`[▶]` collapse marker + path +
+  match count), with up to 5 match lines shown under each (line number + matched
+  line, hit highlighted) and a `… N more` row when a file has more. `←` / `→`
+  collapse / expand a file, `Enter` opens it at its first match.
 
 ### Content Replace (Ctrl+Shift+H)
 

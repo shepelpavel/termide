@@ -626,7 +626,10 @@ impl FileManager {
     /// (files, matches) for the active content search — for the confirm prompt.
     pub fn content_search_summary(&self) -> Option<(usize, usize)> {
         let state = self.file_search.as_ref()?;
-        let (_, matches) = state.get_match_info()?;
+        let matches = state.total_matches();
+        if matches == 0 {
+            return None;
+        }
         let files = state.file_header_count();
         Some((files, matches))
     }
@@ -921,26 +924,26 @@ impl FileManager {
                 vec![PanelEvent::NeedsRedraw]
             }
             KeyCode::Enter => {
-                // Enter on a file header toggles its collapse; on a match it
-                // opens the file.
-                let on_header = self
+                // Enter opens the selection (a file header opens the file at its
+                // first match); on a directory it toggles collapse instead.
+                let opens = self
                     .file_search
                     .as_ref()
-                    .map(|s| s.cursor_on_header())
-                    .unwrap_or(false);
-                if on_header {
+                    .and_then(|s| s.get_selected_result())
+                    .is_some();
+                if opens {
+                    let open = self.close_search_with_selection();
+                    self.search_bar = None;
+                    self.bar_focus = BarFocus::Input;
+                    let mut out = vec![PanelEvent::NeedsRedraw];
+                    out.extend(open);
+                    out
+                } else {
                     if let Some(s) = self.file_search.as_mut() {
-                        let collapsed = s.cursor_collapsed();
-                        s.set_collapse_at_cursor(!collapsed);
+                        s.toggle_collapse_at_cursor();
                     }
-                    return vec![PanelEvent::NeedsRedraw];
+                    vec![PanelEvent::NeedsRedraw]
                 }
-                let open = self.close_search_with_selection();
-                self.search_bar = None;
-                self.bar_focus = BarFocus::Input;
-                let mut out = vec![PanelEvent::NeedsRedraw];
-                out.extend(open);
-                out
             }
             KeyCode::Esc => self.close_search_bar(),
             _ => vec![],
@@ -2136,32 +2139,31 @@ impl Panel for FileManager {
                     {
                         self.bar_focus = BarFocus::Results;
                         let line = (mouse.row - rarea.y) as usize;
-                        let on_result = self
-                            .file_search
-                            .as_mut()
-                            .map(|s| s.cursor_at_visual_line(line))
-                            .unwrap_or(false);
+                        // Place the cursor on the clicked row (snaps to the
+                        // nearest selectable row).
+                        if let Some(s) = self.file_search.as_mut() {
+                            s.cursor_at_visual_line(line);
+                        }
                         let idx = self.file_search.as_ref().map(|s| s.cursor).unwrap_or(0);
-                        let on_header = self
-                            .file_search
-                            .as_ref()
-                            .map(|s| s.cursor_on_header())
-                            .unwrap_or(false);
 
                         if self.click_tracker.is_double_click(&idx) {
                             self.click_tracker.reset();
-                            if on_header {
-                                if let Some(s) = self.file_search.as_mut() {
-                                    let collapsed = s.cursor_collapsed();
-                                    s.set_collapse_at_cursor(!collapsed);
-                                }
-                            } else if on_result {
+                            // Double-click opens the selection, or toggles a
+                            // directory's collapse when it can't be opened.
+                            let opens = self
+                                .file_search
+                                .as_ref()
+                                .and_then(|s| s.get_selected_result())
+                                .is_some();
+                            if opens {
                                 let open = self.close_search_with_selection();
                                 self.search_bar = None;
                                 self.bar_focus = BarFocus::Input;
                                 let mut out = vec![PanelEvent::NeedsRedraw];
                                 out.extend(open);
                                 return out;
+                            } else if let Some(s) = self.file_search.as_mut() {
+                                s.toggle_collapse_at_cursor();
                             }
                         } else {
                             self.click_tracker.record(idx);

@@ -281,8 +281,8 @@ impl FileSearchState {
                     self.scroll_offset = 0;
                     self.is_searching = false;
                     self.search_receiver = None;
-                    // Move cursor to the first selectable result row.
-                    if let Some(i) = self.tree_nodes.iter().position(|n| self.is_result_row(n)) {
+                    // Move cursor to the first selectable row.
+                    if let Some(i) = (0..self.tree_nodes.len()).find(|&i| self.is_selectable(i)) {
                         self.cursor = i;
                     }
                     return true;
@@ -297,50 +297,29 @@ impl FileSearchState {
         false
     }
 
-    /// Navigate to next result (skip dirs)
+    /// Navigate to the next selectable row (no wrap).
     pub fn next_result(&mut self) {
-        if self.tree_nodes.is_empty() {
-            return;
-        }
-        let start = self.cursor;
-        let len = self.tree_nodes.len();
-        let mut pos = (start + 1) % len;
-        while pos != start {
-            if self.is_result_row(&self.tree_nodes[pos]) && !self.is_hidden_by_collapse(pos) {
-                self.cursor = pos;
-                self.ensure_visible();
-                return;
-            }
-            pos = (pos + 1) % len;
+        if let Some(p) = ((self.cursor + 1)..self.tree_nodes.len()).find(|&p| self.is_selectable(p))
+        {
+            self.cursor = p;
+            self.ensure_visible();
         }
     }
 
-    /// Navigate to previous result (skip dirs)
+    /// Navigate to the previous selectable row (no wrap).
     pub fn prev_result(&mut self) {
-        if self.tree_nodes.is_empty() {
-            return;
-        }
-        let start = self.cursor;
-        let len = self.tree_nodes.len();
-        let mut pos = if start == 0 { len - 1 } else { start - 1 };
-        while pos != start {
-            if self.is_result_row(&self.tree_nodes[pos]) && !self.is_hidden_by_collapse(pos) {
-                self.cursor = pos;
-                self.ensure_visible();
-                return;
-            }
-            pos = if pos == 0 { len - 1 } else { pos - 1 };
+        if let Some(p) = (0..self.cursor).rev().find(|&p| self.is_selectable(p)) {
+            self.cursor = p;
+            self.ensure_visible();
         }
     }
 
-    /// Move the cursor down by up to `page` result rows (no wrap).
+    /// Move the cursor down by up to `page` selectable rows (no wrap).
     pub fn page_down(&mut self, page: usize) {
         let len = self.tree_nodes.len();
         let mut pos = self.cursor;
         for _ in 0..page.max(1) {
-            match ((pos + 1)..len).find(|&p| {
-                self.is_result_row(&self.tree_nodes[p]) && !self.is_hidden_by_collapse(p)
-            }) {
+            match ((pos + 1)..len).find(|&p| self.is_selectable(p)) {
                 Some(p) => pos = p,
                 None => break,
             }
@@ -351,13 +330,11 @@ impl FileSearchState {
         }
     }
 
-    /// Move the cursor up by up to `page` result rows (no wrap).
+    /// Move the cursor up by up to `page` selectable rows (no wrap).
     pub fn page_up(&mut self, page: usize) {
         let mut pos = self.cursor;
         for _ in 0..page.max(1) {
-            match (0..pos).rev().find(|&p| {
-                self.is_result_row(&self.tree_nodes[p]) && !self.is_hidden_by_collapse(p)
-            }) {
+            match (0..pos).rev().find(|&p| self.is_selectable(p)) {
                 Some(p) => pos = p,
                 None => break,
             }
@@ -368,54 +345,56 @@ impl FileSearchState {
         }
     }
 
-    /// Collapse (or expand) the file group at or above the cursor. Content mode
-    /// only. When collapsing, the cursor moves onto the header so it stays
-    /// visible.
-    pub fn set_collapse_at_cursor(&mut self, collapse: bool) -> bool {
-        if self.mode != FileSearchMode::Content || self.tree_nodes.is_empty() {
-            return false;
-        }
-        let mut h = self.cursor.min(self.tree_nodes.len() - 1);
-        while !self.tree_nodes[h].is_file_header {
-            if h == 0 {
-                return false;
+    /// Index of the collapsible node for the cursor: the file header in content
+    /// mode, or the directory under the cursor in file-name mode.
+    fn collapsible_index(&self) -> Option<usize> {
+        match self.mode {
+            FileSearchMode::Content => {
+                let mut h = self.cursor.min(self.tree_nodes.len().checked_sub(1)?);
+                loop {
+                    if self.tree_nodes.get(h)?.is_file_header {
+                        return Some(h);
+                    }
+                    h = h.checked_sub(1)?;
+                }
             }
-            h -= 1;
+            FileSearchMode::FileGlob => self
+                .tree_nodes
+                .get(self.cursor)
+                .filter(|n| n.is_dir)
+                .map(|_| self.cursor),
         }
-        if self.tree_nodes[h].collapsed == collapse {
+    }
+
+    /// Collapse or expand the group at the cursor (content: file header;
+    /// file-name: directory). Returns true if the state changed.
+    pub fn set_collapse_at_cursor(&mut self, collapse: bool) -> bool {
+        let Some(i) = self.collapsible_index() else {
+            return false;
+        };
+        if self.tree_nodes[i].collapsed == collapse {
             return false;
         }
-        self.tree_nodes[h].collapsed = collapse;
+        self.tree_nodes[i].collapsed = collapse;
         if collapse {
-            self.cursor = h;
+            self.cursor = i; // keep the now-collapsed header/dir in focus
         }
         self.ensure_visible();
         true
     }
 
-    /// Whether the cursor currently rests on a file-group header.
-    pub fn cursor_on_header(&self) -> bool {
-        self.tree_nodes
-            .get(self.cursor)
-            .map(|n| n.is_file_header)
-            .unwrap_or(false)
-    }
-
-    /// Collapsed state of the file group at or above the cursor.
-    pub fn cursor_collapsed(&self) -> bool {
-        let mut h = self.cursor.min(self.tree_nodes.len().saturating_sub(1));
-        loop {
-            match self.tree_nodes.get(h) {
-                Some(n) if n.is_file_header => return n.collapsed,
-                _ if h == 0 => return false,
-                _ => h -= 1,
-            }
-        }
+    /// Toggle the collapsed state of the group at the cursor.
+    pub fn toggle_collapse_at_cursor(&mut self) -> bool {
+        let Some(i) = self.collapsible_index() else {
+            return false;
+        };
+        let collapsed = self.tree_nodes[i].collapsed;
+        self.set_collapse_at_cursor(!collapsed)
     }
 
     /// Set the cursor to the row rendered `line_offset` visual lines below the
     /// current scroll position (for mouse clicks). Returns true if it landed on
-    /// a selectable result row.
+    /// a selectable row.
     pub fn cursor_at_visual_line(&mut self, line_offset: usize) -> bool {
         let mut acc = 0usize;
         let mut idx = self.scroll_offset;
@@ -427,7 +406,7 @@ impl FileSearchState {
             }
             if line_offset < acc + h {
                 self.cursor = idx;
-                return self.is_result_row(&self.tree_nodes[idx]);
+                return self.is_selectable(idx);
             }
             acc += h;
             idx += 1;
@@ -435,48 +414,67 @@ impl FileSearchState {
         false
     }
 
-    /// A selectable result row: a matched file in FileGlob mode, a match line
-    /// in Content mode (file-group headers are not result rows).
-    fn is_result_row(&self, node: &ResultTreeNode) -> bool {
+    /// Whether row `idx` can hold the navigation cursor: a file header in
+    /// content mode, any visible node in file-name mode. Rows hidden under a
+    /// collapsed group are never selectable.
+    fn is_selectable(&self, idx: usize) -> bool {
+        let Some(node) = self.tree_nodes.get(idx) else {
+            return false;
+        };
+        if self.is_hidden_by_collapse(idx) {
+            return false;
+        }
         match self.mode {
-            FileSearchMode::FileGlob => !node.is_dir,
-            FileSearchMode::Content => node.content_match.is_some(),
+            FileSearchMode::Content => node.is_file_header,
+            FileSearchMode::FileGlob => true,
         }
     }
 
-    /// Get match info: (current_index, total_count)
+    /// Total matches across all files (content mode); used by the replace
+    /// confirmation. Distinct from the displayed, per-file-capped rows.
+    pub fn total_matches(&self) -> usize {
+        self.result_count
+    }
+
+    /// Bar counter: (current_index, total) over the selectable rows — files in
+    /// content mode, entries in file-name mode.
     pub fn get_match_info(&self) -> Option<(usize, usize)> {
-        if self.result_count == 0 {
+        let total = (0..self.tree_nodes.len())
+            .filter(|&i| self.is_selectable(i))
+            .count();
+        if total == 0 {
             return None;
         }
-        // Count how many result rows precede the cursor.
-        let mut current = 0;
-        for (idx, node) in self.tree_nodes.iter().enumerate() {
-            if idx == self.cursor {
-                return Some((current.min(self.result_count - 1), self.result_count));
-            }
-            if self.is_result_row(node) {
-                current += 1;
-            }
-        }
-        Some((0, self.result_count))
+        let cur = self.cursor.min(self.tree_nodes.len().saturating_sub(1));
+        let current = (0..=cur)
+            .filter(|&i| self.is_selectable(i))
+            .count()
+            .saturating_sub(1);
+        Some((current, total))
     }
 
-    /// Get the selected result for opening
+    /// Get the selected result for opening, or `None` when the cursor is on a
+    /// collapsible-only row (a directory in file-name mode) — the caller then
+    /// toggles collapse instead of opening.
     pub fn get_selected_result(&self) -> Option<SelectedSearchResult> {
         let node = self.tree_nodes.get(self.cursor)?;
-        if node.is_dir {
-            return None;
-        }
         match self.mode {
             FileSearchMode::FileGlob => {
+                if node.is_dir {
+                    return None;
+                }
                 Some(SelectedSearchResult::NavigateToFile(node.full_path.clone()))
             }
             FileSearchMode::Content => {
-                let line = node
-                    .content_match
-                    .as_ref()
-                    .map(|m| m.line_number)
+                // The cursor sits on a file header; open at the file's first
+                // match line (the matches that follow, up to the next header).
+                let line = self
+                    .tree_nodes
+                    .get(self.cursor + 1..)
+                    .unwrap_or(&[])
+                    .iter()
+                    .take_while(|n| !n.is_file_header)
+                    .find_map(|n| n.content_match.as_ref().map(|m| m.line_number))
                     .unwrap_or(1);
                 Some(SelectedSearchResult::OpenAtLine {
                     path: node.full_path.clone(),
@@ -501,12 +499,9 @@ impl FileSearchState {
         if idx >= self.tree_nodes.len() || self.is_hidden_by_collapse(idx) {
             return 0;
         }
-        // The cursor match expands to a two-line -old/+new preview while a
-        // replacement is being composed.
-        if idx == self.cursor
-            && self.has_replace_preview()
-            && self.tree_nodes[idx].content_match.is_some()
-        {
+        // While composing a replacement, every shown match expands to a
+        // two-line -old/+new preview (diff-panel style).
+        if self.has_replace_preview() && self.tree_nodes[idx].content_match.is_some() {
             return 2;
         }
         1
@@ -579,11 +574,20 @@ impl FileSearchState {
             *counts.entry(it.relative_path.as_str()).or_default() += 1;
         }
 
+        // Show at most this many match rows per file; the rest collapse into a
+        // single "… N more" row (the header keeps the true total).
+        const MAX_SHOWN_PER_FILE: usize = 5;
+
         let mut nodes: Vec<ResultTreeNode> = Vec::new();
         let mut current_file: Option<String> = None;
+        let mut shown = 0usize;
+        let mut overflow_added = false;
         for it in &items {
+            let total = counts.get(it.relative_path.as_str()).copied().unwrap_or(0);
             if current_file.as_deref() != Some(it.relative_path.as_str()) {
                 current_file = Some(it.relative_path.clone());
+                shown = 0;
+                overflow_added = false;
                 nodes.push(ResultTreeNode {
                     name: it.relative_path.clone(),
                     full_path: it.full_path.clone(),
@@ -592,50 +596,87 @@ impl FileSearchState {
                     git_status: it.git_status,
                     content_match: None,
                     is_file_header: true,
-                    match_count: counts.get(it.relative_path.as_str()).copied().unwrap_or(0),
+                    match_count: total,
                     collapsed: false,
                 });
             }
-            nodes.push(ResultTreeNode {
-                name: String::new(),
-                full_path: it.full_path.clone(),
-                depth: 1,
-                is_dir: false,
-                git_status: it.git_status,
-                content_match: Some(ContentMatch {
-                    line_number: it.line_number,
-                    matched_line: it.matched_line.clone(),
-                    match_start: it.match_start,
-                    match_end: it.match_end,
-                }),
-                is_file_header: false,
-                match_count: 0,
-                collapsed: false,
-            });
+            if shown < MAX_SHOWN_PER_FILE {
+                nodes.push(ResultTreeNode {
+                    name: String::new(),
+                    full_path: it.full_path.clone(),
+                    depth: 1,
+                    is_dir: false,
+                    git_status: it.git_status,
+                    content_match: Some(ContentMatch {
+                        line_number: it.line_number,
+                        matched_line: it.matched_line.clone(),
+                        match_start: it.match_start,
+                        match_end: it.match_end,
+                    }),
+                    is_file_header: false,
+                    match_count: 0,
+                    collapsed: false,
+                });
+                shown += 1;
+            } else if !overflow_added {
+                overflow_added = true;
+                // An "… N more" context row (no content_match → not selectable).
+                nodes.push(ResultTreeNode {
+                    name: format!("… {} more", total - MAX_SHOWN_PER_FILE),
+                    full_path: it.full_path.clone(),
+                    depth: 1,
+                    is_dir: false,
+                    git_status: it.git_status,
+                    content_match: None,
+                    is_file_header: false,
+                    match_count: 0,
+                    collapsed: false,
+                });
+            }
         }
 
         self.tree_prefixes = vec![String::new(); nodes.len()];
         self.tree_nodes = nodes;
     }
 
-    /// Whether the match row at `idx` is hidden because its file header is
-    /// collapsed.
+    /// Whether row `idx` is hidden under a collapsed group: in content mode a
+    /// match/overflow row whose file header is collapsed; in file-name mode a
+    /// node nested under a collapsed ancestor directory.
     fn is_hidden_by_collapse(&self, idx: usize) -> bool {
-        if self
-            .tree_nodes
-            .get(idx)
-            .map(|n| n.is_file_header)
-            .unwrap_or(true)
-        {
+        let Some(node) = self.tree_nodes.get(idx) else {
             return false;
-        }
-        // Walk back to the owning header.
-        for j in (0..idx).rev() {
-            if self.tree_nodes[j].is_file_header {
-                return self.tree_nodes[j].collapsed;
+        };
+        match self.mode {
+            FileSearchMode::Content => {
+                if node.is_file_header {
+                    return false;
+                }
+                for j in (0..idx).rev() {
+                    if self.tree_nodes[j].is_file_header {
+                        return self.tree_nodes[j].collapsed;
+                    }
+                }
+                false
+            }
+            FileSearchMode::FileGlob => {
+                // Walk up the ancestor chain (strictly-decreasing depth); hidden
+                // if any ancestor directory is collapsed.
+                let mut min_depth = node.depth;
+                for j in (0..idx).rev() {
+                    let a = &self.tree_nodes[j];
+                    if a.depth < min_depth {
+                        if a.is_dir && a.collapsed {
+                            return true;
+                        }
+                        min_depth = a.depth;
+                        if min_depth == 0 {
+                            break;
+                        }
+                    }
+                }
+                false
             }
         }
-        false
     }
 
     /// Number of file-group headers (i.e. distinct files with matches).
@@ -1140,35 +1181,49 @@ mod tests {
     }
 
     #[test]
-    fn collapsing_a_header_hides_its_matches_from_navigation() {
+    fn content_navigation_lands_on_file_headers() {
         let mut s = grouped_state();
-        // Cursor on first match of file 1; collapse it.
-        assert!(s.set_collapse_at_cursor(true));
-        assert_eq!(s.cursor, 0, "cursor moves onto the header when collapsing");
-        assert!(s.tree_nodes[0].collapsed);
-        // Next result skips the hidden matches and lands in file 2.
+        s.cursor = 0; // first header
+        assert!(s.is_selectable(0));
+        assert!(!s.is_selectable(1)); // match rows aren't selectable
         s.next_result();
-        assert_eq!(s.cursor, 4);
+        assert_eq!(s.cursor, 3, "next lands on the second file header");
+        s.next_result();
+        assert_eq!(s.cursor, 3, "no wrap past the last header");
     }
 
     #[test]
-    fn cursor_at_visual_line_maps_clicks_to_rows() {
+    fn collapsing_a_header_keeps_focus_and_skips_hidden_in_nav() {
         let mut s = grouped_state();
-        // Lines (no collapse, no preview): 0=H0,1=m1,2=m2,3=H3,4=m4.
-        assert!(!s.cursor_at_visual_line(0)); // header → not a result row
-        assert!(s.cursor_on_header());
-        assert!(s.cursor_at_visual_line(2)); // m2 → result row
-        assert_eq!(s.cursor, 2);
+        s.cursor = 0;
+        assert!(s.set_collapse_at_cursor(true));
+        assert_eq!(s.cursor, 0);
+        assert!(s.tree_nodes[0].collapsed);
+        // Matches under the collapsed header are hidden, but the next header is
+        // still reachable.
+        s.next_result();
+        assert_eq!(s.cursor, 3);
+    }
+
+    #[test]
+    fn cursor_at_visual_line_selects_headers() {
+        let mut s = grouped_state();
+        // Lines: 0=H0,1=m1,2=m2,3=H3,4=m4.
+        assert!(s.cursor_at_visual_line(0)); // header → selectable
+        assert_eq!(s.cursor, 0);
+        assert!(s.cursor_at_visual_line(3)); // H3 → selectable
+        assert_eq!(s.cursor, 3);
+        assert!(!s.cursor_at_visual_line(2)); // a match row → not selectable
     }
 
     #[test]
     fn page_nav_stops_at_ends_without_wrapping() {
         let mut s = grouped_state();
-        s.cursor = 1;
-        s.page_down(10); // clamps at the last result row
-        assert_eq!(s.cursor, 4);
-        s.page_up(10); // back to the first
-        assert_eq!(s.cursor, 1);
+        s.cursor = 0;
+        s.page_down(10);
+        assert_eq!(s.cursor, 3); // last header
+        s.page_up(10);
+        assert_eq!(s.cursor, 0); // first header
     }
 
     #[test]

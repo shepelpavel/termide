@@ -34,7 +34,6 @@ fn git_status_style(status: GitStatus, theme: &Theme) -> Style {
 const DIR_COLLAPSED: &str = if cfg!(windows) { "►" } else { "▶" };
 const DIR_COLLAPSED_SYMLINK: &str = if cfg!(windows) { "►" } else { "▷" };
 const DIR_EXPANDED_SYMLINK: &str = if cfg!(windows) { "▼" } else { "▽" };
-const DIR_COLLAPSED_SPACE: &str = if cfg!(windows) { "► " } else { "▶ " };
 // Marker for a remote symlink whose target type couldn't be resolved from
 // the directory listing (SFTP/FTP report the link, not its target). Local
 // symlinks don't use this — local listings already classify them (dir
@@ -343,16 +342,26 @@ impl FileManager {
         let max_lines = area.height as usize;
         let content_width = area.width as usize;
 
-        for (vis_idx, (idx, node)) in search
-            .tree_nodes
-            .iter()
-            .enumerate()
-            .skip(search.scroll_offset)
-            .enumerate()
-        {
+        // Directory rows show a collapse marker; children of a collapsed
+        // directory are skipped (node_display_lines == 0).
+        let dir_marker = |collapsed: bool| -> &'static str {
+            match (collapsed, cfg!(windows)) {
+                (true, true) => "► ",
+                (true, false) => "▶ ",
+                (false, true) => "▼ ",
+                (false, false) => "▼ ",
+            }
+        };
+
+        let mut vis_idx = 0usize;
+        for idx in search.scroll_offset..search.tree_nodes.len() {
             if vis_idx >= max_lines {
                 break;
             }
+            if search.node_display_lines(idx) == 0 {
+                continue; // hidden under a collapsed directory
+            }
+            let node = &search.tree_nodes[idx];
 
             let is_selected = idx == search.cursor;
             let prefix = &search.tree_prefixes[idx];
@@ -372,7 +381,11 @@ impl FileManager {
                 Style::default().fg(theme.disabled)
             };
 
-            let icon_text = if node.is_dir { DIR_COLLAPSED_SPACE } else { "" };
+            let icon_text = if node.is_dir {
+                dir_marker(node.collapsed)
+            } else {
+                ""
+            };
 
             let mut spans = Vec::new();
             if !prefix.is_empty() {
@@ -392,6 +405,7 @@ impl FileManager {
 
             let y = area.y + vis_idx as u16;
             buf.set_line(area.x, y, &Line::from(spans), area.width);
+            vis_idx += 1;
         }
     }
 
@@ -444,15 +458,16 @@ impl FileManager {
                 } else {
                     fg.add_modifier(Modifier::BOLD)
                 };
-                // ▸ collapsed / ▾ expanded (► on Windows, outside WGL4 otherwise).
+                // Bracketed triangle like the git-diff panel: [▶] collapsed /
+                // [▼] expanded (► on Windows, outside WGL4 otherwise).
                 let marker = if node.collapsed {
                     if cfg!(windows) {
-                        "\u{25ba} "
+                        "[►] "
                     } else {
-                        "\u{25b8} "
+                        "[▶] "
                     }
                 } else {
-                    "\u{25be} "
+                    "[▼] "
                 };
                 let count_text = format!(" {}", node.match_count);
                 let avail = content_width.saturating_sub(marker.width() + count_text.width());
@@ -541,6 +556,11 @@ impl FileManager {
                         x += grapheme.width() as u16;
                     }
                 }
+            } else {
+                // "… N more" overflow row (no content match): dim, indented.
+                let style = if is_selected { fg } else { dim };
+                let shown = truncate_from_start(&node.name, content_width.saturating_sub(indent));
+                buf.set_string(area.x + indent as u16, y, &shown, style);
             }
 
             line += node_lines;
