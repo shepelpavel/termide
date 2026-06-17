@@ -96,7 +96,7 @@ Press `Ctrl+H` to open the find bar with a Replace field added.
 | `Enter` (in Find) | Go to next match                           |
 | `Enter` (in Repl) | Replace the current match                  |
 | `Escape`          | Close the bar                              |
-| Mouse click       | Click buttons (Replace, All, Prev, Next) or toggles |
+| Mouse click       | Click buttons (◄ Prev, Next ►, Replace, Replace all) or toggles |
 
 **Features:**
 - Two input fields: Find and Replace; live preview + match counter

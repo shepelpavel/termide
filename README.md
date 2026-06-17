@@ -373,6 +373,7 @@ For detailed documentation, see:
 - `Ctrl+A` - Select all
 - `Ctrl+F` - Search by name
 - `Ctrl+Shift+F` - Search in contents
+- `Ctrl+Shift+H` - Search & replace in contents
 - `Ctrl+N` - New file
 - `D` / `F7` - New directory
 - `C` / `F5` - Copy
