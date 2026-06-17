@@ -1075,6 +1075,96 @@ fn compute_tree_prefixes(nodes: &[ResultTreeNode]) -> Vec<String> {
 
 // ─── Background search functions ─────────────────────────────────────────
 
+/// Matches a path's file name (or relative path) against a search mask.
+///
+/// Shared by the name and content walkers so both apply the same
+/// path-glob / name-glob / substring rules and honor the `[Aa]` Case toggle
+/// identically. `use_regex` (name search with `[.*]` on) matches the name as
+/// a regular expression; content search always passes `use_regex = false`
+/// because its mask is only ever a glob (the regex there matches file
+/// *contents*, not names).
+struct NameMatcher {
+    has_path_sep: bool,
+    has_wildcards: bool,
+    case_sensitive: bool,
+    /// Some only in name-regex mode; matched against the name / relative path.
+    regex: Option<regex::Regex>,
+    /// Glob/substring needle, case-folded when Case is off.
+    glob: Option<glob::Pattern>,
+    needle: String,
+}
+
+impl NameMatcher {
+    /// Returns `None` only when a regex mask fails to compile (the caller then
+    /// yields no results); a glob that fails to parse simply matches nothing.
+    fn new(mask: &str, use_regex: bool, case_sensitive: bool) -> Option<Self> {
+        let regex = if use_regex {
+            match RegexBuilder::new(mask)
+                .case_insensitive(!case_sensitive)
+                .build()
+            {
+                Ok(r) => Some(r),
+                Err(_) => return None,
+            }
+        } else {
+            None
+        };
+        // Fold case into the needle when Case is off so pattern and candidate
+        // are compared in the same case.
+        let needle = if case_sensitive {
+            mask.to_string()
+        } else {
+            mask.to_lowercase()
+        };
+        let glob = if use_regex {
+            None
+        } else {
+            glob::Pattern::new(&needle).ok()
+        };
+        Some(Self {
+            has_path_sep: mask.contains('/') || mask.contains('\\'),
+            has_wildcards: mask.contains('*') || mask.contains('?'),
+            case_sensitive,
+            regex,
+            glob,
+            needle,
+        })
+    }
+
+    /// `Some(matched)`, or `None` when the entry has no usable file name.
+    fn matches(&self, path: &Path, relative_path: &str) -> Option<bool> {
+        if let Some(re) = self.regex.as_ref() {
+            // Match the path when the pattern spans separators, else the name.
+            return Some(if self.has_path_sep {
+                re.is_match(relative_path)
+            } else {
+                re.is_match(&path.file_name()?.to_string_lossy())
+            });
+        }
+        if self.has_path_sep {
+            let hay = if self.case_sensitive {
+                relative_path.to_string()
+            } else {
+                relative_path.to_lowercase()
+            };
+            return Some(self.glob.as_ref().map(|g| g.matches(&hay)).unwrap_or(false));
+        }
+        let name = path.file_name()?.to_string_lossy();
+        Some(if self.has_wildcards {
+            let hay = if self.case_sensitive {
+                name.into_owned()
+            } else {
+                name.to_lowercase()
+            };
+            self.glob.as_ref().map(|g| g.matches(&hay)).unwrap_or(false)
+        } else if self.case_sensitive {
+            name.contains(&self.needle)
+        } else {
+            name.to_lowercase().contains(&self.needle)
+        })
+    }
+}
+
 fn search_files(
     base_path: &Path,
     mask: &str,
@@ -1085,34 +1175,8 @@ fn search_files(
 ) -> Vec<FileResult> {
     use ignore::WalkBuilder;
 
-    let has_path_sep = mask.contains('/') || mask.contains('\\');
-    let has_wildcards = mask.contains('*') || mask.contains('?');
-
-    // Regex mode: match the name (or relative path when the pattern spans
-    // separators) against the compiled regex; bail out on an invalid pattern.
-    let regex = if use_regex {
-        match RegexBuilder::new(mask)
-            .case_insensitive(!case_sensitive)
-            .build()
-        {
-            Ok(r) => Some(r),
-            Err(_) => return Vec::new(),
-        }
-    } else {
-        None
-    };
-
-    // Glob / substring mode: fold case into the needle when Case is off so the
-    // pattern and the candidate are compared in the same case.
-    let needle = if case_sensitive {
-        mask.to_string()
-    } else {
-        mask.to_lowercase()
-    };
-    let glob_pattern = if use_regex {
-        None
-    } else {
-        glob::Pattern::new(&needle).ok()
+    let Some(matcher) = NameMatcher::new(mask, use_regex, case_sensitive) else {
+        return Vec::new();
     };
     let mut results = Vec::new();
 
@@ -1143,53 +1207,7 @@ fn search_files(
             .map(|r| r.display().to_string())
             .unwrap_or_default();
 
-        let matches = if let Some(re) = regex.as_ref() {
-            // Match the path when the pattern spans separators, else the name.
-            if has_path_sep {
-                re.is_match(&relative_path)
-            } else {
-                match path.file_name() {
-                    Some(n) => re.is_match(&n.to_string_lossy()),
-                    None => continue,
-                }
-            }
-        } else if has_path_sep {
-            let hay = if case_sensitive {
-                relative_path.clone()
-            } else {
-                relative_path.to_lowercase()
-            };
-            glob_pattern
-                .as_ref()
-                .map(|g| g.matches(&hay))
-                .unwrap_or(false)
-        } else if has_wildcards {
-            let name = match path.file_name() {
-                Some(n) => n.to_string_lossy(),
-                None => continue,
-            };
-            let hay = if case_sensitive {
-                name.into_owned()
-            } else {
-                name.to_lowercase()
-            };
-            glob_pattern
-                .as_ref()
-                .map(|g| g.matches(&hay))
-                .unwrap_or(false)
-        } else {
-            let name = match path.file_name() {
-                Some(n) => n.to_string_lossy(),
-                None => continue,
-            };
-            if case_sensitive {
-                name.contains(&needle)
-            } else {
-                name.to_lowercase().contains(&needle)
-            }
-        };
-
-        if !matches {
+        if matcher.matches(path, &relative_path) != Some(true) {
             continue;
         }
 
@@ -1239,10 +1257,12 @@ fn search_content(
         Err(_) => return Vec::new(),
     };
 
-    let has_path_sep = mask.contains('/') || mask.contains('\\');
-    let has_wildcards = mask.contains('*') || mask.contains('?');
-    let glob_pattern = glob::Pattern::new(mask).ok();
-    let mask_lower = mask.to_lowercase();
+    // The mask filters file names with the same rules (and Case toggle) as the
+    // name search; the content `regex` above is what honors case for matches.
+    let matcher = match NameMatcher::new(mask, false, case_sensitive) {
+        Some(m) => m,
+        None => return Vec::new(),
+    };
 
     let min_size = content_pattern.len() as u64;
     let mut results = Vec::new();
@@ -1274,29 +1294,7 @@ fn search_content(
             .map(|r| r.display().to_string())
             .unwrap_or_default();
 
-        let name_matches = if has_path_sep {
-            glob_pattern
-                .as_ref()
-                .map(|g| g.matches(&relative_path))
-                .unwrap_or(false)
-        } else if has_wildcards {
-            let name = match path.file_name() {
-                Some(n) => n.to_string_lossy(),
-                None => continue,
-            };
-            glob_pattern
-                .as_ref()
-                .map(|g| g.matches(&name))
-                .unwrap_or(false)
-        } else {
-            let name = match path.file_name() {
-                Some(n) => n.to_string_lossy(),
-                None => continue,
-            };
-            name.to_lowercase().contains(&mask_lower)
-        };
-
-        if !name_matches {
+        if matcher.matches(path, &relative_path) != Some(true) {
             continue;
         }
 
@@ -1562,6 +1560,56 @@ mod tests {
 
         assert_eq!(state.replace_all("$1"), (1, 1));
         assert_eq!(std::fs::read_to_string(&f).unwrap(), "a$1b\n");
+    }
+
+    #[test]
+    fn name_matcher_applies_glob_substring_regex_and_case() {
+        let p = Path::new("/proj/src/Main.rs");
+        let rel = "src/Main.rs";
+
+        // Case-insensitive substring (default).
+        assert_eq!(
+            NameMatcher::new("main", false, false)
+                .unwrap()
+                .matches(p, rel),
+            Some(true)
+        );
+        // Case-sensitive substring: "main" no longer matches "Main".
+        assert_eq!(
+            NameMatcher::new("main", false, true)
+                .unwrap()
+                .matches(p, rel),
+            Some(false)
+        );
+        // Wildcard glob over the name, case-folded when Case is off.
+        assert_eq!(
+            NameMatcher::new("*.RS", false, false)
+                .unwrap()
+                .matches(p, rel),
+            Some(true)
+        );
+        assert_eq!(
+            NameMatcher::new("*.RS", false, true)
+                .unwrap()
+                .matches(p, rel),
+            Some(false)
+        );
+        // Path-glob when the mask spans separators.
+        assert_eq!(
+            NameMatcher::new("src/*.rs", false, true)
+                .unwrap()
+                .matches(p, rel),
+            Some(true)
+        );
+        // Regex over the name; case-sensitive anchored.
+        assert_eq!(
+            NameMatcher::new("^Main", true, true)
+                .unwrap()
+                .matches(p, rel),
+            Some(true)
+        );
+        // Invalid regex → no matcher at all.
+        assert!(NameMatcher::new("(", true, false).is_none());
     }
 
     #[test]
