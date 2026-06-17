@@ -312,6 +312,7 @@ cargo build --release
 - `Ctrl+A` - 全选
 - `Ctrl+F` - 按名称搜索
 - `Ctrl+Shift+F` - 在内容中搜索
+- `Ctrl+Shift+H` - 在内容中搜索并替换
 - `Ctrl+N` - 新建文件
 - `D` / `F7` - 新建目录
 - `C` / `F5` - 复制
