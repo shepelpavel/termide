@@ -100,7 +100,7 @@ Press `Ctrl+H` to open the find bar with a Replace field added.
 
 **Features:**
 - Two input fields: Find and Replace; live preview + match counter
-- Button row, in order: `[.*]` / `[Aa]` toggles, **◄ Prev**, **Next ►**,
+- Button row, in order: `[Aa]` / `[.*]` toggles, **◄ Prev**, **Next ►**,
   **Replace**, **Replace all** (focus the row with `Tab` / arrows, then
   `Enter` / `Space`, or click):
   - **◄ Prev** / **Next ►** — navigate matches

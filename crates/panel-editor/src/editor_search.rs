@@ -304,10 +304,10 @@ impl Editor {
             let bar = if replace {
                 FindBar::new(FindBarConfig {
                     fields: vec![FindField::Find, FindField::Replace],
-                    // [.*] [Aa]  ◄ Prev  Next ►  Replace  Replace all
+                    // [Aa] [.*]  ◄ Prev  Next ►  Replace  Replace all
                     buttons: vec![
-                        FindBarBtn::Regex,
                         FindBarBtn::Case,
+                        FindBarBtn::Regex,
                         FindBarBtn::Prev,
                         FindBarBtn::Next,
                         FindBarBtn::Replace,
@@ -318,8 +318,8 @@ impl Editor {
                 FindBar::new(FindBarConfig {
                     fields: vec![FindField::Find],
                     buttons: vec![
-                        FindBarBtn::Regex,
                         FindBarBtn::Case,
+                        FindBarBtn::Regex,
                         FindBarBtn::Prev,
                         FindBarBtn::Next,
                     ],
