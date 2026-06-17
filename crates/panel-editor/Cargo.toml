@@ -13,6 +13,7 @@ crossterm.workspace = true
 log.workspace = true
 lsp-types = "0.97"
 ratatui.workspace = true
+regex.workspace = true
 ropey.workspace = true
 unicode-width.workspace = true
 unicode-segmentation.workspace = true

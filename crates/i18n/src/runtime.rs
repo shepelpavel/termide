@@ -471,6 +471,8 @@ impl Translation for RuntimeTranslation {
         diagnostics_filter_ew,
         terminal_kill_confirm,
         operation_cancel_confirm,
+        replace_done_title,
+        replace_no_files_selected,
         panel_image,
         resource_cpu_top_title,
         resource_ram_top_title,
@@ -1078,5 +1080,60 @@ impl Translation for RuntimeTranslation {
         self.format("image_error_fmt", &[("error", error)])
     }
 
+    fn replace_done_fmt(&self, count: usize, files: usize) -> String {
+        self.format(
+            "replace_done_fmt",
+            &[("count", &count.to_string()), ("files", &files.to_string())],
+        )
+    }
+
+    fn replace_confirm_fmt(&self, count: usize, files: usize) -> String {
+        self.format(
+            "replace_confirm_fmt",
+            &[("count", &count.to_string()), ("files", &files.to_string())],
+        )
+    }
+
+    fn replace_selection_fmt(&self, selected: usize, total: usize, matches: usize) -> String {
+        self.format(
+            "replace_selection_fmt",
+            &[
+                ("selected", &selected.to_string()),
+                ("total", &total.to_string()),
+                ("matches", &matches.to_string()),
+            ],
+        )
+    }
+
     // Calendar
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Format keys must live in the TOML `[formats]` section (not `[strings]`),
+    /// otherwise `format()` can't find them and returns an empty string. Guard
+    /// the content-replace formats against that regression in every language.
+    #[test]
+    fn replace_format_keys_resolve_in_all_languages() {
+        for lang in ["en", "ru", "zh"] {
+            let t = RuntimeTranslation::new(lang).unwrap();
+
+            let confirm = t.replace_confirm_fmt(2, 3);
+            assert!(
+                confirm.contains('2') && confirm.contains('3'),
+                "{lang}: {confirm:?}"
+            );
+
+            let done = t.replace_done_fmt(2, 3);
+            assert!(done.contains('2') && done.contains('3'), "{lang}: {done:?}");
+
+            let sel = t.replace_selection_fmt(1, 4, 9);
+            assert!(
+                sel.contains('1') && sel.contains('4') && sel.contains('9'),
+                "{lang}: {sel:?}"
+            );
+        }
+    }
 }

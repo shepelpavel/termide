@@ -4,9 +4,7 @@ use anyhow::Result;
 
 use crate::app::App;
 use crate::state::ActiveModal;
-use termide_modal::{
-    ModalResult, ReplaceAction, ReplaceModalResult, SearchAction, SearchModalResult,
-};
+use termide_modal::{ModalResult, SearchAction, SearchModalResult};
 
 /// Result of processing search/replace modal.
 ///
@@ -19,6 +17,12 @@ pub(super) enum SearchReplaceResult {
     Close,
     /// Modal cancelled — close and clear search.
     Cancelled,
+    /// Content-mode Replace All: close the search modal and ask the user to
+    /// confirm replacing across the matched files.
+    ReplaceConfirm {
+        message: String,
+        replace_with: String,
+    },
     /// Not a search/replace modal.
     NotApplicable,
 }
@@ -27,60 +31,9 @@ impl App {
     /// Handle search result
     pub(in crate::app) fn handle_search(&mut self, value: Box<dyn std::any::Any>) -> Result<()> {
         if let Some(query) = value.downcast_ref::<String>() {
-            // Start search in active panel (case insensitive by default)
+            // Start search in active panel (case insensitive, literal by default)
             if let Some(searchable) = self.active_searchable_mut() {
-                searchable.start_search(query.clone(), false);
-            }
-        }
-        Ok(())
-    }
-
-    /// Handle replace action from ReplaceModal
-    pub(in crate::app) fn handle_replace_action(
-        &mut self,
-        replace_result: &ReplaceModalResult,
-    ) -> Result<()> {
-        // Get active editor
-        if let Some(editor) = self.active_searchable_editor_mut() {
-            match replace_result.action {
-                ReplaceAction::Search => {
-                    // Perform new search/replace (or update existing)
-                    editor.start_replace(
-                        replace_result.find_query.clone(),
-                        replace_result.replace_with.clone(),
-                        false,
-                    );
-                }
-                ReplaceAction::Next => {
-                    // Update only replace_with value without rebuilding search
-                    editor.update_replace_with(replace_result.replace_with.clone());
-                    // Navigate to next match
-                    editor.search_next();
-                }
-                ReplaceAction::Previous => {
-                    // Update only replace_with value without rebuilding search
-                    editor.update_replace_with(replace_result.replace_with.clone());
-                    // Navigate to previous match
-                    editor.search_prev();
-                }
-                ReplaceAction::Replace => {
-                    // Update only replace_with value without rebuilding search
-                    // This preserves the current_match index for sequential replacement
-                    editor.update_replace_with(replace_result.replace_with.clone());
-                    // Replace current match and position cursor on next match
-                    editor.replace_current()?;
-                    // Don't call search_next() - replace_current() already positions cursor correctly
-                }
-                ReplaceAction::ReplaceAll => {
-                    // Update search state with latest values from modal before replacing all
-                    editor.start_replace(
-                        replace_result.find_query.clone(),
-                        replace_result.replace_with.clone(),
-                        false,
-                    );
-                    // Replace all matches (now uses updated replace_with)
-                    editor.replace_all()?;
-                }
+                searchable.start_search(query.clone(), false, false);
             }
         }
         Ok(())
@@ -99,7 +52,11 @@ impl App {
                 if let Some(searchable) = self.active_searchable_mut() {
                     match search_result.action {
                         SearchAction::Search => {
-                            searchable.start_search(search_result.query.clone(), false);
+                            searchable.start_search(
+                                search_result.query.clone(),
+                                search_result.case_sensitive,
+                                search_result.use_regex,
+                            );
                         }
                         SearchAction::Next => {
                             searchable.search_next();
@@ -110,6 +67,7 @@ impl App {
                         SearchAction::CloseWithSelection => {
                             // Selection is already set by editor methods
                         }
+                        SearchAction::ReplaceAll => {}
                     }
                 }
             }
@@ -117,7 +75,7 @@ impl App {
                 if let Some(fm) = self.active_file_manager_mut() {
                     match search_result.action {
                         SearchAction::Search => {
-                            fm.start_file_search(&search_result.query);
+                            fm.start_file_search(&search_result.query, false, false);
                         }
                         SearchAction::Next => {
                             fm.search_next();
@@ -128,6 +86,7 @@ impl App {
                         SearchAction::CloseWithSelection => {
                             fm.close_search_with_selection();
                         }
+                        SearchAction::ReplaceAll => {}
                     }
                 }
             }
@@ -137,7 +96,12 @@ impl App {
                     let content_query = search_result.content_query.as_deref().unwrap_or("");
                     match search_result.action {
                         SearchAction::Search => {
-                            fm.start_content_search(&search_result.query, content_query);
+                            fm.start_content_search(
+                                &search_result.query,
+                                content_query,
+                                search_result.use_regex,
+                                search_result.case_sensitive,
+                            );
                         }
                         SearchAction::Next => {
                             fm.search_next();
@@ -148,7 +112,12 @@ impl App {
                         SearchAction::CloseWithSelection => {
                             open_event = fm.close_search_with_selection();
                         }
+                        // ReplaceAll is handled (with confirmation) in
+                        // process_search_modal_result.
+                        SearchAction::ReplaceAll => {}
                     }
+                    // Keep the replacement preview in sync with the modal.
+                    fm.set_content_replace(search_result.replace_query.clone());
                 }
                 if let Some(event) = open_event {
                     self.process_single_event(event)?;
@@ -167,6 +136,26 @@ impl App {
 
         if let ModalResult::Confirmed(value) = result {
             if let Some(search_result) = value.downcast_ref::<SearchModalResult>() {
+                // Content-mode "Replace all": close the search modal and ask
+                // for confirmation before writing files.
+                if search_result.action == SearchAction::ReplaceAll {
+                    let summary = self
+                        .active_file_manager_mut()
+                        .and_then(|fm| fm.content_search_summary());
+                    if let Some((files, matches)) = summary {
+                        if matches > 0 {
+                            return SearchReplaceResult::ReplaceConfirm {
+                                message: termide_i18n::t().replace_confirm_fmt(matches, files),
+                                replace_with: search_result
+                                    .replace_query
+                                    .clone()
+                                    .unwrap_or_default(),
+                            };
+                        }
+                    }
+                    return SearchReplaceResult::KeepOpen;
+                }
+
                 // Handle search action based on mode
                 if self.handle_search_action(search_result).is_err() {
                     return SearchReplaceResult::Close;
@@ -204,49 +193,11 @@ impl App {
         SearchReplaceResult::NotApplicable
     }
 
-    /// Process replace modal result and determine what to do
-    pub(super) fn process_replace_modal_result(
-        &mut self,
-        result: &ModalResult<Box<dyn std::any::Any>>,
-    ) -> SearchReplaceResult {
-        if let ModalResult::Confirmed(value) = result {
-            if let Some(replace_result) = value.downcast_ref::<ReplaceModalResult>() {
-                // Handle replace action in editor
-                if self.handle_replace_action(replace_result).is_err() {
-                    return SearchReplaceResult::Close;
-                }
-
-                // Get match info from active editor
-                let match_info = self
-                    .active_searchable_editor_mut()
-                    .and_then(|editor| editor.get_search_match_info());
-
-                // Check if we should close modal
-                if matches!(replace_result.action, ReplaceAction::ReplaceAll) {
-                    return SearchReplaceResult::Close;
-                }
-
-                // Update match info in modal for other actions
-                if let Some((current, total)) = match_info {
-                    if let Some(ActiveModal::Replace(replace_modal)) = &mut self.state.active_modal
-                    {
-                        replace_modal.set_match_info(current, total);
-                    }
-                }
-
-                return SearchReplaceResult::KeepOpen;
-            }
-        } else if matches!(result, ModalResult::Cancelled) {
-            return SearchReplaceResult::Cancelled;
-        }
-        SearchReplaceResult::NotApplicable
-    }
-
-    /// Handle search/replace modal result and return whether to continue processing
+    /// Handle search modal result and return whether to continue processing.
+    /// (Editor replace is now an inline bar, not a modal.)
     pub(in crate::app) fn handle_search_replace_modal(
         &mut self,
         is_search: bool,
-        is_replace: bool,
         result: &ModalResult<Box<dyn std::any::Any>>,
     ) -> Option<()> {
         if is_search {
@@ -281,23 +232,16 @@ impl App {
                     }
                     return Some(());
                 }
-                SearchReplaceResult::NotApplicable => {}
-            }
-        }
-
-        if is_replace {
-            match self.process_replace_modal_result(result) {
-                SearchReplaceResult::KeepOpen => return Some(()),
-                SearchReplaceResult::Close => {
+                SearchReplaceResult::ReplaceConfirm {
+                    message,
+                    replace_with,
+                } => {
+                    // Close the search modal, then ask to confirm the writes.
                     self.state.close_modal();
-                    return Some(());
-                }
-                SearchReplaceResult::Cancelled => {
-                    self.state.close_modal();
-                    // Replace is editor-only, use editor downcast
-                    if let Some(editor) = self.active_searchable_editor_mut() {
-                        editor.close_search();
-                    }
+                    self.event_show_confirm(
+                        message,
+                        termide_core::ConfirmAction::ReplaceInContent(replace_with),
+                    );
                     return Some(());
                 }
                 SearchReplaceResult::NotApplicable => {}

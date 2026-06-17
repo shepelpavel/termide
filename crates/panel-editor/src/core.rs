@@ -7,7 +7,7 @@ use termide_config::Config;
 use termide_core::{HotkeyTable, PanelEvent};
 use termide_git::GitDiffCache;
 use termide_i18n::t;
-use termide_modal::{ActiveModal, ReplaceModal, SaveAsModal, SearchModal};
+use termide_modal::{ActiveModal, FindBar, SaveAsModal};
 use termide_state::PendingAction;
 use termide_vfs::VfsManager;
 
@@ -87,6 +87,12 @@ pub struct Editor {
     pub(crate) vfs_manager: Option<Arc<VfsManager>>,
 
     // === UI state ===
+    /// Inline find/replace bar, docked at the top of the panel while open.
+    /// Replaces the floating search/replace modals for the editor.
+    pub(crate) find_bar: Option<FindBar>,
+    /// While the bar is open, whether focus is in the buffer (navigate matches
+    /// with the cursor) rather than the bar's fields. Toggled with Tab.
+    pub(crate) find_bar_focus_buffer: bool,
     /// Modal window request
     modal_request: Option<(PendingAction, ActiveModal)>,
     /// Pending upload operation (for regular Ctrl+S saves of remote files)
@@ -161,6 +167,8 @@ impl Editor {
             input: InputState::new(),
             lsp: LspState::new(),
             vfs_manager: None,
+            find_bar: None,
+            find_bar_focus_buffer: false,
             modal_request: None,
             pending_upload: None,
             pending_remote_open: None,
@@ -603,6 +611,8 @@ impl Editor {
             input: InputState::new(),
             lsp: LspState::new(),
             vfs_manager: None,
+            find_bar: None,
+            find_bar_focus_buffer: false,
             modal_request: None,
             pending_upload: None,
             pending_remote_open: None,
@@ -642,6 +652,8 @@ impl Editor {
             input: InputState::new(),
             lsp: LspState::new(),
             vfs_manager: None,
+            find_bar: None,
+            find_bar_focus_buffer: false,
             modal_request: None,
             pending_upload: None,
             pending_remote_open: None,
@@ -887,39 +899,10 @@ impl Editor {
         Ok(())
     }
 
-    /// Open search modal, optionally restoring and executing previous query.
-    ///
-    /// If active search exists, restores its state. Otherwise, if a previous query
-    /// exists and execute_search is true, executes it immediately.
-    pub(crate) fn open_search_modal(&mut self, execute_search: bool) {
-        let mut search_modal = SearchModal::new(termide_core::SearchMode::Text);
-
-        // Restore active search state if it exists
-        if let Some(ref search_state) = self.search.state {
-            search_modal.set_input(search_state.query.clone());
-            if let Some((current, total)) = self.get_search_match_info() {
-                search_modal.set_match_info(current, total);
-            }
-        }
-        // If there's a saved query but no active search
-        else if let Some(ref query) = self.search.last_query {
-            search_modal.set_input(query.clone());
-
-            if execute_search {
-                // Execute search immediately
-                self.start_search(query.clone(), false);
-
-                // Update match info in modal
-                if let Some((current, total)) = self.get_search_match_info() {
-                    search_modal.set_match_info(current, total);
-                }
-            }
-        }
-
-        self.modal_request = Some((
-            PendingAction::Search,
-            ActiveModal::Search(Box::new(search_modal)),
-        ));
+    /// Open the inline find bar (find-only). The `_execute_search` flag is
+    /// retained for its callers; the bar always runs the seeded query.
+    pub(crate) fn open_search_modal(&mut self, _execute_search: bool) {
+        self.open_find_bar(false);
     }
 
     /// Execute navigation with visual/physical mode selection.
@@ -1045,33 +1028,9 @@ impl Editor {
         Ok(())
     }
 
-    /// Open replace modal with previous find/replace text restored
+    /// Open the inline find/replace bar (find + replace fields).
     pub(crate) fn handle_start_replace(&mut self) {
-        let mut replace_modal = ReplaceModal::new();
-
-        // Restore previous find/replace text if available
-        if let Some(ref find) = self.search.last_replace_find {
-            replace_modal.set_find_input(find.clone());
-        }
-        if let Some(ref replace) = self.search.last_replace_with {
-            replace_modal.set_replace_input(replace.clone());
-        }
-
-        // If there's saved find text - execute search immediately
-        if let Some(ref find) = self.search.last_replace_find {
-            let replace_with = self.search.last_replace_with.clone().unwrap_or_default();
-            self.start_replace(find.clone(), replace_with, false);
-
-            // Update match info in modal
-            if let Some((current, total)) = self.get_search_match_info() {
-                replace_modal.set_match_info(current, total);
-            }
-        }
-
-        self.modal_request = Some((
-            PendingAction::Replace,
-            ActiveModal::Replace(Box::new(replace_modal)),
-        ));
+        self.open_find_bar(true);
     }
 }
 

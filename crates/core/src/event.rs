@@ -470,12 +470,6 @@ pub enum PanelEvent {
         initial_query: Option<String>,
     },
 
-    /// Show search & replace modal
-    ShowReplace {
-        find: Option<String>,
-        replace: Option<String>,
-    },
-
     /// Show file conflict resolution modal
     ShowConflict {
         source: PathBuf,
@@ -637,6 +631,9 @@ pub enum ConfirmAction {
 
     /// Cancel a running background operation
     CancelOperation(termide_file_ops::OperationId),
+
+    /// Replace every content-search match in the file manager with this text.
+    ReplaceInContent(String),
 }
 
 /// Input dialog actions.
@@ -653,9 +650,6 @@ pub enum InputAction {
 
     /// Search in file
     SearchInFile,
-
-    /// Search and replace
-    SearchReplace,
 
     /// Go to line number
     GotoLine,

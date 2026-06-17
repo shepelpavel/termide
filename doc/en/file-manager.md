@@ -57,26 +57,65 @@ In tree view, selecting a directory with `Insert` cascades the selection to all 
 | Shortcut           | Action                                     |
 |-------------------|--------------------------------------------|
 | `Ctrl+F`          | Search files by name (glob patterns)       |
-| `Ctrl+Shift+F`    | Search in file contents (regex)            |
+| `Ctrl+Shift+F`    | Search in file contents                    |
+| `Ctrl+Shift+H`    | Search & replace in file contents          |
 | `/`              | In-tree incremental search (filter as you type) |
+
+These searches use an **inline bar docked at the top of the panel** (not a
+floating modal), with a separator line above the results. The bar and the
+results are two **zones**: `Tab` switches between them (like the git-status
+panel). In the bar zone, arrow keys move between the fields and toggles. In the
+results zone the cursor lands on the **entry rows** (files/folders, or file
+groups), like the diff panel: `↑` / `↓` move between them, `PageUp` / `PageDown`
+page, `←` / `→` collapse / expand the entry at the cursor, and `Enter` opens it
+(a folder/file header toggles or opens). A mouse click selects a row, a
+double-click opens it (or toggles a group), and the wheel scrolls. `Esc` exits
+the search (it does not close the panel).
 
 ### File Search (Ctrl+F)
 
-Opens a modal for quick file search by name using glob patterns:
-- Type to filter files in real-time
-- Results show relative paths with git status colors
-- Press Enter to open selected file
-- Press Escape or click outside to close
+An inline bar with a single `Find:` field that filters files by glob in real
+time; results (relative paths with git-status colors) appear below the
+separator as a tree. `Tab` into the results; `↑` / `↓` move across files **and
+folders**, `←` / `→` collapse / expand a folder, `Enter` opens the file
+(placing the cursor on it in the tree).
+
+Matching is a **case-insensitive substring** by default; the `[Aa] Case` and
+`[.*] Regex` toggles change it: `[Aa]` makes matching case-sensitive, and
+`[.*]` treats the query as a regular expression over the file name (click a
+toggle, or focus it and press `Enter` / `Space`).
 
 ### Content Search (Ctrl+Shift+F)
 
-Opens a modal for searching text within files using regular expressions:
-- Searches only in text files (binary files are skipped)
-- Large files are skipped (configurable limit in settings)
-- Results show file path, line number, and context (3 lines)
-- Matched text is highlighted
-- Press Enter to open file at the matched line
-- Press Escape or click outside to close
+An inline bar with `Find:` (glob mask, defaults to `*`) and `Text:` (the content
+query) fields:
+- Matching is **literal by default**; toggle `[.*] Regex` for regular
+  expressions and `[Aa] Case` for case sensitivity (click, or focus the toggle
+  and press `Enter` / `Space`).
+- Searches only in text files (binary files are skipped); large files are
+  skipped (configurable limit in settings).
+- Results are **grouped by file** below the separator, like the diff panel: the
+  cursor moves between **file headers** (`[▼]`/`[▶]` collapse marker + path +
+  match count), with up to 5 match lines shown under each (line number + matched
+  line, hit highlighted) and a `+ N more` row when a file has more. `←` / `→`
+  collapse / expand a file, `Enter` opens it at its first match.
+
+### Content Replace (Ctrl+Shift+H)
+
+`Ctrl+Shift+H` opens the same content bar with an extra `Repl:` field. Once a
+replacement is typed, every shown match renders as a `-old/+new` preview.
+
+Each file header gets a **selection checkbox** (`[ ]` right of the collapse
+triangle), and replacement applies **only to checked files** — nothing is
+checked by default. Toggle the file at the cursor with `Space` or a click; the **`[ ] Select all`**
+checkbox button (or `a`) selects/clears every file at once. The bar's
+right-hand status shows the live `selected / total files · matches` count.
+
+Press `Enter` in the `Repl:` field (or activate the **Replace** button) to
+replace every match in the **selected** files — after a confirmation showing how
+many occurrences in how many files (nothing selected shows a hint instead). With
+`[.*] Regex` on, the replacement supports `$1` / `${name}` capture groups;
+otherwise it is inserted verbatim. Replacements are written to disk.
 
 ### In-tree Search (/)
 

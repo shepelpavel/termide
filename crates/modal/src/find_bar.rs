@@ -1,0 +1,740 @@
+//! Inline find / replace bar — a panel-embeddable search form.
+//!
+//! Unlike [`SearchModal`](crate::SearchModal), this widget renders *inside* a
+//! host panel's own area (no modal frame) and is
+//! meant to coexist with the panel's body: the panel keeps focus on its results
+//! while the bar is open, and only routes keys to the bar when the user moves
+//! focus into it (e.g. with `Tab`). The widget therefore manages focus *only
+//! among its own controls* — deciding whether the bar or the panel body has
+//! focus is the host's responsibility.
+//!
+//! The host drives it like this:
+//! - call [`FindBar::height`] to reserve rows out of the panel's `Rect`;
+//! - call [`FindBar::render`] with `active = true` when the bar (not the body)
+//!   currently holds focus;
+//! - forward keys to [`FindBar::handle_key`] / clicks to
+//!   [`FindBar::handle_mouse`] and act on the returned [`FindBarAction`];
+//! - read [`FindBar::find_text`] / [`FindBar::replace_text`] / [`FindBar::mask_text`]
+//!   / [`FindBar::use_regex`] / [`FindBar::case_sensitive`] to run the search.
+
+use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
+use ratatui::{
+    buffer::Buffer,
+    layout::Rect,
+    style::{Modifier, Style},
+};
+
+use termide_theme::Theme;
+
+use crate::base::{render_labeled_input, screen_x_to_char_pos};
+use crate::input_keys::{handle_input_key, InputKeyResult};
+use crate::TextInputHandler;
+
+/// An input field the bar can expose, in render order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FindField {
+    /// Glob mask (file-manager content search).
+    Mask,
+    /// The search query.
+    Find,
+    /// The replacement text.
+    Replace,
+}
+
+impl FindField {
+    fn label(self) -> &'static str {
+        match self {
+            FindField::Mask => "Mask: ",
+            FindField::Find => "Find: ",
+            FindField::Replace => "Repl: ",
+        }
+    }
+}
+
+/// A control on the buttons row. Action buttons confirm an operation; the two
+/// trailing toggles flip regex / case. The host supplies the action buttons it
+/// wants; the toggles are always appended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Btn {
+    Replace,
+    ReplaceAll,
+    Prev,
+    Next,
+    /// A "select all" checkbox (host-defined meaning, e.g. all files for
+    /// replace). Renders as `[x]/[ ] Select all` and toggles on activation.
+    SelectAll,
+    Regex,
+    Case,
+}
+
+impl Btn {
+    fn is_toggle(self) -> bool {
+        matches!(self, Btn::Regex | Btn::Case)
+    }
+}
+
+/// What the host should do in response to a key / click.
+///
+/// Anything that mutates the query (typing, or flipping a toggle) collapses to
+/// [`FindBarAction::QueryChanged`] so the host can re-run the search uniformly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FindBarAction {
+    /// A field was edited or a toggle flipped — re-run the search.
+    QueryChanged,
+    /// Go to the next match.
+    Next,
+    /// Go to the previous match.
+    Previous,
+    /// Replace the current match.
+    Replace,
+    /// Replace every match.
+    ReplaceAll,
+    /// `Enter` on a field — the host decides what to do based on
+    /// [`FindBar::focused_field`].
+    Submit,
+    /// Toggle the "select all" checkbox.
+    SelectAll,
+    /// Close the bar.
+    Close,
+}
+
+/// Configuration for a [`FindBar`].
+pub struct FindBarConfig {
+    /// Fields to show, top to bottom.
+    pub fields: Vec<FindField>,
+    /// The complete, ordered button row — including the `Regex`/`Case` toggles
+    /// and any `SelectAll` checkbox where the host wants them. Empty for a bar
+    /// with no buttons (e.g. glob file-name search).
+    pub buttons: Vec<Btn>,
+}
+
+/// A focusable control: either a field or a button-row entry (by index into
+/// `buttons`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Control {
+    Field(usize),
+    Button(usize),
+}
+
+/// Inline find / replace bar.
+pub struct FindBar {
+    fields: Vec<FindField>,
+    /// Display label per field (defaults to the field's own label), parallel
+    /// to `fields`. Lets a host align labels across bars (e.g. the file
+    /// manager labels its glob field "Find:" in both searches).
+    labels: Vec<String>,
+    inputs: Vec<TextInputHandler>,
+    buttons: Vec<Btn>,
+    /// Optional per-button label overrides (e.g. the file manager labels its
+    /// `ReplaceAll` button "Replace").
+    button_labels: Vec<(Btn, String)>,
+    use_regex: bool,
+    case_sensitive: bool,
+    /// State of the "select all" checkbox button (host-driven).
+    select_all_on: bool,
+    /// Index into the focus ring (`ring()`).
+    focus: usize,
+    match_info: Option<(usize, usize)>,
+    /// Free-form right-aligned status that overrides the match counter.
+    info_text: Option<String>,
+    /// Per-field rendered areas, parallel to `fields` (for mouse).
+    field_areas: Vec<Rect>,
+    /// Rendered button areas: (area, index into `buttons`).
+    button_areas: Vec<(Rect, usize)>,
+}
+
+impl FindBar {
+    /// Create a bar from a config. The first field is focused by default.
+    pub fn new(config: FindBarConfig) -> Self {
+        let FindBarConfig { fields, buttons } = config;
+        let inputs = fields.iter().map(|_| TextInputHandler::new()).collect();
+        let labels = fields.iter().map(|f| f.label().to_string()).collect();
+        Self {
+            fields,
+            labels,
+            inputs,
+            buttons,
+            button_labels: Vec::new(),
+            use_regex: false,
+            case_sensitive: false,
+            select_all_on: false,
+            focus: 0,
+            match_info: None,
+            info_text: None,
+            field_areas: Vec::new(),
+            button_areas: Vec::new(),
+        }
+    }
+
+    /// The focus ring: every field followed by every button.
+    fn ring(&self) -> Vec<Control> {
+        let mut ring: Vec<Control> = (0..self.fields.len()).map(Control::Field).collect();
+        ring.extend((0..self.buttons.len()).map(Control::Button));
+        ring
+    }
+
+    fn current(&self) -> Control {
+        let ring = self.ring();
+        ring[self.focus.min(ring.len().saturating_sub(1))]
+    }
+
+    fn field_index(&self, field: FindField) -> Option<usize> {
+        self.fields.iter().position(|&f| f == field)
+    }
+
+    // === Host-facing accessors ===
+
+    /// Number of terminal rows the bar needs: one per field plus the buttons
+    /// row.
+    pub fn height(&self) -> u16 {
+        // The buttons/toggles row is omitted entirely when there are none
+        // (e.g. the file-name search has neither buttons nor toggles), so the
+        // bar doesn't leave a blank row above the separator.
+        self.fields.len() as u16 + if self.buttons.is_empty() { 0 } else { 1 }
+    }
+
+    /// Move focus to the first field (host calls this when entering the bar).
+    pub fn focus_first(&mut self) {
+        self.focus = 0;
+    }
+
+    /// Focus a specific field, if the bar exposes it. Fields occupy the leading
+    /// slots of the focus ring, so the field index is the ring index.
+    pub fn focus_field(&mut self, field: FindField) {
+        if let Some(i) = self.field_index(field) {
+            self.focus = i;
+        }
+    }
+
+    /// Whether a click at `(col, row)` lands on any of the bar's controls
+    /// (after a [`FindBar::render`] recorded their areas). Lets the host decide
+    /// whether a click belongs to the bar or to its own body.
+    pub fn click_hits_bar(&self, col: u16, row: u16) -> bool {
+        self.field_areas.iter().any(|a| hit(*a, col, row))
+            || self.button_areas.iter().any(|(a, _)| hit(*a, col, row))
+    }
+
+    /// Whether the bar exposes `field`.
+    pub fn has_field(&self, field: FindField) -> bool {
+        self.fields.contains(&field)
+    }
+
+    /// Override the display label of a field (include the trailing space, e.g.
+    /// `"Find: "`). No-op if the bar doesn't expose the field.
+    pub fn set_label(&mut self, field: FindField, label: impl Into<String>) {
+        if let Some(i) = self.field_index(field) {
+            self.labels[i] = label.into();
+        }
+    }
+
+    /// Override an action button's label (e.g. `ReplaceAll` → "Replace").
+    pub fn set_button_label(&mut self, btn: Btn, label: impl Into<String>) {
+        self.button_labels.retain(|(b, _)| *b != btn);
+        self.button_labels.push((btn, label.into()));
+    }
+
+    /// The field that currently has focus, if any (vs a button).
+    pub fn focused_field(&self) -> Option<FindField> {
+        match self.current() {
+            Control::Field(i) => self.fields.get(i).copied(),
+            Control::Button(_) => None,
+        }
+    }
+
+    fn text_of(&self, field: FindField) -> Option<&str> {
+        self.field_index(field).map(|i| self.inputs[i].text())
+    }
+
+    /// Current query text.
+    pub fn find_text(&self) -> &str {
+        self.text_of(FindField::Find).unwrap_or("")
+    }
+
+    /// Current replacement text (empty if there is no replace field).
+    pub fn replace_text(&self) -> &str {
+        self.text_of(FindField::Replace).unwrap_or("")
+    }
+
+    /// Current glob mask (empty if there is no mask field).
+    pub fn mask_text(&self) -> &str {
+        self.text_of(FindField::Mask).unwrap_or("")
+    }
+
+    /// Whether regex matching is enabled.
+    pub fn use_regex(&self) -> bool {
+        self.use_regex
+    }
+
+    /// Whether matching is case-sensitive.
+    pub fn case_sensitive(&self) -> bool {
+        self.case_sensitive
+    }
+
+    /// Seed a field's text (e.g. restoring the previous query).
+    pub fn set_text(&mut self, field: FindField, text: String) {
+        if let Some(i) = self.field_index(field) {
+            self.inputs[i] = TextInputHandler::with_default(text);
+        }
+    }
+
+    /// Update the "N of M" counter.
+    pub fn set_match_info(&mut self, current: usize, total: usize) {
+        self.match_info = Some((current, total));
+    }
+
+    /// Clear the match counter.
+    pub fn clear_match_info(&mut self) {
+        self.match_info = None;
+    }
+
+    /// Set (or clear) the free-form status text shown in place of the counter.
+    pub fn set_info_text(&mut self, text: Option<String>) {
+        self.info_text = text;
+    }
+
+    /// Set the state of the "select all" checkbox button.
+    pub fn set_select_all(&mut self, on: bool) {
+        self.select_all_on = on;
+    }
+
+    // === Input ===
+
+    /// Handle a key while the bar holds focus. Returns the host action, if any.
+    pub fn handle_key(&mut self, key: KeyEvent) -> Option<FindBarAction> {
+        if key.code == KeyCode::Esc {
+            return Some(FindBarAction::Close);
+        }
+
+        match self.current() {
+            Control::Field(i) => self.handle_field_key(i, key),
+            Control::Button(i) => self.handle_button_key(i, key),
+        }
+    }
+
+    fn handle_field_key(&mut self, field_idx: usize, key: KeyEvent) -> Option<FindBarAction> {
+        match key.code {
+            KeyCode::Tab | KeyCode::Down => {
+                self.focus_next();
+                None
+            }
+            KeyCode::BackTab | KeyCode::Up => {
+                self.focus_prev();
+                None
+            }
+            KeyCode::Enter => Some(FindBarAction::Submit),
+            _ => match handle_input_key(&mut self.inputs[field_idx], key) {
+                InputKeyResult::TextModified => Some(FindBarAction::QueryChanged),
+                InputKeyResult::Handled => None,
+                InputKeyResult::NotHandled => None,
+            },
+        }
+    }
+
+    fn handle_button_key(&mut self, btn_idx: usize, key: KeyEvent) -> Option<FindBarAction> {
+        match key.code {
+            KeyCode::Left | KeyCode::BackTab => {
+                self.focus_prev();
+                None
+            }
+            KeyCode::Right | KeyCode::Tab => {
+                self.focus_next();
+                None
+            }
+            KeyCode::Up => {
+                // Jump back to the last field, if there is one.
+                if !self.fields.is_empty() {
+                    self.focus = self.fields.len() - 1;
+                }
+                None
+            }
+            KeyCode::Enter | KeyCode::Char(' ') => self.activate_button(btn_idx),
+            _ => None,
+        }
+    }
+
+    fn focus_next(&mut self) {
+        let len = self.ring().len();
+        if len > 0 {
+            self.focus = (self.focus + 1) % len;
+        }
+    }
+
+    fn focus_prev(&mut self) {
+        let len = self.ring().len();
+        if len > 0 {
+            self.focus = (self.focus + len - 1) % len;
+        }
+    }
+
+    fn activate_button(&mut self, btn_idx: usize) -> Option<FindBarAction> {
+        match self.buttons.get(btn_idx).copied() {
+            Some(Btn::Replace) => Some(FindBarAction::Replace),
+            Some(Btn::ReplaceAll) => Some(FindBarAction::ReplaceAll),
+            Some(Btn::Prev) => Some(FindBarAction::Previous),
+            Some(Btn::Next) => Some(FindBarAction::Next),
+            Some(Btn::SelectAll) => Some(FindBarAction::SelectAll),
+            Some(Btn::Regex) => {
+                self.use_regex = !self.use_regex;
+                Some(FindBarAction::QueryChanged)
+            }
+            Some(Btn::Case) => {
+                self.case_sensitive = !self.case_sensitive;
+                Some(FindBarAction::QueryChanged)
+            }
+            None => None,
+        }
+    }
+
+    /// Handle a mouse click. Clicking a field focuses it and positions the
+    /// cursor; clicking a control activates it.
+    pub fn handle_mouse(&mut self, mouse: MouseEvent) -> Option<FindBarAction> {
+        if !matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
+            return None;
+        }
+        let (col, row) = (mouse.column, mouse.row);
+
+        // Fields first.
+        for (i, area) in self.field_areas.clone().into_iter().enumerate() {
+            if hit(area, col, row) {
+                // Fields occupy the leading slots of the focus ring.
+                self.focus = i;
+                let label_w = self.labels[i].len() as u16;
+                let start_x = area.x + label_w;
+                if col >= start_x {
+                    let click_x = (col - start_x) as usize;
+                    let pos = screen_x_to_char_pos(self.inputs[i].text(), click_x);
+                    self.inputs[i].set_cursor_with_selection_start(pos);
+                }
+                return None;
+            }
+        }
+
+        // Then buttons.
+        let clicked = self
+            .button_areas
+            .iter()
+            .find_map(|(area, idx)| hit(*area, col, row).then_some(*idx));
+        if let Some(idx) = clicked {
+            // Focus the clicked control too, so keyboard picks up from there.
+            self.focus = self.fields.len() + idx;
+            return self.activate_button(idx);
+        }
+        None
+    }
+
+    // === Rendering ===
+
+    /// Render the bar into `area`. `active` is whether the bar (rather than the
+    /// panel body) currently holds focus — it controls cursor/highlight display.
+    pub fn render(&mut self, area: Rect, buf: &mut Buffer, theme: &Theme, active: bool) {
+        self.field_areas.clear();
+        let focused_control = self.current();
+
+        // One row per field.
+        for i in 0..self.fields.len() {
+            let row = Rect {
+                x: area.x,
+                y: area.y + i as u16,
+                width: area.width,
+                height: 1,
+            };
+            self.field_areas.push(row);
+            let is_focused = active && matches!(focused_control, Control::Field(f) if f == i);
+            render_labeled_input(
+                buf,
+                row,
+                &self.labels[i],
+                self.inputs[i].text(),
+                self.inputs[i].cursor_pos(),
+                self.inputs[i].selection_range(),
+                is_focused,
+                theme,
+            );
+        }
+
+        // Buttons + counter row. With buttons it's a dedicated row below the
+        // fields; without (name search), the counter shares the last field row
+        // so no blank row is left above the separator.
+        let row_y = if self.buttons.is_empty() {
+            area.y + (self.fields.len() as u16).saturating_sub(1)
+        } else {
+            area.y + self.fields.len() as u16
+        };
+        let buttons_row = Rect {
+            x: area.x,
+            y: row_y,
+            width: area.width,
+            height: 1,
+        };
+        self.render_buttons(buttons_row, buf, theme, active, focused_control);
+    }
+
+    fn render_buttons(
+        &mut self,
+        area: Rect,
+        buf: &mut Buffer,
+        theme: &Theme,
+        active: bool,
+        focused_control: Control,
+    ) {
+        self.button_areas.clear();
+
+        // Right-aligned status: an explicit info string (e.g. the replace
+        // selection summary) wins over the "3 of 12" match counter.
+        let counter = self.info_text.clone().unwrap_or_else(|| {
+            self.match_info
+                .map(|(cur, total)| format!("{} of {}", cur, total))
+                .unwrap_or_default()
+        });
+        let counter_w = counter.chars().count() as u16;
+        let counter_left = area.x + area.width.saturating_sub(counter_w);
+        if !counter.is_empty() {
+            buf.set_string(
+                counter_left,
+                area.y,
+                &counter,
+                Style::default().fg(theme.disabled),
+            );
+        }
+
+        let mut x = area.x;
+        for (idx, btn) in self.buttons.clone().into_iter().enumerate() {
+            let focused = active && matches!(focused_control, Control::Button(b) if b == idx);
+            let (text, style) = self.button_render(btn, focused, theme);
+            let w = text.chars().count() as u16;
+            if x + w >= counter_left {
+                break;
+            }
+            self.button_areas.push((
+                Rect {
+                    x,
+                    y: area.y,
+                    width: w,
+                    height: 1,
+                },
+                idx,
+            ));
+            buf.set_string(x, area.y, &text, style);
+            x += w + 1;
+        }
+    }
+
+    fn button_render(&self, btn: Btn, focused: bool, theme: &Theme) -> (String, Style) {
+        // Toggle-style controls (regex/case, and the "select all" checkbox)
+        // render their own brackets and invert when focused — no `[ … ]` frame
+        // (which would otherwise double up the brackets in their labels).
+        if btn.is_toggle() || btn == Btn::SelectAll {
+            let (text, on) = match btn {
+                Btn::Regex => ("[.*]".to_string(), self.use_regex),
+                Btn::Case => ("[Aa]".to_string(), self.case_sensitive),
+                Btn::SelectAll => {
+                    let mark = if self.select_all_on { "x" } else { " " };
+                    (format!("[{}] Select all", mark), self.select_all_on)
+                }
+                _ => unreachable!(),
+            };
+            let mut style = if on {
+                Style::default()
+                    .fg(theme.accented_fg)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(theme.disabled)
+            };
+            if focused {
+                style = style.add_modifier(Modifier::REVERSED);
+            }
+            (text, style)
+        } else {
+            let label = self
+                .button_labels
+                .iter()
+                .find(|(b, _)| *b == btn)
+                .map(|(_, l)| l.as_str())
+                .unwrap_or(match btn {
+                    Btn::Replace => "Replace",
+                    Btn::ReplaceAll => "Replace all",
+                    Btn::Prev => "◄ Prev",
+                    Btn::Next => "Next ►",
+                    _ => unreachable!(),
+                });
+            let text = if focused {
+                format!("[ {} ]", label)
+            } else {
+                format!("  {}  ", label)
+            };
+            let mut style = Style::default().fg(theme.fg);
+            if focused {
+                style = style.add_modifier(Modifier::BOLD | Modifier::REVERSED);
+            }
+            (text, style)
+        }
+    }
+}
+
+fn hit(area: Rect, col: u16, row: u16) -> bool {
+    col >= area.x && col < area.x + area.width && row == area.y
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyEvent, KeyModifiers};
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    fn content_bar() -> FindBar {
+        FindBar::new(FindBarConfig {
+            fields: vec![FindField::Mask, FindField::Find, FindField::Replace],
+            buttons: vec![Btn::Case, Btn::Regex, Btn::Prev, Btn::Next, Btn::ReplaceAll],
+        })
+    }
+
+    #[test]
+    fn height_is_fields_plus_button_row() {
+        assert_eq!(content_bar().height(), 4);
+        let find_only = FindBar::new(FindBarConfig {
+            fields: vec![FindField::Find],
+            buttons: vec![Btn::Case, Btn::Regex, Btn::Prev, Btn::Next],
+        });
+        assert_eq!(find_only.height(), 2);
+    }
+
+    #[test]
+    fn toggles_lead_the_button_row() {
+        let bar = content_bar();
+        assert_eq!(
+            bar.buttons,
+            vec![Btn::Case, Btn::Regex, Btn::Prev, Btn::Next, Btn::ReplaceAll]
+        );
+    }
+
+    #[test]
+    fn typing_in_first_field_edits_it_and_reports_change() {
+        let mut bar = content_bar();
+        assert_eq!(bar.focused_field(), Some(FindField::Mask));
+        assert_eq!(
+            bar.handle_key(key(KeyCode::Char('*'))),
+            Some(FindBarAction::QueryChanged)
+        );
+        assert_eq!(bar.mask_text(), "*");
+        assert_eq!(bar.find_text(), "");
+    }
+
+    #[test]
+    fn tab_walks_fields_then_buttons_and_wraps() {
+        let mut bar = content_bar();
+        // Mask -> Find -> Replace
+        bar.handle_key(key(KeyCode::Tab));
+        assert_eq!(bar.focused_field(), Some(FindField::Find));
+        bar.handle_key(key(KeyCode::Tab));
+        assert_eq!(bar.focused_field(), Some(FindField::Replace));
+        // Replace -> first button (no field focus anymore)
+        bar.handle_key(key(KeyCode::Tab));
+        assert_eq!(bar.focused_field(), None);
+        // Walk all 5 buttons -> wrap back to Mask
+        for _ in 0..5 {
+            bar.handle_key(key(KeyCode::Tab));
+        }
+        assert_eq!(bar.focused_field(), Some(FindField::Mask));
+    }
+
+    #[test]
+    fn left_right_cycle_buttons_when_focused_on_them() {
+        let mut bar = content_bar();
+        // Move onto the first button.
+        for _ in 0..3 {
+            bar.handle_key(key(KeyCode::Tab));
+        }
+        assert_eq!(bar.current(), Control::Button(0)); // Prev
+                                                       // Right cycles forward through buttons.
+        bar.handle_key(key(KeyCode::Right));
+        assert_eq!(bar.current(), Control::Button(1)); // Next
+                                                       // Left cycles back.
+        bar.handle_key(key(KeyCode::Left));
+        assert_eq!(bar.current(), Control::Button(0));
+    }
+
+    #[test]
+    fn activating_buttons_yields_actions() {
+        let mut bar = content_bar();
+        // Ring: 0..3 fields, then [Case, Regex, Prev, Next, ReplaceAll].
+        bar.focus = 5; // Prev
+        assert_eq!(
+            bar.handle_key(key(KeyCode::Enter)),
+            Some(FindBarAction::Previous)
+        );
+        bar.focus = 6; // Next
+        assert_eq!(
+            bar.handle_key(key(KeyCode::Char(' '))),
+            Some(FindBarAction::Next)
+        );
+        bar.focus = 7; // ReplaceAll
+        assert_eq!(
+            bar.handle_key(key(KeyCode::Enter)),
+            Some(FindBarAction::ReplaceAll)
+        );
+    }
+
+    #[test]
+    fn toggles_flip_state_and_report_query_change() {
+        let mut bar = content_bar();
+        bar.focus = 4; // Regex toggle
+        assert!(!bar.use_regex());
+        assert_eq!(
+            bar.handle_key(key(KeyCode::Enter)),
+            Some(FindBarAction::QueryChanged)
+        );
+        assert!(bar.use_regex());
+        bar.focus = 3; // Case toggle
+        assert!(!bar.case_sensitive());
+        assert_eq!(
+            bar.handle_key(key(KeyCode::Char(' '))),
+            Some(FindBarAction::QueryChanged)
+        );
+        assert!(bar.case_sensitive());
+    }
+
+    #[test]
+    fn enter_on_a_field_submits() {
+        let mut bar = content_bar();
+        bar.handle_key(key(KeyCode::Tab)); // -> Find
+        assert_eq!(
+            bar.handle_key(key(KeyCode::Enter)),
+            Some(FindBarAction::Submit)
+        );
+        assert_eq!(bar.focused_field(), Some(FindField::Find));
+    }
+
+    #[test]
+    fn esc_closes_from_anywhere() {
+        let mut bar = content_bar();
+        assert_eq!(
+            bar.handle_key(key(KeyCode::Esc)),
+            Some(FindBarAction::Close)
+        );
+        bar.focus = 5;
+        assert_eq!(
+            bar.handle_key(key(KeyCode::Esc)),
+            Some(FindBarAction::Close)
+        );
+    }
+
+    #[test]
+    fn seed_and_read_back_text() {
+        let mut bar = content_bar();
+        bar.set_text(FindField::Find, "needle".into());
+        bar.set_text(FindField::Replace, "thread".into());
+        assert_eq!(bar.find_text(), "needle");
+        assert_eq!(bar.replace_text(), "thread");
+    }
+
+    #[test]
+    fn up_from_buttons_returns_to_last_field() {
+        let mut bar = content_bar();
+        bar.focus = 4; // a button
+        bar.handle_key(key(KeyCode::Up));
+        assert_eq!(bar.focused_field(), Some(FindField::Replace));
+    }
+}

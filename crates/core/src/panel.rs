@@ -158,8 +158,10 @@ impl ThemeColors {
 /// This trait allows the modal handler to dispatch search actions
 /// without knowing the concrete panel type.
 pub trait Searchable {
-    /// Start a new search with the given query.
-    fn start_search(&mut self, query: String, case_sensitive: bool);
+    /// Start a new search with the given query. `use_regex` treats the query
+    /// as a regular expression (panels that don't support regex may ignore it
+    /// and match literally).
+    fn start_search(&mut self, query: String, case_sensitive: bool, use_regex: bool);
     /// Navigate to the next match.
     fn search_next(&mut self);
     /// Navigate to the previous match.
