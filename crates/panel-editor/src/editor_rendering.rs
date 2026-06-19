@@ -174,7 +174,14 @@ impl Editor {
                 .get_visual_row_for_line(self.cursor.line)
                 .unwrap_or(0);
 
-            let last_row_absolute = line_visual + last_wrap_row_in_line;
+            // The cumulative cache counts only wrap rows; deletion markers and
+            // diagnostic rows above the cursor line shift it further down.
+            let virtual_rows_between = self.count_virtual_rows_between(
+                self.viewport.top_line,
+                self.cursor.line,
+                content_width,
+            );
+            let last_row_absolute = line_visual + last_wrap_row_in_line + virtual_rows_between;
             let viewport_top_absolute = top_visual + self.viewport.top_visual_row_offset;
             if last_row_absolute < viewport_top_absolute {
                 return;
@@ -201,12 +208,22 @@ impl Editor {
 
             (row as u16, last_chunk_width.min(content_width))
         } else {
-            if self.cursor.line < self.viewport.top_line
-                || self.cursor.line >= self.viewport.top_line + content_height
-            {
+            if self.cursor.line < self.viewport.top_line {
                 return;
             }
-            let row = (self.cursor.line - self.viewport.top_line) as u16;
+            // Deletion markers and diagnostic rows above the cursor push its
+            // text down on screen; offset by them so the annotation lands on
+            // the cursor's row, not the bare logical-line distance.
+            let row = (self.cursor.line - self.viewport.top_line)
+                + self.count_virtual_rows_between(
+                    self.viewport.top_line,
+                    self.cursor.line,
+                    content_width,
+                );
+            if row >= content_height {
+                return;
+            }
+            let row = row as u16;
 
             let line_visual_width: usize = self
                 .buffer

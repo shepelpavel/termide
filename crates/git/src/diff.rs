@@ -269,6 +269,13 @@ impl GitDiffCache {
         Ok(())
     }
 
+    /// Seed the HEAD-side content directly instead of reading it from git.
+    /// Lets callers compute an in-memory diff via [`Self::update_from_buffer`]
+    /// without invoking git (also used to set up deterministic tests).
+    pub fn set_original_content(&mut self, content: Option<String>) {
+        self.original_content = content;
+    }
+
     /// Update git diff by comparing buffer content with original from HEAD
     pub fn update_from_buffer(&mut self, current_content: &str) -> Result<()> {
         // Ensure we have original content loaded
