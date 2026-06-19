@@ -19,6 +19,55 @@ impl Editor {
         self.config.word_wrap && self.render_cache.content_width > 0
     }
 
+    /// Count virtual rows — git deletion markers and diagnostic rows — rendered
+    /// for buffer lines in `[start, end)`. These occupy vertical space on
+    /// screen but are not buffer lines, so anything positioned by logical line
+    /// (the cursor, the inline blame annotation) must shift down by this many
+    /// rows. A line's own deletion marker renders *after* its text, so the
+    /// range is exclusive of `end` (the cursor line is not shifted by its own
+    /// marker).
+    pub(crate) fn count_virtual_rows_between(
+        &self,
+        start: usize,
+        end: usize,
+        content_width: usize,
+    ) -> usize {
+        let mut extra_rows = 0;
+        let show_git_diff = self.render_cache.config.editor.show_git_diff;
+
+        for line in start..end {
+            // Deletion markers (rendered between text and diagnostics).
+            if show_git_diff {
+                if let Some(ref git_diff) = self.git.diff_cache {
+                    if git_diff.has_deletion_marker(line) {
+                        extra_rows += 1;
+                    }
+                }
+            }
+
+            // Diagnostic rows.
+            for diag in &self.lsp.diagnostics {
+                if diag.range.start.line as usize == line {
+                    let start_col = diag.range.start.character as usize;
+                    let end_col = diag.range.end.character as usize;
+                    let underline_len = end_col.saturating_sub(start_col).max(1);
+                    let code = diag.code.as_ref().map(|c| match c {
+                        lsp_types::NumberOrString::Number(n) => n.to_string(),
+                        lsp_types::NumberOrString::String(s) => s.clone(),
+                    });
+                    extra_rows += git::calculate_diagnostic_rows(
+                        start_col,
+                        underline_len,
+                        code.as_deref(),
+                        &diag.message,
+                        content_width,
+                    );
+                }
+            }
+        }
+        extra_rows
+    }
+
     /// Ensure preferred column is set for vertical navigation.
     ///
     /// Sets preferred_column to visual offset within current visual row if not already set.
@@ -127,43 +176,11 @@ impl Editor {
 
         // Count virtual rows between viewport top and cursor line
         // These take up visual space but aren't accounted for by wrap row counts
-        let virtual_rows_between = {
-            let mut extra_rows = 0;
-            let show_git_diff = self.render_cache.config.editor.show_git_diff;
-
-            for line in self.viewport.top_line..self.cursor.line {
-                // Count deletion markers (rendered between text and diagnostics)
-                if show_git_diff {
-                    if let Some(ref git_diff) = self.git.diff_cache {
-                        if git_diff.has_deletion_marker(line) {
-                            extra_rows += 1;
-                        }
-                    }
-                }
-
-                // Count diagnostic rows
-                for diag in &self.lsp.diagnostics {
-                    let diag_line = diag.range.start.line as usize;
-                    if diag_line == line {
-                        let start_col = diag.range.start.character as usize;
-                        let end_col = diag.range.end.character as usize;
-                        let underline_len = end_col.saturating_sub(start_col).max(1);
-                        let code = diag.code.as_ref().map(|c| match c {
-                            lsp_types::NumberOrString::Number(n) => n.to_string(),
-                            lsp_types::NumberOrString::String(s) => s.clone(),
-                        });
-                        extra_rows += git::calculate_diagnostic_rows(
-                            start_col,
-                            underline_len,
-                            code.as_deref(),
-                            &diag.message,
-                            content_width,
-                        );
-                    }
-                }
-            }
-            extra_rows
-        };
+        let virtual_rows_between = self.count_virtual_rows_between(
+            self.viewport.top_line,
+            self.cursor.line,
+            content_width,
+        );
 
         // Visual rows for lines between top_line and cursor_line (exclusive)
         // Use cumulative cache for O(1) lookup when available

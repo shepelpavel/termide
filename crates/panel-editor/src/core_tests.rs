@@ -355,3 +355,31 @@ fn open_php_file_renders_with_colors() {
         "expected highlighting via the real open path, saw {colors:?}"
     );
 }
+
+#[test]
+fn count_virtual_rows_counts_deletion_markers() {
+    let (mut editor, file) = create_editor_with_content("a\nb\nc\n");
+
+    // Seed an in-memory HEAD where two lines were later deleted (after line 0
+    // and after line 1), producing two deletion markers, without touching git.
+    let mut cache = termide_git::GitDiffCache::new(file.path().to_path_buf());
+    cache.set_original_content(Some("a\nx\nb\ny\nc\n".to_string()));
+    cache.update_from_buffer("a\nb\nc\n").unwrap();
+    assert_eq!(
+        cache.deletion_marker_count(),
+        2,
+        "setup: two markers expected"
+    );
+    editor.git.diff_cache = Some(cache);
+
+    // The helper only counts markers when git diff is enabled in the config.
+    let mut cfg = termide_config::Config::default();
+    cfg.editor.show_git_diff = true;
+    editor.render_cache.config = std::sync::Arc::new(cfg);
+
+    // Markers sit after lines 0 and 1; the range [0, 3) covers both → 2 rows,
+    // which is the offset the blame annotation must add to land on the cursor
+    // line. A range past the marker lines counts nothing.
+    assert_eq!(editor.count_virtual_rows_between(0, 3, 80), 2);
+    assert_eq!(editor.count_virtual_rows_between(2, 3, 80), 0);
+}
