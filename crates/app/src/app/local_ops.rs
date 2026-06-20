@@ -11,26 +11,16 @@ impl App {
     /// Check if there's a pending local batch operation that needs to start
     /// (after progress modal has been rendered)
     pub(super) fn check_pending_batch_operation(&mut self) {
-        use crate::state::ActiveModal;
-
         // Don't start new operation if OperationManager already has active operations
         if self.state.has_pending_operations() {
             return;
         }
 
-        // Check if we have a pending batch operation ready to start.
-        // This can happen after:
-        // 1. Progress modal has been rendered (legacy path)
-        // 2. Operations panel batch tracking has been set up (new path)
-        let has_progress_modal = matches!(&self.state.active_modal, Some(ActiveModal::Progress(_)));
-        let has_batch_tracking = self.state.batch.tracking_id.is_some();
-
-        if has_progress_modal || has_batch_tracking {
-            // Don't consume the pending batch if a user-interactive modal is open
-            // (e.g. Conflict, RenamePattern). Only proceed when there's no modal
-            // or it's a Progress modal (which is non-blocking for batch flow).
-            let has_blocking_modal = self.state.has_modal() && !has_progress_modal;
-            if has_blocking_modal {
+        // Proceed once Operations-panel batch tracking has been set up.
+        if self.state.batch.tracking_id.is_some() {
+            // Don't consume the pending batch while a user-interactive modal is
+            // open (e.g. Conflict, RenamePattern).
+            if self.state.has_modal() {
                 return;
             }
 

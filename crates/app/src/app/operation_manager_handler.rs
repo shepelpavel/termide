@@ -16,7 +16,6 @@ impl App {
     /// eventually replace the individual operation handles.
     pub(super) fn poll_operation_manager(&mut self) {
         let events = self.state.poll_operations();
-        let mut any_completed = false;
         let mut should_refresh_file_managers = false;
 
         for event in events {
@@ -94,40 +93,9 @@ impl App {
                         }
                     }
 
-                    // Update progress modal if active
-                    if let Some(crate::state::ActiveModal::Progress(ref mut modal)) =
-                        self.state.active_modal
-                    {
-                        // Update byte-level progress
-                        modal
-                            .update_file_progress(progress.bytes_transferred, progress.total_bytes);
-
-                        // Update file count and current item
-                        if progress.total_files > 0 {
-                            modal.update_progress(
-                                progress.files_completed,
-                                progress.current_item.clone(),
-                            );
-                        } else if let Some(ref current) = progress.current_item {
-                            modal.update_progress(0, Some(current.clone()));
-                        }
-                    }
-
                     self.state.needs_redraw = true;
-
-                    // Check if operation completed via progress phase
-                    if matches!(
-                        progress.phase,
-                        OperationPhase::Completed
-                            | OperationPhase::Failed
-                            | OperationPhase::Cancelled
-                    ) {
-                        any_completed = true;
-                    }
                 }
                 OperationEvent::Completed(id, result) => {
-                    any_completed = true;
-
                     // Check if this operation is part of a BatchOperation
                     let has_batch = matches!(
                         self.state.pending_action,
@@ -246,21 +214,6 @@ impl App {
                                         // Keep an exact copy of the next-file destination so
                                         // the cancel-cleanup modal targets the right partial.
                                         let next_remote_target = final_remote.clone();
-
-                                        // Update modal progress
-                                        if let Some(crate::state::ActiveModal::Progress(
-                                            ref mut modal,
-                                        )) = self.state.active_modal
-                                        {
-                                            modal.update_progress(
-                                                batch_upload.current_index + 1,
-                                                Some(next_source.display().to_string()),
-                                            );
-                                            modal.update_source_dest(
-                                                next_source.display().to_string(),
-                                                final_remote.to_url_string(),
-                                            );
-                                        }
 
                                         // Create upload request for next file
                                         let request = termide_file_ops::OperationRequest::upload(
@@ -603,22 +556,12 @@ impl App {
                     }
                 }
                 OperationEvent::Paused(_id) => {
-                    // Sync pause state with modal
-                    if let Some(crate::state::ActiveModal::Progress(ref mut modal)) =
-                        self.state.active_modal
-                    {
-                        modal.set_paused(true);
-                        self.state.needs_redraw = true;
-                    }
+                    // Redraw so the Operations panel reflects the paused state.
+                    self.state.needs_redraw = true;
                 }
                 OperationEvent::Resumed(_id) => {
-                    // Sync resume state with modal
-                    if let Some(crate::state::ActiveModal::Progress(ref mut modal)) =
-                        self.state.active_modal
-                    {
-                        modal.set_paused(false);
-                        self.state.needs_redraw = true;
-                    }
+                    // Redraw so the Operations panel reflects the resumed state.
+                    self.state.needs_redraw = true;
                 }
                 OperationEvent::ConflictDetected(id, conflict_info) => {
                     // Convert OperationPath to PathBuf for ConflictModal
@@ -642,28 +585,6 @@ impl App {
                         ActiveModal::Conflict(Box::new(modal)),
                     );
                     self.state.needs_redraw = true;
-                }
-            }
-        }
-
-        // Close progress modal if all operations are complete
-        if any_completed && !self.state.has_pending_operations() {
-            // Only close if we have a progress modal open for OperationManager operations
-            // (not for legacy operations which have their own check_* methods)
-            if matches!(
-                self.state.active_modal,
-                Some(crate::state::ActiveModal::Progress(_))
-            ) {
-                // Check if this modal is associated with a pending batch operation
-                // If so, don't close it here - let the batch handler manage it
-                let has_batch_pending = matches!(
-                    self.state.pending_action,
-                    Some(termide_state::PendingAction::ContinueBatchOperation { .. })
-                        | Some(termide_state::PendingAction::BatchFileOperation { .. })
-                );
-
-                if !has_batch_pending {
-                    self.state.close_modal();
                 }
             }
         }

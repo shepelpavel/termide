@@ -70,14 +70,6 @@ impl App {
             if let Some(result) = modal_result {
                 // Check modal type before taking state references
                 let is_rename_pattern = matches!(modal, ActiveModal::RenamePattern(_));
-                let is_progress = matches!(modal, ActiveModal::Progress(_));
-
-                // Handle Progress modal pause/cancel/resume
-                if is_progress {
-                    if let Some(result) = self.handle_progress_modal_action(&result) {
-                        return result;
-                    }
-                }
 
                 // Handle cancellation from RenamePattern - return to ConflictModal
                 if is_rename_pattern && matches!(result, ModalResult::Cancelled) {
@@ -195,16 +187,6 @@ impl App {
 
             // If modal window returned result, handle it
             if let Some(result) = modal_result {
-                // Check modal type before taking state references
-                let is_progress = matches!(modal, ActiveModal::Progress(_));
-
-                // Handle Progress modal pause/cancel/resume
-                if is_progress {
-                    if let Some(result) = self.handle_progress_modal_action(&result) {
-                        return result;
-                    }
-                }
-
                 // Check if this is a git push/pull action that should keep modal open
                 if self.handle_git_push_pull_from_modal(&result)? {
                     return Ok(());

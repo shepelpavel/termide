@@ -717,30 +717,6 @@ impl App {
                         self.check_pending_batch_operation();
                     }
 
-                    // Sync pause state between BatchOperation and ProgressModal (bidirectional)
-                    // This is fast, always run it
-                    if let Some(crate::state::ActiveModal::Progress(ref mut modal)) =
-                        self.state.active_modal
-                    {
-                        if let Some(termide_state::PendingAction::ContinueBatchOperation {
-                            ref mut operation,
-                        }) = self.state.pending_action
-                        {
-                            let modal_paused = modal.is_paused();
-                            let operation_paused =
-                                operation.pause_state == termide_state::PauseState::Paused;
-
-                            // If states differ, sync from modal to operation (user interaction takes priority)
-                            if modal_paused != operation_paused {
-                                operation.pause_state = if modal_paused {
-                                    termide_state::PauseState::Paused
-                                } else {
-                                    termide_state::PauseState::Running
-                                };
-                            }
-                        }
-                    }
-
                     // Update system resource monitoring (CPU, RAM)
                     // This is fast, always run it
                     self.update_system_resources();

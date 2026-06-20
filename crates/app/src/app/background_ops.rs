@@ -707,12 +707,6 @@ impl App {
                     self.state.needs_redraw = true;
                 }
             }
-            Some(ActiveModal::Progress(ref mut modal)) => {
-                // Always update spinner when progress modal is visible
-                modal.advance_spinner();
-                self.state.last_spinner_update = Some(std::time::Instant::now());
-                self.state.needs_redraw = true;
-            }
             _ => {}
         }
 

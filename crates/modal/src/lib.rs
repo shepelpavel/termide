@@ -37,7 +37,6 @@ pub mod find_bar;
 pub mod info;
 pub mod info_action;
 pub mod input;
-pub mod progress;
 pub mod rename_pattern;
 pub mod save_as;
 pub mod select;
@@ -66,7 +65,6 @@ pub use info_action::{
     ActionButton, InfoActionModal, InfoActionResult, PermAccess, PermissionsState,
 };
 pub use input::InputModal;
-pub use progress::ProgressModal;
 pub use rename_pattern::RenamePatternModal;
 pub use save_as::{SaveAsModal, SaveAsResult};
 pub use select::SelectModal;
@@ -110,8 +108,6 @@ pub enum ActiveModal {
     BookmarkAdd(Box<BookmarkAddModal>),
     /// Calendar modal
     Calendar(Box<CalendarModal>),
-    /// Progress modal for long-running operations
-    Progress(Box<ProgressModal>),
     /// Command palette modal
     CommandPalette(Box<CommandPaletteModal>),
     /// Command config modal (unified create/edit)
@@ -154,7 +150,6 @@ macro_rules! dispatch_modal {
             ActiveModal::DirectorySwitcher(m) => m.$method($($arg),*),
             ActiveModal::BookmarkAdd(m) => m.$method($($arg),*),
             ActiveModal::Calendar(m) => m.$method($($arg),*),
-            ActiveModal::Progress(m) => m.$method($($arg),*),
             ActiveModal::CommandPalette(m) => m.$method($($arg),*),
             ActiveModal::CommandConfig(m) => m.$method($($arg),*),
             ActiveModal::CommandParams(m) => m.$method($($arg),*),
@@ -184,7 +179,6 @@ macro_rules! dispatch_modal_erased {
             ActiveModal::DirectorySwitcher(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::BookmarkAdd(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::Calendar(m) => m.$method($($arg),*)?.map(erase_modal_result),
-            ActiveModal::Progress(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::CommandPalette(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::CommandConfig(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::CommandParams(m) => m.$method($($arg),*)?.map(erase_modal_result),
