@@ -2037,12 +2037,14 @@ impl Panel for FileManager {
 
     fn prepare_render(&mut self, theme: &termide_theme::Theme, config: &std::sync::Arc<Config>) {
         self.cached_theme = *theme;
-        self.cached_config = config.file_manager.clone();
         self.vim_mode = config.general.vim_mode;
         self.cached_vfs_timeout_secs = config.vfs.connection_timeout_secs;
         let config_ptr = std::sync::Arc::as_ptr(config) as usize;
         if self.last_config_ptr != config_ptr {
             self.last_config_ptr = config_ptr;
+            // `FileManagerSettings` embeds ~32 keybinding Strings; only re-clone
+            // when the config Arc actually changes, not every frame.
+            self.cached_config = config.file_manager.clone();
             self.hotkeys = build_fm_hotkey_table(config);
         }
     }

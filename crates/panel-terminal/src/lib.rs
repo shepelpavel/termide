@@ -23,7 +23,6 @@ use ratatui::{
     prelude::Widget,
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::Paragraph,
 };
 use std::any::Any;
 use std::collections::HashMap;
@@ -1358,7 +1357,12 @@ impl Terminal {
     fn get_foreground_command(&self) -> String {
         const FG_COMMAND_TTL: std::time::Duration = std::time::Duration::from_millis(500);
 
-        let mut cache = self.cached_fg_command.lock().unwrap();
+        // Recover from a poisoned lock instead of cascading the panic to every
+        // subsequent render (this runs on the render/tick path).
+        let mut cache = self
+            .cached_fg_command
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if cache.1.elapsed() < FG_COMMAND_TTL {
             return cache.0.clone();
         }
@@ -1848,19 +1852,27 @@ impl Panel for Terminal {
         let (arc_lines, _cursor_pos, _cursor_shown) =
             self.get_display_lines(ctx.is_focused, &theme);
 
-        // Render terminal content directly (accordion already drew border with title/buttons)
-        // Extract Vec from Arc - this is the only clone point now
-        // On cache hit: Arc clone was O(1), this clone is the only cost
-        // On cache miss: Arc wrap was O(1), this clone is the only cost
-        let lines = Arc::try_unwrap(arc_lines).unwrap_or_else(|arc| (*arc).clone());
-
         // Clear the render area with background color to prevent visual artifacts
         // from previous content (modal borders, old status lines, etc.)
         let bg_style = Style::default().bg(theme.bg);
         buf.set_style(area, bg_style);
 
-        let paragraph = Paragraph::new(lines);
-        paragraph.render(area, buf);
+        // Render each cached line by reference, one row each — no per-frame
+        // clone of the whole `Vec<Line>` (the cache holds an Arc, so consuming
+        // it via `Paragraph` always deep-copied). Equivalent to the old
+        // top-aligned, no-wrap `Paragraph` over the same `bg`-filled area.
+        for (i, line) in arc_lines.iter().enumerate() {
+            if i as u16 >= area.height {
+                break;
+            }
+            let row = Rect {
+                x: area.x,
+                y: area.y + i as u16,
+                width: area.width,
+                height: 1,
+            };
+            line.render(row, buf);
+        }
 
         // Render color preview popup if active
         if let Some(ref preview) = self.color_preview {
