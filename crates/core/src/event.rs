@@ -362,17 +362,6 @@ pub enum GitOperationType {
     Fetch,
 }
 
-/// Search mode for the unified search modal.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SearchMode {
-    /// Live text search in editor/terminal
-    Text,
-    /// File search by glob in file manager
-    FileGlob,
-    /// File mask + content regex in file manager
-    Content,
-}
-
 /// Events emitted by panels to communicate with the application.
 #[derive(Debug, Clone)]
 pub enum PanelEvent {
@@ -462,12 +451,6 @@ pub enum PanelEvent {
         title: String,
         options: Vec<String>,
         on_select: SelectAction,
-    },
-
-    /// Show search modal
-    ShowSearch {
-        mode: SearchMode,
-        initial_query: Option<String>,
     },
 
     /// Show file conflict resolution modal
@@ -647,9 +630,6 @@ pub enum InputAction {
 
     /// Create new directory
     CreateDirectory { in_dir: PathBuf },
-
-    /// Search in file
-    SearchInFile,
 
     /// Go to line number
     GotoLine,

@@ -44,13 +44,19 @@ globally to previous/next panel group and therefore aren't forwarded.
 
 ## Text Search
 
-Press `Ctrl+F` to open the search modal. The search works across the entire scrollback buffer and the visible screen:
+Press `Ctrl+F` to open an inline find bar docked at the top of the panel (the
+same UX as the editor and file manager), with a separator below it. The search
+works across the entire scrollback buffer and the visible screen:
 
-- **Live preview**: Matches are highlighted as you type
-- **Match counter**: Shows current match position (e.g., "3 of 12")
-- **Navigation**: `Tab` / `Shift+Tab` to jump between matches
-- **Scroll**: The viewport automatically scrolls to the current match
-- **Close**: `Escape` to close search and return to normal mode
+- **Live preview**: matches are highlighted as you type; the bar shows a match
+  counter (e.g. "3 of 12")
+- **Toggles**: `[Aa]` case sensitivity and `[.*]` regular-expression matching
+  (click, or focus the button row and press `Enter` / `Space`)
+- **Navigation**: the `◄ Prev` / `Next ►` buttons, `Enter`, or `F3` /
+  `Shift+F3` step between matches; the viewport scrolls to the current match
+- **Focus**: `Tab` switches focus between the bar and the terminal grid, so you
+  can scroll the grid while the bar stays open
+- **Close**: `Escape`
 
 The search keybinding defaults to `Ctrl+F` (instead of `Ctrl+Shift+F`) because most host terminals intercept `Ctrl+Shift+F` for their own search.
 

@@ -19,7 +19,7 @@ pub mod util;
 pub use command::{CommandResult, PanelCommand};
 pub use event::{
     ConfirmAction, ConflictResolution, Event, EventHandler, GitOperationType, InputAction,
-    PanelEvent, ReferenceLocation, SearchMode, SelectAction, SplitDirection, VimPanelDirection,
+    PanelEvent, ReferenceLocation, SelectAction, SplitDirection, VimPanelDirection,
 };
 pub use hotkey_table::HotkeyTable;
 pub use key_chord::KeyChord;

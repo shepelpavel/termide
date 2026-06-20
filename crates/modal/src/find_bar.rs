@@ -1,7 +1,7 @@
 //! Inline find / replace bar — a panel-embeddable search form.
 //!
-//! Unlike [`SearchModal`](crate::SearchModal), this widget renders *inside* a
-//! host panel's own area (no modal frame) and is
+//! Unlike a floating search modal, this widget renders *inside* a host panel's
+//! own area (no modal frame) and is
 //! meant to coexist with the panel's body: the panel keeps focus on its results
 //! while the bar is open, and only routes keys to the bar when the user moves
 //! focus into it (e.g. with `Tab`). The widget therefore manages focus *only

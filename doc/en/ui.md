@@ -13,8 +13,7 @@ The application also uses popup windows:
 ## Modal Windows
 
 The application uses interactive modal windows for various operations:
-- **Search Modal** (`Ctrl+F`) - Interactive search with live preview, match counter, and navigation buttons
-- **Replace Modal** (`Ctrl+H`) - Interactive replace with two input fields, live search, and action buttons
+- **Inline find / replace bars** (`Ctrl+F` / `Ctrl+H`) - Docked search and replace inside the editor, file manager, and terminal, with live preview, a match counter, `[Aa]` / `[.*]` toggles, and navigation buttons
 - **Input Modals** - Various prompts for file operations (create, rename, etc.)
 - **Confirmation Dialogs** - Delete confirmations, unsaved changes, etc.
 

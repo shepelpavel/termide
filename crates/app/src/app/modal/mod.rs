@@ -11,5 +11,4 @@ mod git_handler;
 mod input_handler;
 mod path_handler;
 mod progress_handler;
-mod search_handler;
 mod select_handler;
