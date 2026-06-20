@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.1] - 2026-06-20
+
+### Changed
+- **Terminal search is now an inline find bar.** `Ctrl+F` in the terminal opens a find bar docked at the top of the panel — matching the editor and file manager — with `[Aa]` case and `[.*]` regex toggles, `◄ Prev` / `Next ►` navigation, and an inline match counter. Terminal search is now regex-capable (previously literal only), and `Tab` moves focus between the bar and the terminal grid.
+- Reduced per-frame allocations on the terminal, file-manager, and text-rendering paths, lowering CPU use on redraw.
+
+### Fixed
+- The editor's inline git-blame annotation now stays on the cursor's line when lines have been deleted relative to HEAD; previously the deletion markers pushed it above the cursor.
+
 ## [0.25.0] - 2026-06-17
 
 ### Added
@@ -184,6 +193,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `deny.toml` + `cargo-deny check` step covers advisories, licenses, bans and sources.
 - Pre-commit hook documented in `CONTRIBUTING.md`.
 
+[0.25.1]: https://github.com/termide/termide/releases/tag/0.25.1
 [0.25.0]: https://github.com/termide/termide/releases/tag/0.25.0
 [0.24.1]: https://github.com/termide/termide/releases/tag/0.24.1
 [0.24.0]: https://github.com/termide/termide/releases/tag/0.24.0
