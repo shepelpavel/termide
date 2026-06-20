@@ -553,18 +553,6 @@ impl AppState {
         // hotkey_table not invalidated — bindings don't change on submenu open
     }
 
-    /// Close Sessions submenu
-    pub fn close_sessions_submenu(&mut self) {
-        self.ui.sessions_submenu.close();
-    }
-
-    /// Close Tools submenu
-    pub fn close_tools_submenu(&mut self) {
-        self.ui.tools_submenu.close();
-        self.ui.tools_nested.close();
-        self.cache.shells.clear();
-    }
-
     /// Open Tools nested submenu (shell picker) and cache the shell list
     pub fn open_tools_nested_submenu(&mut self, initial_item: usize) {
         self.cache.shells = termide_panel_terminal::shell_utils::discover_shells();
@@ -575,13 +563,6 @@ impl AppState {
     pub fn close_tools_nested_submenu(&mut self) {
         self.ui.tools_nested.close();
         self.cache.shells.clear();
-    }
-
-    /// Close Commands submenu
-    pub fn close_commands_submenu(&mut self) {
-        self.ui.commands_submenu.close();
-        self.ui.commands_nested.close();
-        self.ui.current_commands_group = None;
     }
 
     /// Open Commands nested submenu (for a group)
@@ -672,12 +653,6 @@ impl AppState {
             && matches!(self.active_modal, Some(ActiveModal::Info(_)))
     }
 
-    /// Check if a pending action is queued.
-    #[inline]
-    pub fn has_pending_action(&self) -> bool {
-        self.pending_action.is_some()
-    }
-
     /// Get immutable reference to the active modal.
     #[inline]
     pub fn active_modal(&self) -> Option<&ActiveModal> {
@@ -764,13 +739,6 @@ impl AppState {
         self.ui.bookmarks_submenu.open();
     }
 
-    /// Close bookmarks submenu
-    pub fn close_bookmarks_submenu(&mut self) {
-        self.ui.bookmarks_submenu.close();
-        self.ui.bookmarks_nested.close();
-        self.ui.current_bookmarks_group = None;
-    }
-
     /// Open bookmarks nested submenu (for a group)
     pub fn open_bookmarks_nested_submenu(&mut self, group_name: String, is_project: bool) {
         self.ui.bookmarks_nested.open();
@@ -855,24 +823,6 @@ impl AppState {
     pub fn cancel_all_operations(&mut self) {
         if let Some(manager) = self.operation_manager_mut() {
             manager.cancel_all();
-        }
-    }
-
-    /// Pause the active operation.
-    pub fn pause_active_operation(&mut self) {
-        if let Some(id) = self.active_operation_id {
-            if let Some(manager) = self.operation_manager_mut() {
-                manager.pause(id);
-            }
-        }
-    }
-
-    /// Resume the active operation.
-    pub fn resume_active_operation(&mut self) {
-        if let Some(id) = self.active_operation_id {
-            if let Some(manager) = self.operation_manager_mut() {
-                manager.resume(id);
-            }
         }
     }
 

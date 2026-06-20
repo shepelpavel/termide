@@ -37,7 +37,6 @@ impl RenderContext {
     /// Prepare rendering context from editor state.
     ///
     /// Extracts and pre-computes all derived state needed for rendering.
-    #[allow(dead_code)] // Used in Phase 4.2+
     pub fn prepare(
         search_state: &Option<SearchState>,
         selection: &Option<Selection>,
