@@ -159,7 +159,7 @@ pub trait Panel {
 **Editor** (`crates/panel-editor/src/lib.rs`)
 - Редактирование текста с отменой/повтором
 - Подсветка синтаксиса через tree-sitter (15+ языков)
-- Поиск и замена с интерактивными модальными окнами
+- Поиск и замена со встроенными строками поиска
 - Номера строк, позиция курсора, перенос строк
 - Навигация по словам (Ctrl+Left/Right), навигация по параграфам/символам (Ctrl+Up/Down)
 - Авто-отступ с разделением скобок
@@ -302,7 +302,7 @@ while !state.should_quit {
   - `settings/fields.rs` — декларативные данные полей (`FieldType`, `FieldDescriptor`, `ContentRow`, функции `fields_for_tab`, `get_field_value`, `toggle_field`, `cycle_enum_*`)
   - `settings/kb.rs` — макросы и таблицы keybindings (`kb_get!`/`kb_set!`, `KB_SECTIONS`, `kb_binding_names`, `get/set_kb_value`, `format_key_event`)
 - **Progress** — progress-bar для длительных операций
-- **Commit** / **Conflict** / **RenamePattern** / **Search** / **Replace** / **TreeSearch** / **Sessions** / **DirectoryPicker** / **SaveAs** / **BookmarkAdd** / **Calendar** / **CommandPalette** / **ScriptCreate** — специализированные диалоги для отдельных операций
+- **Commit** / **Conflict** / **RenamePattern** / **Sessions** / **DirectoryPicker** / **SaveAs** / **BookmarkAdd** / **Calendar** / **CommandPalette** / **ScriptCreate** — специализированные диалоги для отдельных операций
 
 Общие утилиты вынесены в `crates/modal/src/base.rs` (`render_modal_block`, `render_modal_frame`, `button_style`, `CursorNavigation` trait).
 

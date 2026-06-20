@@ -159,7 +159,7 @@ pub trait Panel {
 **编辑器** (`crates/panel-editor/src/lib.rs`)
 - 带撤销/重做的文本编辑
 - 通过 tree-sitter 实现语法高亮（15+ 种语言）
-- 带交互式模态框的搜索和替换
+- 带内嵌查找栏的搜索和替换
 - 行号、光标位置、自动换行
 - 单词导航（Ctrl+Left/Right）、段落/符号导航（Ctrl+Up/Down）
 - 带括号分割缩进的自动缩进
@@ -302,7 +302,7 @@ while !state.should_quit {
   - `settings/fields.rs` — 声明性字段数据（`FieldType`、`FieldDescriptor`、`ContentRow`，以及辅助函数 `fields_for_tab`、`get_field_value`、`toggle_field`、`cycle_enum_*`）
   - `settings/kb.rs` — 键绑定表和宏（`kb_get!`/`kb_set!`、`KB_SECTIONS`、`kb_binding_names`、`get/set_kb_value`、`format_key_event`）
 - **Progress** — 长时间操作的进度条
-- **Commit** / **Conflict** / **RenamePattern** / **Search** / **Replace** / **TreeSearch** / **Sessions** / **DirectoryPicker** / **SaveAs** / **BookmarkAdd** / **Calendar** / **CommandPalette** / **ScriptCreate** — 针对具体场景的专用对话框
+- **Commit** / **Conflict** / **RenamePattern** / **Sessions** / **DirectoryPicker** / **SaveAs** / **BookmarkAdd** / **Calendar** / **CommandPalette** / **ScriptCreate** — 针对具体场景的专用对话框
 
 共用工具集中在 `crates/modal/src/base.rs`（`render_modal_block`、`render_modal_frame`、`button_style`、`CursorNavigation` trait）。
 

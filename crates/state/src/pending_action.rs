@@ -60,8 +60,6 @@ pub enum PendingAction {
         operation: BatchOperation,
         original_name: String,
     },
-    /// Text search in editor
-    Search,
     /// Override tab_size for the active editor panel (runtime only, not persisted).
     ChangeEditorTabSize,
     /// Switch to next panel

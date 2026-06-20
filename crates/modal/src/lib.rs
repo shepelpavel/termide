@@ -40,7 +40,6 @@ pub mod input;
 pub mod progress;
 pub mod rename_pattern;
 pub mod save_as;
-pub mod search;
 pub mod select;
 pub mod sessions;
 pub mod settings;
@@ -70,7 +69,6 @@ pub use input::InputModal;
 pub use progress::ProgressModal;
 pub use rename_pattern::RenamePatternModal;
 pub use save_as::{SaveAsModal, SaveAsResult};
-pub use search::{SearchAction, SearchModal, SearchModalResult};
 pub use select::SelectModal;
 pub use sessions::{SessionAction, SessionItem, SessionsModal};
 pub use settings::{SettingsModal, SettingsResult};
@@ -100,8 +98,6 @@ pub enum ActiveModal {
     RenamePattern(Box<RenamePatternModal>),
     /// Editable select modal (combobox)
     EditableSelect(Box<EditableSelectModal>),
-    /// Interactive search modal
-    Search(Box<SearchModal>),
     /// Sessions selection modal
     Sessions(Box<SessionsModal>),
     /// Directory picker modal
@@ -152,7 +148,6 @@ macro_rules! dispatch_modal {
             ActiveModal::InfoAction(m) => m.$method($($arg),*),
             ActiveModal::RenamePattern(m) => m.$method($($arg),*),
             ActiveModal::EditableSelect(m) => m.$method($($arg),*),
-            ActiveModal::Search(m) => m.$method($($arg),*),
             ActiveModal::Sessions(m) => m.$method($($arg),*),
             ActiveModal::DirectoryPicker(m) => m.$method($($arg),*),
             ActiveModal::SaveAs(m) => m.$method($($arg),*),
@@ -183,7 +178,6 @@ macro_rules! dispatch_modal_erased {
             ActiveModal::InfoAction(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::RenamePattern(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::EditableSelect(m) => m.$method($($arg),*)?.map(erase_modal_result),
-            ActiveModal::Search(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::Sessions(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::DirectoryPicker(m) => m.$method($($arg),*)?.map(erase_modal_result),
             ActiveModal::SaveAs(m) => m.$method($($arg),*)?.map(erase_modal_result),

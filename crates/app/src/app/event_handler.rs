@@ -182,13 +182,6 @@ impl App {
                 self.event_show_select(title, options, on_select);
             }
 
-            PanelEvent::ShowSearch {
-                mode,
-                initial_query,
-            } => {
-                self.event_show_search(mode, initial_query);
-            }
-
             PanelEvent::ShowConflict {
                 source,
                 destination,
@@ -799,21 +792,6 @@ impl App {
             .set_pending_action(pending_action, ActiveModal::Select(Box::new(modal)));
     }
 
-    /// Handle ShowSearch event - show search modal
-    fn event_show_search(
-        &mut self,
-        mode: termide_core::SearchMode,
-        _initial_query: Option<String>,
-    ) {
-        use crate::state::{ActiveModal, PendingAction};
-        use termide_modal::SearchModal;
-
-        let modal = SearchModal::new(mode);
-
-        self.state
-            .set_pending_action(PendingAction::Search, ActiveModal::Search(Box::new(modal)));
-    }
-
     /// Handle ShowInput event - show input modal
     pub(super) fn event_show_input(
         &mut self,
@@ -838,7 +816,6 @@ impl App {
                     directory: in_dir.clone(),
                 }
             }
-            termide_core::InputAction::SearchInFile => PendingAction::Search,
             termide_core::InputAction::GotoLine => {
                 // GotoLine is handled directly, not through modal
                 return;

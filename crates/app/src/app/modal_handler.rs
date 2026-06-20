@@ -70,7 +70,6 @@ impl App {
             if let Some(result) = modal_result {
                 // Check modal type before taking state references
                 let is_rename_pattern = matches!(modal, ActiveModal::RenamePattern(_));
-                let is_search = matches!(modal, ActiveModal::Search(_));
                 let is_progress = matches!(modal, ActiveModal::Progress(_));
 
                 // Handle Progress modal pause/cancel/resume
@@ -115,14 +114,6 @@ impl App {
                             }
                         }
                     }
-                }
-
-                // Handle search/replace modals with shared helper
-                if self
-                    .handle_search_replace_modal(is_search, &result)
-                    .is_some()
-                {
-                    return Ok(());
                 }
 
                 // Return to bookmarks menu on cancel of bookmark deletion
@@ -205,7 +196,6 @@ impl App {
             // If modal window returned result, handle it
             if let Some(result) = modal_result {
                 // Check modal type before taking state references
-                let is_search = matches!(modal, ActiveModal::Search(_));
                 let is_progress = matches!(modal, ActiveModal::Progress(_));
 
                 // Handle Progress modal pause/cancel/resume
@@ -213,14 +203,6 @@ impl App {
                     if let Some(result) = self.handle_progress_modal_action(&result) {
                         return result;
                     }
-                }
-
-                // Handle search/replace modals with shared helper
-                if self
-                    .handle_search_replace_modal(is_search, &result)
-                    .is_some()
-                {
-                    return Ok(());
                 }
 
                 // Check if this is a git push/pull action that should keep modal open
@@ -345,9 +327,6 @@ impl App {
                     original_name,
                 } => {
                     self.handle_rename_with_pattern(operation, original_name, value)?;
-                }
-                PendingAction::Search => {
-                    self.handle_search(value)?;
                 }
                 PendingAction::ChangeEditorTabSize => {
                     if let Some(text) = value.downcast_ref::<String>() {

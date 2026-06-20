@@ -160,7 +160,7 @@ pub trait Panel {
 **Editor** (`crates/panel-editor/src/lib.rs`)
 - Text editing with undo/redo
 - Syntax highlighting via tree-sitter (21 languages)
-- Search and replace with interactive modals
+- Search and replace with inline find bars
 - Line numbers, cursor position, word wrap
 - Word navigation (Ctrl+Left/Right), paragraph/symbol navigation (Ctrl+Up/Down)
 - Auto-indentation with split-bracket indent
@@ -303,7 +303,7 @@ Handles interactive modal dialogs:
   - `settings/fields.rs` — declarative field data (`FieldType`, `FieldDescriptor`, `ContentRow`, helpers `fields_for_tab`, `get_field_value`, `toggle_field`, `cycle_enum_*`)
   - `settings/kb.rs` — keybinding tables and macros (`kb_get!`/`kb_set!`, `KB_SECTIONS`, `kb_binding_names`, `get/set_kb_value`, `format_key_event`)
 - **Progress** — progress bar for long-running operations
-- **Commit** / **Conflict** / **RenamePattern** / **Search** / **Replace** / **TreeSearch** / **Sessions** / **DirectoryPicker** / **SaveAs** / **BookmarkAdd** / **Calendar** / **CommandPalette** / **ScriptCreate** — specialised dialogs for individual operations
+- **Commit** / **Conflict** / **RenamePattern** / **Sessions** / **DirectoryPicker** / **SaveAs** / **BookmarkAdd** / **Calendar** / **CommandPalette** / **ScriptCreate** — specialised dialogs for individual operations
 
 Shared helpers live in `crates/modal/src/base.rs` (`render_modal_block`, `render_modal_frame`, `button_style`, the `CursorNavigation` trait).
 
