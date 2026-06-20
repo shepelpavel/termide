@@ -189,10 +189,6 @@ termide-ui = { path = "crates/ui" }
 termide-ui-render = { path = "crates/ui-render" }
 termide-watcher = { path = "crates/watcher" }
 termide-app-core = { path = "crates/app-core" }
-termide-app-modal = { path = "crates/app-modal" }
-termide-app-panel = { path = "crates/app-panel" }
-termide-app-watcher = { path = "crates/app-watcher" }
-termide-app-session = { path = "crates/app-session" }
 termide-app = { path = "crates/app" }
 
 [build-dependencies]

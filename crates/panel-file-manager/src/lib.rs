@@ -461,12 +461,11 @@ impl FileManager {
         Self::new_with_path(current_path)
     }
 
-    /// Create a new smart file manager with the specified path
-    pub fn new_with_path(current_path: PathBuf) -> Self {
-        // Canonicalize to resolve symlinks — ensures paths match notify events
-        let current_path = std::fs::canonicalize(&current_path).unwrap_or(current_path);
-        let vfs = VfsState::with_path(termide_vfs::VfsPath::local(&current_path), None);
-        let mut fm = Self {
+    /// Build a FileManager with all fields at their defaults for the given
+    /// path and VFS state. The two public constructors differ only in these
+    /// two values and their post-init action.
+    fn new_common(current_path: PathBuf, vfs: VfsState) -> Self {
+        Self {
             current_path,
             tree_entries: Vec::new(),
             visible_indices: Vec::new(),
@@ -503,7 +502,15 @@ impl FileManager {
             async_reload_receiver: None,
             pending_dir_load: None,
             pending_expansions: HashMap::new(),
-        };
+        }
+    }
+
+    /// Create a new smart file manager with the specified path
+    pub fn new_with_path(current_path: PathBuf) -> Self {
+        // Canonicalize to resolve symlinks — ensures paths match notify events
+        let current_path = std::fs::canonicalize(&current_path).unwrap_or(current_path);
+        let vfs = VfsState::with_path(termide_vfs::VfsPath::local(&current_path), None);
+        let mut fm = Self::new_common(current_path, vfs);
         let _ = fm.load_directory();
         fm
     }
@@ -516,44 +523,8 @@ impl FileManager {
         let vfs_path = termide_vfs::parse_vfs_url(url)?;
         let vfs = VfsState::with_path(vfs_path, Some(vfs_manager));
 
-        let mut fm = Self {
-            current_path: PathBuf::from("/"), // Not used for remote
-            tree_entries: Vec::new(),
-            visible_indices: Vec::new(),
-            tree_prefixes: Vec::new(),
-            expanded_dirs: HashSet::new(),
-            selected: 0,
-            scroll_offset: 0,
-            modal_request: None,
-            visible_height: 10,
-            click_tracker: IndexClickTracker::new(),
-            selection: SelectionState::default(),
-            git_status_cache: None,
-            git_status_receiver: None,
-            dir_size_receiver: None,
-            dir_size_queue: VecDeque::new(),
-            dir_size_pending: None,
-            dir_size_cache_generation: 0,
-            navigation: NavigationState::new(),
-            git_root: None,
-            cached_theme: Theme::default(),
-            cached_config: FileManagerSettings::default(),
-            vim_mode: false,
-            cached_vfs_timeout_secs: 60,
-            vfs,
-            is_stale: false,
-            show_hidden: true,
-            file_search: None,
-            search_bar: None,
-            bar_kind: SearchBarKind::Content,
-            bar_focus: BarFocus::Input,
-            search_results_area: None,
-            hotkeys: HotkeyTable::default(),
-            last_config_ptr: 0,
-            async_reload_receiver: None,
-            pending_dir_load: None,
-            pending_expansions: HashMap::new(),
-        };
+        // current_path is unused for remote panels.
+        let mut fm = Self::new_common(PathBuf::from("/"), vfs);
 
         // Start the directory listing operation for remote paths
         fm.vfs.start_list_dir();
@@ -2037,12 +2008,14 @@ impl Panel for FileManager {
 
     fn prepare_render(&mut self, theme: &termide_theme::Theme, config: &std::sync::Arc<Config>) {
         self.cached_theme = *theme;
-        self.cached_config = config.file_manager.clone();
         self.vim_mode = config.general.vim_mode;
         self.cached_vfs_timeout_secs = config.vfs.connection_timeout_secs;
         let config_ptr = std::sync::Arc::as_ptr(config) as usize;
         if self.last_config_ptr != config_ptr {
             self.last_config_ptr = config_ptr;
+            // `FileManagerSettings` embeds ~32 keybinding Strings; only re-clone
+            // when the config Arc actually changes, not every frame.
+            self.cached_config = config.file_manager.clone();
             self.hotkeys = build_fm_hotkey_table(config);
         }
     }

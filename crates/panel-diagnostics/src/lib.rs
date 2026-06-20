@@ -181,12 +181,6 @@ impl DiagnosticsPanel {
         self.rebuild_list();
     }
 
-    /// Clear diagnostics for a specific file.
-    pub fn clear_file(&mut self, file_path: &PathBuf) {
-        self.diagnostics_by_file.remove(file_path);
-        self.rebuild_list();
-    }
-
     /// Clear all diagnostics.
     pub fn clear_all(&mut self) {
         self.diagnostics_by_file.clear();

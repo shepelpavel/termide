@@ -4804,10 +4804,6 @@ dependencies = [
  "tempfile",
  "termide-app",
  "termide-app-core",
- "termide-app-modal",
- "termide-app-panel",
- "termide-app-session",
- "termide-app-watcher",
  "termide-buffer",
  "termide-clipboard",
  "termide-config",
@@ -4876,10 +4872,6 @@ dependencies = [
  "ratatui",
  "tempfile",
  "termide-app-core",
- "termide-app-modal",
- "termide-app-panel",
- "termide-app-session",
- "termide-app-watcher",
  "termide-clipboard",
  "termide-config",
  "termide-core",
@@ -4923,40 +4915,6 @@ dependencies = [
  "termide-core",
  "termide-modal",
  "termide-state",
-]
-
-[[package]]
-name = "termide-app-modal"
-version = "0.25.0"
-dependencies = [
- "anyhow",
- "termide-app-core",
- "termide-state",
-]
-
-[[package]]
-name = "termide-app-panel"
-version = "0.25.0"
-dependencies = [
- "anyhow",
- "termide-app-core",
-]
-
-[[package]]
-name = "termide-app-session"
-version = "0.25.0"
-dependencies = [
- "anyhow",
- "dirs",
- "termide-app-core",
-]
-
-[[package]]
-name = "termide-app-watcher"
-version = "0.25.0"
-dependencies = [
- "anyhow",
- "termide-app-core",
 ]
 
 [[package]]

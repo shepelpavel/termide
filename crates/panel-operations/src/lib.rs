@@ -128,11 +128,6 @@ impl OperationsPanel {
         }
     }
 
-    /// Get the operations count.
-    pub fn operations_count(&self) -> usize {
-        self.operations.len()
-    }
-
     /// Get the currently selected operation ID.
     pub fn selected_operation_id(&self) -> Option<OperationId> {
         self.operations.get(self.selected_index).map(|op| op.id)
@@ -235,14 +230,6 @@ impl OperationsPanel {
     fn ensure_cursor_visible_up(&mut self) {
         if self.selected_index < self.scroll_offset {
             self.scroll_offset = self.selected_index;
-        }
-    }
-
-    /// Focus on specific operation by ID
-    pub fn focus_operation(&mut self, id: OperationId, operations: &[&ActiveOperation]) {
-        if let Some(index) = operations.iter().position(|op| op.id == id) {
-            self.selected_index = index;
-            self.ensure_cursor_visible(operations.len());
         }
     }
 }
@@ -436,11 +423,6 @@ impl OperationsPanel {
             .style(Style::default().fg(ctx.theme.disabled))
             .alignment(ratatui::layout::Alignment::Center);
         text.render(area, buf);
-    }
-
-    /// Store card areas for mouse click detection
-    pub fn set_card_areas(&mut self, areas: Vec<(usize, Rect)>) {
-        self.card_areas = areas;
     }
 }
 

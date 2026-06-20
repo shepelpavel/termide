@@ -1112,14 +1112,13 @@ impl App {
             })
             .unwrap_or(false);
 
-        // Show enhanced progress modal when starting operation
-        // Only create if not already shown (no progress modal and no batch tracking active)
-        let should_show_modal = operation.current_index == 0
+        // Start Operations-panel tracking when the operation begins.
+        // Only once: at the first item, when tracking isn't already active.
+        let should_start_tracking = operation.current_index == 0
             && (operation.total_count() > 1 || is_remote_operation || needs_progress)
-            && !matches!(self.state.active_modal, Some(ActiveModal::Progress(_)))
             && self.state.batch.tracking_id.is_none();
 
-        if should_show_modal {
+        if should_start_tracking {
             use crate::state::OperationType;
 
             // Close any existing modal (e.g., destination selection) before showing progress
@@ -1190,11 +1189,6 @@ impl App {
 
         // Check if operation is complete
         if operation.is_complete() {
-            // Close progress modal if open (legacy)
-            if matches!(self.state.active_modal, Some(ActiveModal::Progress(_))) {
-                self.state.close_modal();
-            }
-
             // Finish batch tracking in Operations panel
             self.state.finish_batch_tracking();
 

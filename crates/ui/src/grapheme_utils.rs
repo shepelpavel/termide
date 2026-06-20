@@ -152,7 +152,9 @@ pub fn render_text_cells(
                 break;
             }
             let cell = &mut buf[(x + col, y)];
-            cell.set_symbol(&ch.to_string());
+            // Stack-encode the char instead of allocating a String per glyph.
+            let mut enc = [0u8; 4];
+            cell.set_symbol(ch.encode_utf8(&mut enc));
             cell.set_style(style);
             if cw == 2 && col + 1 < max_cols {
                 // Fill second cell of CJK wide char so it doesn't bleed
