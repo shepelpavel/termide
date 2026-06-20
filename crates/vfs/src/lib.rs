@@ -147,6 +147,38 @@ impl VfsManager {
 
     /// Get or create a provider for the given path.
     ///
+    /// Spawn a background thread that builds a provider, connects it, and on
+    /// success stores it under `key`. Shared by every remote `connect_*`
+    /// method — only the provider constructor differs.
+    #[cfg(any(feature = "sftp", feature = "ftp", feature = "smb"))]
+    fn spawn_connect<P, F>(&self, options: ConnectOptions, key: String, make: F) -> VfsOperation<()>
+    where
+        P: VfsProvider + 'static,
+        F: FnOnce() -> P + Send + 'static,
+    {
+        let providers = Arc::clone(&self.remote_providers);
+        let (tx, rx) = std::sync::mpsc::channel();
+
+        std::thread::spawn(move || {
+            let mut provider = make();
+            let result = provider.connect(options).recv();
+
+            if let Err(e) = &result {
+                log::error!("VfsManager: connection failed for {key}: {e}");
+            }
+            if result.is_ok() {
+                if let Ok(mut providers) = providers.write() {
+                    providers.insert(key.clone(), Box::new(provider));
+                }
+            }
+            if let Err(e) = tx.send(result) {
+                log::error!("VfsManager: failed to send result for {key}: {e:?}");
+            }
+        });
+
+        VfsOperation::new(rx)
+    }
+
     /// For local paths, returns the local provider.
     /// Get a mutable reference to create/connect a provider.
     ///
@@ -172,34 +204,9 @@ impl VfsManager {
         let username = path.username.clone();
 
         let key = path.connection_key();
-        let providers = Arc::clone(&self.remote_providers);
-
-        let (tx, rx) = std::sync::mpsc::channel();
-
-        std::thread::spawn(move || {
-            let mut provider = SftpProvider::new(&host, port, username.as_deref());
-
-            let result = provider.connect(options).recv();
-
-            if let Err(e) = &result {
-                log::error!(
-                    "VfsManager: Connection failed: {}, forwarding to main thread",
-                    e
-                );
-            }
-
-            if result.is_ok() {
-                if let Ok(mut providers) = providers.write() {
-                    providers.insert(key.clone(), Box::new(provider));
-                }
-            }
-
-            if let Err(e) = tx.send(result) {
-                log::error!("VfsManager: Failed to send result to channel: {:?}", e);
-            }
-        });
-
-        VfsOperation::new(rx)
+        self.spawn_connect(options, key, move || {
+            SftpProvider::new(&host, port, username.as_deref())
+        })
     }
 
     /// Connect to an FTP or FTPS server.
@@ -228,31 +235,9 @@ impl VfsManager {
         let username = path.username.clone();
 
         let key = path.connection_key();
-        let providers = Arc::clone(&self.remote_providers);
-
-        let (tx, rx) = std::sync::mpsc::channel();
-
-        std::thread::spawn(move || {
-            let mut provider = FtpProvider::new(&host, port, username.as_deref(), use_tls);
-
-            let result = provider.connect(options).recv();
-
-            if let Err(e) = &result {
-                log::error!("VfsManager: FTP connection failed: {}", e);
-            }
-
-            if result.is_ok() {
-                if let Ok(mut providers) = providers.write() {
-                    providers.insert(key.clone(), Box::new(provider));
-                }
-            }
-
-            if let Err(e) = tx.send(result) {
-                log::error!("VfsManager: Failed to send FTP result: {:?}", e);
-            }
-        });
-
-        VfsOperation::new(rx)
+        self.spawn_connect(options, key, move || {
+            FtpProvider::new(&host, port, username.as_deref(), use_tls)
+        })
     }
 
     /// Connect to an SMB/CIFS server.
@@ -282,38 +267,16 @@ impl VfsManager {
         let share = trimmed.split('/').next().filter(|s| !s.is_empty());
 
         let key = path.connection_key();
-        let providers = Arc::clone(&self.remote_providers);
-
-        let (tx, rx) = std::sync::mpsc::channel();
-
         let share_owned = share.map(String::from);
-        std::thread::spawn(move || {
-            let mut provider = SmbProvider::new(
+        self.spawn_connect(options, key, move || {
+            SmbProvider::new(
                 &host,
                 port,
                 share_owned.as_deref(),
                 username.as_deref(),
                 None,
-            );
-
-            let result = provider.connect(options).recv();
-
-            if let Err(e) = &result {
-                log::error!("VfsManager: SMB connection failed: {}", e);
-            }
-
-            if result.is_ok() {
-                if let Ok(mut providers) = providers.write() {
-                    providers.insert(key.clone(), Box::new(provider));
-                }
-            }
-
-            if let Err(e) = tx.send(result) {
-                log::error!("VfsManager: Failed to send SMB result: {:?}", e);
-            }
-        });
-
-        VfsOperation::new(rx)
+            )
+        })
     }
 
     /// Connect to an SMB/CIFS server (stub when smb feature is disabled).
