@@ -39,6 +39,7 @@ use termide_core::{
     get_terminal_caps, CommandResult, HotkeyTable, Panel, PanelCommand, PanelEvent, RenderContext,
     Searchable, SessionPanel, WidthPreference,
 };
+use termide_modal::{FindBar, FindBarAction, FindBarBtn, FindBarConfig, FindField};
 use termide_theme::Theme;
 use termide_ui::{extract_hex_color_at_col, ColorPreview, ScrollBar};
 
@@ -92,8 +93,14 @@ pub struct Terminal {
     hovered_link: Option<(LinkType, Vec<HighlightSegment>)>,
     /// Whether Ctrl key is pressed (tracked for link highlighting)
     ctrl_pressed: bool,
-    /// Search state for Ctrl+Shift+F text search
+    /// Search state for text search (matches across scrollback + visible grid)
     search_state: Option<TerminalSearchState>,
+    /// Inline find bar docked at the top of the panel (Ctrl+F), mirroring the
+    /// editor / file-manager UX. `None` when closed.
+    find_bar: Option<FindBar>,
+    /// When the bar is open, whether focus is on the terminal grid ("buffer"
+    /// zone) rather than the bar. Toggled with Tab, like the editor.
+    find_bar_focus_buffer: bool,
     /// Selection drag is active (left button held during selection).
     selection_drag_active: bool,
     /// Last mouse position in screen coordinates for auto-scroll.
@@ -435,6 +442,8 @@ impl Terminal {
             hovered_link: None,
             ctrl_pressed: false,
             search_state: None,
+            find_bar: None,
+            find_bar_focus_buffer: false,
             selection_drag_active: false,
             last_mouse_position: None,
             panel_bounds: None,
@@ -1462,15 +1471,32 @@ impl Terminal {
         }
     }
 
-    /// Find all search matches in scrollback + visible buffer.
+    /// Find all search matches in scrollback + visible buffer. Literal by
+    /// default; `use_regex` treats `query` as a regular expression (mirroring
+    /// the editor / file-manager `[.*]` toggle). Positions are byte offsets
+    /// into the line, consistent with the literal path and the cell renderer.
     fn find_matches(
         screen: &TerminalScreen,
         query: &str,
         case_sensitive: bool,
+        use_regex: bool,
     ) -> Vec<(usize, usize, usize)> {
         let mut matches = Vec::new();
         let scrollback_len = screen.scrollback.len();
         let total_lines = scrollback_len + screen.rows;
+
+        // Regex mode: an invalid pattern simply yields no matches.
+        let regex = if use_regex {
+            match regex::RegexBuilder::new(query)
+                .case_insensitive(!case_sensitive)
+                .build()
+            {
+                Ok(r) => Some(r),
+                Err(_) => return matches,
+            }
+        } else {
+            None
+        };
 
         let query_lower = if case_sensitive {
             query.to_string()
@@ -1485,7 +1511,18 @@ impl Terminal {
 
             // Extract text from cells
             let line_text: String = row.iter().map(|c| c.ch).collect();
-            // Cow avoids cloning the String in the case-sensitive branch
+
+            if let Some(re) = regex.as_ref() {
+                for m in re.find_iter(&line_text) {
+                    // Skip zero-width matches (e.g. `a*`) — nothing to highlight.
+                    if m.end() > m.start() {
+                        matches.push((abs_row, m.start(), m.end() - m.start()));
+                    }
+                }
+                continue;
+            }
+
+            // Literal path. Cow avoids cloning in the case-sensitive branch.
             let search_text: std::borrow::Cow<str> = if case_sensitive {
                 std::borrow::Cow::Borrowed(&line_text)
             } else {
@@ -1505,11 +1542,116 @@ impl Terminal {
         }
         matches
     }
+
+    /// Open (or refocus) the inline find bar and run the current query.
+    fn open_find_bar(&mut self) {
+        if self.find_bar.is_none() {
+            // [Aa] Case + [.*] Regex toggles, then ◄ Prev / Next ► — the same
+            // row the editor uses (the terminal navigates matches, no replace).
+            self.find_bar = Some(FindBar::new(FindBarConfig {
+                fields: vec![FindField::Find],
+                buttons: vec![
+                    FindBarBtn::Case,
+                    FindBarBtn::Regex,
+                    FindBarBtn::Prev,
+                    FindBarBtn::Next,
+                ],
+            }));
+        }
+        if let Some(bar) = self.find_bar.as_mut() {
+            bar.focus_field(FindField::Find);
+        }
+        self.find_bar_focus_buffer = false;
+        self.rerun_bar_search();
+    }
+
+    /// Close the inline bar and clear the search highlight.
+    fn close_find_bar(&mut self) {
+        self.find_bar = None;
+        self.find_bar_focus_buffer = false;
+        self.close_search();
+    }
+
+    /// Re-run the search from the bar's current field + toggles, then refresh
+    /// the bar's match counter. An empty query clears the search.
+    fn rerun_bar_search(&mut self) {
+        let Some(bar) = self.find_bar.as_ref() else {
+            return;
+        };
+        let query = bar.find_text().to_string();
+        let case = bar.case_sensitive();
+        let regex = bar.use_regex();
+        if query.is_empty() {
+            self.close_search();
+        } else {
+            self.start_search(query, case, regex);
+        }
+        self.update_bar_match_info();
+    }
+
+    /// Push the current match position (1-based) and total into the bar's
+    /// counter so it shows "3 of 12" inline.
+    fn update_bar_match_info(&mut self) {
+        let (cur, total) = match self.search_state.as_ref() {
+            Some(s) => (s.current_match.map(|i| i + 1).unwrap_or(0), s.matches.len()),
+            None => (0, 0),
+        };
+        if let Some(bar) = self.find_bar.as_mut() {
+            bar.set_match_info(cur, total);
+        }
+    }
+
+    /// Apply a [`FindBarAction`] produced by a key or mouse event on the bar.
+    fn apply_find_bar_action(&mut self, action: Option<FindBarAction>) -> Vec<PanelEvent> {
+        match action {
+            Some(FindBarAction::QueryChanged) => {
+                self.rerun_bar_search();
+            }
+            // Enter and Next both step forward; Previous steps back.
+            Some(FindBarAction::Next) | Some(FindBarAction::Submit) => {
+                self.search_next();
+                self.update_bar_match_info();
+            }
+            Some(FindBarAction::Previous) => {
+                self.search_prev();
+                self.update_bar_match_info();
+            }
+            Some(FindBarAction::Close) => {
+                self.close_find_bar();
+            }
+            // The terminal find bar has no replace / per-file selection.
+            Some(FindBarAction::Replace)
+            | Some(FindBarAction::ReplaceAll)
+            | Some(FindBarAction::SelectAll)
+            | None => {}
+        }
+        vec![PanelEvent::NeedsRedraw]
+    }
+
+    /// Route a key to the open find bar. Returns panel events.
+    fn handle_find_bar_key(&mut self, key: KeyEvent) -> Vec<PanelEvent> {
+        // F3 / Shift+F3 step matches regardless of focused control.
+        if key.code == KeyCode::F(3) {
+            if key.modifiers.contains(KeyModifiers::SHIFT) {
+                self.search_prev();
+            } else {
+                self.search_next();
+            }
+            self.update_bar_match_info();
+            return vec![PanelEvent::NeedsRedraw];
+        }
+
+        let Some(mut bar) = self.find_bar.take() else {
+            return vec![];
+        };
+        let action = bar.handle_key(key);
+        self.find_bar = Some(bar);
+        self.apply_find_bar_action(action)
+    }
 }
 
 impl Searchable for Terminal {
-    // Terminal search is literal only; `use_regex` is ignored.
-    fn start_search(&mut self, query: String, case_sensitive: bool, _use_regex: bool) {
+    fn start_search(&mut self, query: String, case_sensitive: bool, use_regex: bool) {
         if query.is_empty() {
             self.search_state = None;
             self.cached_lines = None;
@@ -1517,7 +1659,7 @@ impl Searchable for Terminal {
         }
 
         let screen = self.read_screen();
-        let matches = Self::find_matches(&screen, &query, case_sensitive);
+        let matches = Self::find_matches(&screen, &query, case_sensitive, use_regex);
         let scrollback_len = screen.scrollback.len();
         let visible_rows = screen.rows;
         let scroll_offset = screen.scroll_offset;
@@ -1656,8 +1798,43 @@ impl Panel for Terminal {
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
-        // Update size if changed
         // area is already the inner content area (accordion drew outer border)
+        let theme = self.cached_theme;
+
+        // Dock the inline find bar at the TOP (with a pseudographic separator),
+        // shrinking the grid area so the PTY resize / scroll / mouse math see
+        // the reduced height — consistent with the editor and file manager.
+        let mut area = area;
+        if let Some(mut bar) = self.find_bar.take() {
+            let bar_h = bar.height().min(area.height);
+            let bar_area = Rect {
+                x: area.x,
+                y: area.y,
+                width: area.width,
+                height: bar_h,
+            };
+            let active = !self.find_bar_focus_buffer;
+            bar.render(bar_area, buf, &theme, active);
+            self.find_bar = Some(bar);
+
+            let sep_y = area.y + bar_h;
+            let mut used = bar_h;
+            if sep_y < area.y + area.height {
+                let style = Style::default().fg(theme.disabled);
+                for dx in 0..area.width {
+                    buf[(area.x + dx, sep_y)].set_symbol("─").set_style(style);
+                }
+                used += 1;
+            }
+            area = Rect {
+                x: area.x,
+                y: area.y + used,
+                width: area.width,
+                height: area.height.saturating_sub(used),
+            };
+        }
+
+        // Update size if changed (PTY follows the shrunken grid area)
         let new_rows = area.height;
         let new_cols = area.width;
 
@@ -1668,7 +1845,6 @@ impl Panel for Terminal {
         // Data is read in a separate thread, just render current state
         // Show cursor only when panel is focused
         // Theme colors are now applied during get_display_lines() - no post-processing needed
-        let theme = self.cached_theme;
         let (arc_lines, _cursor_pos, _cursor_shown) =
             self.get_display_lines(ctx.is_focused, &theme);
 
@@ -1731,6 +1907,32 @@ impl Panel for Terminal {
             return vec![];
         }
 
+        // Ctrl+F opens or refocuses the inline find bar (docked at the top,
+        // like the editor / file manager).
+        if self.hotkeys.matches("search", &key) {
+            self.open_find_bar();
+            return vec![PanelEvent::NeedsRedraw];
+        }
+
+        // While the bar is open, route keys by zone. Tab toggles between the
+        // bar and the terminal grid ("buffer" zone); in the grid zone Esc
+        // closes the bar and other keys fall through to normal terminal input.
+        if self.find_bar.is_some() {
+            let plain = key.modifiers.is_empty();
+            if plain && key.code == KeyCode::Tab {
+                self.find_bar_focus_buffer = !self.find_bar_focus_buffer;
+                return vec![PanelEvent::NeedsRedraw];
+            }
+            if self.find_bar_focus_buffer {
+                if plain && key.code == KeyCode::Esc {
+                    self.close_find_bar();
+                    return vec![PanelEvent::NeedsRedraw];
+                }
+            } else {
+                return self.handle_find_bar_key(key);
+            }
+        }
+
         // Configurable actions via HotkeyTable (key already translated by app)
         if self.hotkeys.matches("paste", &key) {
             let _ = self.paste_from_clipboard();
@@ -1739,12 +1941,6 @@ impl Panel for Terminal {
         if self.hotkeys.matches("copy", &key) {
             let _ = self.copy_selection_to_clipboard();
             return vec![];
-        }
-        if self.hotkeys.matches("search", &key) {
-            return vec![PanelEvent::ShowSearch {
-                mode: termide_core::SearchMode::Text,
-                initial_query: None,
-            }];
         }
         if self.hotkeys.matches("switch_directory", &key) {
             return vec![PanelEvent::OpenDirectorySwitcher];
@@ -1956,11 +2152,34 @@ impl Panel for Terminal {
             return vec![];
         }
 
-        // Calculate inner area (without border)
+        // When the find bar is docked at the top, the grid starts below it
+        // (bar rows + separator). A click in that region is routed to the bar
+        // (toggles / Prev / Next); grid rows below are offset so they map to
+        // the correct PTY cell.
+        let bar_offset = self.find_bar.as_ref().map(|b| b.height() + 1).unwrap_or(0);
+        if bar_offset > 0 {
+            let bar_top = panel_area.y + 1;
+            let bar_bottom = bar_top + bar_offset; // exclusive (includes separator)
+            if mouse.row >= bar_top && mouse.row < bar_bottom {
+                if let Some(mut bar) = self.find_bar.take() {
+                    let action = bar.handle_mouse(mouse);
+                    self.find_bar = Some(bar);
+                    return self.apply_find_bar_action(action);
+                }
+                return vec![];
+            }
+        }
+
+        // Calculate inner area (without border); the grid starts below the bar.
         let inner_x_min = panel_area.x + 1;
         let inner_x_max = panel_area.x + panel_area.width.saturating_sub(2);
-        let inner_y_min = panel_area.y + 1;
+        let inner_y_min = panel_area.y + 1 + bar_offset;
         let inner_y_max = panel_area.y + panel_area.height.saturating_sub(2);
+        // A bar on a very short panel can leave no grid rows; avoid an inverted
+        // clamp range below.
+        if inner_y_min > inner_y_max {
+            return vec![];
+        }
 
         // Calculate coordinates relative to terminal inner area (0-based for selection)
         // Clamped to panel boundaries
@@ -2360,8 +2579,10 @@ impl Panel for Terminal {
     }
 
     fn captures_escape(&self) -> bool {
-        // If there are running processes, Escape is passed to them, not closing the panel
-        self.is_alive() && self.has_running_processes()
+        // The open find bar consumes Escape (closes the bar). Otherwise, if
+        // there are running processes, Escape is passed to them rather than
+        // closing the panel.
+        self.find_bar.is_some() || (self.is_alive() && self.has_running_processes())
     }
 
     fn to_session(&self, _session_dir: &std::path::Path) -> Option<SessionPanel> {
