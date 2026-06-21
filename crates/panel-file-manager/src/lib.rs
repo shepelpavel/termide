@@ -876,6 +876,11 @@ impl FileManager {
                 }
                 vec![PanelEvent::NeedsRedraw]
             }
+            Some(FindBarAction::Refresh) => {
+                // Re-run against current directory contents (Ctrl+R).
+                self.rerun_search();
+                vec![PanelEvent::NeedsRedraw]
+            }
             Some(FindBarAction::Next) => {
                 self.search_next();
                 vec![PanelEvent::NeedsRedraw]

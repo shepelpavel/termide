@@ -85,6 +85,8 @@ Matching is a **case-insensitive substring** by default; the `[Aa] Case` and
 `[.*]` treats the query as a regular expression over the file name (click a
 toggle, or focus it and press `Enter` / `Space`).
 
+`Ctrl+R` re-runs the search against the current directory contents.
+
 ### Content Search (Ctrl+Shift+F)
 
 An inline bar with `Find:` (glob mask, defaults to `*`) and `Text:` (the content
