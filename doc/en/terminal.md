@@ -56,6 +56,7 @@ works across the entire scrollback buffer and the visible screen:
   `Shift+F3` step between matches; the viewport scrolls to the current match
 - **Focus**: `Tab` switches focus between the bar and the terminal grid, so you
   can scroll the grid while the bar stays open
+- **Refresh**: `Ctrl+R` re-runs the query against the current scrollback
 - **Close**: `Escape`
 
 The search keybinding defaults to `Ctrl+F` (instead of `Ctrl+Shift+F`) because most host terminals intercept `Ctrl+Shift+F` for their own search.

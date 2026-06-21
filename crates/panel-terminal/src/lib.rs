@@ -1608,7 +1608,7 @@ impl Terminal {
     /// Apply a [`FindBarAction`] produced by a key or mouse event on the bar.
     fn apply_find_bar_action(&mut self, action: Option<FindBarAction>) -> Vec<PanelEvent> {
         match action {
-            Some(FindBarAction::QueryChanged) => {
+            Some(FindBarAction::QueryChanged) | Some(FindBarAction::Refresh) => {
                 self.rerun_bar_search();
             }
             // Enter and Next both step forward; Previous steps back.

@@ -17,7 +17,7 @@
 //! - read [`FindBar::find_text`] / [`FindBar::replace_text`] / [`FindBar::mask_text`]
 //!   / [`FindBar::use_regex`] / [`FindBar::case_sensitive`] to run the search.
 
-use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -87,6 +87,9 @@ impl Btn {
 pub enum FindBarAction {
     /// A field was edited or a toggle flipped — re-run the search.
     QueryChanged,
+    /// `Ctrl+R` — re-run the current query against the (possibly changed)
+    /// content without editing the query.
+    Refresh,
     /// Go to the next match.
     Next,
     /// Go to the previous match.
@@ -309,6 +312,13 @@ impl FindBar {
     pub fn handle_key(&mut self, key: KeyEvent) -> Option<FindBarAction> {
         if key.code == KeyCode::Esc {
             return Some(FindBarAction::Close);
+        }
+
+        // Ctrl+R re-runs the search regardless of focused control.
+        if key.modifiers.contains(KeyModifiers::CONTROL)
+            && matches!(key.code, KeyCode::Char('r') | KeyCode::Char('R'))
+        {
+            return Some(FindBarAction::Refresh);
         }
 
         match self.current() {
@@ -595,6 +605,20 @@ mod tests {
             fields: vec![FindField::Mask, FindField::Find, FindField::Replace],
             buttons: vec![Btn::Case, Btn::Regex, Btn::Prev, Btn::Next, Btn::ReplaceAll],
         })
+    }
+
+    #[test]
+    fn ctrl_r_requests_refresh_from_any_control() {
+        let ctrl_r = KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL);
+        // Focused on a field.
+        let mut bar = content_bar();
+        assert_eq!(bar.handle_key(ctrl_r), Some(FindBarAction::Refresh));
+        // Focused on a button (toggle row) — still refreshes.
+        let mut bar = content_bar();
+        for _ in 0..bar.fields.len() {
+            bar.focus_next();
+        }
+        assert_eq!(bar.handle_key(ctrl_r), Some(FindBarAction::Refresh));
     }
 
     #[test]

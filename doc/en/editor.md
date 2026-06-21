@@ -75,6 +75,7 @@ bar stays open; `Tab` returns to the bar.
 - Navigation buttons: ◄ Prev, Next ►
 - `[.*] Regex` and `[Aa] Case` toggles — click them, or focus the buttons row
   and press `Enter` / `Space`. Regex is **off by default** (literal search).
+- `Ctrl+R` re-runs the search against the current buffer (refresh).
 - The query is preserved when the bar is closed
 
 **Search behavior with the bar closed:**
