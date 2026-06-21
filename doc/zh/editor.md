@@ -112,6 +112,28 @@
 可配置的编辑器按键 `replace_current` 与 `replace_all` 仍会直接作用于当前搜索
 （无论栏是否打开，参见[快捷键](keybindings.md)）。
 
+## 自定义语法高亮
+
+内置语言通过 tree-sitter 高亮。对于尚无 tree-sitter 语法的文件类型——例如你正在
+设计的语言——可以在 `config.toml` 中定义**轻量级关键字高亮器**，无需重新编译
+TermIDE。它会着色行/块注释、字符串、数字以及你的关键字/类型词表，并复用当前主题
+的配色。
+
+```toml
+[[highlight.custom_languages]]
+name = "Alatyr"
+extensions = ["al"]          # 文件扩展名，不带前导点
+line_comment = "##"          # 此标记之后到行尾为注释
+# block_comment = ["/*", "*/"]  # 可选；仅在单行内匹配
+keywords = ["pub", "struct", "enum", "match", "if", "else", "and", "or", "not"]
+types = ["u8", "i64", "usize", "ptr"]
+```
+
+可为其他文件类型添加更多 `[[highlight.custom_languages]]` 块。对于同一扩展名，
+tree-sitter 语法（若存在）始终优先于自定义条目。这是逐行分词器，不跟踪跨行结构
+（块注释必须在一行内开始和结束）；当语言稳定后，真正的 tree-sitter 语法可提供更
+丰富、带作用域的高亮。
+
 ## 剪贴板
 
 | 快捷键 | 操作 |
