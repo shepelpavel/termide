@@ -67,6 +67,53 @@ pub struct Config {
     /// VFS (network filesystem) settings
     #[serde(default)]
     pub vfs: VfsSettings,
+
+    /// Syntax-highlighting settings (custom keyword languages)
+    #[serde(default)]
+    pub highlight: HighlightSettings,
+}
+
+/// Syntax-highlighting settings.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct HighlightSettings {
+    /// User-defined keyword highlighters for file types that have no
+    /// tree-sitter grammar. Each entry maps a set of extensions to a comment
+    /// style plus keyword/type word lists.
+    #[serde(default)]
+    pub custom_languages: Vec<CustomLanguage>,
+}
+
+/// A user-defined keyword-based language for syntax highlighting.
+///
+/// Example (`config.toml`):
+/// ```toml
+/// [[highlight.custom_languages]]
+/// name = "Alatyr"
+/// extensions = ["al"]
+/// line_comment = "##"
+/// keywords = ["pub", "struct", "enum", "match", "if", "else", "and", "or", "not"]
+/// types = ["u8", "i64", "usize", "ptr"]
+/// ```
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CustomLanguage {
+    /// Display name (shown in the editor status bar).
+    #[serde(default)]
+    pub name: String,
+    /// File extensions (without the leading dot) this language applies to.
+    #[serde(default)]
+    pub extensions: Vec<String>,
+    /// Line-comment lead-in, e.g. `"##"`, `"//"`, `"#"`.
+    #[serde(default)]
+    pub line_comment: Option<String>,
+    /// Block-comment delimiters `["open", "close"]`, matched within one line.
+    #[serde(default)]
+    pub block_comment: Option<(String, String)>,
+    /// Words coloured as keywords.
+    #[serde(default)]
+    pub keywords: Vec<String>,
+    /// Words coloured as types.
+    #[serde(default)]
+    pub types: Vec<String>,
 }
 
 /// General application settings.
@@ -518,6 +565,7 @@ impl From<LegacyConfig> for Config {
                 min_level: legacy.min_log_level,
             },
             vfs: VfsSettings::default(),
+            highlight: HighlightSettings::default(),
         }
     }
 }

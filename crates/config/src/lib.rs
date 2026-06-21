@@ -24,9 +24,9 @@ pub use keybindings::{
     GitStatusKeybindings, GlobalKeybindings, KeyBinding, ParsedKeyBinding, TerminalKeybindings,
 };
 pub use settings::{
-    Config, DatabaseSettings, EditorSettings, FileManagerSettings, GeneralSettings,
-    GitDiffSettings, GitLogSettings, GitStatusSettings, IconMode, LegacyConfig, LoggingSettings,
-    LspServerSettings, LspSettings, TerminalSettings, VfsSettings,
+    Config, CustomLanguage, DatabaseSettings, EditorSettings, FileManagerSettings, GeneralSettings,
+    GitDiffSettings, GitLogSettings, GitStatusSettings, HighlightSettings, IconMode, LegacyConfig,
+    LoggingSettings, LspServerSettings, LspSettings, TerminalSettings, VfsSettings,
 };
 pub use xdg::{get_config_dir, get_data_dir};
 

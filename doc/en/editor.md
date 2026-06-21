@@ -115,6 +115,31 @@ The configurable `replace_current` and `replace_all` editor keybindings still
 act on the active search directly, with or without the bar (see
 [Keybindings](keybindings.md)).
 
+## Custom Syntax Highlighting
+
+Built-in languages are highlighted with tree-sitter. For a file type that has
+no tree-sitter grammar yet — for example a language you are still designing —
+you can define a **lightweight keyword highlighter** in `config.toml` without
+rebuilding TermIDE. It colours line/block comments, strings, numbers, and your
+keyword/type word lists, reusing the active theme's palette.
+
+```toml
+[[highlight.custom_languages]]
+name = "Alatyr"
+extensions = ["al"]          # file extensions, without the leading dot
+line_comment = "##"          # rest of the line after this is a comment
+# block_comment = ["/*", "*/"]  # optional; matched within a single line
+keywords = ["pub", "struct", "enum", "match", "if", "else", "and", "or", "not"]
+types = ["u8", "i64", "usize", "ptr"]
+```
+
+Add more `[[highlight.custom_languages]]` blocks for other file types. A
+tree-sitter grammar (when one exists) always takes precedence over a custom
+entry for the same extension. This is a per-line tokenizer, so it does not
+track multi-line constructs (a block comment must open and close on one line);
+when the language stabilises, a real tree-sitter grammar gives richer,
+scope-aware highlighting.
+
 ## Clipboard
 
 | Shortcut           | Action                                     |

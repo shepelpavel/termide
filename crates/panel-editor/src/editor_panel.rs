@@ -22,6 +22,36 @@ use crate::keyboard;
 
 use super::{build_editor_hotkey_table, Editor};
 
+impl Editor {
+    /// Apply a config-defined keyword highlighter when this file's extension
+    /// has no tree-sitter grammar (e.g. an in-development language). Tree-sitter
+    /// grammars always win; a no-match clears any previous custom syntax.
+    fn sync_custom_highlight(&mut self, config: &Config) {
+        let title_path = std::path::Path::new(&self.file_state.title);
+        let custom = if termide_highlight::detect_language(title_path).is_some() {
+            None
+        } else if let Some(ext) = title_path.extension().and_then(|e| e.to_str()) {
+            config
+                .highlight
+                .custom_languages
+                .iter()
+                .find(|l| l.extensions.iter().any(|e| e == ext))
+                .map(|l| {
+                    termide_highlight::KeywordSyntax::new(
+                        l.name.clone(),
+                        l.line_comment.clone(),
+                        l.block_comment.clone(),
+                        l.keywords.clone(),
+                        l.types.clone(),
+                    )
+                })
+        } else {
+            None
+        };
+        self.render_cache.highlight.set_custom_syntax(custom);
+    }
+}
+
 impl Panel for Editor {
     fn name(&self) -> &'static str {
         "editor"
@@ -117,6 +147,7 @@ impl Panel for Editor {
         if self.last_config_ptr != config_ptr {
             self.last_config_ptr = config_ptr;
             self.hotkeys = build_editor_hotkey_table(config);
+            self.sync_custom_highlight(config);
         }
     }
 
