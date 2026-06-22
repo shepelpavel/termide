@@ -126,8 +126,9 @@ The layout adapts to the terminal width, showing more panel groups on wider scre
 - journal — `Alt+L`
 
 The **git log** panel draws the commit graph with box-drawing pseudographics
-(`● │ ├ ╮ ╯`) laid out from each commit's parents. To fall back to git's native
-ASCII `--graph` instead, set it in `config.toml`:
+(`● │ ├ ╮ ╯`) laid out from each commit's parents, with each lane coloured so a
+branch can be followed by colour. To fall back to git's native ASCII `--graph`
+instead, set it in `config.toml`:
 
 ```toml
 [git_log]

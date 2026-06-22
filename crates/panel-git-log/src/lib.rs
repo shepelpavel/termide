@@ -94,6 +94,20 @@ struct GitLogRefreshResult {
     commits: Vec<CommitInfo>,
 }
 
+/// Colour for graph lane `col`, cycling through the theme's accent colours so
+/// adjacent lanes stay visually distinct. Lane 0 (the mainline) is stable at
+/// the first entry.
+fn lane_color(theme: &ThemeColors, col: usize) -> ratatui::style::Color {
+    let palette = [
+        theme.info,
+        theme.success,
+        theme.warning,
+        theme.error,
+        theme.cursor,
+    ];
+    palette[col % palette.len()]
+}
+
 /// Build HotkeyTable for the git log panel from config.
 fn build_git_log_hotkey_table(config: &Config) -> HotkeyTable {
     let mut t = HotkeyTable::new();
@@ -640,14 +654,39 @@ impl GitLogPanel {
 
             // Graph prefix (if available)
             if let Some(ref graph) = commit.graph {
-                let graph_style = if is_selected {
-                    Style::default()
-                        .fg(theme.selection_fg)
-                        .bg(theme.selection_bg)
+                if self.unicode_graph {
+                    // Box-drawing engine: colour each lane by its column so a
+                    // branch can be followed by colour (tig/lazygit style). A
+                    // glyph's char index equals its lane column (1-cell glyphs,
+                    // lanes start at 0); trailing pad spaces stay uncoloured.
+                    for (col, ch) in graph.chars().enumerate() {
+                        let cx = x_pos + col as u16;
+                        if cx >= max_x {
+                            break;
+                        }
+                        if ch == ' ' {
+                            continue;
+                        }
+                        if let Some(cell) = buf.cell_mut((cx, y)) {
+                            cell.set_char(ch);
+                            cell.set_fg(lane_color(&theme, col));
+                            if is_selected {
+                                cell.set_bg(theme.selection_bg);
+                            }
+                        }
+                    }
                 } else {
-                    Style::default().fg(theme.disabled)
-                };
-                buf.set_string(x_pos, y, graph, graph_style);
+                    // ASCII git --graph fallback: diagonals shift columns, so a
+                    // single muted colour reads better than per-column tinting.
+                    let graph_style = if is_selected {
+                        Style::default()
+                            .fg(theme.selection_fg)
+                            .bg(theme.selection_bg)
+                    } else {
+                        Style::default().fg(theme.disabled)
+                    };
+                    buf.set_string(x_pos, y, graph, graph_style);
+                }
                 x_pos += graph.width() as u16;
             }
 
@@ -1338,5 +1377,22 @@ impl Panel for GitLogPanel {
 
     fn get_working_directory(&self) -> Option<PathBuf> {
         self.repo_manager.current().map(|p| p.to_path_buf())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lane_color_is_stable_and_cycles() {
+        let theme = ThemeColors::default();
+        // Lane 0 (mainline) keeps the first palette entry.
+        assert_eq!(lane_color(&theme, 0), theme.info);
+        // Palette has 5 entries and wraps around.
+        assert_eq!(lane_color(&theme, 5), lane_color(&theme, 0));
+        assert_eq!(lane_color(&theme, 6), lane_color(&theme, 1));
+        // Adjacent lanes differ.
+        assert_ne!(lane_color(&theme, 0), lane_color(&theme, 1));
     }
 }
