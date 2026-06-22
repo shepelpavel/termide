@@ -44,6 +44,11 @@ static TRANSLATION: RwLock<Option<&'static dyn Translation>> = RwLock::new(None)
 /// Current language code (RwLock for runtime switching).
 static CURRENT_LANGUAGE: RwLock<String> = RwLock::new(String::new());
 
+/// Bumped on every successful language change so cheap, hot-path caches of
+/// translated strings (e.g. the menu bar) can detect a switch with a single
+/// atomic load instead of allocating to read [`current_language`].
+static LANGUAGE_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// Translation trait for all user-facing strings.
 pub trait Translation: Send + Sync {
     // File Manager operations
@@ -802,6 +807,7 @@ pub fn init_with_language(lang: &str) -> anyhow::Result<()> {
     if let Ok(mut guard) = CURRENT_LANGUAGE.write() {
         *guard = detected;
     }
+    LANGUAGE_GENERATION.fetch_add(1, std::sync::atomic::Ordering::Release);
     Ok(())
 }
 
@@ -818,7 +824,15 @@ pub fn set_language(lang: &str) -> anyhow::Result<()> {
     if let Ok(mut guard) = CURRENT_LANGUAGE.write() {
         *guard = lang.to_string();
     }
+    LANGUAGE_GENERATION.fetch_add(1, std::sync::atomic::Ordering::Release);
     Ok(())
+}
+
+/// Monotonic counter incremented on every language change. Cheap to read (one
+/// atomic load); caches of translated strings can store the value they were
+/// built at and rebuild when it differs.
+pub fn language_generation() -> u64 {
+    LANGUAGE_GENERATION.load(std::sync::atomic::Ordering::Acquire)
 }
 
 /// Get the current translation.
