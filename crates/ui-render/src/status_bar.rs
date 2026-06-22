@@ -10,6 +10,7 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthStr;
 
+use termide_core::{SegmentKind, StatusSegment};
 use termide_i18n as i18n;
 use termide_panel_editor::EditorInfo;
 use termide_panel_file_manager::FileInfo;
@@ -18,6 +19,61 @@ use termide_system_monitor::{DiskSpaceInfo, DiskSpaceInfoExt};
 use termide_theme::Theme;
 
 use super::menu::resource_color;
+
+/// X-range (status-bar columns) of a clickable [`StatusSegment`], with its
+/// action id. Computed identically at render time and on click so hit-testing
+/// stays accurate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SegmentHit {
+    /// First column (inclusive).
+    pub start: u16,
+    /// One past the last column (exclusive).
+    pub end: u16,
+    /// Action id routed to the panel's `handle_status_action`.
+    pub action: &'static str,
+}
+
+/// Style for a panel-contributed status segment.
+fn segment_style(kind: SegmentKind, theme: &Theme) -> Style {
+    let base = Style::default().bg(theme.accented_bg);
+    match kind {
+        SegmentKind::Label | SegmentKind::Inactive => base.fg(theme.disabled),
+        SegmentKind::Value | SegmentKind::Active => {
+            base.fg(theme.accented_fg).add_modifier(Modifier::BOLD)
+        }
+        SegmentKind::Warn => base.fg(theme.warning).add_modifier(Modifier::BOLD),
+        SegmentKind::Error => base.fg(theme.error).add_modifier(Modifier::BOLD),
+    }
+}
+
+/// Build status-bar spans for a panel's segments.
+fn segment_spans<'a>(segments: &'a [StatusSegment], theme: &Theme) -> Vec<Span<'a>> {
+    segments
+        .iter()
+        .map(|seg| Span::styled(seg.text.as_str(), segment_style(seg.kind, theme)))
+        .collect()
+}
+
+/// Compute clickable hit areas for a panel's segments, starting at `start_x`.
+///
+/// Pure function of the segment list so the renderer and the mouse handler
+/// agree on column ranges.
+pub fn segment_hit_areas(segments: &[StatusSegment], start_x: u16) -> Vec<SegmentHit> {
+    let mut hits = Vec::new();
+    let mut x = start_x;
+    for seg in segments {
+        let w = seg.text.as_str().width() as u16;
+        if let Some(action) = seg.action {
+            hits.push(SegmentHit {
+                start: x,
+                end: x + w,
+                action,
+            });
+        }
+        x += w;
+    }
+    hits
+}
 
 /// Summary of background file operations (for status bar display).
 #[derive(Debug, Clone, Default)]
@@ -131,6 +187,7 @@ impl StatusBar {
         disk_space: Option<&DiskSpaceInfo>,
         editor_info: Option<&EditorInfo>,
         terminal_info: Option<&TerminalInfo>,
+        segments: Option<&[StatusSegment]>,
     ) {
         if area.height == 0 {
             return;
@@ -144,6 +201,7 @@ impl StatusBar {
             disk_space,
             editor_info,
             terminal_info,
+            segments,
             area.width,
         );
 
@@ -181,6 +239,7 @@ impl StatusBar {
         disk_space: Option<&'a DiskSpaceInfo>,
         editor_info: Option<&'a EditorInfo>,
         terminal_info: Option<&'a TerminalInfo>,
+        segments: Option<&'a [StatusSegment]>,
         total_width: u16,
     ) -> Vec<Span<'a>> {
         let t = i18n::t();
@@ -196,6 +255,20 @@ impl StatusBar {
 
                 return vec![Span::styled(format!(" {} ", message), msg_style)];
             }
+        }
+
+        // Generic path: a focused panel that contributes its own segments takes
+        // precedence over the typed editor/FM/terminal layouts. Disk space and
+        // background ops still render on the right.
+        if let Some(segs) = segments.filter(|s| !s.is_empty()) {
+            let mut spans = segment_spans(segs, theme);
+            if let Some(ref ops) = params.background_ops {
+                append_background_ops(&mut spans, ops, theme);
+            }
+            if let Some(disk) = disk_space {
+                append_disk_space(&mut spans, disk, theme, total_width, params.disk_selected);
+            }
+            return spans;
         }
 
         let base_style = Style::default().fg(theme.disabled).bg(theme.accented_bg);
@@ -413,5 +486,59 @@ impl StatusBar {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use termide_core::{SegmentKind, StatusSegment};
+
+    #[test]
+    fn hit_areas_track_clickable_segments() {
+        // " 0x10 " (6) | "Hex" (3) | "│" (1) | "Text" (4)
+        let segs = vec![
+            StatusSegment::new(" 0x10 ", SegmentKind::Value),
+            StatusSegment::clickable("Hex", SegmentKind::Active, "toggle_hex"),
+            StatusSegment::new("│", SegmentKind::Label),
+            StatusSegment::clickable("Text", SegmentKind::Inactive, "toggle_hex"),
+        ];
+        let hits = segment_hit_areas(&segs, 0);
+        assert_eq!(
+            hits,
+            vec![
+                SegmentHit {
+                    start: 6,
+                    end: 9,
+                    action: "toggle_hex"
+                },
+                SegmentHit {
+                    start: 10,
+                    end: 14,
+                    action: "toggle_hex"
+                },
+            ]
+        );
+        // A click inside the Hex chip lands in the first hit area.
+        assert!(hits.iter().any(|h| (h.start..h.end).contains(&7)));
+    }
+
+    #[test]
+    fn hit_areas_respect_start_offset() {
+        let segs = vec![StatusSegment::clickable("X", SegmentKind::Active, "a")];
+        assert_eq!(
+            segment_hit_areas(&segs, 5),
+            vec![SegmentHit {
+                start: 5,
+                end: 6,
+                action: "a"
+            }]
+        );
+    }
+
+    #[test]
+    fn non_clickable_segments_produce_no_hits() {
+        let segs = vec![StatusSegment::new("plain", SegmentKind::Value)];
+        assert!(segment_hit_areas(&segs, 0).is_empty());
     }
 }

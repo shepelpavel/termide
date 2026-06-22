@@ -733,6 +733,11 @@ fn render_status_bar_for_active(
         } else {
             (None, None, None, None)
         };
+        // Segments a panel contributes for the generic status-bar path
+        // (e.g. binary viewer offset + Hex/Text toggle). Empty for panels on
+        // the typed editor/FM/terminal path.
+        let segments = panel.status_segments();
+
         // Disk space is read from the tick-updated cache instead of calling statvfs per render.
         let disk_space = state.cache.disk_space.as_ref();
 
@@ -766,6 +771,7 @@ fn render_status_bar_for_active(
             disk_space,
             editor_info.as_ref(),
             terminal_info.as_ref(),
+            Some(segments.as_slice()),
         );
     }
 }

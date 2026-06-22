@@ -24,7 +24,8 @@ pub use event::{
 pub use hotkey_table::HotkeyTable;
 pub use key_chord::KeyChord;
 pub use panel::{
-    Panel, PanelConfig, RenderContext, Searchable, SessionPanel, ThemeColors, WidthPreference,
+    Panel, PanelConfig, RenderContext, Searchable, SegmentKind, SessionPanel, StatusSegment,
+    ThemeColors, WidthPreference,
 };
 pub use terminal_caps::{
     get_terminal_caps, init_icon_mode, init_terminal_caps, use_emoji_icons, ColorDepth,

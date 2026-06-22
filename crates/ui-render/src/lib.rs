@@ -41,5 +41,7 @@ pub use panel_rendering::{
     render_v_divider_ghost, ExpandedPanelParams,
 };
 pub use simple_dropdown::render_simple_dropdown;
-pub use status_bar::{BackgroundOpsSummary, StatusBar, StatusBarParams};
+pub use status_bar::{
+    segment_hit_areas, BackgroundOpsSummary, SegmentHit, StatusBar, StatusBarParams,
+};
 pub use theme_dropdown::ThemeDropdown;
