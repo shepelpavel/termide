@@ -398,6 +398,9 @@ pub enum PanelEvent {
     /// Preview media file (raster image) using native graphics or xdg-open
     PreviewMedia(PathBuf),
 
+    /// Open a binary file in the hex/ASCII viewer
+    ViewBinary(PathBuf),
+
     /// Open file with system default application (xdg-open)
     OpenExternal(PathBuf),
 

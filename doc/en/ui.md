@@ -135,6 +135,17 @@ instead, set it in `config.toml`:
 unicode_graph = false
 ```
 
+Opening a **binary file** (with `Enter` or `F3` in the file manager) shows a
+read-only **hex viewer** — `offset │ hex │ ASCII` — instead of handing it to the
+system viewer. `Ctrl+L` (or the clickable `Hex│Text` chip in the status bar)
+toggles between the hex dump and a plain-text rendering of the same bytes. The
+toggle key is configurable:
+
+```toml
+[viewer.keybindings]
+toggle_hex = "Ctrl+L"
+```
+
 **Features of closeable panels:**
 - Have `[≡]` action button in panel title (click to open context menu with Close / Split / Merge / Move)
 - Can be closed with Escape, Alt+X, or F10

@@ -526,6 +526,31 @@ impl DatabaseKeybindings {
     }
 }
 
+/// File viewer panel keybindings (viewer.keybindings section).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ViewerKeybindings {
+    /// Toggle between hex and plain-text rendering (binary viewer).
+    pub toggle_hex: Option<KeyBinding>,
+    /// Toggle between rendered preview and source editing (markdown viewer).
+    pub toggle_view: Option<KeyBinding>,
+}
+
+impl ViewerKeybindings {
+    /// Fill None values with default keybindings.
+    pub fn with_defaults(&mut self) {
+        macro_rules! set_default {
+            ($field:ident, $default:expr) => {
+                if self.$field.is_none() {
+                    self.$field = Some(KeyBinding::Single($default.into()));
+                }
+            };
+        }
+
+        set_default!(toggle_hex, "Ctrl+L");
+        set_default!(toggle_view, "Ctrl+E");
+    }
+}
+
 /// Terminal panel keybindings (terminal.keybindings section).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct TerminalKeybindings {

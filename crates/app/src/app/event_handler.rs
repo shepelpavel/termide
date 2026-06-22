@@ -57,6 +57,10 @@ impl App {
                 self.event_preview_media(path)?;
             }
 
+            PanelEvent::ViewBinary(path) => {
+                self.event_view_binary(path)?;
+            }
+
             PanelEvent::OpenExternal(path) => {
                 self.event_open_external(path)?;
             }
@@ -444,6 +448,31 @@ impl App {
     }
 
     /// Handle PreviewMedia event - preview image/video using native graphics or system viewer
+    fn event_view_binary(&mut self, file_path: PathBuf) -> Result<()> {
+        use termide_panel_binary::BinaryPanel;
+
+        // Reuse an existing binary viewer if one is open.
+        if let Some(panel) = self.layout_manager.find_and_expand_panel_by_name("binary") {
+            if let Some(bin) = panel.as_any_mut().downcast_mut::<BinaryPanel>() {
+                bin.set_file(file_path);
+                self.state.needs_redraw = true;
+                return Ok(());
+            }
+        }
+
+        self.close_help_panels();
+        match BinaryPanel::new(file_path) {
+            Ok(panel) => {
+                self.add_panel_without_focus(Box::new(panel));
+                self.auto_save_session();
+            }
+            Err(e) => {
+                self.show_error_modal(format!("Failed to open binary file: {e}"));
+            }
+        }
+        Ok(())
+    }
+
     fn event_preview_media(&mut self, file_path: PathBuf) -> Result<()> {
         use termide_panel_image::ImagePanel;
 

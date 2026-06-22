@@ -4884,6 +4884,7 @@ dependencies = [
  "termide-logger",
  "termide-lsp",
  "termide-modal",
+ "termide-panel-binary",
  "termide-panel-db",
  "termide-panel-diagnostics",
  "termide-panel-editor",
@@ -5112,6 +5113,17 @@ dependencies = [
  "termide-ui",
  "unicode-segmentation",
  "unicode-width",
+]
+
+[[package]]
+name = "termide-panel-binary"
+version = "0.26.0"
+dependencies = [
+ "anyhow",
+ "crossterm 0.28.1",
+ "ratatui",
+ "termide-config",
+ "termide-core",
 ]
 
 [[package]]

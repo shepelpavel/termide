@@ -90,6 +90,12 @@ pub enum SessionPanel {
         /// Path to image file
         path: PathBuf,
     },
+    /// Binary hex/ASCII viewer panel
+    #[serde(rename = "binary")]
+    Binary {
+        /// Path to the binary file
+        path: PathBuf,
+    },
     /// Git status panel
     #[serde(rename = "git_status")]
     GitStatus {
@@ -868,6 +874,9 @@ panels = []
                     SessionPanel::Image {
                         path: PathBuf::from("/tmp/img.png"),
                     },
+                    SessionPanel::Binary {
+                        path: PathBuf::from("/tmp/data.bin"),
+                    },
                     SessionPanel::GitStatus {
                         repo_path: PathBuf::from("/tmp/repo"),
                     },
@@ -892,7 +901,7 @@ panels = []
 
         let toml_str = toml::to_string_pretty(&session).unwrap();
         let restored: Session = toml::from_str(&toml_str).unwrap();
-        assert_eq!(restored.panel_groups[0].panels.len(), 10);
+        assert_eq!(restored.panel_groups[0].panels.len(), 11);
     }
 
     // =========================================================================

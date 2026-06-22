@@ -58,9 +58,9 @@ pub(super) fn determine_file_open_event(
                 return Some(PanelEvent::OpenExternal(file_path.to_path_buf()));
             }
 
-            // 3. Binary files → xdg-open
+            // 3. Binary files → hex viewer
             if is_binary_file(file_path) {
-                return Some(PanelEvent::OpenExternal(file_path.to_path_buf()));
+                return Some(PanelEvent::ViewBinary(file_path.to_path_buf()));
             }
 
             // 4. Text files → read-only editor
@@ -88,9 +88,9 @@ pub(super) fn determine_file_open_event(
                 return Some(PanelEvent::ExecuteFile(file_path.to_path_buf()));
             }
 
-            // 5. Binary files → xdg-open
+            // 5. Binary files → hex viewer
             if is_binary_file(file_path) {
-                return Some(PanelEvent::OpenExternal(file_path.to_path_buf()));
+                return Some(PanelEvent::ViewBinary(file_path.to_path_buf()));
             }
 
             // 6. Text files → editor (editable)
