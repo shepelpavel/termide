@@ -2572,8 +2572,14 @@ impl Panel for FileManager {
                     // user reconnects/refreshes explicitly.
                     self.current_path = self.vfs.path_buf();
                     if !self.is_stale {
-                        let t = termide_i18n::t();
-                        self.show_info_modal(t.connection_error_title(), &format!("{}", e));
+                        if self.vfs.is_remote() && e.is_connection_lost() {
+                            // Dead remote session — offer Reconnect / open local /
+                            // close instead of a dead-end "OK".
+                            self.show_connection_error_modal(&format!("{}", e));
+                        } else {
+                            let t = termide_i18n::t();
+                            self.show_info_modal(t.connection_error_title(), &format!("{}", e));
+                        }
                     }
                 }
             }
@@ -2782,6 +2788,41 @@ impl FileManager {
             PendingAction::VfsMessage,
             ActiveModal::InfoAction(Box::new(modal)),
         ));
+    }
+
+    /// Show the dead-remote-session recovery dialog. The buttons report their
+    /// id back through `PendingAction::VfsMessage`, which the app routes to
+    /// [`Self::reconnect_remote`] / [`Self::switch_to_local_home`] / panel
+    /// close. Dismissing (Esc) leaves the panel on its last listing.
+    fn show_connection_error_modal(&mut self, message: &str) {
+        let t = termide_i18n::t();
+        let modal = InfoActionModal::new(
+            t.connection_error_title(),
+            vec![("".to_string(), message.to_string())],
+            vec![
+                ActionButton::new(t.vfs_reconnect(), "reconnect"),
+                ActionButton::new(t.vfs_open_local(), "go_local"),
+                ActionButton::new(t.vfs_close_panel(), "close"),
+            ],
+        );
+        self.modal_request = Some((
+            PendingAction::VfsMessage,
+            ActiveModal::InfoAction(Box::new(modal)),
+        ));
+    }
+
+    /// Reconnect the current remote path with a fresh session (drops the dead
+    /// provider first). Driven by the recovery dialog's "Reconnect" button.
+    pub fn reconnect_remote(&mut self) {
+        self.vfs.reconnect();
+    }
+
+    /// Drop the remote connection and show the local home directory. Driven by
+    /// the recovery dialog's "Open home (local)" button.
+    pub fn switch_to_local_home(&mut self) {
+        self.vfs.disconnect(); // evicts the provider and sets the local home path
+        self.current_path = self.vfs.path_buf();
+        let _ = self.load_directory();
     }
 
     /// Execute a file manager command and return resulting events.

@@ -92,5 +92,78 @@ pub enum VfsError {
     NfsMount(String),
 }
 
+impl VfsError {
+    /// True when the error means the remote *session* is gone (timed out,
+    /// reset, closed) rather than a benign per-operation failure like
+    /// permission-denied or not-found. Callers use this to offer a reconnect
+    /// instead of just reporting — a closed session and a benign per-file
+    /// error both surface as a protocol error (`Sftp`/`Ftp`/`Smb`), so the
+    /// distinction is the wording / IO kind.
+    pub fn is_connection_lost(&self) -> bool {
+        if matches!(self, VfsError::ConnectionFailed(_) | VfsError::Timeout(_)) {
+            return true;
+        }
+        if let VfsError::Io(e) = self {
+            use std::io::ErrorKind::*;
+            if matches!(
+                e.kind(),
+                BrokenPipe | ConnectionReset | ConnectionAborted | NotConnected | UnexpectedEof
+            ) {
+                return true;
+            }
+        }
+        let msg = self.to_string().to_lowercase();
+        [
+            "session closed",
+            "session is closed",
+            "channel closed",
+            "connection closed",
+            "connection reset",
+            "disconnect",
+            "broken pipe",
+            "not connected",
+            "unexpected eof",
+        ]
+        .iter()
+        .any(|needle| msg.contains(needle))
+    }
+}
+
 /// Alias for VFS operation results.
 pub type VfsResult<T> = Result<T, VfsError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn connection_lost_distinguishes_session_death_from_benign_errors() {
+        // Connection-class variants and broken-pipe IO are session death.
+        assert!(VfsError::ConnectionFailed("x".into()).is_connection_lost());
+        assert!(VfsError::Timeout("x".into()).is_connection_lost());
+        assert!(VfsError::Io(std::io::Error::new(
+            std::io::ErrorKind::BrokenPipe,
+            "broken pipe"
+        ))
+        .is_connection_lost());
+        // Message wording flags a closed session even on a generic error.
+        assert!(VfsError::RemoteError {
+            message: "session closed".into()
+        }
+        .is_connection_lost());
+
+        // Benign per-operation failures must NOT offer a reconnect.
+        assert!(!VfsError::NotFound {
+            path: std::path::PathBuf::from("/x")
+        }
+        .is_connection_lost());
+        assert!(!VfsError::PermissionDenied {
+            path: std::path::PathBuf::from("/x")
+        }
+        .is_connection_lost());
+        assert!(!VfsError::RemoteError {
+            message: "no such file".into()
+        }
+        .is_connection_lost());
+    }
+}

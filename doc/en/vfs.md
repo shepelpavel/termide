@@ -124,6 +124,15 @@ just like a local path. On the next start TermIDE reconnects in the
 background and shows the panel with a loading placeholder until the
 listing arrives — the rest of the UI is responsive immediately.
 
+### Dropped connections
+
+If the remote session is lost (idle timeout, network drop), the next
+operation fails and the panel shows a recovery dialog with three choices:
+**Reconnect** (open a fresh session to the same path), **Open home
+(local)** (drop the connection and switch the panel to your local home
+directory), or **Close panel**. Pressing `Esc` dismisses the dialog and
+leaves the panel on its last listing. The panel never loops on the error.
+
 ## Limitations / known gaps
 
 - No `smb://` / `nfs://` provider yet — only URL parsing.

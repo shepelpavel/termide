@@ -538,6 +538,19 @@ impl VfsState {
         }
     }
 
+    /// Drop the (possibly dead) provider for the current remote path and start
+    /// a fresh connection to the same path. A no-op for local paths.
+    pub fn reconnect(&mut self) {
+        if self.current_path.is_remote() {
+            let key = self.current_path.connection_key();
+            self.manager.disconnect(&key);
+            self.connection_status = None;
+            self.pending_operation = None;
+        }
+        // `start_list_dir` now sees the path as disconnected and re-connects.
+        self.start_list_dir();
+    }
+
     /// Disconnect from current remote.
     pub fn disconnect(&mut self) {
         if self.current_path.is_remote() {
