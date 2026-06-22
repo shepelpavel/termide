@@ -12,5 +12,6 @@ crossterm.workspace = true
 ratatui.workspace = true
 
 # Workspace crates
+termide-clipboard = { path = "../clipboard" }
 termide-config = { path = "../config" }
 termide-core = { path = "../core" }
