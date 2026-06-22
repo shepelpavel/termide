@@ -208,6 +208,30 @@ impl App {
         Ok(())
     }
 
+    /// Route the dead-remote-session recovery dialog's button to the active
+    /// file manager (reconnect / open local) or close the panel. Plain VFS
+    /// "OK" modals return id "ok" and fall through to the no-op arm.
+    fn handle_vfs_message_action(&mut self, value: Box<dyn std::any::Any>) {
+        use termide_modal::InfoActionResult;
+        let Some(InfoActionResult::Action(id)) = value.downcast_ref::<InfoActionResult>() else {
+            return;
+        };
+        match id.as_str() {
+            "reconnect" => {
+                if let Some(fm) = self.active_file_manager_mut() {
+                    fm.reconnect_remote();
+                }
+            }
+            "go_local" => {
+                if let Some(fm) = self.active_file_manager_mut() {
+                    fm.switch_to_local_home();
+                }
+            }
+            "close" => self.close_panel_at_index(),
+            _ => {}
+        }
+    }
+
     /// Handle modal window result
     pub(super) fn handle_modal_result(&mut self, value: Box<dyn std::any::Any>) -> Result<()> {
         use termide_state::PendingAction;
@@ -490,9 +514,11 @@ impl App {
                 } => {
                     self.handle_goto_path(value)?;
                 }
-                // VFS message (connection cancelled, error, etc.) - just close modal
+                // VFS message / connection-error recovery dialog. Plain "OK"
+                // modals return id "ok" (ignored); the dead-session dialog
+                // returns reconnect / go_local / close.
                 PendingAction::VfsMessage => {
-                    // No-op, modal is already closed
+                    self.handle_vfs_message_action(value);
                 }
                 // Handle cancelled copy/move operation cleanup
                 PendingAction::CancelCopyCleanup {
