@@ -34,6 +34,7 @@ use termide_core::{
     Config, HotkeyTable, KeyChord, Panel, PanelEvent, RenderContext, SegmentKind, SessionPanel,
     StatusSegment, Theme, ThemeColors, WidthPreference,
 };
+use termide_modal::{FindBar, FindBarAction, FindBarBtn, FindBarConfig, FindField};
 
 /// Bytes per section; rows are laid out in whole sections (16, 32, 48, …).
 const SECTION: u64 = 16;
@@ -41,6 +42,13 @@ const SECTION: u64 = 16;
 /// Upper bound on a single clipboard copy, so a huge selection can't allocate
 /// without limit.
 const MAX_COPY: u64 = 1 << 20;
+
+/// Search scans at most this many bytes (from the start); larger files report
+/// "file too large to search" rather than scanning unbounded.
+const MAX_SEARCH_BYTES: u64 = 64 << 20;
+
+/// Cap on collected match offsets.
+const MAX_MATCHES: usize = 10_000;
 
 /// Which column zone the cursor edits/navigates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,10 +77,18 @@ pub struct BinaryPanel {
     anchor: Option<u64>,
     /// Active column zone (hex or ASCII).
     zone: Zone,
+    /// Inline find bar (ASCII / hex byte search), when open.
+    find_bar: Option<FindBar>,
+    /// Match start offsets from the last search.
+    matches: Vec<u64>,
+    /// Index of the current match within `matches`.
+    match_idx: usize,
     /// Last render area (absolute) for click mapping + paging.
     last_area: Rect,
     /// Cached theme colors.
     theme: ThemeColors,
+    /// Full theme, cached for rendering the find bar.
+    theme_full: Option<Theme>,
     /// Configurable hotkeys (toggle hex/text).
     hotkeys: HotkeyTable,
     /// Pointer of the last `Arc<Config>` used to build hotkeys.
@@ -88,6 +104,48 @@ fn bytes_per_row(width: u16) -> u64 {
     (fit / SECTION).max(1) * SECTION
 }
 
+/// Parse a hex query (`"ff fe"` / `"fffe"`) into bytes; `None` if it has odd
+/// digits or a non-hex character.
+fn parse_hex(q: &str) -> Option<Vec<u8>> {
+    let digits: String = q.chars().filter(|c| !c.is_whitespace()).collect();
+    if digits.is_empty() || !digits.len().is_multiple_of(2) {
+        return None;
+    }
+    (0..digits.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&digits[i..i + 2], 16).ok())
+        .collect()
+}
+
+/// All start offsets where `needle` occurs in `hay` (capped at [`MAX_MATCHES`]).
+/// `ci` does ASCII-case-insensitive matching.
+fn find_all(hay: &[u8], needle: &[u8], ci: bool) -> Vec<u64> {
+    let mut out = Vec::new();
+    if needle.is_empty() || needle.len() > hay.len() {
+        return out;
+    }
+    let eq = |a: &u8, b: &u8| {
+        if ci {
+            a.eq_ignore_ascii_case(b)
+        } else {
+            a == b
+        }
+    };
+    for i in 0..=hay.len() - needle.len() {
+        if hay[i..i + needle.len()]
+            .iter()
+            .zip(needle)
+            .all(|(a, b)| eq(a, b))
+        {
+            out.push(i as u64);
+            if out.len() >= MAX_MATCHES {
+                break;
+            }
+        }
+    }
+    out
+}
+
 impl BinaryPanel {
     /// Open a binary file in the hex viewer.
     pub fn new(path: PathBuf) -> Result<Self> {
@@ -101,8 +159,12 @@ impl BinaryPanel {
             cursor: 0,
             anchor: None,
             zone: Zone::Hex,
+            find_bar: None,
+            matches: Vec::new(),
+            match_idx: 0,
             last_area: Rect::default(),
             theme: ThemeColors::default(),
+            theme_full: None,
             hotkeys: HotkeyTable::default(),
             last_config_ptr: 0,
         };
@@ -261,6 +323,115 @@ impl BinaryPanel {
         vec![PanelEvent::SwapActiveToText(self.file_path.clone())]
     }
 
+    /// Open the inline find bar (ASCII substring or hex byte sequence).
+    fn open_find(&mut self) {
+        let mut bar = FindBar::new(FindBarConfig {
+            fields: vec![FindField::Find],
+            // Prev/Next navigation, ASCII case toggle, and the hex-mode toggle.
+            buttons: vec![
+                FindBarBtn::Prev,
+                FindBarBtn::Next,
+                FindBarBtn::Case,
+                FindBarBtn::Hex,
+            ],
+        });
+        bar.focus_first();
+        self.find_bar = Some(bar);
+        self.matches.clear();
+        self.match_idx = 0;
+    }
+
+    fn close_find(&mut self) {
+        self.find_bar = None;
+        self.matches.clear();
+    }
+
+    /// Parse the query into a search needle: hex bytes when the `[hex]` toggle
+    /// is on, otherwise the raw ASCII bytes. Returns `(needle, case_insensitive)`.
+    fn needle(&self) -> Option<(Vec<u8>, bool)> {
+        let bar = self.find_bar.as_ref()?;
+        let q = bar.find_text();
+        if q.is_empty() {
+            return None;
+        }
+        if bar.hex_mode() {
+            parse_hex(q).map(|n| (n, false))
+        } else {
+            Some((q.as_bytes().to_vec(), !bar.case_sensitive()))
+        }
+    }
+
+    /// Re-run the search and jump to the first match at/after the cursor.
+    fn run_search(&mut self) {
+        let parsed = self.needle();
+        let too_large = self.len > MAX_SEARCH_BYTES;
+
+        let Some((needle, ci)) = parsed else {
+            self.matches.clear();
+            if let Some(bar) = self.find_bar.as_mut() {
+                bar.clear_match_info();
+                let hex_bad = bar.hex_mode() && !bar.find_text().is_empty();
+                bar.set_info_text(hex_bad.then(|| "invalid hex".to_string()));
+            }
+            return;
+        };
+
+        if too_large {
+            self.matches.clear();
+            if let Some(bar) = self.find_bar.as_mut() {
+                bar.clear_match_info();
+                bar.set_info_text(Some("file too large to search".to_string()));
+            }
+            return;
+        }
+
+        let cap = self.len.min(MAX_SEARCH_BYTES) as usize;
+        let hay = self.read_window(0, cap);
+        self.matches = find_all(&hay, &needle, ci);
+        self.match_idx = 0;
+
+        if let Some(bar) = self.find_bar.as_mut() {
+            bar.set_info_text(None);
+            if self.matches.is_empty() {
+                bar.set_match_info(0, 0);
+            } else {
+                bar.set_match_info(1, self.matches.len());
+            }
+        }
+        if let Some(&off) = self.matches.first() {
+            self.set_cursor(off, false);
+        }
+    }
+
+    /// Step to the next/previous match and move the cursor there.
+    fn step_match(&mut self, forward: bool) {
+        if self.matches.is_empty() {
+            return;
+        }
+        let n = self.matches.len();
+        self.match_idx = if forward {
+            (self.match_idx + 1) % n
+        } else {
+            (self.match_idx + n - 1) % n
+        };
+        let off = self.matches[self.match_idx];
+        if let Some(bar) = self.find_bar.as_mut() {
+            bar.set_match_info(self.match_idx + 1, n);
+        }
+        self.set_cursor(off, false);
+    }
+
+    fn handle_find_action(&mut self, action: FindBarAction) -> Vec<PanelEvent> {
+        match action {
+            FindBarAction::QueryChanged | FindBarAction::Refresh => self.run_search(),
+            FindBarAction::Next | FindBarAction::Submit => self.step_match(true),
+            FindBarAction::Previous => self.step_match(false),
+            FindBarAction::Close => self.close_find(),
+            _ => {}
+        }
+        vec![PanelEvent::NeedsRedraw]
+    }
+
     /// Style for a byte cell, in the hex or ASCII representation.
     fn cell_style(&self, gi: u64, byte: u8, repr: Zone) -> Style {
         let mut st = Style::default().fg(if byte == 0 {
@@ -293,6 +464,10 @@ impl BinaryPanel {
         spans.push(Span::styled("  ", dim));
 
         for i in 0..cols as usize {
+            // Separator after the byte: a dim `│` every 8 bytes for orientation
+            // (width-neutral — it replaces the inter-byte space), else a space.
+            let last = i + 1 == cols as usize;
+            let sep = if i % 8 == 7 && !last { "│" } else { " " };
             match bytes.get(i) {
                 Some(&b) => {
                     let gi = off + i as u64;
@@ -300,9 +475,12 @@ impl BinaryPanel {
                         format!("{b:02x}"),
                         self.cell_style(gi, b, Zone::Hex),
                     ));
-                    spans.push(Span::styled(" ", dim));
+                    spans.push(Span::styled(sep, dim));
                 }
-                None => spans.push(Span::styled("   ", dim)),
+                None => {
+                    spans.push(Span::styled("  ", dim));
+                    spans.push(Span::styled(sep, dim));
+                }
             }
         }
 
@@ -354,6 +532,7 @@ impl Panel for BinaryPanel {
 
     fn prepare_render(&mut self, theme: &Theme, config: &Arc<Config>) {
         self.theme = ThemeColors::from(theme);
+        self.theme_full = Some(*theme);
         let ptr = Arc::as_ptr(config) as usize;
         if self.last_config_ptr != ptr {
             self.last_config_ptr = ptr;
@@ -367,40 +546,60 @@ impl Panel for BinaryPanel {
         if area.width == 0 || area.height == 0 {
             return;
         }
-        self.last_area = area;
+
+        // Reserve the bottom row(s) for the find bar when open.
+        let bar_h = self.find_bar.as_ref().map(|b| b.height()).unwrap_or(0);
+        let hex_area = Rect {
+            height: area.height.saturating_sub(bar_h),
+            ..area
+        };
+        self.last_area = hex_area;
 
         if let Some(ref err) = self.error {
-            buf.set_string(area.x, area.y, err, Style::default().fg(self.theme.error));
-            return;
-        }
-        if self.len == 0 {
             buf.set_string(
-                area.x,
-                area.y,
+                hex_area.x,
+                hex_area.y,
+                err,
+                Style::default().fg(self.theme.error),
+            );
+        } else if self.len == 0 {
+            buf.set_string(
+                hex_area.x,
+                hex_area.y,
                 "(empty file)",
                 Style::default().fg(self.theme.disabled),
             );
-            return;
+        } else if hex_area.height > 0 {
+            self.clamp_top();
+
+            let bpr = self.cols();
+            let visible_rows = hex_area.height as u64;
+            let start = self.top_byte;
+            let want = (visible_rows * bpr).min(self.len - start) as usize;
+            let window = self.read_window(start, want);
+
+            for row in 0..visible_rows {
+                let row_start = (row * bpr) as usize;
+                if row_start >= window.len() {
+                    break;
+                }
+                let row_end = (row_start + bpr as usize).min(window.len());
+                let bytes = &window[row_start..row_end];
+                let off = start + row * bpr;
+                let line = self.hex_row(off, bytes, bpr);
+                buf.set_line(hex_area.x, hex_area.y + row as u16, &line, hex_area.width);
+            }
         }
 
-        self.clamp_top();
-
-        let bpr = self.cols();
-        let visible_rows = area.height as u64;
-        let start = self.top_byte;
-        let want = (visible_rows * bpr).min(self.len - start) as usize;
-        let window = self.read_window(start, want);
-
-        for row in 0..visible_rows {
-            let row_start = (row * bpr) as usize;
-            if row_start >= window.len() {
-                break;
-            }
-            let row_end = (row_start + bpr as usize).min(window.len());
-            let bytes = &window[row_start..row_end];
-            let off = start + row * bpr;
-            let line = self.hex_row(off, bytes, bpr);
-            buf.set_line(area.x, area.y + row as u16, &line, area.width);
+        // Find bar along the bottom.
+        if let (Some(bar), Some(theme)) = (self.find_bar.as_mut(), self.theme_full.as_ref()) {
+            let bar_area = Rect {
+                x: area.x,
+                y: area.y + hex_area.height,
+                width: area.width,
+                height: bar_h,
+            };
+            bar.render(bar_area, buf, theme, true);
         }
     }
 
@@ -439,6 +638,24 @@ impl Panel for BinaryPanel {
 
     fn handle_key(&mut self, chord: KeyChord) -> Vec<PanelEvent> {
         let key = chord.raw;
+
+        // While the find bar is open it owns input (Esc / Ctrl+F close it).
+        if self.find_bar.is_some() {
+            if key.code == KeyCode::Char('f') && key.modifiers == KeyModifiers::CONTROL {
+                self.close_find();
+                return vec![PanelEvent::NeedsRedraw];
+            }
+            let action = self.find_bar.as_mut().unwrap().handle_key(key);
+            return match action {
+                Some(a) => self.handle_find_action(a),
+                None => vec![PanelEvent::NeedsRedraw],
+            };
+        }
+        if key.code == KeyCode::Char('f') && key.modifiers == KeyModifiers::CONTROL {
+            self.open_find();
+            return vec![PanelEvent::NeedsRedraw];
+        }
+
         if self.hotkeys.matches("toggle_hex", &key) {
             return self.swap_to_text();
         }
@@ -497,6 +714,10 @@ impl Panel for BinaryPanel {
             _ => return vec![],
         }
         vec![PanelEvent::NeedsRedraw]
+    }
+
+    fn captures_escape(&self) -> bool {
+        self.find_bar.is_some()
     }
 
     fn to_session(&self, _session_dir: &Path) -> Option<SessionPanel> {
@@ -579,6 +800,29 @@ mod tests {
         assert_eq!(p.byte_at(61, 0), Some((2, Zone::Ascii)));
         // second visible row, hex byte 0
         assert_eq!(p.byte_at(10, 1), Some((16, Zone::Hex)));
+    }
+
+    #[test]
+    fn parse_hex_accepts_pairs_rejects_garbage() {
+        assert_eq!(parse_hex("ff fe"), Some(vec![0xff, 0xfe]));
+        assert_eq!(parse_hex("FFFE"), Some(vec![0xff, 0xfe]));
+        assert_eq!(parse_hex("f"), None); // odd
+        assert_eq!(parse_hex("zz"), None); // non-hex
+        assert_eq!(parse_hex(""), None);
+    }
+
+    #[test]
+    fn find_all_locates_matches() {
+        let hay = b"abXYabXY";
+        assert_eq!(find_all(hay, b"XY", false), vec![2, 6]);
+        // case-insensitive ASCII
+        assert_eq!(find_all(b"AbcaBC", b"abc", true), vec![0, 3]);
+        // hex bytes (exact)
+        assert_eq!(
+            find_all(&[0x00, 0xff, 0x00, 0xff], &[0x00, 0xff], false),
+            vec![0, 2]
+        );
+        assert!(find_all(hay, b"ZZ", false).is_empty());
     }
 
     #[test]

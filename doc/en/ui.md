@@ -136,10 +136,17 @@ unicode_graph = false
 ```
 
 Opening a **binary file** (with `Enter` or `F3` in the file manager) shows a
-read-only **hex viewer** — `offset │ hex │ ASCII` — instead of handing it to the
-system viewer. `Ctrl+L` (or the clickable `Hex│Text` chip in the status bar)
-toggles between the hex dump and a plain-text rendering of the same bytes. The
-toggle key is configurable:
+read-only **hex viewer** — `offset │ hex │ ASCII`, with the row width adapting to
+the panel in 16-byte sections — instead of handing it to the system viewer. A
+byte cursor is shown in both the hex and ASCII zones (`Tab` switches the active
+one); arrows/`hjkl` move it, `Shift`+move selects, and `Ctrl+C` copies the
+selection (as hex from the hex zone, as text from the ASCII zone). `Ctrl+F`
+opens a find bar that searches an ASCII substring or — with the `[hex]` toggle —
+a hex byte sequence like `ff fe`.
+
+`Ctrl+L` (or the `[Hex]` chip in the status bar) swaps the viewer in place for a
+read-only text editor of the same file; the editor's `Ctrl+L` swaps back to hex.
+The toggle key is configurable:
 
 ```toml
 [viewer.keybindings]

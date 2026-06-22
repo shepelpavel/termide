@@ -5125,6 +5125,8 @@ dependencies = [
  "termide-clipboard",
  "termide-config",
  "termide-core",
+ "termide-modal",
+ "termide-theme",
 ]
 
 [[package]]
