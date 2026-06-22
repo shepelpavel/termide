@@ -247,11 +247,25 @@ pub struct GitDiffSettings {
 }
 
 /// Git log panel settings.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitLogSettings {
     /// Git log panel keyboard shortcuts
     #[serde(default)]
     pub keybindings: GitLogKeybindings,
+    /// Draw the commit graph with box-drawing pseudographics (`● │ ├ ╮ ╯`)
+    /// computed from commit parents. When `false`, fall back to git's native
+    /// ASCII `--graph` output.
+    #[serde(default = "default_true")]
+    pub unicode_graph: bool,
+}
+
+impl Default for GitLogSettings {
+    fn default() -> Self {
+        Self {
+            keybindings: GitLogKeybindings::default(),
+            unicode_graph: true,
+        }
+    }
 }
 
 /// Database viewer panel settings.

@@ -125,6 +125,15 @@ The layout adapts to the terminal width, showing more panel groups on wider scre
 - help — `Alt+H`
 - journal — `Alt+L`
 
+The **git log** panel draws the commit graph with box-drawing pseudographics
+(`● │ ├ ╮ ╯`) laid out from each commit's parents. To fall back to git's native
+ASCII `--graph` instead, set it in `config.toml`:
+
+```toml
+[git_log]
+unicode_graph = false
+```
+
 **Features of closeable panels:**
 - Have `[≡]` action button in panel title (click to open context menu with Close / Split / Merge / Move)
 - Can be closed with Escape, Alt+X, or F10

@@ -72,6 +72,9 @@ pub struct GitLogPanel {
     status_message: Option<String>,
     /// Cached vim_mode setting for keyboard handling
     vim_mode: bool,
+    /// Draw the commit graph with the box-drawing layout engine
+    /// (`git_log.unicode_graph`); when false, use git's ASCII `--graph`.
+    unicode_graph: bool,
     /// Pending modal request for the app to pick up
     modal_request: Option<(PendingAction, ActiveModal)>,
     /// Hotkey table for configurable keyboard shortcuts
@@ -144,6 +147,9 @@ impl GitLogPanel {
             last_area: Rect::default(),
             status_message: None,
             vim_mode: false,
+            // Default on; prepare_render syncs it from config before the first
+            // user-driven refresh. Matches `GitLogSettings::default()`.
+            unicode_graph: true,
             modal_request: None,
             hotkeys: HotkeyTable::default(),
             last_config_ptr: 0,
@@ -195,13 +201,18 @@ impl GitLogPanel {
         let repo = repo.to_path_buf();
         let count = self.commit_count;
         let selected_branch = self.selected_branch.clone();
+        let unicode_graph = self.unicode_graph;
 
         let (tx, rx) = std::sync::mpsc::channel();
         self.refresh_rx = Some(rx);
         std::thread::spawn(move || {
             let branch = git::get_current_branch(&repo);
             let branches = git::get_all_branches(&repo);
-            let commits = git::get_log_with_graph(&repo, count, selected_branch.as_deref());
+            let commits = if unicode_graph {
+                git::get_log_graph_unicode(&repo, count, selected_branch.as_deref())
+            } else {
+                git::get_log_with_graph(&repo, count, selected_branch.as_deref())
+            };
             let _ = tx.send(GitLogRefreshResult {
                 branch,
                 branches,
@@ -932,6 +943,7 @@ impl Panel for GitLogPanel {
     fn prepare_render(&mut self, theme: &Theme, config: &std::sync::Arc<Config>) {
         self.cached_theme = ThemeColors::from(theme);
         self.vim_mode = config.general.vim_mode;
+        self.unicode_graph = config.git_log.unicode_graph;
         let config_ptr = std::sync::Arc::as_ptr(config) as usize;
         if self.last_config_ptr != config_ptr {
             self.last_config_ptr = config_ptr;

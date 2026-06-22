@@ -1,9 +1,10 @@
-//! PROTOTYPE — commit-graph layout engine ("variant B").
+//! Commit-graph layout engine.
 //!
 //! Renders a commit graph with proper box-drawing junctions (`● │ ├ ╮ ╯ ╭ ╰ ─`)
 //! computed from each commit's parent hashes, instead of restyling git's
 //! diagonal ASCII output. It is a **pure** function over `(hash, parents)` so it
-//! can be unit-tested in isolation; it is NOT yet wired into the git-log panel.
+//! can be unit-tested in isolation; [`crate::get_log_graph_unicode`] wires it to
+//! the git-log panel (gated by the `git_log.unicode_graph` setting).
 //!
 //! Layout model (lazygit/tig-flavoured):
 //! - One **commit row** per commit: `●` in the commit's lane, `│` for every
