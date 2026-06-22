@@ -2562,8 +2562,15 @@ impl Panel for FileManager {
                 }
                 Err(e) => {
                     log::error!("VFS operation failed: {}", e);
+                    // Sync to the path `vfs` restored on failure, but do NOT
+                    // reload: the listing operation just failed, and reloading
+                    // starts another one. On a dead remote session every retry
+                    // fails identically, so an auto-reload here spins an
+                    // infinite error→reload→error loop (a new alert per tick).
+                    // The previous listing is still shown (remote entries aren't
+                    // cleared on failure), so the panel stays consistent; the
+                    // user reconnects/refreshes explicitly.
                     self.current_path = self.vfs.path_buf();
-                    let _ = self.load_directory();
                     if !self.is_stale {
                         let t = termide_i18n::t();
                         self.show_info_modal(t.connection_error_title(), &format!("{}", e));
