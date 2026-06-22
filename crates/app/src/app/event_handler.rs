@@ -61,6 +61,14 @@ impl App {
                 self.event_view_binary(path)?;
             }
 
+            PanelEvent::SwapActiveToHex(path) => {
+                self.event_swap_active_to_hex(path)?;
+            }
+
+            PanelEvent::SwapActiveToText(path) => {
+                self.event_swap_active_to_text(path)?;
+            }
+
             PanelEvent::OpenExternal(path) => {
                 self.event_open_external(path)?;
             }
@@ -448,6 +456,38 @@ impl App {
     }
 
     /// Handle PreviewMedia event - preview image/video using native graphics or system viewer
+    /// Swap the active panel in place for a hex viewer of the same file.
+    fn event_swap_active_to_hex(&mut self, file_path: PathBuf) -> Result<()> {
+        use termide_panel_binary::BinaryPanel;
+        match BinaryPanel::new(file_path) {
+            Ok(panel) => {
+                self.layout_manager.replace_active_panel(Box::new(panel));
+                self.state.needs_redraw = true;
+                self.auto_save_session();
+            }
+            Err(e) => self.show_error_modal(format!("Failed to open binary file: {e}")),
+        }
+        Ok(())
+    }
+
+    /// Swap the active panel in place for a read-only editor of the same file.
+    fn event_swap_active_to_text(&mut self, file_path: PathBuf) -> Result<()> {
+        use termide_panel_editor::{Editor, EditorConfig};
+        match Editor::open_file_with_config(file_path, EditorConfig::view_only()) {
+            Ok(mut editor) => {
+                if let Some(ref mut lsp) = self.state.lsp_manager {
+                    editor.init_lsp(lsp);
+                }
+                self.layout_manager.replace_active_panel(Box::new(editor));
+                self.notify_outline_file_opened();
+                self.state.needs_redraw = true;
+                self.auto_save_session();
+            }
+            Err(e) => self.show_error_modal(format!("Failed to open file: {e}")),
+        }
+        Ok(())
+    }
+
     fn event_view_binary(&mut self, file_path: PathBuf) -> Result<()> {
         use termide_panel_binary::BinaryPanel;
 

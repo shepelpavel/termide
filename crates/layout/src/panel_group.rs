@@ -105,6 +105,19 @@ impl PanelGroup {
         self.on_panels_changed_insert(pos);
     }
 
+    /// Replace the panel at `index` in place, returning the old one.
+    ///
+    /// Panel count and layout (widths/heights, focus) are unchanged — only the
+    /// occupant of the slot changes, which is what "swap this view for another"
+    /// (e.g. hex ⇄ text) needs.
+    pub fn replace_panel(&mut self, index: usize, panel: Box<dyn Panel>) -> Option<Box<dyn Panel>> {
+        if index < self.panels.len() {
+            Some(std::mem::replace(&mut self.panels[index], panel))
+        } else {
+            None
+        }
+    }
+
     /// Remove panel from group by index.
     pub fn remove_panel(&mut self, index: usize) -> Option<Box<dyn Panel>> {
         if index >= self.panels.len() {

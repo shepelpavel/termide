@@ -1,10 +1,16 @@
-//! Binary file viewer panel (read-only).
+//! Binary file viewer panel (read-only hex/ASCII).
 //!
-//! Renders a binary file as a classic hex dump — `offset │ 16 hex bytes │
-//! ASCII gutter` — in pure text pseudographics, or as a plain-text view of the
-//! same bytes. The file is read in windows on demand so large files are not
-//! loaded fully into memory. The offset and a clickable `Hex│Text` toggle are
-//! contributed to the global status bar via [`Panel::status_segments`].
+//! Renders a binary file as a classic hex dump — `offset │ hex bytes │ ASCII
+//! gutter` — in pure text pseudographics. The number of bytes per row adapts to
+//! the panel width in 16-byte sections, so a wide panel shows 32/48/… bytes per
+//! row. The file is read in windows on demand so large files are not loaded
+//! fully into memory.
+//!
+//! The viewer is hex-only: the plain-text view of the same file is the editor.
+//! `Ctrl+L` (or the `Text` chip in the status bar) swaps this panel in place
+//! for a read-only editor; the editor's `Ctrl+L` swaps back to hex. The offset
+//! and the `Hex│Text` toggle are contributed to the global status bar via
+//! [`Panel::status_segments`].
 
 use std::any::Any;
 use std::fs::File;
@@ -26,17 +32,8 @@ use termide_core::{
     StatusSegment, Theme, ThemeColors, WidthPreference,
 };
 
-/// Number of bytes shown per row in hex mode.
-const HEX_COLS: u64 = 16;
-
-/// How the bytes are presented.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ViewMode {
-    /// `offset │ hex │ ASCII` dump.
-    Hex,
-    /// Plain-text rendering (non-printable bytes shown as `·`).
-    Text,
-}
+/// Bytes per section; rows are laid out in whole sections (16, 32, 48, …).
+const SECTION: u64 = 16;
 
 /// Read-only binary (hex/ASCII) viewer.
 pub struct BinaryPanel {
@@ -50,11 +47,9 @@ pub struct BinaryPanel {
     len: u64,
     /// Error message if the file could not be opened.
     error: Option<String>,
-    /// Current presentation mode.
-    mode: ViewMode,
     /// Byte offset of the first visible row (kept aligned to the row size).
     top_byte: u64,
-    /// Last inner width/height seen in `render` (for text wrapping + paging).
+    /// Last inner width/height seen in `render` (for column fitting + paging).
     last_inner: (u16, u16),
     /// Cached theme colors.
     theme: ThemeColors,
@@ -64,39 +59,35 @@ pub struct BinaryPanel {
     last_config_ptr: usize,
 }
 
+/// Bytes shown per row for the given inner width: as many whole 16-byte
+/// sections as fit, at least one. Row layout is
+/// `8 offset + 2 + n*3 hex + 1 + n ascii` ≈ `11 + 4n` columns.
+fn bytes_per_row(width: u16) -> u64 {
+    let usable = (width as i64 - 11).max(0);
+    let fit = (usable / 4) as u64;
+    (fit / SECTION).max(1) * SECTION
+}
+
 impl BinaryPanel {
     /// Open a binary file in the hex viewer.
     pub fn new(path: PathBuf) -> Result<Self> {
-        let title = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("binary")
-            .to_string();
-
-        let (file, len, error) = match File::open(&path) {
-            Ok(f) => {
-                let len = f.metadata().map(|m| m.len()).unwrap_or(0);
-                (Some(f), len, None)
-            }
-            Err(e) => (None, 0, Some(format!("Cannot open file: {e}"))),
-        };
-
-        Ok(Self {
-            file_path: path,
-            title,
-            file,
-            len,
-            error,
-            mode: ViewMode::Hex,
+        let mut panel = Self {
+            file_path: path.clone(),
+            title: String::new(),
+            file: None,
+            len: 0,
+            error: None,
             top_byte: 0,
             last_inner: (0, 0),
             theme: ThemeColors::default(),
             hotkeys: HotkeyTable::default(),
             last_config_ptr: 0,
-        })
+        };
+        panel.set_file(path);
+        Ok(panel)
     }
 
-    /// Point the panel at a different file (reuse an existing viewer).
+    /// Point the panel at a file (also used to reuse an existing viewer).
     pub fn set_file(&mut self, path: PathBuf) {
         self.title = path
             .file_name()
@@ -119,28 +110,22 @@ impl BinaryPanel {
         self.top_byte = 0;
     }
 
-    /// Bytes shown per row for the current mode.
-    fn bytes_per_row(&self) -> u64 {
-        match self.mode {
-            ViewMode::Hex => HEX_COLS,
-            // Text wraps at the panel width; fall back to a sane default before
-            // the first render has recorded an area.
-            ViewMode::Text => (self.last_inner.0 as u64).max(1),
-        }
+    /// Bytes per row for the current width.
+    fn cols(&self) -> u64 {
+        bytes_per_row(self.last_inner.0)
     }
 
-    /// Largest valid `top_byte`, aligned to the row size.
+    /// Largest valid `top_byte`, aligned to `bpr`.
     fn max_top(&self, bpr: u64) -> u64 {
         if self.len == 0 {
             return 0;
         }
-        let last_row = (self.len.saturating_sub(1)) / bpr;
-        last_row * bpr
+        (self.len.saturating_sub(1) / bpr) * bpr
     }
 
-    /// Re-align and clamp `top_byte` after a mode/area/scroll change.
+    /// Re-align and clamp `top_byte` after an area/scroll change.
     fn clamp_scroll(&mut self) {
-        let bpr = self.bytes_per_row();
+        let bpr = self.cols();
         self.top_byte -= self.top_byte % bpr;
         let max_top = self.max_top(bpr);
         if self.top_byte > max_top {
@@ -170,44 +155,35 @@ impl BinaryPanel {
         }
     }
 
-    fn toggle_mode(&mut self) -> Vec<PanelEvent> {
-        self.mode = match self.mode {
-            ViewMode::Hex => ViewMode::Text,
-            ViewMode::Text => ViewMode::Hex,
-        };
-        self.clamp_scroll();
-        vec![PanelEvent::NeedsRedraw]
-    }
-
     fn scroll_rows(&mut self, rows: i64) {
-        let bpr = self.bytes_per_row() as i64;
+        let bpr = self.cols() as i64;
         let delta = rows.saturating_mul(bpr);
-        let new = (self.top_byte as i64 + delta).max(0) as u64;
-        self.top_byte = new;
+        self.top_byte = (self.top_byte as i64 + delta).max(0) as u64;
         self.clamp_scroll();
     }
 
-    /// Build one hex-dump row (`offset │ hex │ ASCII`) as styled spans.
-    fn hex_row<'a>(&self, off: u64, bytes: &[u8]) -> Line<'a> {
+    /// Event swapping this hex panel in place for a read-only text editor.
+    fn swap_to_text(&self) -> Vec<PanelEvent> {
+        vec![PanelEvent::SwapActiveToText(self.file_path.clone())]
+    }
+
+    /// Build one hex-dump row (`offset │ hex │ ASCII`) over `cols` columns.
+    fn hex_row<'a>(&self, off: u64, bytes: &[u8], cols: u64) -> Line<'a> {
         let dim = Style::default().fg(self.theme.disabled);
         let fg = Style::default().fg(self.theme.fg);
         let off_style = Style::default().fg(self.theme.line_numbers);
 
-        let mut spans: Vec<Span<'a>> = Vec::with_capacity(HEX_COLS as usize * 2 + 4);
+        let mut spans: Vec<Span<'a>> = Vec::with_capacity(cols as usize * 2 + 4);
         spans.push(Span::styled(format!("{off:08X}"), off_style));
         spans.push(Span::styled("  ", dim));
 
-        for i in 0..HEX_COLS as usize {
+        for i in 0..cols as usize {
             match bytes.get(i) {
                 Some(&b) => {
                     let style = if b == 0 { dim } else { fg };
                     spans.push(Span::styled(format!("{b:02x} "), style));
                 }
                 None => spans.push(Span::styled("   ", dim)),
-            }
-            // Extra gap after the 8th byte for readability.
-            if i == 7 {
-                spans.push(Span::styled(" ", dim));
             }
         }
 
@@ -221,22 +197,6 @@ impl BinaryPanel {
         }
 
         Line::from(spans)
-    }
-
-    /// Build one plain-text row from `bytes` (non-printable shown as `·`).
-    fn text_row<'a>(&self, bytes: &[u8]) -> Line<'a> {
-        let fg = Style::default().fg(self.theme.fg);
-        let s: String = bytes
-            .iter()
-            .map(|&b| {
-                if (0x20..=0x7e).contains(&b) || b == b'\t' {
-                    b as char
-                } else {
-                    '·'
-                }
-            })
-            .collect();
-        Line::from(Span::styled(s, fg))
     }
 }
 
@@ -284,10 +244,10 @@ impl Panel for BinaryPanel {
             return;
         }
 
-        // A mode/area change may have left the scroll past the end.
+        // A width change may have left the scroll past the end / misaligned.
         self.clamp_scroll();
 
-        let bpr = self.bytes_per_row();
+        let bpr = self.cols();
         let visible_rows = area.height as u64;
         let start = self.top_byte;
         let want = (visible_rows * bpr).min(self.len - start) as usize;
@@ -301,10 +261,7 @@ impl Panel for BinaryPanel {
             let row_end = (row_start + bpr as usize).min(window.len());
             let bytes = &window[row_start..row_end];
             let off = start + row * bpr;
-            let line = match self.mode {
-                ViewMode::Hex => self.hex_row(off, bytes),
-                ViewMode::Text => self.text_row(bytes),
-            };
+            let line = self.hex_row(off, bytes, bpr);
             buf.set_line(area.x, area.y + row as u16, &line, area.width);
         }
     }
@@ -313,26 +270,23 @@ impl Panel for BinaryPanel {
         if self.error.is_some() {
             return vec![];
         }
-        let (hex_kind, text_kind) = match self.mode {
-            ViewMode::Hex => (SegmentKind::Active, SegmentKind::Inactive),
-            ViewMode::Text => (SegmentKind::Inactive, SegmentKind::Active),
-        };
         vec![
             StatusSegment::new(
                 format!(" {:#X} / {:#X} ", self.top_byte, self.len),
                 SegmentKind::Value,
             ),
             StatusSegment::new("· ", SegmentKind::Label),
-            StatusSegment::clickable("Hex", hex_kind, "toggle_hex"),
+            // Hex is the current view; Text swaps to the editor.
+            StatusSegment::new("Hex", SegmentKind::Active),
             StatusSegment::new("│", SegmentKind::Label),
-            StatusSegment::clickable("Text", text_kind, "toggle_hex"),
+            StatusSegment::clickable("Text", SegmentKind::Inactive, "to_text"),
             StatusSegment::new(" · RO ", SegmentKind::Label),
         ]
     }
 
     fn handle_status_action(&mut self, action: &str) -> Vec<PanelEvent> {
-        if action == "toggle_hex" {
-            return self.toggle_mode();
+        if action == "to_text" {
+            return self.swap_to_text();
         }
         vec![]
     }
@@ -340,7 +294,7 @@ impl Panel for BinaryPanel {
     fn handle_key(&mut self, chord: KeyChord) -> Vec<PanelEvent> {
         let key = chord.raw;
         if self.hotkeys.matches("toggle_hex", &key) {
-            return self.toggle_mode();
+            return self.swap_to_text();
         }
         let page = (self.last_inner.1 as i64 - 1).max(1);
         match key.code {
@@ -349,7 +303,7 @@ impl Panel for BinaryPanel {
             KeyCode::PageUp => self.scroll_rows(-page),
             KeyCode::PageDown => self.scroll_rows(page),
             KeyCode::Home | KeyCode::Char('g') => self.top_byte = 0,
-            KeyCode::End | KeyCode::Char('G') => self.top_byte = self.max_top(self.bytes_per_row()),
+            KeyCode::End | KeyCode::Char('G') => self.top_byte = self.max_top(self.cols()),
             KeyCode::Char('q') => return vec![PanelEvent::ClosePanel],
             _ => return vec![],
         }
@@ -365,7 +319,7 @@ impl Panel for BinaryPanel {
         match event.kind {
             MouseEventKind::ScrollUp => self.scroll_rows(-1),
             MouseEventKind::ScrollDown => self.scroll_rows(1),
-            MouseEventKind::Down(MouseButton::Left) => {}
+            MouseEventKind::Down(MouseButton::Left) => return vec![],
             _ => return vec![],
         }
         vec![PanelEvent::NeedsRedraw]
@@ -394,53 +348,48 @@ impl Panel for BinaryPanel {
 mod tests {
     use super::*;
 
-    fn panel_with(bytes: &[u8]) -> BinaryPanel {
+    fn panel_with(len: u64) -> BinaryPanel {
         let mut p = BinaryPanel::new(PathBuf::from("/dev/null")).unwrap();
-        // Bypass the file: drive the formatting helpers directly.
-        p.len = bytes.len() as u64;
+        p.len = len;
         p
     }
 
     #[test]
+    fn bytes_per_row_rounds_to_16_byte_sections() {
+        // ~11 + 4n columns per row; rounds down to whole 16-byte sections.
+        assert_eq!(bytes_per_row(80), 16); // (80-11)/4 = 17 → one section
+        assert_eq!(bytes_per_row(140), 32); // (140-11)/4 = 32 → two sections
+        assert_eq!(bytes_per_row(10), 16); // too narrow → at least one section
+    }
+
+    #[test]
     fn hex_row_formats_offset_bytes_and_ascii() {
-        let p = panel_with(b"");
-        let line = p.hex_row(0x10, b"Hi\x00\xff");
+        let p = panel_with(0);
+        let line = p.hex_row(0x10, b"Hi\x00\xff", 16);
         let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
-        // Offset, hex (incl. 00 and ff), then ASCII gutter with `·` for
-        // non-printable bytes.
         assert!(text.starts_with("00000010"), "offset: {text:?}");
         assert!(text.contains("48 69 00 ff"), "hex: {text:?}");
         assert!(text.trim_end().ends_with("Hi··"), "ascii: {text:?}");
     }
 
     #[test]
-    fn text_row_replaces_non_printable() {
-        let p = panel_with(b"");
-        let line = p.text_row(b"ab\x00\x07c");
-        let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
-        assert_eq!(text, "ab··c");
-    }
-
-    #[test]
     fn scroll_is_row_aligned_and_clamped() {
-        let mut p = panel_with(&[0u8; 100]); // 100 bytes → rows of 16
-        p.last_inner = (80, 10);
+        let mut p = panel_with(100); // 100 bytes
+        p.last_inner = (80, 10); // 16 bytes/row
         p.scroll_rows(2);
-        assert_eq!(p.top_byte, 32, "two hex rows down");
-        // Cannot scroll past the last row start: last row = 96 (96..100).
+        assert_eq!(p.top_byte, 32);
         p.scroll_rows(1000);
-        assert_eq!(p.top_byte, 96);
+        assert_eq!(p.top_byte, 96); // last row start (96..100)
         p.scroll_rows(-1000);
         assert_eq!(p.top_byte, 0);
     }
 
     #[test]
-    fn toggle_switches_mode() {
-        let mut p = panel_with(&[0u8; 100]);
-        assert_eq!(p.mode, ViewMode::Hex);
-        p.toggle_mode();
-        assert_eq!(p.mode, ViewMode::Text);
-        p.toggle_mode();
-        assert_eq!(p.mode, ViewMode::Hex);
+    fn wide_panel_uses_more_columns() {
+        let mut p = panel_with(200);
+        p.last_inner = (140, 10); // 32 bytes/row
+        assert_eq!(p.cols(), 32);
+        p.scroll_rows(1);
+        assert_eq!(p.top_byte, 32);
     }
 }

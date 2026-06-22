@@ -401,6 +401,12 @@ pub enum PanelEvent {
     /// Open a binary file in the hex/ASCII viewer
     ViewBinary(PathBuf),
 
+    /// Swap the active panel in place for a hex/ASCII viewer of `path`
+    SwapActiveToHex(PathBuf),
+
+    /// Swap the active panel in place for a read-only text editor of `path`
+    SwapActiveToText(PathBuf),
+
     /// Open file with system default application (xdg-open)
     OpenExternal(PathBuf),
 

@@ -303,6 +303,15 @@ impl LayoutManager {
         self.focus = saved_focus;
     }
 
+    /// Replace the active (focused, expanded) panel in place, returning the old
+    /// one. Layout and focus are preserved — used to swap one view of a file
+    /// for another (e.g. hex ⇄ text).
+    pub fn replace_active_panel(&mut self, panel: Box<dyn Panel>) -> Option<Box<dyn Panel>> {
+        let group = self.panel_groups.get_mut(self.focus)?;
+        let idx = group.expanded_index();
+        group.replace_panel(idx, panel)
+    }
+
     /// Find panel by name, expand it in its group, return mutable reference.
     /// Does NOT change focus. Used for reusing existing panels.
     pub fn find_and_expand_panel_by_name(&mut self, name: &str) -> Option<&mut Box<dyn Panel>> {
