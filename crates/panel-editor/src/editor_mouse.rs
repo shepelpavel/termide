@@ -160,6 +160,18 @@ impl Editor {
             return vec![];
         }
 
+        // A click/drag in the buffer content moves find-bar focus to the buffer
+        // zone, so subsequent keys (notably Ctrl+C to copy a double-click
+        // selection) target the editor rather than the open find bar.
+        if self.find_bar.is_some()
+            && matches!(
+                mouse.kind,
+                MouseEventKind::Down(MouseButton::Left) | MouseEventKind::Drag(MouseButton::Left)
+            )
+        {
+            self.find_bar_focus_buffer = true;
+        }
+
         // Clamp coordinates to content area for out-of-bounds drag
         let (clamped_col, clamped_row) = if is_outside && is_drag && has_selection {
             // Auto-scroll if mouse is above or below content area

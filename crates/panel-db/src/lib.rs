@@ -31,7 +31,7 @@ use termide_core::{
 use termide_db::{
     ColumnInfo, Condition, DbBackend, DbConnection, DbError, Page, PageRequest, SortDir,
 };
-use termide_modal::ActiveModal;
+use termide_modal::{ActionButton, ActiveModal, InfoActionModal};
 use termide_state::PendingAction;
 
 use crate::dropdown::Dropdown;
@@ -201,6 +201,49 @@ impl DbPanel {
     /// The connection URL (used for session persistence / reconnect).
     pub fn url(&self) -> &str {
         &self.url
+    }
+
+    /// Enter the failed state and offer recovery (reconnect / close). The
+    /// connection never retries on its own, so the dialog is shown exactly
+    /// once per failure (at the transition into `Failed`).
+    fn fail(&mut self, msg: String) {
+        self.conn = ConnState::Failed(msg);
+        self.show_connection_error_modal();
+    }
+
+    /// Recovery dialog for a lost / failed DB connection: Reconnect or Close
+    /// panel. The button id is routed back through
+    /// `PendingAction::DbConnectionError`.
+    fn show_connection_error_modal(&mut self) {
+        let t = termide_i18n::t();
+        let msg = match &self.conn {
+            ConnState::Failed(e) => e.clone(),
+            _ => String::new(),
+        };
+        let modal = InfoActionModal::new(
+            t.connection_error_title(),
+            vec![(String::new(), msg)],
+            vec![
+                ActionButton::new(t.db_reconnect(), "reconnect"),
+                ActionButton::new(t.db_close_panel(), "close"),
+            ],
+        );
+        self.modal_request = Some((
+            PendingAction::DbConnectionError,
+            ActiveModal::InfoAction(Box::new(modal)),
+        ));
+    }
+
+    /// Re-establish the connection to the current URL with a fresh handle,
+    /// dropping any stale async receivers. Driven by the recovery dialog.
+    pub fn reconnect(&mut self) {
+        self.conn = ConnState::Connecting(spawn_connect(self.url.clone()));
+        self.query_error = None;
+        self.databases_rx = None;
+        self.tables_rx = None;
+        self.columns_rx = None;
+        self.count_rx = None;
+        self.page_rx = None;
     }
 
     /// Take a pending modal request (polled by the app each frame).
@@ -424,7 +467,7 @@ impl DbPanel {
                         } else {
                             e.to_string()
                         };
-                        self.conn = ConnState::Failed(msg);
+                        self.fail(msg);
                         self.loading = false;
                     }
                 }
@@ -446,7 +489,7 @@ impl DbPanel {
                             }
                         }
                     }
-                    Err(e) => self.conn = ConnState::Failed(e.to_string()),
+                    Err(e) => self.fail(e.to_string()),
                 }
                 changed = true;
             }
@@ -474,7 +517,7 @@ impl DbPanel {
                             }
                         }
                     }
-                    Err(e) => self.conn = ConnState::Failed(e.to_string()),
+                    Err(e) => self.fail(e.to_string()),
                 }
                 changed = true;
             }

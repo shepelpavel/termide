@@ -90,6 +90,8 @@ pub trait Translation: Send + Sync {
     fn vfs_reconnect(&self) -> &str;
     fn vfs_open_local(&self) -> &str;
     fn vfs_close_panel(&self) -> &str;
+    fn db_reconnect(&self) -> &str;
+    fn db_close_panel(&self) -> &str;
     fn connection_timeout_title(&self) -> &str;
     fn connection_timeout_message(&self) -> &str;
 

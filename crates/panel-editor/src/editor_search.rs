@@ -328,6 +328,13 @@ impl Editor {
             self.find_bar = Some(bar);
         }
 
+        // A single-line selection seeds the Find field (overwriting any prior
+        // query) — the common "Ctrl+F searches the current selection" behavior.
+        // Multi-line selections are ignored.
+        let selection_seed = self
+            .get_selected_text()
+            .filter(|s| !s.is_empty() && !s.contains('\n'));
+
         let seed_find = self
             .search
             .state
@@ -338,7 +345,9 @@ impl Editor {
         let seed_replace = self.search.last_replace_with.clone();
 
         if let Some(bar) = self.find_bar.as_mut() {
-            if let Some(q) = seed_find {
+            if let Some(sel) = selection_seed {
+                bar.set_text(FindField::Find, sel);
+            } else if let Some(q) = seed_find {
                 if !q.is_empty() && bar.find_text().is_empty() {
                     bar.set_text(FindField::Find, q);
                 }
