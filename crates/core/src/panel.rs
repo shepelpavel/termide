@@ -183,6 +183,59 @@ pub enum WidthPreference {
     NoPreference,
 }
 
+/// Visual role of a status-bar segment; mapped to theme colours by the renderer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SegmentKind {
+    /// Dim label / separator text (field names, ` · `).
+    Label,
+    /// Normal value text (highlighted).
+    Value,
+    /// Active option of a toggle (e.g. the current Hex/Text mode).
+    Active,
+    /// Inactive option of a toggle.
+    Inactive,
+    /// Warning emphasis.
+    Warn,
+    /// Error emphasis.
+    Error,
+}
+
+/// A status-bar segment contributed by a panel via [`Panel::status_segments`].
+///
+/// The global status bar renders the focused panel's segments left-to-right.
+/// A segment with `action = Some(id)` is a clickable chip: a click is routed
+/// back to the panel through [`Panel::handle_status_action`].
+#[derive(Debug, Clone)]
+pub struct StatusSegment {
+    /// Text to display (the panel includes its own spacing/separators).
+    pub text: String,
+    /// Visual role.
+    pub kind: SegmentKind,
+    /// `Some(id)` makes the segment a clickable chip routed to the panel.
+    pub action: Option<&'static str>,
+}
+
+impl StatusSegment {
+    /// Non-interactive segment.
+    pub fn new(text: impl Into<String>, kind: SegmentKind) -> Self {
+        Self {
+            text: text.into(),
+            kind,
+            action: None,
+        }
+    }
+
+    /// Clickable chip whose click is routed to the panel's
+    /// [`Panel::handle_status_action`] with `action`.
+    pub fn clickable(text: impl Into<String>, kind: SegmentKind, action: &'static str) -> Self {
+        Self {
+            text: text.into(),
+            kind,
+            action: Some(action),
+        }
+    }
+}
+
 /// Trait for all termide panels.
 ///
 /// Panels communicate with the application through `PanelEvent`s
@@ -270,6 +323,24 @@ pub trait Panel: Any {
     fn handle_command(&mut self, cmd: PanelCommand<'_>) -> CommandResult {
         let _ = cmd;
         CommandResult::None
+    }
+
+    /// Segments this panel contributes to the global status bar.
+    ///
+    /// Rendered left-to-right when this panel is focused; an empty list (the
+    /// default) leaves the status bar to its other content. A segment with
+    /// `action = Some(id)` is a clickable chip whose click is routed back via
+    /// [`Panel::handle_status_action`].
+    fn status_segments(&self) -> Vec<StatusSegment> {
+        vec![]
+    }
+
+    /// Handle a click on a clickable status-bar segment (by its `action` id).
+    ///
+    /// Returns events to be processed by the application.
+    fn handle_status_action(&mut self, action: &str) -> Vec<PanelEvent> {
+        let _ = action;
+        vec![]
     }
 
     /// Check if panel should automatically close.

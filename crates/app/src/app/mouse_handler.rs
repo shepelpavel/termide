@@ -541,6 +541,31 @@ impl App {
             }
         }
 
+        // Generic clickable status-bar segments contributed by the focused
+        // panel (e.g. the binary viewer's Hex/Text chip). Layout matches the
+        // renderer's `segment_hit_areas`, starting at column 0.
+        let seg_action = {
+            let segs = self
+                .layout_manager
+                .active_panel()
+                .map(|p| p.status_segments())
+                .unwrap_or_default();
+            termide_ui_render::segment_hit_areas(&segs, 0)
+                .into_iter()
+                .find(|h| (h.start..h.end).contains(&x))
+                .map(|h| h.action)
+        };
+        if let Some(action) = seg_action {
+            let events = self
+                .layout_manager
+                .active_panel_mut()
+                .map(|p| p.handle_status_action(action))
+                .unwrap_or_default();
+            self.process_panel_events(events)?;
+            self.state.needs_redraw = true;
+            return Ok(());
+        }
+
         // Check if disk indicator is present (right-aligned in status bar)
         // Disk indicator text is formatted as " DEVICE: used/totalGB (percent%) "
         // and is right-aligned, so it occupies the last N columns
