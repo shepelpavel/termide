@@ -58,6 +58,14 @@ enum Zone {
     Ascii,
 }
 
+/// In-panel rendering mode. `Text` is a lossy plain-text view used for binary
+/// files (a real text file swaps to the editor instead).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ViewMode {
+    Hex,
+    Text,
+}
+
 /// Read-only binary (hex/ASCII) viewer.
 pub struct BinaryPanel {
     /// Path to the file.
@@ -78,12 +86,16 @@ pub struct BinaryPanel {
     anchor: Option<u64>,
     /// Active column zone (hex or ASCII).
     zone: Zone,
+    /// In-panel rendering mode (hex dump or lossy text, for binary files).
+    mode: ViewMode,
     /// Byte where the current mouse drag started (anchor for drag-selection).
     drag_from: Option<u64>,
     /// Inline find bar (ASCII / hex byte search), when open.
     find_bar: Option<FindBar>,
     /// Match start offsets from the last search.
     matches: Vec<u64>,
+    /// Byte length of each search match (the needle length).
+    match_len: usize,
     /// Index of the current match within `matches`.
     match_idx: usize,
     /// Last render area (absolute) for click mapping + paging.
@@ -162,9 +174,11 @@ impl BinaryPanel {
             cursor: 0,
             anchor: None,
             zone: Zone::Hex,
+            mode: ViewMode::Hex,
             drag_from: None,
             find_bar: None,
             matches: Vec::new(),
+            match_len: 0,
             match_idx: 0,
             last_area: Rect::default(),
             theme: ThemeColors::default(),
@@ -201,9 +215,12 @@ impl BinaryPanel {
         self.anchor = None;
     }
 
-    /// Bytes per row for the current width.
+    /// Bytes per row for the current width and mode.
     fn cols(&self) -> u64 {
-        bytes_per_row(self.last_area.width)
+        match self.mode {
+            ViewMode::Hex => bytes_per_row(self.last_area.width),
+            ViewMode::Text => (self.last_area.width as u64).max(1),
+        }
     }
 
     /// Largest valid `top_byte`, aligned to `bpr`.
@@ -322,9 +339,38 @@ impl BinaryPanel {
         vec![PanelEvent::NeedsRedraw]
     }
 
-    /// Event swapping this hex panel in place for a read-only text editor.
-    fn swap_to_text(&self) -> Vec<PanelEvent> {
-        vec![PanelEvent::SwapActiveToText(self.file_path.clone())]
+    /// Toggle hex ↔ text. A real text file swaps in place for the editor; a
+    /// binary file (which the editor can't open) toggles an in-panel lossy
+    /// text view instead.
+    fn toggle_view(&mut self) -> Vec<PanelEvent> {
+        if !termide_core::util::is_binary_file(&self.file_path) {
+            return vec![PanelEvent::SwapActiveToText(self.file_path.clone())];
+        }
+        self.mode = match self.mode {
+            ViewMode::Hex => ViewMode::Text,
+            ViewMode::Text => ViewMode::Hex,
+        };
+        self.clamp_top();
+        vec![PanelEvent::NeedsRedraw]
+    }
+
+    /// Whether byte `gi` falls inside any search match.
+    fn match_at(&self, gi: u64) -> Option<bool> {
+        if self.match_len == 0 || self.matches.is_empty() {
+            return None;
+        }
+        let mlen = self.match_len as u64;
+        // Last match whose start is <= gi.
+        let count = self.matches.partition_point(|&m| m <= gi);
+        if count == 0 {
+            return None;
+        }
+        let start = self.matches[count - 1];
+        if gi < start + mlen {
+            Some(count - 1 == self.match_idx)
+        } else {
+            None
+        }
     }
 
     /// Open the inline find bar (ASCII substring or hex byte sequence).
@@ -392,6 +438,7 @@ impl BinaryPanel {
         let cap = self.len.min(MAX_SEARCH_BYTES) as usize;
         let hay = self.read_window(0, cap);
         self.matches = find_all(&hay, &needle, ci);
+        self.match_len = needle.len();
         self.match_idx = 0;
 
         if let Some(bar) = self.find_bar.as_mut() {
@@ -443,6 +490,18 @@ impl BinaryPanel {
         } else {
             self.theme.fg
         });
+        // Search-match highlight (same colours as the editor: current match in
+        // the accent colour, other matches in the warning colour).
+        match self.match_at(gi) {
+            Some(true) => {
+                st = st
+                    .bg(self.theme.info)
+                    .fg(self.theme.bg)
+                    .add_modifier(Modifier::BOLD)
+            }
+            Some(false) => st = st.bg(self.theme.warning).fg(self.theme.bg),
+            None => {}
+        }
         let (s, e) = self.sel_range();
         let selected = self.anchor.is_some() && gi >= s && gi <= e;
         if selected {
@@ -504,6 +563,22 @@ impl BinaryPanel {
         Line::from(spans)
     }
 
+    /// Build one lossy plain-text row (non-printable bytes shown as `·`), one
+    /// char per byte, with the same cursor/selection/match highlighting.
+    fn text_row<'a>(&self, off: u64, bytes: &[u8]) -> Line<'a> {
+        let mut spans: Vec<Span<'a>> = Vec::with_capacity(bytes.len());
+        for (i, &b) in bytes.iter().enumerate() {
+            let gi = off + i as u64;
+            let ch = if (0x20..=0x7e).contains(&b) {
+                (b as char).to_string()
+            } else {
+                "·".to_string()
+            };
+            spans.push(Span::styled(ch, self.cell_style(gi, b, Zone::Ascii)));
+        }
+        Line::from(spans)
+    }
+
     /// Map a mouse event's absolute position to a byte + zone in the hex grid.
     fn byte_at_event(&self, event: &MouseEvent) -> Option<(u64, Zone)> {
         if event.column < self.last_area.x || event.row < self.last_area.y {
@@ -521,6 +596,15 @@ impl BinaryPanel {
         let row = self.top_byte / cols + cy as u64;
         let row_start = row * cols;
         let cx = cx as u64;
+        if self.mode == ViewMode::Text {
+            if cx >= cols {
+                return None;
+            }
+            return Some((
+                (row_start + cx).min(self.len.saturating_sub(1)),
+                Zone::Ascii,
+            ));
+        }
         let ascii_start = 11 + cols * 3; // 8 offset + 2 + cols*3 hex + 1 sep
         if cx >= ascii_start && cx < ascii_start + cols {
             let i = cx - ascii_start;
@@ -626,7 +710,10 @@ impl Panel for BinaryPanel {
                 let row_end = (row_start + bpr as usize).min(window.len());
                 let bytes = &window[row_start..row_end];
                 let off = start + row * bpr;
-                let line = self.hex_row(off, bytes, bpr);
+                let line = match self.mode {
+                    ViewMode::Hex => self.hex_row(off, bytes, bpr),
+                    ViewMode::Text => self.text_row(off, bytes),
+                };
                 buf.set_line(hex_area.x, hex_area.y + row as u16, &line, hex_area.width);
             }
 
@@ -667,19 +754,24 @@ impl Panel for BinaryPanel {
             ));
         }
         segs.push(StatusSegment::new("· ", SegmentKind::Label));
-        // Cycle-on-click chip: shows the current view; clicking swaps to text.
+        // Cycle-on-click chip: shows the current view; clicking toggles it.
+        let label = match self.mode {
+            ViewMode::Hex => "[Hex]",
+            ViewMode::Text => "[Text]",
+        };
         segs.push(StatusSegment::clickable(
-            "[Hex]",
+            label,
             SegmentKind::Active,
-            "to_text",
+            "toggle",
         ));
+        // RO = read-only (the viewer never writes the file).
         segs.push(StatusSegment::new(" · RO ", SegmentKind::Label));
         segs
     }
 
     fn handle_status_action(&mut self, action: &str) -> Vec<PanelEvent> {
-        if action == "to_text" {
-            return self.swap_to_text();
+        if action == "toggle" {
+            return self.toggle_view();
         }
         vec![]
     }
@@ -705,7 +797,7 @@ impl Panel for BinaryPanel {
         }
 
         if self.hotkeys.matches("toggle_hex", &key) {
-            return self.swap_to_text();
+            return self.toggle_view();
         }
         if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
             return self.copy_selection();
@@ -882,11 +974,25 @@ mod tests {
     }
 
     #[test]
-    fn swap_to_text_emits_event() {
-        let p = panel_with(10, 80, 10);
+    fn toggle_view_swaps_text_file_to_editor() {
+        // /dev/null reads as empty → treated as text → swaps to the editor.
+        let mut p = panel_with(10, 80, 10);
         assert!(matches!(
-            p.swap_to_text().as_slice(),
+            p.toggle_view().as_slice(),
             [PanelEvent::SwapActiveToText(_)]
         ));
+    }
+
+    #[test]
+    fn match_at_detects_current_and_other_matches() {
+        let mut p = panel_with(100, 80, 10);
+        p.matches = vec![10, 50];
+        p.match_len = 3;
+        p.match_idx = 1; // current = the match starting at 50
+        assert_eq!(p.match_at(11), Some(false)); // inside first match, not current
+        assert_eq!(p.match_at(50), Some(true)); // current match
+        assert_eq!(p.match_at(52), Some(true));
+        assert_eq!(p.match_at(53), None); // past it (len 3: 50,51,52)
+        assert_eq!(p.match_at(0), None);
     }
 }
