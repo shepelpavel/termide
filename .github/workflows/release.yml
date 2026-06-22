@@ -326,8 +326,12 @@ jobs:
           git config user.email "github-actions@termide.dev"
           git config user.name "GitHub Actions"
           git add PKGBUILD .SRCINFO
-          git diff --cached --quiet || git commit -m "Update to ${VERSION}"
-          GIT_SSH_COMMAND="ssh -i ~/.ssh/aur" git push || echo "Nothing to push for termide"
+          if git diff --cached --quiet; then
+            echo "termide PKGBUILD already up to date for ${VERSION}"
+          else
+            git commit -m "Update to ${VERSION}"
+            GIT_SSH_COMMAND="ssh -i ~/.ssh/aur" git push
+          fi
 
           # Update termide-bin (binary package)
           cd /tmp
@@ -356,8 +360,12 @@ jobs:
           git config user.email "github-actions@termide.dev"
           git config user.name "GitHub Actions"
           git add PKGBUILD .SRCINFO
-          git diff --cached --quiet || git commit -m "Update to ${VERSION}"
-          GIT_SSH_COMMAND="ssh -i ~/.ssh/aur" git push || echo "Nothing to push for termide-bin"
+          if git diff --cached --quiet; then
+            echo "termide-bin PKGBUILD already up to date for ${VERSION}"
+          else
+            git commit -m "Update to ${VERSION}"
+            GIT_SSH_COMMAND="ssh -i ~/.ssh/aur" git push
+          fi
 
   # Update Homebrew tap
   update-homebrew:
@@ -397,5 +405,12 @@ jobs:
           git config user.email "github-actions@termide.dev"
           git config user.name "GitHub Actions"
           git add Formula/termide.rb
-          git diff --cached --quiet || git commit -m "Update to ${VERSION}"
-          git push || echo "Nothing to push"
+          # Only push when the formula actually changed, but never mask a real
+          # push failure: a bad/expired HOMEBREW_TAP_TOKEN must fail the job
+          # loudly instead of silently leaving the tap frozen.
+          if git diff --cached --quiet; then
+            echo "Formula already up to date for ${VERSION}, nothing to push"
+          else
+            git commit -m "Update to ${VERSION}"
+            git push
+          fi
