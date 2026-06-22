@@ -34,8 +34,15 @@ pub struct MenuRenderParams<'a> {
     pub battery: Option<BatteryInfo>,
 }
 
-/// Get menu items with translations (cached, allocated once).
-static CACHED_MENU_ITEMS: std::sync::LazyLock<Vec<String>> = std::sync::LazyLock::new(|| {
+/// Menu labels cached per UI language. Recomputed (and leaked) when the
+/// language changes so a runtime switch updates the top-level menu. Language
+/// changes are rare, so leaking a small `Vec` per switch is acceptable and
+/// keeps the `&'static` contract the hot-path callers rely on. The fast path is
+/// a single atomic load via [`i18n::language_generation`] — no allocation.
+static CACHED_MENU_ITEMS: std::sync::RwLock<Option<(u64, &'static Vec<String>)>> =
+    std::sync::RwLock::new(None);
+
+fn compute_menu_items() -> Vec<String> {
     let t = i18n::t();
     vec![
         t.menu_bookmarks().to_string(),
@@ -44,11 +51,32 @@ static CACHED_MENU_ITEMS: std::sync::LazyLock<Vec<String>> = std::sync::LazyLock
         t.menu_windows().to_string(),
         t.menu_options().to_string(),
     ]
-});
+}
 
-/// Get menu items with translations
+/// Get menu items with translations for the current language.
 pub fn get_menu_items() -> &'static Vec<String> {
-    &CACHED_MENU_ITEMS
+    let generation = i18n::language_generation();
+    // `(u64, &'static …)` is `Copy`, so matching on `*guard` copies the static
+    // reference out — no borrow of the guard escapes.
+    if let Ok(guard) = CACHED_MENU_ITEMS.read() {
+        if let Some((cached_gen, items)) = *guard {
+            if cached_gen == generation {
+                return items;
+            }
+        }
+    }
+    let mut guard = CACHED_MENU_ITEMS
+        .write()
+        .expect("menu items cache poisoned");
+    // Re-check: another thread may have rebuilt it between the locks.
+    if let Some((cached_gen, items)) = *guard {
+        if cached_gen == generation {
+            return items;
+        }
+    }
+    let leaked: &'static Vec<String> = Box::leak(Box::new(compute_menu_items()));
+    *guard = Some((generation, leaked));
+    leaked
 }
 
 /// Number of menu items
@@ -97,28 +125,51 @@ pub struct MenuLayout {
     pub total_width: usize,
 }
 
+/// Menu layout cached per UI language. Widths depend on the translated labels,
+/// so this is rebuilt (and leaked) alongside [`get_menu_items`] on a language
+/// switch; see that function for the leak/`&'static` rationale.
+static CACHED_LAYOUT: std::sync::RwLock<Option<(u64, &'static MenuLayout)>> =
+    std::sync::RwLock::new(None);
+
 impl MenuLayout {
+    fn build() -> MenuLayout {
+        let menu_items = get_menu_items();
+        let mut x_positions = [0u16; MENU_ITEM_COUNT];
+        let mut widths = [0u16; MENU_ITEM_COUNT];
+        let mut x = 1u16; // initial " " padding
+
+        for (i, item) in menu_items.iter().enumerate() {
+            x_positions[i] = x;
+            widths[i] = str_display_width(item) as u16;
+            x += widths[i] + 2; // item + "  " separator
+        }
+
+        let total_width = x as usize - 1; // subtract trailing separator overshoot
+        MenuLayout {
+            x_positions,
+            widths,
+            total_width,
+        }
+    }
+
     pub fn compute() -> &'static Self {
-        static CACHED_LAYOUT: std::sync::LazyLock<MenuLayout> = std::sync::LazyLock::new(|| {
-            let menu_items = get_menu_items();
-            let mut x_positions = [0u16; MENU_ITEM_COUNT];
-            let mut widths = [0u16; MENU_ITEM_COUNT];
-            let mut x = 1u16; // initial " " padding
-
-            for (i, item) in menu_items.iter().enumerate() {
-                x_positions[i] = x;
-                widths[i] = str_display_width(item) as u16;
-                x += widths[i] + 2; // item + "  " separator
+        let generation = i18n::language_generation();
+        if let Ok(guard) = CACHED_LAYOUT.read() {
+            if let Some((cached_gen, layout)) = *guard {
+                if cached_gen == generation {
+                    return layout;
+                }
             }
-
-            let total_width = x as usize - 1; // subtract trailing separator overshoot
-            MenuLayout {
-                x_positions,
-                widths,
-                total_width,
+        }
+        let mut guard = CACHED_LAYOUT.write().expect("menu layout cache poisoned");
+        if let Some((cached_gen, layout)) = *guard {
+            if cached_gen == generation {
+                return layout;
             }
-        });
-        &CACHED_LAYOUT
+        }
+        let leaked: &'static MenuLayout = Box::leak(Box::new(Self::build()));
+        *guard = Some((generation, leaked));
+        leaked
     }
 }
 
@@ -362,4 +413,36 @@ pub fn render_menu(frame: &mut Frame, area: Rect, params: &MenuRenderParams) {
         Paragraph::new(Line::from(spans)).style(Style::default().bg(params.theme.accented_bg));
 
     frame.render_widget(menu, area);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression: the top-level menu was cached at first access and never
+    /// rebuilt, so a runtime language switch left it in the old language.
+    #[test]
+    fn menu_labels_follow_runtime_language_switch() {
+        i18n::set_language("en").unwrap();
+        let en = get_menu_items().clone();
+
+        i18n::set_language("ru").unwrap();
+        let ru = get_menu_items().clone();
+        assert_ne!(en, ru, "menu labels must change with the language");
+
+        // Layout rebuilds too: each width matches the *current* label, not the
+        // first-seen one.
+        let layout = MenuLayout::compute();
+        for (i, label) in ru.iter().enumerate() {
+            assert_eq!(
+                layout.widths[i],
+                str_display_width(label) as u16,
+                "layout width must track the switched language"
+            );
+        }
+
+        // Switching back restores the original labels.
+        i18n::set_language("en").unwrap();
+        assert_eq!(*get_menu_items(), en);
+    }
 }
