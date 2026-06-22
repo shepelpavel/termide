@@ -19,6 +19,7 @@ pub enum IconMode {
 use crate::keybindings::{
     DatabaseKeybindings, EditorKeybindings, FileManagerKeybindings, GitDiffKeybindings,
     GitLogKeybindings, GitStatusKeybindings, GlobalKeybindings, TerminalKeybindings,
+    ViewerKeybindings,
 };
 
 /// Application configuration with nested sections.
@@ -51,6 +52,10 @@ pub struct Config {
     /// Database viewer panel settings
     #[serde(default)]
     pub database: DatabaseSettings,
+
+    /// File viewer panels (binary hex, markdown) settings
+    #[serde(default)]
+    pub viewer: ViewerSettings,
 
     /// Terminal panel settings
     #[serde(default)]
@@ -274,6 +279,14 @@ pub struct DatabaseSettings {
     /// Database viewer panel keyboard shortcuts
     #[serde(default)]
     pub keybindings: DatabaseKeybindings,
+}
+
+/// File viewer panels settings (binary hex viewer, markdown preview).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ViewerSettings {
+    /// Viewer keyboard shortcuts
+    #[serde(default)]
+    pub keybindings: ViewerKeybindings,
 }
 
 /// Terminal panel settings.
@@ -572,6 +585,7 @@ impl From<LegacyConfig> for Config {
             git_diff: GitDiffSettings::default(),
             git_log: GitLogSettings::default(),
             database: DatabaseSettings::default(),
+            viewer: ViewerSettings::default(),
             terminal: TerminalSettings::default(),
             lsp: LspSettings::default(),
             logging: LoggingSettings {
@@ -674,6 +688,7 @@ impl Config {
         self.git_diff.keybindings.with_defaults();
         self.git_log.keybindings.with_defaults();
         self.database.keybindings.with_defaults();
+        self.viewer.keybindings.with_defaults();
         self.terminal.keybindings.with_defaults();
     }
 }

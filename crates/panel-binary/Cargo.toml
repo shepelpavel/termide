@@ -1,0 +1,20 @@
+[package]
+name = "termide-panel-binary"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+crossterm.workspace = true
+ratatui.workspace = true
+
+# Workspace crates
+termide-clipboard = { path = "../clipboard" }
+termide-config = { path = "../config" }
+termide-core = { path = "../core" }
+termide-modal = { path = "../modal" }
+termide-theme = { path = "../theme" }
+termide-ui = { path = "../ui" }

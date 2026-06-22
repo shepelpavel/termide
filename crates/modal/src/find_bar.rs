@@ -71,11 +71,13 @@ pub enum Btn {
     SelectAll,
     Regex,
     Case,
+    /// Interpret the query as a hex byte sequence (binary viewer search).
+    Hex,
 }
 
 impl Btn {
     fn is_toggle(self) -> bool {
-        matches!(self, Btn::Regex | Btn::Case)
+        matches!(self, Btn::Regex | Btn::Case | Btn::Hex)
     }
 }
 
@@ -139,6 +141,8 @@ pub struct FindBar {
     button_labels: Vec<(Btn, String)>,
     use_regex: bool,
     case_sensitive: bool,
+    /// State of the `[hex]` toggle (interpret the query as hex bytes).
+    hex_mode: bool,
     /// State of the "select all" checkbox button (host-driven).
     select_all_on: bool,
     /// Index into the focus ring (`ring()`).
@@ -166,6 +170,7 @@ impl FindBar {
             button_labels: Vec::new(),
             use_regex: false,
             case_sensitive: false,
+            hex_mode: false,
             select_all_on: false,
             focus: 0,
             match_info: None,
@@ -275,6 +280,11 @@ impl FindBar {
     }
 
     /// Whether matching is case-sensitive.
+    /// Whether the `[hex]` toggle is on (query is a hex byte sequence).
+    pub fn hex_mode(&self) -> bool {
+        self.hex_mode
+    }
+
     pub fn case_sensitive(&self) -> bool {
         self.case_sensitive
     }
@@ -395,6 +405,10 @@ impl FindBar {
             }
             Some(Btn::Case) => {
                 self.case_sensitive = !self.case_sensitive;
+                Some(FindBarAction::QueryChanged)
+            }
+            Some(Btn::Hex) => {
+                self.hex_mode = !self.hex_mode;
                 Some(FindBarAction::QueryChanged)
             }
             None => None,
@@ -543,6 +557,7 @@ impl FindBar {
             let (text, on) = match btn {
                 Btn::Regex => ("[.*]".to_string(), self.use_regex),
                 Btn::Case => ("[Aa]".to_string(), self.case_sensitive),
+                Btn::Hex => ("[hex]".to_string(), self.hex_mode),
                 Btn::SelectAll => {
                     let mark = if self.select_all_on { "x" } else { " " };
                     (format!("[{}] Select all", mark), self.select_all_on)

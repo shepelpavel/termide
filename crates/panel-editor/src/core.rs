@@ -1130,6 +1130,9 @@ pub(crate) fn build_editor_hotkey_table(config: &Config) -> HotkeyTable {
     t.insert("rename_symbol", &kb.rename_symbol);
     t.insert("code_action", &kb.code_action);
 
+    // Viewer: swap this text file to the hex viewer (shared viewer binding).
+    t.insert("viewer_toggle_hex", &config.viewer.keybindings.toggle_hex);
+
     t
 }
 

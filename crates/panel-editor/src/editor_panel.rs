@@ -228,6 +228,22 @@ impl Panel for Editor {
         // Note: Key translation should be done at app level before calling handle_key
         // If you need translation, call translate_hotkey from termide-core or keyboard module
 
+        // The viewer's hex/text toggle (configurable, default Ctrl+L) swaps this
+        // editor in place for the hex viewer of the same file — the inverse of
+        // the binary viewer's toggle. Blocked when the buffer has unsaved edits
+        // so the swap can't discard them.
+        if self.hotkeys.matches("viewer_toggle_hex", &key) {
+            if let Some(path) = self.file_path().map(|p| p.to_path_buf()) {
+                if self.buffer_is_modified() {
+                    return vec![PanelEvent::ShowMessage(
+                        "Save the file before switching to hex view".to_string(),
+                    )];
+                }
+                return vec![PanelEvent::SwapActiveToHex(path)];
+            }
+            return vec![];
+        }
+
         // The inline find/replace bar (before vim / command processing). Tab
         // toggles focus between the bar and the buffer "results" zone, like the
         // file manager. In the bar zone the bar owns keys; in the buffer zone
