@@ -13,6 +13,7 @@ mod blame;
 pub(crate) mod command;
 mod commits;
 mod files;
+pub mod graph;
 mod operations;
 mod repo_manager;
 mod stash;

@@ -1,0 +1,297 @@
+//! PROTOTYPE — commit-graph layout engine ("variant B").
+//!
+//! Renders a commit graph with proper box-drawing junctions (`● │ ├ ╮ ╯ ╭ ╰ ─`)
+//! computed from each commit's parent hashes, instead of restyling git's
+//! diagonal ASCII output. It is a **pure** function over `(hash, parents)` so it
+//! can be unit-tested in isolation; it is NOT yet wired into the git-log panel.
+//!
+//! Layout model (lazygit/tig-flavoured):
+//! - One **commit row** per commit: `●` in the commit's lane, `│` for every
+//!   other active lane.
+//! - A **connector row** is emitted *above* a commit when several lanes fold
+//!   into it (a merge target / shared parent) and *below* a commit when it is a
+//!   merge (extra parents branch out to new lanes).
+//! - Lanes are one column wide and contiguous, so corners connect cleanly
+//!   (`├╮`, `├╯`). Freed lanes are not compacted (no per-row lane migration),
+//!   which keeps the prototype simple and sidesteps lane-crossing glyphs; the
+//!   cost is an occasional gap or a longer horizontal `─` run.
+//!
+//! Known prototype gaps: no lane compaction, octopus merges (3+ parents) draw
+//! but aren't visually optimised, and reordered/criss-cross histories may route
+//! through wider horizontals than a production layout would.
+
+/// A commit and its parent hashes, in the order `git log` returns them
+/// (newest first; first parent is the mainline).
+#[derive(Debug, Clone)]
+pub struct GraphCommit {
+    /// Commit hash (any stable id).
+    pub hash: String,
+    /// Parent hashes; `parents[0]` is the first (mainline) parent.
+    pub parents: Vec<String>,
+}
+
+/// One rendered row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GraphRow {
+    /// Box-drawing cells for this row.
+    pub graph: String,
+    /// `Some(i)` when this row belongs to `commits[i]`; `None` for a connector.
+    pub commit: Option<usize>,
+}
+
+/// Index of the first free (`None`) lane, allocating a new one if needed.
+fn free_slot(lanes: &mut Vec<Option<String>>) -> usize {
+    if let Some(i) = lanes.iter().position(Option::is_none) {
+        i
+    } else {
+        lanes.push(None);
+        lanes.len() - 1
+    }
+}
+
+fn render(cells: &[char]) -> String {
+    cells.iter().collect::<String>().trim_end().to_string()
+}
+
+/// Lay out and render the commit graph. Returns rows top-to-bottom (commit rows
+/// interleaved with connector rows).
+pub fn render_graph(commits: &[GraphCommit]) -> Vec<GraphRow> {
+    // Each active lane holds the hash it is currently routing toward.
+    let mut lanes: Vec<Option<String>> = Vec::new();
+    let mut rows: Vec<GraphRow> = Vec::new();
+
+    for (idx, c) in commits.iter().enumerate() {
+        // Lanes whose pending hash is this commit (its children's edges).
+        let incoming: Vec<usize> = lanes
+            .iter()
+            .enumerate()
+            .filter(|(_, l)| l.as_deref() == Some(c.hash.as_str()))
+            .map(|(i, _)| i)
+            .collect();
+
+        let commit_col = match incoming.first() {
+            Some(&i) => i,
+            None => free_slot(&mut lanes), // a tip not referenced by any child
+        };
+
+        // --- connector ABOVE: fold extra incoming lanes into commit_col ---
+        if incoming.len() > 1 {
+            let width = lanes.len();
+            let mut cells = vec![' '; width];
+            for (i, l) in lanes.iter().enumerate() {
+                if l.is_some() {
+                    cells[i] = '│';
+                }
+            }
+            let hi = *incoming.iter().max().unwrap();
+            // horizontal run from commit_col to the furthest folding lane
+            for cell in &mut cells[commit_col..=hi] {
+                if *cell == ' ' {
+                    *cell = '─';
+                }
+            }
+            for &i in &incoming {
+                cells[i] = if i == commit_col {
+                    '├' // mainline continues down + accepts the fold from the right
+                } else {
+                    '╯' // folding lane turns up-and-left
+                };
+            }
+            rows.push(GraphRow {
+                graph: render(&cells),
+                commit: None,
+            });
+            for &i in incoming.iter().skip(1) {
+                lanes[i] = None;
+            }
+        }
+
+        lanes[commit_col] = Some(c.hash.clone());
+
+        // --- commit row ---
+        let width = lanes.len();
+        let mut cells = vec![' '; width];
+        for (i, l) in lanes.iter().enumerate() {
+            cells[i] = if i == commit_col {
+                '●'
+            } else if l.is_some() {
+                '│'
+            } else {
+                ' '
+            };
+        }
+        rows.push(GraphRow {
+            graph: render(&cells),
+            commit: Some(idx),
+        });
+
+        // --- advance lanes to this commit's parents ---
+        match c.parents.first() {
+            Some(p0) => lanes[commit_col] = Some(p0.clone()),
+            None => lanes[commit_col] = None, // root: lane ends
+        }
+        let mut branched: Vec<usize> = Vec::new();
+        for p in c.parents.iter().skip(1) {
+            let col = match lanes.iter().position(|l| l.as_deref() == Some(p.as_str())) {
+                Some(i) => i, // shares a lane already heading to that parent
+                None => {
+                    let i = free_slot(&mut lanes);
+                    lanes[i] = Some(p.clone());
+                    i
+                }
+            };
+            branched.push(col);
+        }
+
+        // --- connector BELOW: branch the merge parents out of commit_col ---
+        if !branched.is_empty() {
+            let width = lanes.len();
+            let mut cells = vec![' '; width];
+            for (i, l) in lanes.iter().enumerate() {
+                if l.is_some() {
+                    cells[i] = '│';
+                }
+            }
+            let hi = *branched.iter().max().unwrap().max(&commit_col);
+            for cell in &mut cells[commit_col..=hi] {
+                if *cell == ' ' {
+                    *cell = '─';
+                }
+            }
+            cells[commit_col] = '├'; // mainline down + branches right
+            for &col in &branched {
+                if col != commit_col {
+                    cells[col] = '╮'; // new lane turns down-from-left
+                }
+            }
+            rows.push(GraphRow {
+                graph: render(&cells),
+                commit: None,
+            });
+        }
+    }
+
+    rows
+}
+
+/// Parse `git log --format=%h\t%p` (tab between hash and the space-separated
+/// parent list) into [`GraphCommit`]s, ready for [`render_graph`].
+pub fn parse_parents_log(stdout: &str) -> Vec<GraphCommit> {
+    stdout
+        .lines()
+        .filter_map(|line| {
+            let (hash, parents) = line.split_once('\t')?;
+            if hash.is_empty() {
+                return None;
+            }
+            Some(GraphCommit {
+                hash: hash.to_string(),
+                parents: parents.split_whitespace().map(str::to_string).collect(),
+            })
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn c(hash: &str, parents: &[&str]) -> GraphCommit {
+        GraphCommit {
+            hash: hash.to_string(),
+            parents: parents.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    /// Pretty-print rows next to their commit hash for eyeballing.
+    fn dump(commits: &[GraphCommit], rows: &[GraphRow]) -> String {
+        rows.iter()
+            .map(|r| match r.commit {
+                Some(i) => format!("{:<6}{}", r.graph, commits[i].hash),
+                None => r.graph.clone(),
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn linear_history_is_a_single_lane() {
+        let commits = [c("a", &["b"]), c("b", &["d"]), c("d", &[])];
+        let rows = render_graph(&commits);
+        // No connectors; one `●` row per commit.
+        assert_eq!(rows.iter().filter(|r| r.commit.is_some()).count(), 3);
+        assert!(rows.iter().all(|r| r.graph == "●" || r.graph.is_empty()));
+    }
+
+    #[test]
+    fn branch_then_merge_uses_corners() {
+        // a (merge of b and side s) ; s and b both lead to base d.
+        //   a  ── merge(b, s)
+        //   |\
+        //   | s
+        //   |/
+        //   b
+        //   d
+        let commits = [
+            c("a", &["b", "s"]),
+            c("s", &["b"]),
+            c("b", &["d"]),
+            c("d", &[]),
+        ];
+        let rows = render_graph(&commits);
+        let out = dump(&commits, &rows);
+        println!("\n{out}\n");
+
+        let graphs: Vec<&str> = rows.iter().map(|r| r.graph.as_str()).collect();
+        // merge commit branches a second lane out (├╮ connector below it)
+        assert!(
+            graphs.contains(&"├╮"),
+            "expected a ├╮ branch row, got {graphs:?}"
+        );
+        // the side lane folds back in (├╯ connector above the merge base)
+        assert!(
+            graphs.contains(&"├╯"),
+            "expected a ├╯ fold row, got {graphs:?}"
+        );
+        // every commit got exactly one row
+        assert_eq!(rows.iter().filter(|r| r.commit.is_some()).count(), 4);
+    }
+
+    /// Render the *real* repo history (run with
+    /// `cargo test -p termide-git graph::tests::demo_real -- --ignored --nocapture`).
+    #[test]
+    #[ignore = "demo: prints the live repo graph for eyeballing"]
+    fn demo_real_history() {
+        let out = std::process::Command::new("git")
+            .args(["log", "--format=%h\t%p", "-n", "30", "--branches"])
+            .output()
+            .expect("git log");
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let commits = parse_parents_log(&stdout);
+        let rows = render_graph(&commits);
+        println!("\n{}\n", dump(&commits, &rows));
+    }
+
+    #[test]
+    fn two_stacked_merges_render() {
+        // Mirrors the user's history: two merge commits, each pulling a
+        // one-commit side branch back into the mainline.
+        let commits = [
+            c("m1", &["m2", "x"]),
+            c("x", &["m2"]),
+            c("m2", &["base", "y"]),
+            c("y", &["base"]),
+            c("base", &[]),
+        ];
+        let rows = render_graph(&commits);
+        println!("\n{}\n", dump(&commits, &rows));
+        // Two merges → at least two branch rows and two fold rows.
+        let branches = rows.iter().filter(|r| r.graph.contains('╮')).count();
+        let folds = rows.iter().filter(|r| r.graph.contains('╯')).count();
+        assert!(
+            branches >= 2 && folds >= 2,
+            "branches={branches} folds={folds}"
+        );
+        assert_eq!(rows.iter().filter(|r| r.commit.is_some()).count(), 5);
+    }
+}
