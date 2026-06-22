@@ -142,11 +142,13 @@ byte cursor is shown in both the hex and ASCII zones (`Tab` switches the active
 one); arrows/`hjkl` move it, `Shift`+move selects, and `Ctrl+C` copies the
 selection (as hex from the hex zone, as text from the ASCII zone). `Ctrl+F`
 opens a find bar that searches an ASCII substring or — with the `[hex]` toggle —
-a hex byte sequence like `ff fe`.
+a hex byte sequence like `ff fe`; matches are highlighted in both zones.
 
-`Ctrl+L` (or the `[Hex]` chip in the status bar) swaps the viewer in place for a
-read-only text editor of the same file; the editor's `Ctrl+L` swaps back to hex.
-The toggle key is configurable:
+`Ctrl+L` (or the `[Hex]`/`[Text]` chip in the status bar) toggles between hex
+and text. For a real text file this swaps the panel in place for a read-only
+editor (and the editor's own `Ctrl+L` swaps back to hex); a binary file — which
+the editor can't open as text — toggles a lossy in-panel text view instead. The
+toggle key is configurable:
 
 ```toml
 [viewer.keybindings]

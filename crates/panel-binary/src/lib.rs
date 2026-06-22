@@ -11,9 +11,11 @@
 //! Shift+movement extends a selection and `Ctrl+C` copies it — as a hex string
 //! when the cursor is in the hex zone, as text when it is in the ASCII zone.
 //!
-//! The viewer is hex-only: the plain-text view of the same file is the editor.
-//! `Ctrl+L` (or the `[Hex]` chip in the status bar) swaps this panel in place
-//! for a read-only editor; the editor's `Ctrl+L` swaps back to hex.
+//! `Ctrl+L` (or the status-bar chip) toggles hex ↔ text. A real text file swaps
+//! in place for a read-only editor (and the editor's `Ctrl+L` swaps back to
+//! hex); a binary file — which the editor can't open as text — toggles an
+//! in-panel lossy text view instead. `Ctrl+F` searches an ASCII substring or a
+//! hex byte sequence, highlighting matches in both zones.
 
 use std::any::Any;
 use std::fs::File;
