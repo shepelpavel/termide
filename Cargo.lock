@@ -5127,6 +5127,7 @@ dependencies = [
  "termide-core",
  "termide-modal",
  "termide-theme",
+ "termide-ui",
 ]
 
 [[package]]

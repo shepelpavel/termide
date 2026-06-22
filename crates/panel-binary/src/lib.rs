@@ -35,6 +35,7 @@ use termide_core::{
     StatusSegment, Theme, ThemeColors, WidthPreference,
 };
 use termide_modal::{FindBar, FindBarAction, FindBarBtn, FindBarConfig, FindField};
+use termide_ui::ScrollBar;
 
 /// Bytes per section; rows are laid out in whole sections (16, 32, 48, …).
 const SECTION: u64 = 16;
@@ -77,6 +78,8 @@ pub struct BinaryPanel {
     anchor: Option<u64>,
     /// Active column zone (hex or ASCII).
     zone: Zone,
+    /// Byte where the current mouse drag started (anchor for drag-selection).
+    drag_from: Option<u64>,
     /// Inline find bar (ASCII / hex byte search), when open.
     find_bar: Option<FindBar>,
     /// Match start offsets from the last search.
@@ -159,6 +162,7 @@ impl BinaryPanel {
             cursor: 0,
             anchor: None,
             zone: Zone::Hex,
+            drag_from: None,
             find_bar: None,
             matches: Vec::new(),
             match_idx: 0,
@@ -444,11 +448,13 @@ impl BinaryPanel {
         if selected {
             st = st.fg(self.theme.selection_fg).bg(self.theme.selection_bg);
         }
+        // The cursor byte is shown inverse in both zones (consistent with the
+        // editor's cursor); the active zone also gets BOLD so it's clear which
+        // zone Tab will edit/navigate.
         if gi == self.cursor {
+            st = st.add_modifier(Modifier::REVERSED);
             if repr == self.zone {
-                st = st.add_modifier(Modifier::REVERSED);
-            } else {
-                st = st.fg(self.theme.selection_fg).bg(self.theme.selection_bg);
+                st = st.add_modifier(Modifier::BOLD);
             }
         }
         st
@@ -498,6 +504,17 @@ impl BinaryPanel {
         Line::from(spans)
     }
 
+    /// Map a mouse event's absolute position to a byte + zone in the hex grid.
+    fn byte_at_event(&self, event: &MouseEvent) -> Option<(u64, Zone)> {
+        if event.column < self.last_area.x || event.row < self.last_area.y {
+            return None;
+        }
+        self.byte_at(
+            event.column - self.last_area.x,
+            event.row - self.last_area.y,
+        )
+    }
+
     /// Map a click at panel-relative `(cx, cy)` to a byte + zone.
     fn byte_at(&self, cx: u16, cy: u16) -> Option<(u64, Zone)> {
         let cols = self.cols();
@@ -542,17 +559,40 @@ impl Panel for BinaryPanel {
         }
     }
 
-    fn render(&mut self, area: Rect, buf: &mut Buffer, _ctx: &RenderContext) {
+    fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         if area.width == 0 || area.height == 0 {
             return;
         }
 
-        // Reserve the bottom row(s) for the find bar when open.
-        let bar_h = self.find_bar.as_ref().map(|b| b.height()).unwrap_or(0);
-        let hex_area = Rect {
-            height: area.height.saturating_sub(bar_h),
-            ..area
-        };
+        // Find bar docked at the TOP with a separator below, matching the
+        // editor / file manager.
+        let mut hex_area = area;
+        if let (Some(bar), Some(theme)) = (self.find_bar.as_mut(), self.theme_full.as_ref()) {
+            let bar_h = bar.height().min(area.height);
+            let bar_area = Rect {
+                x: area.x,
+                y: area.y,
+                width: area.width,
+                height: bar_h,
+            };
+            bar.render(bar_area, buf, theme, true);
+
+            let mut used = bar_h;
+            let sep_y = area.y + bar_h;
+            if sep_y < area.y + area.height {
+                let style = Style::default().fg(self.theme.disabled);
+                for dx in 0..area.width {
+                    buf[(area.x + dx, sep_y)].set_symbol("─").set_style(style);
+                }
+                used += 1;
+            }
+            hex_area = Rect {
+                x: area.x,
+                y: area.y + used,
+                width: area.width,
+                height: area.height.saturating_sub(used),
+            };
+        }
         self.last_area = hex_area;
 
         if let Some(ref err) = self.error {
@@ -589,17 +629,25 @@ impl Panel for BinaryPanel {
                 let line = self.hex_row(off, bytes, bpr);
                 buf.set_line(hex_area.x, hex_area.y + row as u16, &line, hex_area.width);
             }
-        }
 
-        // Find bar along the bottom.
-        if let (Some(bar), Some(theme)) = (self.find_bar.as_mut(), self.theme_full.as_ref()) {
-            let bar_area = Rect {
-                x: area.x,
-                y: area.y + hex_area.height,
-                width: area.width,
-                height: bar_h,
-            };
-            bar.render(bar_area, buf, theme, true);
+            // Scroll progress on the right border, like the other panels.
+            let total_rows = self.len.div_ceil(bpr) as usize;
+            let viewport = hex_area.height as usize;
+            if let Some(border_x) = ctx.border_right_x {
+                if ScrollBar::needs_scrollbar(viewport, total_rows) {
+                    ScrollBar::render(
+                        buf,
+                        border_x,
+                        hex_area.y,
+                        hex_area.height,
+                        (self.top_byte / bpr) as usize,
+                        viewport,
+                        total_rows,
+                        &self.theme,
+                        ctx.is_focused,
+                    );
+                }
+            }
         }
     }
 
@@ -702,15 +750,23 @@ impl Panel for BinaryPanel {
             MouseEventKind::ScrollUp => self.scroll_rows(-1),
             MouseEventKind::ScrollDown => self.scroll_rows(1),
             MouseEventKind::Down(MouseButton::Left) => {
-                if event.column >= self.last_area.x && event.row >= self.last_area.y {
-                    let cx = event.column - self.last_area.x;
-                    let cy = event.row - self.last_area.y;
-                    if let Some((byte, zone)) = self.byte_at(cx, cy) {
+                if let Some((byte, zone)) = self.byte_at_event(&event) {
+                    self.zone = zone;
+                    self.set_cursor(byte, false); // clears any selection
+                    self.drag_from = Some(byte);
+                }
+            }
+            MouseEventKind::Drag(MouseButton::Left) => {
+                if let Some(from) = self.drag_from {
+                    if let Some((byte, zone)) = self.byte_at_event(&event) {
                         self.zone = zone;
-                        self.set_cursor(byte, false);
+                        self.anchor = Some(from);
+                        self.cursor = byte;
+                        self.ensure_cursor_visible();
                     }
                 }
             }
+            MouseEventKind::Up(MouseButton::Left) => self.drag_from = None,
             _ => return vec![],
         }
         vec![PanelEvent::NeedsRedraw]
