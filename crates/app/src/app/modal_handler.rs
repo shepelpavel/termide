@@ -762,6 +762,27 @@ impl App {
                         }
                     }
                 }
+                PendingAction::DbConnectionError => {
+                    use termide_modal::InfoActionResult;
+                    if let Some(InfoActionResult::Action(id)) =
+                        value.downcast_ref::<InfoActionResult>()
+                    {
+                        match id.as_str() {
+                            "reconnect" => {
+                                if let Some(panel) = self.layout_manager.active_panel_mut() {
+                                    if let Some(db) = panel
+                                        .as_any_mut()
+                                        .downcast_mut::<termide_panel_db::DbPanel>()
+                                    {
+                                        db.reconnect();
+                                    }
+                                }
+                            }
+                            "close" => self.close_panel_at_index(),
+                            _ => {}
+                        }
+                    }
+                }
                 PendingAction::DbRowDetail { tsv, json, insert } => {
                     use termide_modal::InfoActionResult;
                     if let Some(InfoActionResult::Action(id)) =

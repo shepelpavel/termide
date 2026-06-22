@@ -87,6 +87,8 @@ pub trait Translation: Send + Sync {
     fn fm_goto_prompt(&self) -> &str;
     fn connection_cancelled_title(&self) -> &str;
     fn connection_error_title(&self) -> &str;
+    fn db_reconnect(&self) -> &str;
+    fn db_close_panel(&self) -> &str;
     fn connection_timeout_title(&self) -> &str;
     fn connection_timeout_message(&self) -> &str;
 

@@ -123,6 +123,8 @@ impl Translation for RuntimeTranslation {
         fm_goto_prompt,
         connection_cancelled_title,
         connection_error_title,
+        db_reconnect,
+        db_close_panel,
         connection_timeout_title,
         connection_timeout_message,
         app_quit_confirm,

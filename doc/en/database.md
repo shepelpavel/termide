@@ -119,6 +119,14 @@ very large tables stay responsive. Moving past the end of a window loads the
 next one automatically. The total row count (respecting the active filter) is
 fetched in the background and appears in the status bar once ready.
 
+## Connection recovery
+
+If the database connection drops or a query fails fatally, the panel
+shows a recovery dialog: **Reconnect** opens a fresh connection to the
+same URL, **Close panel** closes the viewer. `Esc` dismisses the dialog
+and leaves the last results visible. The panel never retries on its own,
+so there is no error loop.
+
 ## Limitations (current)
 
 - Read-only — no editing, no arbitrary SQL.
