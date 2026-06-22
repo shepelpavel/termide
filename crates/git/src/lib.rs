@@ -13,6 +13,7 @@ mod blame;
 pub(crate) mod command;
 mod commits;
 mod files;
+pub mod graph;
 mod operations;
 mod repo_manager;
 mod stash;
@@ -26,7 +27,7 @@ pub use blame::{get_blame_async, BlameEntry};
 pub use command::{network_command, SshAuth};
 pub use commits::{
     get_commit_details, get_commit_diff, get_file_diff, get_file_diff_stats, get_log,
-    get_log_with_graph, CommitDetails, CommitInfo, DiffStats,
+    get_log_graph_unicode, get_log_with_graph, CommitDetails, CommitInfo, DiffStats,
 };
 pub use files::{get_staged_files, get_unstaged_files, StagedFile, UnstagedFile};
 pub use operations::{
