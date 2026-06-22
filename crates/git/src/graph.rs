@@ -12,13 +12,16 @@
 //!   into it (a merge target / shared parent) and *below* a commit when it is a
 //!   merge (extra parents branch out to new lanes).
 //! - Lanes are one column wide and contiguous, so corners connect cleanly
-//!   (`├╮`, `├╯`). Freed lanes are not compacted (no per-row lane migration),
-//!   which keeps the prototype simple and sidesteps lane-crossing glyphs; the
-//!   cost is an occasional gap or a longer horizontal `─` run.
+//!   (`├╮`, `├╯`). Where a horizontal run crosses an unrelated active lane or
+//!   passes through an intermediate junction, the through-glyphs `┼`/`┴`/`┬`
+//!   are used so the line stays unbroken.
+//! - Freed lanes are reused for later branches (`free_slot` fills holes) but
+//!   never shift-compacted: pulling a lane leftward would need a 1-cell diagonal
+//!   transition, which box-drawing cannot render flush against `│`. The cost is
+//!   an occasional gap column or a longer horizontal `─` run — by design.
 //!
-//! Known prototype gaps: no lane compaction, octopus merges (3+ parents) draw
-//! but aren't visually optimised, and reordered/criss-cross histories may route
-//! through wider horizontals than a production layout would.
+//! Known prototype gaps: no shift-compaction (above), and octopus merges
+//! (3+ parents) draw correctly but aren't width-optimised.
 
 /// A commit and its parent hashes, in the order `git log` returns them
 /// (newest first; first parent is the mainline).
@@ -75,26 +78,28 @@ pub fn render_graph(commits: &[GraphCommit]) -> Vec<GraphRow> {
         };
 
         // --- connector ABOVE: fold extra incoming lanes into commit_col ---
+        // `commit_col` is the leftmost incoming lane, so all folds come from the
+        // right and the run spans `commit_col..=hi`.
         if incoming.len() > 1 {
             let width = lanes.len();
-            let mut cells = vec![' '; width];
+            let mut cells = vec!['│'; width];
             for (i, l) in lanes.iter().enumerate() {
-                if l.is_some() {
-                    cells[i] = '│';
+                if l.is_none() {
+                    cells[i] = ' ';
                 }
             }
             let hi = *incoming.iter().max().unwrap();
-            // horizontal run from commit_col to the furthest folding lane
+            // horizontal run: cross unrelated active lanes with `┼`, fill gaps `─`
             for cell in &mut cells[commit_col..=hi] {
-                if *cell == ' ' {
-                    *cell = '─';
-                }
+                *cell = if *cell == '│' { '┼' } else { '─' };
             }
             for &i in &incoming {
                 cells[i] = if i == commit_col {
                     '├' // mainline continues down + accepts the fold from the right
+                } else if i == hi {
+                    '╯' // furthest fold turns up-and-left
                 } else {
-                    '╯' // folding lane turns up-and-left
+                    '┴' // intermediate fold: up-and-left while the run passes through
                 };
             }
             rows.push(GraphRow {
@@ -144,25 +149,43 @@ pub fn render_graph(commits: &[GraphCommit]) -> Vec<GraphRow> {
         }
 
         // --- connector BELOW: branch the merge parents out of commit_col ---
+        // Reused lanes (`free_slot` fills holes) can sit on either side of
+        // `commit_col`, so the run spans `lo..=hi` and curves accordingly.
         if !branched.is_empty() {
             let width = lanes.len();
-            let mut cells = vec![' '; width];
+            let mut cells = vec!['│'; width];
             for (i, l) in lanes.iter().enumerate() {
-                if l.is_some() {
-                    cells[i] = '│';
+                if l.is_none() {
+                    cells[i] = ' ';
                 }
             }
+            let lo = *branched.iter().min().unwrap().min(&commit_col);
             let hi = *branched.iter().max().unwrap().max(&commit_col);
-            for cell in &mut cells[commit_col..=hi] {
-                if *cell == ' ' {
-                    *cell = '─';
-                }
+            for cell in &mut cells[lo..=hi] {
+                *cell = if *cell == '│' { '┼' } else { '─' };
             }
-            cells[commit_col] = '├'; // mainline down + branches right
+            let has_left = branched.iter().any(|&c| c < commit_col);
+            let has_right = branched.iter().any(|&c| c > commit_col);
+            cells[commit_col] = match (has_left, has_right) {
+                (true, true) => '┼',
+                (true, false) => '┤',
+                _ => '├', // mainline down + branches right
+            };
             for &col in &branched {
-                if col != commit_col {
-                    cells[col] = '╮'; // new lane turns down-from-left
+                if col == commit_col {
+                    continue;
                 }
+                cells[col] = if col > commit_col {
+                    if col == hi {
+                        '╮'
+                    } else {
+                        '┬'
+                    } // down-from-left
+                } else if col == lo {
+                    '╭' // down-from-right
+                } else {
+                    '┬'
+                };
             }
             rows.push(GraphRow {
                 graph: render(&cells),
@@ -270,6 +293,42 @@ mod tests {
         let commits = parse_parents_log(&stdout);
         let rows = render_graph(&commits);
         println!("\n{}\n", dump(&commits, &rows));
+    }
+
+    #[test]
+    fn three_way_fold_uses_through_glyph() {
+        // Three tips that all share parent `g` fold in one row: the middle lane
+        // must use `┴` (up-left + run passes through), not a second `╯`.
+        let commits = [c("a", &["g"]), c("b", &["g"]), c("d", &["g"]), c("g", &[])];
+        let rows = render_graph(&commits);
+        let out = dump(&commits, &rows);
+        println!("\n{out}\n");
+        assert!(
+            rows.iter().any(|r| r.graph == "├┴╯"),
+            "expected a ├┴╯ fold row, got {:?}",
+            rows.iter().map(|r| r.graph.as_str()).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn horizontal_run_crosses_unrelated_lane_with_plus() {
+        // An unrelated lane (`y`→base) stays active while two `p` lanes fold
+        // across it; the crossing cell must be `┼`, not a broken `│`.
+        let commits = [
+            c("x", &["p"]),
+            c("y", &["base"]),
+            c("z", &["p"]),
+            c("p", &["base"]),
+            c("base", &[]),
+        ];
+        let rows = render_graph(&commits);
+        let out = dump(&commits, &rows);
+        println!("\n{out}\n");
+        assert!(
+            rows.iter().any(|r| r.graph.contains('┼')),
+            "expected a ┼ crossing, got {:?}",
+            rows.iter().map(|r| r.graph.as_str()).collect::<Vec<_>>()
+        );
     }
 
     #[test]
