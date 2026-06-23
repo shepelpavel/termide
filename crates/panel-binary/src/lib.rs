@@ -1,4 +1,4 @@
-//! Binary file viewer panel (read-only hex/ASCII).
+//! Binary file viewer/editor panel (hex/ASCII).
 //!
 //! Renders a binary file as a classic hex dump — `offset │ hex bytes │ ASCII
 //! gutter` — in pure text pseudographics. The number of bytes per row adapts to
@@ -73,7 +73,7 @@ enum ViewMode {
     Text,
 }
 
-/// Read-only binary (hex/ASCII) viewer.
+/// Binary (hex/ASCII) viewer and overwrite editor.
 pub struct BinaryPanel {
     /// Path to the file.
     file_path: PathBuf,
@@ -1039,7 +1039,7 @@ impl Panel for BinaryPanel {
 
     fn needs_close_confirmation(&self) -> Option<String> {
         if self.editable && self.is_modified() {
-            Some("Unsaved changes in the hex editor".to_string())
+            Some("File has unsaved changes. Close anyway?".to_string())
         } else {
             None
         }
