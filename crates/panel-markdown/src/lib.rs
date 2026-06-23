@@ -710,13 +710,14 @@ impl Panel for MarkdownPanel {
         let sep = || StatusSegment::new(" │ ", SegmentKind::Label);
         let total = self.line_count().max(1);
         let pos = (self.cursor.0 + 1).min(total);
+        // Same field order as the editor: View first, then Edit.
         vec![
             StatusSegment::new(" ", SegmentKind::Label),
-            StatusSegment::clickable("Edit: ", SegmentKind::Label, "edit_source"),
-            StatusSegment::clickable("No", SegmentKind::Active, "edit_source"),
-            sep(),
             StatusSegment::new("View: ", SegmentKind::Label),
             StatusSegment::new("Rendered", SegmentKind::Value),
+            sep(),
+            StatusSegment::clickable("Edit: ", SegmentKind::Label, "edit_source"),
+            StatusSegment::clickable("No", SegmentKind::Active, "edit_source"),
             sep(),
             StatusSegment::new("Line: ", SegmentKind::Label),
             StatusSegment::new(format!("{pos}/{total}"), SegmentKind::Value),
