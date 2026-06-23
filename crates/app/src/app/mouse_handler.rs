@@ -538,6 +538,31 @@ impl App {
                     self.state.needs_redraw = true;
                     return Ok(());
                 }
+
+                // File-type indicator click → open the syntax-language picker.
+                // Continue the same layout: sep+line_ending, sep+encoding,
+                // sep+file_type.
+                let sep_w = sep.width() as u16;
+                let le_end = tab_end + sep_w + info.line_ending.width() as u16;
+                let enc_end = le_end + sep_w + info.encoding.width() as u16;
+                let ftype = if info.syntax_highlighting {
+                    info.file_type.clone()
+                } else {
+                    t.status_plain_text().to_string()
+                };
+                let ft_start = enc_end + sep_w;
+                let ft_end = ft_start + ftype.width() as u16;
+                if (ft_start..ft_end).contains(&x) {
+                    if let Some(editor) = self
+                        .layout_manager
+                        .active_panel_mut()
+                        .and_then(|p| p.as_editor_mut())
+                    {
+                        editor.open_language_picker();
+                        self.state.needs_redraw = true;
+                    }
+                    return Ok(());
+                }
             }
         }
 

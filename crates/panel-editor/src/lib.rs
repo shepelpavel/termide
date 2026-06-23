@@ -21,6 +21,7 @@ pub mod rendering;
 pub mod search;
 pub mod selection;
 pub mod state;
+mod syntax_picker;
 pub mod text_editing;
 pub mod vim;
 pub mod word_boundary;
