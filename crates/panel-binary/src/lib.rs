@@ -38,8 +38,8 @@ use ratatui::{
 };
 
 use termide_core::{
-    Config, HotkeyTable, KeyChord, Panel, PanelEvent, RenderContext, SegmentKind, SessionPanel,
-    StatusSegment, Theme, ThemeColors, WidthPreference,
+    CommandResult, Config, HotkeyTable, KeyChord, Panel, PanelCommand, PanelEvent, RenderContext,
+    SegmentKind, SessionPanel, StatusSegment, Theme, ThemeColors, WidthPreference,
 };
 use termide_modal::{FindBar, FindBarAction, FindBarBtn, FindBarConfig, FindField};
 use termide_ui::ScrollBar;
@@ -920,6 +920,18 @@ impl Panel for BinaryPanel {
             return self.toggle_view();
         }
         vec![]
+    }
+
+    fn handle_command(&mut self, cmd: PanelCommand<'_>) -> CommandResult {
+        match cmd {
+            // Report like the editor so the shared close-with-unsaved dialog
+            // (Save / Don't save / Cancel) is reused for the hex editor too.
+            PanelCommand::GetModificationStatus => CommandResult::ModificationStatus {
+                is_modified: self.editable && self.is_modified(),
+                has_external_change: false,
+            },
+            _ => CommandResult::None,
+        }
     }
 
     fn handle_key(&mut self, chord: KeyChord) -> Vec<PanelEvent> {
