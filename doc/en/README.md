@@ -14,6 +14,7 @@ Welcome to the TermIDE documentation! This guide covers installation, usage, and
 - [Database Viewer](database.md) - Read-only browsing of SQLite / PostgreSQL / MySQL tables
 - [Terminal](terminal.md) - Using the integrated terminal
 - [Text Editor](editor.md) - Editing files with syntax highlighting
+- [Markdown Preview](markdown.md) - Rendered `.md` preview with `Ctrl+E` source toggle
 - [Themes](themes.md) - Customizing appearance with themes
 - [Custom Scripts](actions.md) - Running user-defined scripts from the Scripts menu
 

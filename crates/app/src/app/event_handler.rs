@@ -73,6 +73,14 @@ impl App {
                 self.event_swap_active_to_text(path)?;
             }
 
+            PanelEvent::ViewMarkdown(path) => {
+                self.event_view_markdown(path)?;
+            }
+
+            PanelEvent::SwapActiveToMarkdown(path) => {
+                self.event_swap_active_to_markdown(path)?;
+            }
+
             PanelEvent::OpenExternal(path) => {
                 self.event_open_external(path)?;
             }
@@ -493,12 +501,17 @@ impl App {
     fn event_swap_active_to_text(&mut self, file_path: PathBuf) -> Result<()> {
         use termide_panel_binary::BinaryPanel;
         use termide_panel_editor::{Editor, EditorConfig};
-        let editable = self
-            .layout_manager
-            .active_panel()
-            .and_then(|p| p.as_any().downcast_ref::<BinaryPanel>())
-            .map(|b| b.is_editable())
-            .unwrap_or(false);
+        // Open editable when coming from an editable hex editor, or from the
+        // markdown preview (switching to source is always for editing).
+        let from_markdown =
+            self.layout_manager.active_panel().map(|p| p.name()) == Some("markdown");
+        let editable = from_markdown
+            || self
+                .layout_manager
+                .active_panel()
+                .and_then(|p| p.as_any().downcast_ref::<BinaryPanel>())
+                .map(|b| b.is_editable())
+                .unwrap_or(false);
         let config = if editable {
             EditorConfig::default()
         } else {
@@ -515,6 +528,47 @@ impl App {
                 self.auto_save_session();
             }
             Err(e) => self.show_error_modal(format!("Failed to open file: {e}")),
+        }
+        Ok(())
+    }
+
+    /// Open a markdown file in the rendered preview panel (read-only).
+    fn event_view_markdown(&mut self, file_path: PathBuf) -> Result<()> {
+        use termide_panel_markdown::MarkdownPanel;
+
+        // Reuse an existing preview if one is open, focusing it.
+        if let Some(panel) = self
+            .layout_manager
+            .focus_and_expand_panel_by_name("markdown")
+        {
+            if let Some(md) = panel.as_any_mut().downcast_mut::<MarkdownPanel>() {
+                md.set_file(file_path);
+                self.state.needs_redraw = true;
+                return Ok(());
+            }
+        }
+
+        self.close_help_panels();
+        match MarkdownPanel::new(file_path) {
+            Ok(panel) => {
+                self.add_panel(Box::new(panel));
+                self.auto_save_session();
+            }
+            Err(e) => self.show_error_modal(format!("Failed to open markdown file: {e}")),
+        }
+        Ok(())
+    }
+
+    /// Swap the active panel in place for the rendered markdown preview.
+    fn event_swap_active_to_markdown(&mut self, file_path: PathBuf) -> Result<()> {
+        use termide_panel_markdown::MarkdownPanel;
+        match MarkdownPanel::new(file_path) {
+            Ok(panel) => {
+                self.layout_manager.replace_active_panel(Box::new(panel));
+                self.state.needs_redraw = true;
+                self.auto_save_session();
+            }
+            Err(e) => self.show_error_modal(format!("Failed to open markdown file: {e}")),
         }
         Ok(())
     }

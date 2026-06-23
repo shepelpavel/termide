@@ -53,6 +53,22 @@ impl Editor {
         };
         self.render_cache.highlight.set_custom_syntax(custom);
     }
+
+    /// The file path when this editor holds a Markdown source file. Used to make
+    /// the view/edit toggle (Ctrl+E / Edit chip) swap to the rendered preview
+    /// instead of flipping read-only.
+    fn markdown_path(&self) -> Option<PathBuf> {
+        let path = self.file_path()?;
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())?
+            .to_ascii_lowercase();
+        if ext == "md" || ext == "markdown" {
+            Some(path.to_path_buf())
+        } else {
+            None
+        }
+    }
 }
 
 impl Panel for Editor {
@@ -267,8 +283,17 @@ impl Panel for Editor {
             return vec![];
         }
 
-        // Toggle view (read-only) ↔ edit.
+        // Toggle view (read-only) ↔ edit. For Markdown the same key swaps to the
+        // rendered preview instead (source ↔ preview is the view/edit axis).
         if self.hotkeys.matches("viewer_toggle_view", &key) {
+            if let Some(path) = self.markdown_path() {
+                if self.buffer_is_modified() {
+                    return vec![PanelEvent::ShowMessage(
+                        "Save the file before switching to preview".to_string(),
+                    )];
+                }
+                return vec![PanelEvent::SwapActiveToMarkdown(path)];
+            }
             self.config.read_only = !self.config.read_only;
             return vec![PanelEvent::NeedsRedraw];
         }
@@ -516,6 +541,14 @@ impl Panel for Editor {
                 vec![PanelEvent::NeedsRedraw]
             }
             "toggle_edit" => {
+                if let Some(path) = self.markdown_path() {
+                    if self.buffer_is_modified() {
+                        return vec![PanelEvent::ShowMessage(
+                            "Save the file before switching to preview".to_string(),
+                        )];
+                    }
+                    return vec![PanelEvent::SwapActiveToMarkdown(path)];
+                }
                 self.config.read_only = !self.config.read_only;
                 vec![PanelEvent::NeedsRedraw]
             }

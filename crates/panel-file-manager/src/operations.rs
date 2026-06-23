@@ -62,12 +62,17 @@ pub(super) fn determine_file_open_event(
                 return Some(PanelEvent::OpenExternal(file_path.to_path_buf()));
             }
 
-            // 3. Binary files → hex viewer
+            // 3. Markdown → rendered preview
+            if is_markdown(&entry.name) {
+                return Some(PanelEvent::ViewMarkdown(file_path.to_path_buf()));
+            }
+
+            // 4. Binary files → hex viewer
             if is_binary_file(file_path) {
                 return Some(PanelEvent::ViewBinary(file_path.to_path_buf()));
             }
 
-            // 4. Text files → read-only editor
+            // 5. Text files → read-only editor
             Some(PanelEvent::ViewFile(file_path.to_path_buf()))
         }
         FileOpenMode::Default => {
@@ -82,7 +87,9 @@ pub(super) fn determine_file_open_event(
                 return Some(PanelEvent::OpenExternal(file_path.to_path_buf()));
             }
 
-            // 3. Source/text files with known extensions → editor (even if executable)
+            // 3. Source/text files with known extensions → editor (even if executable).
+            //    Markdown opens in the editor on Enter; F3 (View) shows the
+            //    rendered preview instead.
             if is_source_file(&entry.name) {
                 return Some(PanelEvent::OpenFile(file_path.to_path_buf()));
             }
@@ -127,6 +134,10 @@ fn is_video(filename: &str) -> bool {
         get_extension(filename).as_str(),
         "mp4" | "mkv" | "avi" | "mov" | "webm" | "flv" | "wmv" | "m4v"
     )
+}
+
+fn is_markdown(filename: &str) -> bool {
+    matches!(get_extension(filename).as_str(), "md" | "markdown")
 }
 
 fn is_source_file(filename: &str) -> bool {
