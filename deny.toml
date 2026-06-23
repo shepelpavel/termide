@@ -33,7 +33,11 @@ no-default-features = false
 # names the path back to our tree so the next reviewer can decide
 # whether the justification still holds.
 version = 2
-yanked = "deny"
+# Warn (don't fail) on yanked crates: termide's tree pulls pre-release
+# (`-rc`) transitive deps via the russh/SFTP stack, and an upstream yank of
+# one of those would otherwise turn CI red without any code change on our
+# side. `cargo update` periodically moves off yanked versions.
+yanked = "warn"
 ignore = [
     # RUSTSEC-2023-0071 — Marvin Attack: timing sidechannel in
     # `rsa` for RSA key decryption. Path: `rsa` ← `russh` ← VFS
