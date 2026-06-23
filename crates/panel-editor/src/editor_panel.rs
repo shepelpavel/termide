@@ -199,10 +199,30 @@ impl Panel for Editor {
             ctx.is_focused,
             ctx.border_right_x,
         );
+
+        // Language picker overlay (drawn last, over the content).
+        if self.syntax_picker.is_some() {
+            let colors = termide_core::ThemeColors::from(&theme);
+            if let Some(picker) = self.syntax_picker.as_mut() {
+                picker.render(area, buf, &colors);
+            }
+        }
     }
 
     fn handle_key(&mut self, chord: termide_core::KeyChord) -> Vec<PanelEvent> {
         let key = chord.raw;
+
+        // The syntax-language picker owns input while open.
+        if self.syntax_picker.is_some() {
+            use crate::syntax_picker::PickerAction;
+            match self.syntax_picker.as_mut().unwrap().handle_key(key) {
+                PickerAction::Select(lang) => self.apply_syntax(&lang),
+                PickerAction::Cancel => self.syntax_picker = None,
+                PickerAction::None => {}
+            }
+            return vec![PanelEvent::NeedsRedraw];
+        }
+
         // Any keyboard input should make viewport follow cursor again
         self.scroll_follows_cursor = true;
 
@@ -336,6 +356,16 @@ impl Panel for Editor {
         mouse: crossterm::event::MouseEvent,
         panel_area: Rect,
     ) -> Vec<PanelEvent> {
+        // The language picker owns the mouse while open (scroll / click / click-away).
+        if self.syntax_picker.is_some() {
+            use crate::syntax_picker::PickerAction;
+            match self.syntax_picker.as_mut().unwrap().handle_mouse(mouse) {
+                PickerAction::Select(lang) => self.apply_syntax(&lang),
+                PickerAction::Cancel => self.syntax_picker = None,
+                PickerAction::None => {}
+            }
+            return vec![PanelEvent::NeedsRedraw];
+        }
         self.handle_mouse_event(mouse, panel_area)
     }
 
@@ -544,8 +574,9 @@ impl Panel for Editor {
 
     fn captures_escape(&self) -> bool {
         // Capture Escape when the inline find bar is open, search is active,
-        // popups are open, or vim is in INSERT mode
-        self.find_bar.is_some()
+        // popups are open, the language picker is open, or vim is in INSERT mode
+        self.syntax_picker.is_some()
+            || self.find_bar.is_some()
             || self.search.state.is_some()
             || self.lsp.completion_popup.is_some()
             || self.lsp.hover_popup.is_some()

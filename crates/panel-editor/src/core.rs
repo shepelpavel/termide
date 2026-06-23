@@ -134,6 +134,9 @@ pub struct Editor {
     /// on every `prepare_render` so the global config resync doesn't clobber
     /// it. `None` means "follow the global setting".
     tab_size_override: Option<usize>,
+
+    /// Open syntax-highlighting language picker (dropdown), if any.
+    pub(crate) syntax_picker: Option<crate::syntax_picker::SyntaxPicker>,
 }
 
 impl Editor {
@@ -181,6 +184,7 @@ impl Editor {
             hotkeys: HotkeyTable::default(),
             last_config_ptr: 0,
             tab_size_override: None,
+            syntax_picker: None,
         }
     }
 
@@ -203,6 +207,36 @@ impl Editor {
     /// Get file path
     pub fn file_path(&self) -> Option<&std::path::Path> {
         self.buffer.file_path()
+    }
+
+    /// Open the syntax-highlighting language picker (dropdown).
+    pub fn open_language_picker(&mut self) {
+        let custom: Vec<String> = self
+            .render_cache
+            .config
+            .highlight
+            .custom_languages
+            .iter()
+            .map(|c| c.name.clone())
+            .collect();
+        let current = self.render_cache.highlight.current_syntax();
+        self.syntax_picker = Some(crate::syntax_picker::SyntaxPicker::new(
+            termide_highlight::SUPPORTED_LANGUAGES,
+            &custom,
+            current,
+        ));
+    }
+
+    /// Apply a language chosen in the picker (`Auto-detect` re-detects by path).
+    pub(crate) fn apply_syntax(&mut self, language: &str) {
+        if language == crate::syntax_picker::AUTO_DETECT {
+            if let Some(path) = self.buffer.file_path().map(|p| p.to_path_buf()) {
+                self.render_cache.highlight.set_syntax_from_path(&path);
+            }
+        } else {
+            self.render_cache.highlight.set_syntax(language);
+        }
+        self.syntax_picker = None;
     }
 
     /// Check if Vim mode is enabled
@@ -625,6 +659,7 @@ impl Editor {
             hotkeys: HotkeyTable::default(),
             last_config_ptr: 0,
             tab_size_override: None,
+            syntax_picker: None,
         })
     }
 
@@ -666,6 +701,7 @@ impl Editor {
             hotkeys: HotkeyTable::default(),
             last_config_ptr: 0,
             tab_size_override: None,
+            syntax_picker: None,
         }
     }
 

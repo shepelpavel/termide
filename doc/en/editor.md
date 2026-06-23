@@ -115,6 +115,15 @@ The configurable `replace_current` and `replace_all` editor keybindings still
 act on the active search directly, with or without the bar (see
 [Keybindings](keybindings.md)).
 
+## Overriding the Detected Language
+
+The language is auto-detected from the file extension. If it's wrong (or absent
+for an unknown extension), click the **file-type indicator** in the status bar to
+open a dropdown of all available highlighters — built-in languages plus your
+configured custom languages, with an **Auto-detect** entry to go back to
+extension-based detection. Navigate with the arrows or the mouse (the list
+scrolls), `Enter` / click to apply, `Esc` to dismiss.
+
 ## Custom Syntax Highlighting
 
 Built-in languages are highlighted with tree-sitter. For a file type that has
