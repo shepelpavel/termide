@@ -513,62 +513,9 @@ impl App {
 
     /// Handle click on status bar (bottom row)
     fn handle_status_bar_click(&mut self, x: u16) -> Result<()> {
-        // Tab indicator click on an editor panel: open a modal to override
-        // tab_size for this editor only. Layout here mirrors
-        // `ui-render/src/status_bar.rs:305-317` exactly so the range stays
-        // accurate for every locale.
-        if let Some(panel) = self.layout_manager.active_panel() {
-            if let Some(editor) = panel.as_editor() {
-                let t = i18n::t();
-                let info = editor.get_editor_info();
-                let pos_label = format!(" {} ", t.status_pos());
-                let pos_value = format!("{}:{}", info.line, info.column);
-                let sep = t.ui_hint_separator();
-                let tab_label = format!("{}{} ", sep, t.status_tab());
-                let tab_value = info.tab_size.to_string();
-                let tab_start = (pos_label.width() + pos_value.width()) as u16;
-                let tab_end = tab_start + (tab_label.width() + tab_value.width()) as u16;
-                if (tab_start..tab_end).contains(&x) {
-                    // Empty prompt: the title alone is self-explanatory and
-                    // `InputModal::render` skips the prompt row when it's empty.
-                    let modal =
-                        modal::InputModal::with_default(t.status_tab_modal_title(), "", tab_value);
-                    self.state.pending_action = Some(PendingAction::ChangeEditorTabSize);
-                    self.state.active_modal = Some(ActiveModal::Input(Box::new(modal)));
-                    self.state.needs_redraw = true;
-                    return Ok(());
-                }
-
-                // File-type indicator click → open the syntax-language picker.
-                // Continue the same layout: sep+line_ending, sep+encoding,
-                // sep+file_type.
-                let sep_w = sep.width() as u16;
-                let le_end = tab_end + sep_w + info.line_ending.width() as u16;
-                let enc_end = le_end + sep_w + info.encoding.width() as u16;
-                let ftype = if info.syntax_highlighting {
-                    info.file_type.clone()
-                } else {
-                    t.status_plain_text().to_string()
-                };
-                let ft_start = enc_end + sep_w;
-                let ft_end = ft_start + ftype.width() as u16;
-                if (ft_start..ft_end).contains(&x) {
-                    if let Some(editor) = self
-                        .layout_manager
-                        .active_panel_mut()
-                        .and_then(|p| p.as_editor_mut())
-                    {
-                        editor.open_language_picker();
-                        self.state.needs_redraw = true;
-                    }
-                    return Ok(());
-                }
-            }
-        }
-
-        // Generic clickable status-bar segments contributed by the focused
-        // panel (e.g. the binary viewer's Hex/Text chip). Layout matches the
-        // renderer's `segment_hit_areas`, starting at column 0.
+        // Clickable status-bar segments contributed by the focused panel
+        // (editor: Pos / Tab / file-type / Hex / View-Edit; binary viewer:
+        // Hex/Text). Layout matches the renderer's `segment_hit_areas`.
         let seg_action = {
             let segs = self
                 .layout_manager
@@ -581,12 +528,18 @@ impl App {
                 .map(|h| h.action)
         };
         if let Some(action) = seg_action {
-            let events = self
-                .layout_manager
-                .active_panel_mut()
-                .map(|p| p.handle_status_action(action))
-                .unwrap_or_default();
+            use crate::panel_ext::PanelExt;
+            // A segment action may both emit events and request a modal (e.g.
+            // the editor's Tab segment opens the tab-size input).
+            let (events, modal_request) = if let Some(p) = self.layout_manager.active_panel_mut() {
+                (p.handle_status_action(action), p.take_modal_request())
+            } else {
+                (vec![], None)
+            };
             self.process_panel_events(events)?;
+            if let Some((act, modal)) = modal_request {
+                self.handle_modal_request(act, modal)?;
+            }
             self.state.needs_redraw = true;
             return Ok(());
         }

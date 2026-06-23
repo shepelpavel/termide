@@ -186,11 +186,11 @@ pub enum WidthPreference {
 /// Visual role of a status-bar segment; mapped to theme colours by the renderer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SegmentKind {
-    /// Dim label / separator text (field names, ` · `).
+    /// Dim label / separator text (field names like `View:`, ` │ `).
     Label,
-    /// Normal value text (highlighted).
+    /// Informational value: normal colour, regular weight (e.g. `LF`, `UTF-8`).
     Value,
-    /// Active option of a toggle (e.g. the current Hex/Text mode).
+    /// Clickable / changeable value: normal colour, bold to signal it.
     Active,
     /// Inactive option of a toggle.
     Inactive,
