@@ -284,6 +284,9 @@ fn construct_panel(
         SessionPanel::Binary { path } => termide_panel_binary::BinaryPanel::new(path)
             .ok()
             .map(|p| Box::new(p) as Box<dyn Panel + Send>),
+        SessionPanel::Markdown { path } => termide_panel_markdown::MarkdownPanel::new(path)
+            .ok()
+            .map(|p| Box::new(p) as Box<dyn Panel + Send>),
         SessionPanel::GitStatus { repo_path } => Some(Box::new(
             termide_panel_git_status::GitStatusPanel::new_for_repo(repo_path),
         )),

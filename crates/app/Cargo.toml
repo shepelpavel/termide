@@ -50,6 +50,7 @@ termide-panel-file-manager = { path = "../panel-file-manager" }
 termide-panel-terminal = { path = "../panel-terminal" }
 termide-panel-image = { path = "../panel-image" }
 termide-panel-binary = { path = "../panel-binary" }
+termide-panel-markdown = { path = "../panel-markdown" }
 termide-panel-git-status = { path = "../panel-git-status" }
 termide-panel-git-log = { path = "../panel-git-log" }
 termide-panel-git-diff = { path = "../panel-git-diff" }

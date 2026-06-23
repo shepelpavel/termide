@@ -410,6 +410,12 @@ pub enum PanelEvent {
     /// Swap the active panel in place for a read-only text editor of `path`
     SwapActiveToText(PathBuf),
 
+    /// Open a markdown file in the rendered preview panel (read-only)
+    ViewMarkdown(PathBuf),
+
+    /// Swap the active panel in place for the rendered markdown preview of `path`
+    SwapActiveToMarkdown(PathBuf),
+
     /// Open file with system default application (xdg-open)
     OpenExternal(PathBuf),
 

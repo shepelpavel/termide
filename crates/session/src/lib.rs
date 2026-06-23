@@ -96,6 +96,12 @@ pub enum SessionPanel {
         /// Path to the binary file
         path: PathBuf,
     },
+    /// Rendered Markdown preview panel
+    #[serde(rename = "markdown")]
+    Markdown {
+        /// Path to the markdown file
+        path: PathBuf,
+    },
     /// Git status panel
     #[serde(rename = "git_status")]
     GitStatus {
@@ -779,6 +785,35 @@ path = "/old/style/path"
     // =========================================================================
     // Unsaved buffer file naming
     // =========================================================================
+
+    #[test]
+    fn test_markdown_panel_round_trip() {
+        let session = Session {
+            panel_groups: vec![SessionPanelGroup {
+                panels: vec![SessionPanel::Markdown {
+                    path: PathBuf::from("/home/user/project/README.md"),
+                }],
+                expanded_index: 0,
+                mode: Default::default(),
+                split_heights: None,
+                fullscreen_cache: None,
+                width: None,
+            }],
+            focused_group: 0,
+        };
+
+        let toml_str = toml::to_string_pretty(&session).unwrap();
+        // Serialized with the "markdown" type tag.
+        assert!(toml_str.contains("type = \"markdown\""), "{toml_str}");
+
+        let restored: Session = toml::from_str(&toml_str).unwrap();
+        match &restored.panel_groups[0].panels[0] {
+            SessionPanel::Markdown { path } => {
+                assert_eq!(path, &PathBuf::from("/home/user/project/README.md"));
+            }
+            other => panic!("expected Markdown panel, got {other:?}"),
+        }
+    }
 
     #[test]
     fn test_generate_unsaved_filename_format() {

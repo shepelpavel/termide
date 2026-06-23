@@ -46,6 +46,7 @@ glob = "0.3"
 similar = "2.7"
 serde_json = "1.0"
 url = "2"
+pulldown-cmark = { version = "0.12", default-features = false }
 
 [package]
 name = "termide"
