@@ -115,6 +115,14 @@ The configurable `replace_current` and `replace_all` editor keybindings still
 act on the active search directly, with or without the bar (see
 [Keybindings](keybindings.md)).
 
+## Status bar
+
+The editor's status-bar fields are clickable: **Pos** opens go-to-line, **Tab**
+sets the tab size, the **file type** opens the language picker (below), the
+**`[Text]`** chip switches to the hex viewer (same as `Ctrl+L`), and the
+**`[View]`/`[Edit]`** chip toggles read-only — also bound to `Ctrl+E`
+(`[viewer.keybindings] toggle_view`).
+
 ## Overriding the Detected Language
 
 The language is auto-detected from the file extension. If it's wrong (or absent

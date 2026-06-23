@@ -13,9 +13,12 @@ use ratatui::{buffer::Buffer, layout::Rect};
 
 use termide_config::Config;
 use termide_core::{
-    CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SessionPanel, WidthPreference,
+    CommandResult, InputAction, Panel, PanelCommand, PanelEvent, RenderContext, SegmentKind,
+    SessionPanel, StatusSegment, WidthPreference,
 };
 use termide_i18n::t;
+use termide_modal::{ActiveModal, InputModal};
+use termide_state::PendingAction;
 use termide_theme::Theme;
 
 use crate::keyboard;
@@ -264,6 +267,12 @@ impl Panel for Editor {
             return vec![];
         }
 
+        // Toggle view (read-only) ↔ edit.
+        if self.hotkeys.matches("viewer_toggle_view", &key) {
+            self.config.read_only = !self.config.read_only;
+            return vec![PanelEvent::NeedsRedraw];
+        }
+
         // The inline find/replace bar (before vim / command processing). Tab
         // toggles focus between the bar and the buffer "results" zone, like the
         // file manager. In the bar zone the bar owns keys; in the buffer zone
@@ -422,6 +431,118 @@ impl Panel for Editor {
         }
 
         vec![]
+    }
+
+    fn status_segments(&self) -> Vec<StatusSegment> {
+        let t = t();
+        let info = self.get_editor_info();
+        let sep = t.ui_hint_separator().to_string();
+        let mut s = Vec::new();
+
+        s.push(StatusSegment::new(
+            format!(" {} ", t.status_pos()),
+            SegmentKind::Label,
+        ));
+        s.push(StatusSegment::clickable(
+            format!("{}:{}", info.line, info.column),
+            SegmentKind::Value,
+            "goto_line",
+        ));
+        s.push(StatusSegment::new(
+            format!("{}{} ", sep, t.status_tab()),
+            SegmentKind::Label,
+        ));
+        s.push(StatusSegment::clickable(
+            info.tab_size.to_string(),
+            SegmentKind::Value,
+            "tab_size",
+        ));
+        s.push(StatusSegment::new(sep.clone(), SegmentKind::Label));
+        s.push(StatusSegment::new(
+            info.line_ending.clone(),
+            SegmentKind::Value,
+        ));
+        s.push(StatusSegment::new(sep.clone(), SegmentKind::Label));
+        s.push(StatusSegment::new(
+            info.encoding.clone(),
+            SegmentKind::Value,
+        ));
+        s.push(StatusSegment::new(sep.clone(), SegmentKind::Label));
+        let ftype = if info.syntax_highlighting {
+            info.file_type.clone()
+        } else {
+            t.status_plain_text().to_string()
+        };
+        s.push(StatusSegment::clickable(
+            ftype,
+            SegmentKind::Value,
+            "pick_syntax",
+        ));
+        // Switch to the hex viewer (this is the text view).
+        s.push(StatusSegment::new(format!("{}· ", sep), SegmentKind::Label));
+        s.push(StatusSegment::clickable(
+            "[Text]",
+            SegmentKind::Active,
+            "to_hex",
+        ));
+        // View/edit (read-only) toggle.
+        s.push(StatusSegment::new(" ", SegmentKind::Label));
+        let mode = if info.read_only { "[View]" } else { "[Edit]" };
+        s.push(StatusSegment::clickable(
+            mode,
+            SegmentKind::Active,
+            "toggle_edit",
+        ));
+        if let Some(m) = info.vim_mode {
+            s.push(StatusSegment::new(sep.clone(), SegmentKind::Label));
+            s.push(StatusSegment::new(m.to_string(), SegmentKind::Warn));
+        }
+        s
+    }
+
+    fn handle_status_action(&mut self, action: &str) -> Vec<PanelEvent> {
+        match action {
+            "goto_line" => vec![PanelEvent::ShowInput {
+                prompt: "Go to line:".to_string(),
+                initial_value: String::new(),
+                on_submit: InputAction::GotoLine,
+            }],
+            "tab_size" => {
+                let t = t();
+                let modal = InputModal::with_default(
+                    t.status_tab_modal_title(),
+                    "",
+                    self.config.tab_size.to_string(),
+                );
+                self.modal_request = Some((
+                    PendingAction::ChangeEditorTabSize,
+                    ActiveModal::Input(Box::new(modal)),
+                ));
+                vec![]
+            }
+            "pick_syntax" => {
+                self.open_language_picker();
+                vec![PanelEvent::NeedsRedraw]
+            }
+            "toggle_edit" => {
+                self.config.read_only = !self.config.read_only;
+                vec![PanelEvent::NeedsRedraw]
+            }
+            "to_hex" => {
+                if let Some(path) = self.file_path().map(|p| p.to_path_buf()) {
+                    if self.buffer_is_modified() {
+                        vec![PanelEvent::ShowMessage(
+                            "Save the file before switching to hex view".to_string(),
+                        )]
+                    } else {
+                        vec![PanelEvent::SwapActiveToHex(path)]
+                    }
+                } else {
+                    vec![]
+                }
+            }
+            _ => vec![],
+        }
     }
 
     fn handle_command(&mut self, cmd: PanelCommand<'_>) -> CommandResult {
