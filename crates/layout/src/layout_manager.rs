@@ -338,6 +338,33 @@ impl LayoutManager {
         None
     }
 
+    /// Like [`Self::find_and_expand_panel_by_name`], but also moves keyboard
+    /// focus to the group containing the panel. Used when reusing an existing
+    /// viewer should focus it (the plain variant leaves focus untouched, e.g.
+    /// for background image previews).
+    pub fn focus_and_expand_panel_by_name(&mut self, name: &str) -> Option<&mut Box<dyn Panel>> {
+        let mut found: Option<(usize, usize)> = None;
+        for (group_idx, group) in self.panel_groups.iter().enumerate() {
+            for (panel_idx, panel) in group.panels().iter().enumerate() {
+                if panel.name() == name {
+                    found = Some((group_idx, panel_idx));
+                    break;
+                }
+            }
+            if found.is_some() {
+                break;
+            }
+        }
+
+        if let Some((group_idx, panel_idx)) = found {
+            self.focus = group_idx;
+            let group = &mut self.panel_groups[group_idx];
+            group.set_expanded(panel_idx);
+            return group.panels_mut().get_mut(panel_idx);
+        }
+        None
+    }
+
     /// Find the best group for a panel based on its width preference.
     fn find_preferred_group(&self, panel: &dyn Panel) -> usize {
         match panel.width_preference() {

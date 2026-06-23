@@ -37,10 +37,12 @@ pub struct SegmentHit {
 fn segment_style(kind: SegmentKind, theme: &Theme) -> Style {
     let base = Style::default().bg(theme.accented_bg);
     match kind {
+        // Field labels / separators: dimmed.
         SegmentKind::Label | SegmentKind::Inactive => base.fg(theme.disabled),
-        SegmentKind::Value | SegmentKind::Active => {
-            base.fg(theme.accented_fg).add_modifier(Modifier::BOLD)
-        }
+        // Informational value: normal colour, regular weight.
+        SegmentKind::Value => base.fg(theme.accented_fg),
+        // Clickable / changeable value: normal colour, bold to signal it.
+        SegmentKind::Active => base.fg(theme.accented_fg).add_modifier(Modifier::BOLD),
         SegmentKind::Warn => base.fg(theme.warning).add_modifier(Modifier::BOLD),
         SegmentKind::Error => base.fg(theme.error).add_modifier(Modifier::BOLD),
     }

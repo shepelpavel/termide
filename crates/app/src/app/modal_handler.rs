@@ -363,6 +363,25 @@ impl App {
                         }
                     }
                 }
+                PendingAction::GotoLine => {
+                    if let Some(text) = value.downcast_ref::<String>() {
+                        // Accept "line" or "line:column" (1-based, matching the
+                        // status-bar Pos display).
+                        let raw = text.trim();
+                        let mut parts = raw.splitn(2, ':');
+                        if let Some(Ok(line)) = parts.next().map(|s| s.trim().parse::<usize>()) {
+                            if line > 0 {
+                                let column = parts
+                                    .next()
+                                    .and_then(|s| s.trim().parse::<usize>().ok())
+                                    .filter(|&c| c > 0)
+                                    .map(|c| c - 1)
+                                    .unwrap_or(0);
+                                self.event_goto_position(line - 1, column);
+                            }
+                        }
+                    }
+                }
                 PendingAction::QuitApplication => {
                     // User confirmed quit - exit application
                     self.state.quit();

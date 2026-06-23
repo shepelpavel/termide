@@ -13,8 +13,8 @@ use ratatui::{buffer::Buffer, layout::Rect};
 
 use termide_config::Config;
 use termide_core::{
-    CommandResult, InputAction, Panel, PanelCommand, PanelEvent, RenderContext, SegmentKind,
-    SessionPanel, StatusSegment, WidthPreference,
+    CommandResult, Panel, PanelCommand, PanelEvent, RenderContext, SegmentKind, SessionPanel,
+    StatusSegment, WidthPreference,
 };
 use termide_i18n::t;
 use termide_modal::{ActiveModal, InputModal};
@@ -436,65 +436,55 @@ impl Panel for Editor {
     fn status_segments(&self) -> Vec<StatusSegment> {
         let t = t();
         let info = self.get_editor_info();
-        let sep = t.ui_hint_separator().to_string();
-        let mut s = Vec::new();
+        // Uniform `Label: value` fields in a stable order: mode toggles
+        // (View/Edit) come first with a fixed width so toggling them never
+        // shifts anything to their right; shared info follows; the
+        // variable-width Pos sits last so cursor movement can't move a clicker.
+        // Each field is a dimmed `Label:` plus its value; clickable values are
+        // bold (Active) and carry the action on both segments so the whole
+        // field is a click target, info values are plain (Value).
+        let sep = || StatusSegment::new(" │ ", SegmentKind::Label);
+        let clickable = |label: &str, value: String, action: &'static str| {
+            [
+                StatusSegment::clickable(format!("{label}: "), SegmentKind::Label, action),
+                StatusSegment::clickable(value, SegmentKind::Active, action),
+            ]
+        };
+        let info_field = |label: &str, value: String| {
+            [
+                StatusSegment::new(format!("{label}: "), SegmentKind::Label),
+                StatusSegment::new(value, SegmentKind::Value),
+            ]
+        };
 
-        s.push(StatusSegment::new(
-            format!(" {} ", t.status_pos()),
-            SegmentKind::Label,
-        ));
-        s.push(StatusSegment::clickable(
-            format!("{}:{}", info.line, info.column),
-            SegmentKind::Value,
-            "goto_line",
-        ));
-        s.push(StatusSegment::new(
-            format!("{}{} ", sep, t.status_tab()),
-            SegmentKind::Label,
-        ));
-        s.push(StatusSegment::clickable(
-            info.tab_size.to_string(),
-            SegmentKind::Value,
-            "tab_size",
-        ));
-        s.push(StatusSegment::new(sep.clone(), SegmentKind::Label));
-        s.push(StatusSegment::new(
-            info.line_ending.clone(),
-            SegmentKind::Value,
-        ));
-        s.push(StatusSegment::new(sep.clone(), SegmentKind::Label));
-        s.push(StatusSegment::new(
-            info.encoding.clone(),
-            SegmentKind::Value,
-        ));
-        s.push(StatusSegment::new(sep.clone(), SegmentKind::Label));
+        let mut s = vec![StatusSegment::new(" ", SegmentKind::Label)];
+        // View: Text — clicking swaps to the hex viewer.
+        s.extend(clickable("View", "Text".to_string(), "to_hex"));
+        s.push(sep());
+        // Edit: Yes/No — read-only toggle; pad "No " so the width stays stable.
+        let edit = if info.read_only { "No " } else { "Yes" };
+        s.extend(clickable("Edit", edit.to_string(), "toggle_edit"));
+        s.push(sep());
         let ftype = if info.syntax_highlighting {
             info.file_type.clone()
         } else {
             t.status_plain_text().to_string()
         };
-        s.push(StatusSegment::clickable(
-            ftype,
-            SegmentKind::Value,
-            "pick_syntax",
-        ));
-        // Switch to the hex viewer (this is the text view).
-        s.push(StatusSegment::new(format!("{}· ", sep), SegmentKind::Label));
-        s.push(StatusSegment::clickable(
-            "[Text]",
-            SegmentKind::Active,
-            "to_hex",
-        ));
-        // View/edit (read-only) toggle.
-        s.push(StatusSegment::new(" ", SegmentKind::Label));
-        let mode = if info.read_only { "[View]" } else { "[Edit]" };
-        s.push(StatusSegment::clickable(
-            mode,
-            SegmentKind::Active,
-            "toggle_edit",
+        s.extend(clickable("Highlight", ftype, "pick_syntax"));
+        s.push(sep());
+        s.extend(clickable("Tab", info.tab_size.to_string(), "tab_size"));
+        s.push(sep());
+        s.extend(info_field("EOL", info.line_ending.clone()));
+        s.push(sep());
+        s.extend(info_field("Encoding", info.encoding.clone()));
+        s.push(sep());
+        s.extend(clickable(
+            "Pos",
+            format!("{}:{}", info.line, info.column),
+            "goto_line",
         ));
         if let Some(m) = info.vim_mode {
-            s.push(StatusSegment::new(sep.clone(), SegmentKind::Label));
+            s.push(sep());
             s.push(StatusSegment::new(m.to_string(), SegmentKind::Warn));
         }
         s
@@ -502,11 +492,12 @@ impl Panel for Editor {
 
     fn handle_status_action(&mut self, action: &str) -> Vec<PanelEvent> {
         match action {
-            "goto_line" => vec![PanelEvent::ShowInput {
-                prompt: "Go to line:".to_string(),
-                initial_value: String::new(),
-                on_submit: InputAction::GotoLine,
-            }],
+            "goto_line" => {
+                let modal = InputModal::with_default("Go to line", "", String::new());
+                self.modal_request =
+                    Some((PendingAction::GotoLine, ActiveModal::Input(Box::new(modal))));
+                vec![]
+            }
             "tab_size" => {
                 let t = t();
                 let modal = InputModal::with_default(

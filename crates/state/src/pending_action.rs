@@ -62,6 +62,8 @@ pub enum PendingAction {
     },
     /// Override tab_size for the active editor panel (runtime only, not persisted).
     ChangeEditorTabSize,
+    /// Go to a line number entered in the editor's status-bar Pos modal.
+    GotoLine,
     /// Switch to next panel
     NextPanel,
     /// Switch to previous panel

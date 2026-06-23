@@ -117,11 +117,20 @@ act on the active search directly, with or without the bar (see
 
 ## Status bar
 
-The editor's status-bar fields are clickable: **Pos** opens go-to-line, **Tab**
-sets the tab size, the **file type** opens the language picker (below), the
-**`[Text]`** chip switches to the hex viewer (same as `Ctrl+L`), and the
-**`[View]`/`[Edit]`** chip toggles read-only — also bound to `Ctrl+E`
-(`[viewer.keybindings] toggle_view`).
+The status bar uses a uniform `Label: value` layout. The mode toggles come
+first with a fixed width so flipping them never shifts the fields to their
+right, shared info follows, and the variable-width position sits last:
+
+- **`View: Text`** — switches to the hex viewer (same as `Ctrl+L`). The
+  edit/view mode carries over: leaving an editable buffer opens an editable
+  hex editor, and vice versa.
+- **`Edit: Yes`/`Edit: No`** — toggles read-only, also bound to `Ctrl+E`
+  (`[viewer.keybindings] toggle_view`).
+- **`Highlight: <lang>`** — opens the language picker (below).
+- **`Tab: <n>`** — sets the tab size.
+- **`EOL`** / **`Encoding`** — informational.
+- **`Pos: <line>:<col>`** — opens go-to-line; accepts a line (`12`) or a
+  line and column (`12:4`).
 
 ## Overriding the Detected Language
 
@@ -242,7 +251,7 @@ auto_close_brackets = true  # or false (default: true)
 When working in the editor, the status bar displays:
 - File name and modification indicator (*)
 - Current cursor position (line:column)
-- Tab size (`Tab N`) — **clickable**: opens a small input modal that overrides `tab_size` for this editor panel only. The override wins over the global `[editor].tab_size` and survives the per-frame config resync, but doesn't touch `config.toml`. Accepts 1..=16; empty/invalid input is ignored.
+- Tab size (`Tab: N`) — **clickable**: opens a small input modal that overrides `tab_size` for this editor panel only. The override wins over the global `[editor].tab_size` and survives the per-frame config resync, but doesn't touch `config.toml`. Accepts 1..=16; empty/invalid input is ignored.
 - Line ending format (LF / CRLF) and encoding (UTF-8)
 - Search information (number of matches)
 - File type (plain text / read-only)

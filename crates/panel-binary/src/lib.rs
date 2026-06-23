@@ -218,6 +218,12 @@ impl BinaryPanel {
         !self.edits.is_empty()
     }
 
+    /// Whether the panel is open for editing (vs. read-only viewing). Used to
+    /// carry the edit/view mode across hex↔text swaps.
+    pub fn is_editable(&self) -> bool {
+        self.editable
+    }
+
     /// Point the panel at a file (also used to reuse an existing viewer).
     pub fn set_file(&mut self, path: PathBuf) {
         self.title = path
@@ -382,8 +388,17 @@ impl BinaryPanel {
     /// text view instead.
     fn toggle_view(&mut self) -> Vec<PanelEvent> {
         if !termide_core::util::is_binary_file(&self.file_path) {
+            // Swapping to the text editor replaces this panel, so block it while
+            // there are unsaved hex edits (mirrors the editor's hex toggle).
+            if self.editable && self.is_modified() {
+                return vec![PanelEvent::ShowMessage(
+                    "Save the file before switching to text view".to_string(),
+                )];
+            }
             return vec![PanelEvent::SwapActiveToText(self.file_path.clone())];
         }
+        // In-panel hex ↔ text view of a binary file: same buffer, edits are
+        // applied in both modes, so nothing is lost.
         self.mode = match self.mode {
             ViewMode::Hex => ViewMode::Text,
             ViewMode::Text => ViewMode::Hex,
@@ -776,6 +791,7 @@ impl Panel for BinaryPanel {
             self.last_config_ptr = ptr;
             let mut t = HotkeyTable::new();
             t.insert("toggle_hex", &config.viewer.keybindings.toggle_hex);
+            t.insert("toggle_view", &config.viewer.keybindings.toggle_view);
             self.hotkeys = t;
         }
     }
@@ -879,47 +895,63 @@ impl Panel for BinaryPanel {
         if self.error.is_some() {
             return vec![];
         }
-        let mut segs = vec![StatusSegment::new(
-            format!(" {:#X} / {:#X} ", self.cursor, self.len),
-            SegmentKind::Value,
-        )];
+        // Same uniform `Label: value` layout and styling as the text editor:
+        // dimmed labels, plain info values, bold clickable values.
+        let sep = || StatusSegment::new(" │ ", SegmentKind::Label);
+        let clickable = |label: &str, value: String, action: &'static str| {
+            [
+                StatusSegment::clickable(format!("{label}: "), SegmentKind::Label, action),
+                StatusSegment::clickable(value, SegmentKind::Active, action),
+            ]
+        };
+        let info_field = |label: &str, value: String| {
+            [
+                StatusSegment::new(format!("{label}: "), SegmentKind::Label),
+                StatusSegment::new(value, SegmentKind::Value),
+            ]
+        };
+
+        let mut segs = vec![StatusSegment::new(" ", SegmentKind::Label)];
+        // View: Hex/Text — clicking toggles the representation.
+        let view = match self.mode {
+            ViewMode::Hex => "Hex ",
+            ViewMode::Text => "Text",
+        };
+        segs.extend(clickable("View", view.to_string(), "toggle"));
+        segs.push(sep());
+        // Edit: Yes/No — clicking flips editability; `*` marks unsaved edits.
+        let edit = if self.editable {
+            if self.is_modified() {
+                "Yes*"
+            } else {
+                "Yes "
+            }
+        } else {
+            "No  "
+        };
+        segs.extend(clickable("Edit", edit.to_string(), "toggle_edit"));
+        segs.push(sep());
+        segs.extend(info_field(
+            "Off",
+            format!("{:#X} / {:#X}", self.cursor, self.len),
+        ));
         if let Some(a) = self.anchor {
             let n = a.max(self.cursor) - a.min(self.cursor) + 1;
-            segs.push(StatusSegment::new(
-                format!("({n} sel) "),
-                SegmentKind::Label,
-            ));
-        }
-        segs.push(StatusSegment::new("· ", SegmentKind::Label));
-        // Cycle-on-click chip: shows the current view; clicking toggles it.
-        let label = match self.mode {
-            ViewMode::Hex => "[Hex]",
-            ViewMode::Text => "[Text]",
-        };
-        segs.push(StatusSegment::clickable(
-            label,
-            SegmentKind::Active,
-            "toggle",
-        ));
-        // RO = read-only; EDIT = editable (with `*` while there are unsaved edits).
-        if self.editable {
-            let edit = if self.is_modified() {
-                " · EDIT*"
-            } else {
-                " · EDIT "
-            };
-            segs.push(StatusSegment::new(edit, SegmentKind::Warn));
-        } else {
-            segs.push(StatusSegment::new(" · RO ", SegmentKind::Label));
+            segs.push(sep());
+            segs.extend(info_field("Sel", n.to_string()));
         }
         segs
     }
 
     fn handle_status_action(&mut self, action: &str) -> Vec<PanelEvent> {
-        if action == "toggle" {
-            return self.toggle_view();
+        match action {
+            "toggle" => self.toggle_view(),
+            "toggle_edit" => {
+                self.editable = !self.editable;
+                vec![PanelEvent::NeedsRedraw]
+            }
+            _ => vec![],
         }
-        vec![]
     }
 
     fn handle_command(&mut self, cmd: PanelCommand<'_>) -> CommandResult {
@@ -956,6 +988,11 @@ impl Panel for BinaryPanel {
 
         if self.hotkeys.matches("toggle_hex", &key) {
             return self.toggle_view();
+        }
+        // Edit/view toggle (Ctrl+E), mirroring the text editor's status chip.
+        if self.hotkeys.matches("toggle_view", &key) {
+            self.editable = !self.editable;
+            return vec![PanelEvent::NeedsRedraw];
         }
         if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
             return self.copy_selection();
@@ -1170,6 +1207,16 @@ mod tests {
             p.toggle_view().as_slice(),
             [PanelEvent::SwapActiveToText(_)]
         ));
+    }
+
+    #[test]
+    fn toggle_edit_action_flips_editability() {
+        let mut p = panel_with(10, 80, 10);
+        assert!(!p.is_editable());
+        p.handle_status_action("toggle_edit");
+        assert!(p.is_editable(), "clicking Edit enables editing");
+        p.handle_status_action("toggle_edit");
+        assert!(!p.is_editable(), "clicking Edit again returns to view-only");
     }
 
     #[test]

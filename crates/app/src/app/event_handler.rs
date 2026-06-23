@@ -463,7 +463,21 @@ impl App {
     /// Swap the active panel in place for a hex viewer of the same file.
     fn event_swap_active_to_hex(&mut self, file_path: PathBuf) -> Result<()> {
         use termide_panel_binary::BinaryPanel;
-        match BinaryPanel::new(file_path) {
+        // Carry the edit/view mode across the swap: leaving an editable text
+        // editor lands in an editable hex editor (and vice versa), so the user
+        // keeps editing instead of dropping silently into view-only.
+        let editable = self
+            .layout_manager
+            .active_panel()
+            .and_then(|p| p.as_editor())
+            .map(|e| !e.get_editor_info().read_only)
+            .unwrap_or(false);
+        let opened = if editable {
+            BinaryPanel::new_editable(file_path)
+        } else {
+            BinaryPanel::new(file_path)
+        };
+        match opened {
             Ok(panel) => {
                 self.layout_manager.replace_active_panel(Box::new(panel));
                 self.state.needs_redraw = true;
@@ -474,10 +488,23 @@ impl App {
         Ok(())
     }
 
-    /// Swap the active panel in place for a read-only editor of the same file.
+    /// Swap the active panel in place for an editor of the same file, carrying
+    /// the hex editor's edit/view mode over.
     fn event_swap_active_to_text(&mut self, file_path: PathBuf) -> Result<()> {
+        use termide_panel_binary::BinaryPanel;
         use termide_panel_editor::{Editor, EditorConfig};
-        match Editor::open_file_with_config(file_path, EditorConfig::view_only()) {
+        let editable = self
+            .layout_manager
+            .active_panel()
+            .and_then(|p| p.as_any().downcast_ref::<BinaryPanel>())
+            .map(|b| b.is_editable())
+            .unwrap_or(false);
+        let config = if editable {
+            EditorConfig::default()
+        } else {
+            EditorConfig::view_only()
+        };
+        match Editor::open_file_with_config(file_path, config) {
             Ok(mut editor) => {
                 if let Some(ref mut lsp) = self.state.lsp_manager {
                     editor.init_lsp(lsp);
@@ -495,8 +522,9 @@ impl App {
     fn event_view_binary(&mut self, file_path: PathBuf) -> Result<()> {
         use termide_panel_binary::BinaryPanel;
 
-        // Reuse an existing binary viewer if one is open.
-        if let Some(panel) = self.layout_manager.find_and_expand_panel_by_name("binary") {
+        // Reuse an existing binary viewer if one is open, focusing it like
+        // opening a text viewer focuses its panel.
+        if let Some(panel) = self.layout_manager.focus_and_expand_panel_by_name("binary") {
             if let Some(bin) = panel.as_any_mut().downcast_mut::<BinaryPanel>() {
                 bin.set_file(file_path);
                 self.state.needs_redraw = true;
@@ -507,7 +535,7 @@ impl App {
         self.close_help_panels();
         match BinaryPanel::new(file_path) {
             Ok(panel) => {
-                self.add_panel_without_focus(Box::new(panel));
+                self.add_panel(Box::new(panel));
                 self.auto_save_session();
             }
             Err(e) => {
@@ -702,12 +730,21 @@ impl App {
     }
 
     /// Handle GotoLine event - move cursor to specific line in editor
-    fn event_goto_line(&mut self, line: usize) {
+    pub(in crate::app) fn event_goto_line(&mut self, line: usize) {
         if let Some(panel) = self.layout_manager.active_panel_mut() {
             if let Some(editor) = panel.as_editor_mut() {
                 // Convert from 1-based (user-facing) to 0-based (internal)
                 let line_0based = line.saturating_sub(1);
                 editor.set_cursor_line(line_0based);
+            }
+        }
+    }
+
+    /// Move the editor cursor to a 0-based line/column (status-bar Pos modal).
+    pub(in crate::app) fn event_goto_position(&mut self, line: usize, column: usize) {
+        if let Some(panel) = self.layout_manager.active_panel_mut() {
+            if let Some(editor) = panel.as_editor_mut() {
+                editor.goto_position(line, column);
             }
         }
     }
