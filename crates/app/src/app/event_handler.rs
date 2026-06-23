@@ -61,6 +61,10 @@ impl App {
                 self.event_view_binary(path)?;
             }
 
+            PanelEvent::EditBinary(path) => {
+                self.event_edit_binary(path)?;
+            }
+
             PanelEvent::SwapActiveToHex(path) => {
                 self.event_swap_active_to_hex(path)?;
             }
@@ -509,6 +513,21 @@ impl App {
             Err(e) => {
                 self.show_error_modal(format!("Failed to open binary file: {e}"));
             }
+        }
+        Ok(())
+    }
+
+    /// Open a binary file in the hex editor (editable). Always a fresh panel so
+    /// the editable state is unambiguous.
+    fn event_edit_binary(&mut self, file_path: PathBuf) -> Result<()> {
+        use termide_panel_binary::BinaryPanel;
+        self.close_help_panels();
+        match BinaryPanel::new_editable(file_path) {
+            Ok(panel) => {
+                self.add_panel(Box::new(panel));
+                self.auto_save_session();
+            }
+            Err(e) => self.show_error_modal(format!("Failed to open binary file: {e}")),
         }
         Ok(())
     }
@@ -970,6 +989,7 @@ impl App {
             termide_core::ConfirmAction::ReplaceInContent(replace_with) => {
                 PendingAction::ReplaceInContent { replace_with }
             }
+            termide_core::ConfirmAction::SaveBinary => PendingAction::SaveBinary,
         };
 
         // Create confirmation modal

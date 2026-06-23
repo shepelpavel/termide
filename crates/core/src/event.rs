@@ -398,8 +398,11 @@ pub enum PanelEvent {
     /// Preview media file (raster image) using native graphics or xdg-open
     PreviewMedia(PathBuf),
 
-    /// Open a binary file in the hex/ASCII viewer
+    /// Open a binary file in the hex/ASCII viewer (read-only)
     ViewBinary(PathBuf),
+
+    /// Open a binary file in the hex editor (editable)
+    EditBinary(PathBuf),
 
     /// Swap the active panel in place for a hex/ASCII viewer of `path`
     SwapActiveToHex(PathBuf),
@@ -626,6 +629,9 @@ pub enum ConfirmAction {
 
     /// Replace every content-search match in the file manager with this text.
     ReplaceInContent(String),
+
+    /// Save the active binary (hex) editor's pending edits to disk.
+    SaveBinary,
 }
 
 /// Input dialog actions.

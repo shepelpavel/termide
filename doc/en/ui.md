@@ -144,6 +144,12 @@ selection (as hex from the hex zone, as text from the ASCII zone). `Ctrl+F`
 opens a find bar that searches an ASCII substring or — with the `[hex]` toggle —
 a hex byte sequence like `ff fe`; matches are highlighted in both zones.
 
+Opening a binary file with `F4` (edit) instead makes it **editable**: typing
+overwrites the byte under the cursor — two hex nibbles in the hex zone, a
+character in the ASCII zone — without changing the file length. Unsaved edits
+show `*` in the title; `Ctrl+S` saves after a confirmation, first backing the
+original up to `<file>.bak`.
+
 `Ctrl+L` (or the `[Hex]`/`[Text]` chip in the status bar) toggles between hex
 and text. For a real text file this swaps the panel in place for a read-only
 editor (and the editor's own `Ctrl+L` swaps back to hex); a binary file — which

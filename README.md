@@ -37,7 +37,7 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 - **Database Viewer** - Read-only browser for SQLite / PostgreSQL / MySQL opened from a bookmark URL: table grid with a 2D cell cursor, server-side single-column sort and type-aware per-column filtering, sliding-window pagination, and a row-detail dialog that copies as TSV / JSON / INSERT
 - **Multi-panel Layout** - Vertically split panel groups with adjustable per-panel heights and a one-key fullscreen toggle (`Alt+F11`); smart auto-stacking when the terminal narrows; new panels open after the currently active one
 - **Image Viewer** - Native graphics in Kitty, WezTerm, iTerm2, Ghostty, foot terminals
-- **Hex / Binary Viewer** - Read-only hex/ASCII dump (adaptive 16-byte sections) for binary files, with a byte cursor shown in both zones, drag/shift selection and clipboard copy, ASCII + hex-byte search, and a hex↔text toggle (`Ctrl+L`)
+- **Hex / Binary Viewer & Editor** - Hex/ASCII view (adaptive 16-byte sections) for binary files, with a byte cursor shown in both zones, drag/shift selection and clipboard copy, ASCII + hex-byte search, and a hex↔text toggle (`Ctrl+L`); `F4` opens it for overwrite editing with a `.bak` backup on save
 - **External Apps** - Open files with system default applications (Shift+Enter)
 - **38 Built-in Themes** - Dark, light, retro, and cinematic themes (Dracula, Nord, Monokai, Solarized, Matrix, Pip-Boy, Blue Sky, Pinky Pie, etc.)
 - **Custom Themes** - Create your own themes in TOML format

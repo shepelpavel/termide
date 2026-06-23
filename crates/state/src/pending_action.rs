@@ -268,6 +268,8 @@ pub enum PendingAction {
     /// Confirm-modal result for replacing every content-search match in the
     /// active file-manager panel with the given text.
     ReplaceInContent { replace_with: String },
+    /// Confirm-modal result for saving the active binary (hex) editor to disk.
+    SaveBinary,
     /// Result of the DB single-column filter modal. The result value carries
     /// the column/operator/value; it is applied to the active DB panel.
     DbFilter,

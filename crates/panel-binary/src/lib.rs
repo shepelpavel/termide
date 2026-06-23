@@ -16,6 +16,11 @@
 //! hex); a binary file — which the editor can't open as text — toggles an
 //! in-panel lossy text view instead. `Ctrl+F` searches an ASCII substring or a
 //! hex byte sequence, highlighting matches in both zones.
+//!
+//! Opened with `F4`, the panel is editable: typing overwrites the byte under
+//! the cursor (two hex nibbles in the hex zone, a character in the ASCII zone)
+//! without changing the file length. `Ctrl+S` saves after a confirmation,
+//! backing the original up to `<file>.bak` first.
 
 use std::any::Any;
 use std::fs::File;
@@ -90,6 +95,12 @@ pub struct BinaryPanel {
     zone: Zone,
     /// In-panel rendering mode (hex dump or lossy text, for binary files).
     mode: ViewMode,
+    /// Whether the file is open for editing (overwrite-in-place).
+    editable: bool,
+    /// Pending overwrites by absolute offset (applied on render, written on save).
+    edits: std::collections::BTreeMap<u64, u8>,
+    /// High nibble typed in the hex zone, awaiting the low nibble.
+    pending_nibble: Option<u8>,
     /// Byte where the current mouse drag started (anchor for drag-selection).
     drag_from: Option<u64>,
     /// Inline find bar (ASCII / hex byte search), when open.
@@ -177,6 +188,9 @@ impl BinaryPanel {
             anchor: None,
             zone: Zone::Hex,
             mode: ViewMode::Hex,
+            editable: false,
+            edits: std::collections::BTreeMap::new(),
+            pending_nibble: None,
             drag_from: None,
             find_bar: None,
             matches: Vec::new(),
@@ -190,6 +204,18 @@ impl BinaryPanel {
         };
         panel.set_file(path);
         Ok(panel)
+    }
+
+    /// Open a binary file for editing (overwrite-in-place).
+    pub fn new_editable(path: PathBuf) -> Result<Self> {
+        let mut panel = Self::new(path)?;
+        panel.editable = true;
+        Ok(panel)
+    }
+
+    /// Whether the buffer has unsaved overwrites.
+    pub fn is_modified(&self) -> bool {
+        !self.edits.is_empty()
     }
 
     /// Point the panel at a file (also used to reuse an existing viewer).
@@ -215,6 +241,8 @@ impl BinaryPanel {
         self.top_byte = 0;
         self.cursor = 0;
         self.anchor = None;
+        self.edits.clear();
+        self.pending_nibble = None;
     }
 
     /// Bytes per row for the current width and mode.
@@ -255,6 +283,7 @@ impl BinaryPanel {
         if self.len == 0 {
             return;
         }
+        self.pending_nibble = None;
         if extend {
             self.anchor.get_or_insert(self.cursor);
         } else {
@@ -270,6 +299,7 @@ impl BinaryPanel {
         if self.len == 0 {
             return;
         }
+        self.pending_nibble = None;
         if extend {
             self.anchor.get_or_insert(self.cursor);
         } else {
@@ -314,13 +344,19 @@ impl BinaryPanel {
         }
         let want = count.min((self.len - start) as usize);
         let mut buf = vec![0u8; want];
-        match file.read(&mut buf) {
-            Ok(n) => {
-                buf.truncate(n);
-                buf
+        let n = match file.read(&mut buf) {
+            Ok(n) => n,
+            Err(_) => return Vec::new(),
+        };
+        buf.truncate(n);
+        // Overlay unsaved edits that fall in this window.
+        if !self.edits.is_empty() {
+            let end = start + buf.len() as u64;
+            for (&off, &b) in self.edits.range(start..end) {
+                buf[(off - start) as usize] = b;
             }
-            Err(_) => Vec::new(),
         }
+        buf
     }
 
     /// Copy the selection (or cursor byte) to the clipboard — as a hex string
@@ -373,6 +409,101 @@ impl BinaryPanel {
         } else {
             None
         }
+    }
+
+    /// Current value of the byte at `off` (pending edit or on-disk).
+    fn byte_value(&mut self, off: u64) -> u8 {
+        if let Some(&b) = self.edits.get(&off) {
+            return b;
+        }
+        self.read_window(off, 1).first().copied().unwrap_or(0)
+    }
+
+    /// Record an overwrite of the byte at `off`.
+    fn set_byte(&mut self, off: u64, b: u8) {
+        self.edits.insert(off, b);
+    }
+
+    /// Move the cursor one byte forward after entering a value (no selection).
+    fn advance_cursor(&mut self) {
+        self.pending_nibble = None;
+        self.anchor = None;
+        if self.cursor + 1 < self.len {
+            self.cursor += 1;
+            self.ensure_cursor_visible();
+        }
+    }
+
+    /// Apply a hex digit in the hex zone (two nibbles per byte).
+    fn edit_hex_nibble(&mut self, d: u8) {
+        let cur = self.byte_value(self.cursor);
+        self.anchor = None;
+        match self.pending_nibble.take() {
+            None => {
+                self.set_byte(self.cursor, (d << 4) | (cur & 0x0f));
+                self.pending_nibble = Some(d);
+            }
+            Some(hi) => {
+                self.set_byte(self.cursor, (hi << 4) | d);
+                self.advance_cursor();
+            }
+        }
+    }
+
+    /// Try to interpret `key` as an edit (hex digit in the hex zone, printable
+    /// char in the ASCII zone). Returns true if it was consumed.
+    fn try_edit(&mut self, key: crossterm::event::KeyEvent) -> bool {
+        // Only plain (or Shift) character keys edit; Ctrl/Alt fall through.
+        if !(key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT) {
+            return false;
+        }
+        let KeyCode::Char(c) = key.code else {
+            return false;
+        };
+        match self.zone {
+            Zone::Hex => match c.to_digit(16) {
+                Some(d) => {
+                    self.edit_hex_nibble(d as u8);
+                    true
+                }
+                None => false,
+            },
+            Zone::Ascii => {
+                if c.is_ascii() && (' '..='~').contains(&c) {
+                    self.set_byte(self.cursor, c as u8);
+                    self.advance_cursor();
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+    }
+
+    /// Write pending edits to disk after backing the original up to `<file>.bak`.
+    pub fn save(&mut self) -> std::io::Result<()> {
+        use std::io::Write;
+        if self.edits.is_empty() {
+            return Ok(());
+        }
+        let mut bak = self.file_path.clone().into_os_string();
+        bak.push(".bak");
+        std::fs::copy(&self.file_path, PathBuf::from(bak))?;
+
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .open(&self.file_path)?;
+        for (&off, &b) in &self.edits {
+            f.seek(SeekFrom::Start(off))?;
+            f.write_all(&[b])?;
+        }
+        f.flush()?;
+
+        self.edits.clear();
+        self.pending_nibble = None;
+        // Refresh the read handle so reads reflect the saved bytes.
+        self.file = File::open(&self.file_path).ok();
+        Ok(())
     }
 
     /// Open the inline find bar (ASCII substring or hex byte sequence).
@@ -630,7 +761,11 @@ impl Panel for BinaryPanel {
     }
 
     fn title(&self) -> String {
-        self.title.clone()
+        if self.editable && self.is_modified() {
+            format!("{}*", self.title)
+        } else {
+            self.title.clone()
+        }
     }
 
     fn prepare_render(&mut self, theme: &Theme, config: &Arc<Config>) {
@@ -766,8 +901,17 @@ impl Panel for BinaryPanel {
             SegmentKind::Active,
             "toggle",
         ));
-        // RO = read-only (the viewer never writes the file).
-        segs.push(StatusSegment::new(" · RO ", SegmentKind::Label));
+        // RO = read-only; EDIT = editable (with `*` while there are unsaved edits).
+        if self.editable {
+            let edit = if self.is_modified() {
+                " · EDIT*"
+            } else {
+                " · EDIT "
+            };
+            segs.push(StatusSegment::new(edit, SegmentKind::Warn));
+        } else {
+            segs.push(StatusSegment::new(" · RO ", SegmentKind::Label));
+        }
         segs
     }
 
@@ -805,9 +949,28 @@ impl Panel for BinaryPanel {
             return self.copy_selection();
         }
 
+        // Edit mode: Ctrl+S asks to save; typed hex digits / chars overwrite
+        // (handled before navigation so letters aren't treated as motions).
+        if self.editable {
+            if key.code == KeyCode::Char('s') && key.modifiers == KeyModifiers::CONTROL {
+                if self.is_modified() {
+                    let name = self.title.clone();
+                    return vec![PanelEvent::ShowConfirm {
+                        message: format!("Save {name}? A .bak backup will be created."),
+                        on_confirm: termide_core::ConfirmAction::SaveBinary,
+                    }];
+                }
+                return vec![];
+            }
+            if self.try_edit(key) {
+                return vec![PanelEvent::NeedsRedraw];
+            }
+        }
+
         let cols = self.cols() as i64;
         let page = ((self.last_area.height as i64 - 1).max(1)) * cols;
         let extend = key.modifiers.contains(KeyModifiers::SHIFT);
+        let ro = !self.editable; // vim-letter motions only when not editing
         match key.code {
             KeyCode::Tab => {
                 self.zone = match self.zone {
@@ -815,10 +978,10 @@ impl Panel for BinaryPanel {
                     Zone::Ascii => Zone::Hex,
                 };
             }
-            KeyCode::Left | KeyCode::Char('h') => self.move_cursor(-1, extend),
-            KeyCode::Right | KeyCode::Char('l') => self.move_cursor(1, extend),
-            KeyCode::Up | KeyCode::Char('k') => self.move_cursor(-cols, extend),
-            KeyCode::Down | KeyCode::Char('j') => self.move_cursor(cols, extend),
+            KeyCode::Left => self.move_cursor(-1, extend),
+            KeyCode::Right => self.move_cursor(1, extend),
+            KeyCode::Up => self.move_cursor(-cols, extend),
+            KeyCode::Down => self.move_cursor(cols, extend),
             KeyCode::PageUp => self.move_cursor(-page, extend),
             KeyCode::PageDown => self.move_cursor(page, extend),
             KeyCode::Home => self.set_cursor(self.cursor - self.cursor % cols as u64, extend),
@@ -826,9 +989,13 @@ impl Panel for BinaryPanel {
                 let row_end = self.cursor - self.cursor % cols as u64 + cols as u64 - 1;
                 self.set_cursor(row_end, extend)
             }
-            KeyCode::Char('g') => self.set_cursor(0, extend),
-            KeyCode::Char('G') => self.set_cursor(self.len.saturating_sub(1), extend),
-            KeyCode::Char('q') => return vec![PanelEvent::ClosePanel],
+            KeyCode::Char('h') if ro => self.move_cursor(-1, extend),
+            KeyCode::Char('l') if ro => self.move_cursor(1, extend),
+            KeyCode::Char('k') if ro => self.move_cursor(-cols, extend),
+            KeyCode::Char('j') if ro => self.move_cursor(cols, extend),
+            KeyCode::Char('g') if ro => self.set_cursor(0, extend),
+            KeyCode::Char('G') if ro => self.set_cursor(self.len.saturating_sub(1), extend),
+            KeyCode::Char('q') if ro => return vec![PanelEvent::ClosePanel],
             _ => return vec![],
         }
         vec![PanelEvent::NeedsRedraw]
@@ -868,6 +1035,14 @@ impl Panel for BinaryPanel {
 
     fn captures_escape(&self) -> bool {
         self.find_bar.is_some()
+    }
+
+    fn needs_close_confirmation(&self) -> Option<String> {
+        if self.editable && self.is_modified() {
+            Some("Unsaved changes in the hex editor".to_string())
+        } else {
+            None
+        }
     }
 
     fn to_session(&self, _session_dir: &Path) -> Option<SessionPanel> {
@@ -983,6 +1158,63 @@ mod tests {
             p.toggle_view().as_slice(),
             [PanelEvent::SwapActiveToText(_)]
         ));
+    }
+
+    #[test]
+    fn hex_nibble_editing_overwrites_byte_keeping_length() {
+        let mut p = panel_with(100, 80, 10);
+        p.editable = true;
+        p.zone = Zone::Hex;
+        p.cursor = 5;
+        p.edit_hex_nibble(0xa); // high nibble
+        p.edit_hex_nibble(0x3); // low nibble → 0xa3, advance
+        assert_eq!(p.edits.get(&5), Some(&0xa3));
+        assert_eq!(p.cursor, 6);
+        assert_eq!(p.len, 100, "overwrite never changes length");
+    }
+
+    #[test]
+    fn ascii_editing_sets_byte_and_advances() {
+        use crossterm::event::{KeyEvent, KeyModifiers};
+        let mut p = panel_with(100, 80, 10);
+        p.editable = true;
+        p.zone = Zone::Ascii;
+        p.cursor = 2;
+        assert!(p.try_edit(KeyEvent::new(KeyCode::Char('Z'), KeyModifiers::NONE)));
+        assert_eq!(p.edits.get(&2), Some(&b'Z'));
+        assert_eq!(p.cursor, 3);
+    }
+
+    #[test]
+    fn save_writes_edits_in_place_and_backs_up() {
+        use crossterm::event::{KeyEvent, KeyModifiers};
+        let path = std::env::temp_dir().join(format!("termide_hex_{}.bin", std::process::id()));
+        std::fs::write(&path, b"ABCDE").unwrap();
+
+        let mut p = BinaryPanel::new_editable(path.clone()).unwrap();
+        p.zone = Zone::Ascii;
+        p.cursor = 1;
+        p.try_edit(KeyEvent::new(KeyCode::Char('X'), KeyModifiers::NONE)); // B -> X
+        assert!(p.is_modified());
+        p.save().unwrap();
+        assert!(!p.is_modified());
+
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            b"AXCDE",
+            "edit written, length kept"
+        );
+        let mut bak = path.clone().into_os_string();
+        bak.push(".bak");
+        let bak = std::path::PathBuf::from(bak);
+        assert_eq!(
+            std::fs::read(&bak).unwrap(),
+            b"ABCDE",
+            "backup holds the original"
+        );
+
+        std::fs::remove_file(&path).ok();
+        std::fs::remove_file(&bak).ok();
     }
 
     #[test]

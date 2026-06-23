@@ -290,6 +290,23 @@ impl App {
                 PendingAction::SaveFileAs { directory } => {
                     self.handle_save_file_as(directory, value)?;
                 }
+                PendingAction::SaveBinary => {
+                    if value.downcast_ref::<bool>().copied().unwrap_or(false) {
+                        if let Some(panel) = self.layout_manager.active_panel_mut() {
+                            if let Some(bin) = panel
+                                .as_any_mut()
+                                .downcast_mut::<termide_panel_binary::BinaryPanel>()
+                            {
+                                match bin.save() {
+                                    Ok(()) => {
+                                        self.state.set_info("Saved (backup: .bak)".to_string())
+                                    }
+                                    Err(e) => self.show_error_modal(format!("Save failed: {e}")),
+                                }
+                            }
+                        }
+                    }
+                }
                 PendingAction::ClosePanel => {
                     self.handle_close_panel(value)?;
                 }
