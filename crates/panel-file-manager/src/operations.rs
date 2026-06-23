@@ -43,7 +43,11 @@ pub(super) fn determine_file_open_event(
             Some(PanelEvent::OpenExternal(file_path.to_path_buf()))
         }
         FileOpenMode::ForceEdit => {
-            // Force open in editor regardless of type
+            // Binary files open in the hex editor (the text editor can't load
+            // them); everything else opens in the text editor.
+            if is_binary_file(file_path) {
+                return Some(PanelEvent::EditBinary(file_path.to_path_buf()));
+            }
             Some(PanelEvent::OpenFile(file_path.to_path_buf()))
         }
         FileOpenMode::View => {

@@ -122,6 +122,27 @@ impl App {
         let mut lsp_info: Option<(String, PathBuf)> = None;
 
         if let Some(&selected) = value.downcast_ref::<usize>() {
+            // The binary hex editor reuses this Save / Don't save / Cancel
+            // dialog; handle it up-front (its save path differs from the editor).
+            if self.layout_manager.active_panel().map(|p| p.name()) == Some("binary") {
+                match selected {
+                    0 => {
+                        if let Some(bin) = self.layout_manager.active_panel_mut().and_then(|p| {
+                            p.as_any_mut()
+                                .downcast_mut::<termide_panel_binary::BinaryPanel>()
+                        }) {
+                            if let Err(e) = bin.save() {
+                                self.show_error_modal(format!("Save failed: {e}"));
+                                return Ok(());
+                            }
+                        }
+                        self.close_panel_at_index();
+                    }
+                    1 => self.close_panel_at_index(),
+                    _ => {}
+                }
+                return Ok(());
+            }
             match selected {
                 0 => {
                     // Save and close
