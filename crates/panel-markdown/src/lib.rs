@@ -580,6 +580,16 @@ impl Panel for MarkdownPanel {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let page = (self.viewport_height() as i32 - 1).max(1);
 
+        // Ctrl+R: re-read from disk (pick up external edits), keeping position.
+        if ctrl && key.code == KeyCode::Char('r') {
+            let (top, cursor) = (self.top, self.cursor);
+            let _ = self.reload();
+            self.cursor = cursor;
+            self.clamp_cursor();
+            self.top = top.min(self.max_top());
+            return vec![PanelEvent::NeedsRedraw];
+        }
+
         if ctrl && key.code == KeyCode::Char('f') {
             self.open_find();
             return vec![PanelEvent::NeedsRedraw];

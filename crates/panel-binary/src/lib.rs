@@ -1002,6 +1002,17 @@ impl Panel for BinaryPanel {
         if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
             return self.copy_selection();
         }
+        // Ctrl+R: re-read the file from disk (pick up external changes), keeping
+        // the cursor. Skipped while there are unsaved edits so they aren't lost.
+        if key.code == KeyCode::Char('r') && key.modifiers == KeyModifiers::CONTROL {
+            if !self.is_modified() {
+                let cursor = self.cursor;
+                self.set_file(self.file_path.clone());
+                self.cursor = cursor.min(self.len.saturating_sub(1));
+                self.ensure_cursor_visible();
+            }
+            return vec![PanelEvent::NeedsRedraw];
+        }
 
         // Edit mode: Ctrl+S asks to save; typed hex digits / chars overwrite
         // (handled before navigation so letters aren't treated as motions).

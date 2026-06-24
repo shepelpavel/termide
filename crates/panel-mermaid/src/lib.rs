@@ -297,6 +297,15 @@ impl Panel for MermaidPanel {
         {
             return self.copy_to_clipboard();
         }
+        // Ctrl+R: re-read the source from disk (pick up external edits), keeping
+        // the scroll position.
+        if key.code == KeyCode::Char('r') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            let (sx, sy) = (self.scroll_x, self.scroll_y);
+            self.set_file(self.file_path.clone());
+            self.scroll_x = sx.min(self.max_scroll_x());
+            self.scroll_y = sy.min(self.max_scroll_y());
+            return vec![PanelEvent::NeedsRedraw];
+        }
         let page = (self.viewport_h() as i32 - 1).max(1);
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => self.scroll_v(-1),
