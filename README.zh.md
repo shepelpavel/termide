@@ -109,6 +109,24 @@ tar xzf termide-0.27.0-aarch64-unknown-linux-musl.tar.gz
 </details>
 
 <details>
+<summary><b>🪟 Windows (.zip)</b></summary>
+
+TermIDE 通过 ConPTY 在 Windows 10+ 上原生运行。建议使用 **Windows Terminal**
+以获得最佳体验。
+
+1. 从 [GitHub Releases](https://github.com/termide/termide/releases) 下载 `termide-0.27.0-x86_64-pc-windows-msvc.zip`。
+2. 解压压缩包。
+3. 在 Windows Terminal 中运行 `termide.exe`。
+
+配置位于 `%APPDATA%\termide\`（配置、会话），日志位于
+`%LOCALAPPDATA%\termide\cache\`。
+
+或者在 **WSL/WSL2** 中，像在任意 Linux 上一样使用 Linux x86_64 构建
+（`termide-0.27.0-x86_64-unknown-linux-gnu.tar.gz`）。
+
+</details>
+
+<details>
 <summary><b>🐧 Debian/Ubuntu (.deb)</b></summary>
 
 从 [GitHub Releases](https://github.com/termide/termide/releases) 下载并安装 `.deb` 包：

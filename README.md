@@ -110,6 +110,23 @@ tar xzf termide-0.27.0-aarch64-unknown-linux-musl.tar.gz
 </details>
 
 <details>
+<summary><b>🪟 Windows (.zip)</b></summary>
+
+TermIDE runs natively on Windows 10+ via ConPTY. Use **Windows Terminal** for
+the best experience.
+
+1. Download `termide-0.27.0-x86_64-pc-windows-msvc.zip` from [GitHub Releases](https://github.com/termide/termide/releases).
+2. Extract the archive.
+3. Run `termide.exe` in Windows Terminal.
+
+Configuration lives under `%APPDATA%\termide\` (config, sessions) and
+`%LOCALAPPDATA%\termide\cache\` (logs).
+
+Alternatively, in **WSL/WSL2** use the Linux x86_64 build (`termide-0.27.0-x86_64-unknown-linux-gnu.tar.gz`) as on any Linux.
+
+</details>
+
+<details>
 <summary><b>🐧 Debian/Ubuntu (.deb)</b></summary>
 
 Download and install the `.deb` package from [GitHub Releases](https://github.com/termide/termide/releases):
