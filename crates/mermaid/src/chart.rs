@@ -8,6 +8,7 @@ use crate::parser::{Gantt, Journey, Mindmap, Pie, Quadrant, TaskStatus, Timeline
 const BAR_WIDTH: usize = 30;
 
 /// Render a pie chart as a labelled horizontal bar breakdown.
+#[must_use]
 pub fn render_pie(pie: &Pie) -> Vec<String> {
     if pie.slices.is_empty() {
         return vec!["(empty pie chart)".to_string()];
@@ -43,6 +44,7 @@ pub fn render_pie(pie: &Pie) -> Vec<String> {
 }
 
 /// Render a Gantt chart as labelled timeline bars, grouped by section.
+#[must_use]
 pub fn render_gantt(g: &Gantt) -> Vec<String> {
     if g.tasks.is_empty() {
         return vec!["(empty gantt chart)".to_string()];
@@ -181,6 +183,7 @@ pub fn render_gantt(g: &Gantt) -> Vec<String> {
 }
 
 /// Render a user journey as scored rows (`★` of 5), grouped by section.
+#[must_use]
 pub fn render_journey(j: &Journey) -> Vec<String> {
     if j.tasks.is_empty() {
         return vec!["(empty journey)".to_string()];
@@ -218,6 +221,7 @@ pub fn render_journey(j: &Journey) -> Vec<String> {
 }
 
 /// Render a mindmap as an indented tree.
+#[must_use]
 pub fn render_mindmap(m: &Mindmap) -> Vec<String> {
     if m.nodes.is_empty() {
         return vec!["(empty mindmap)".to_string()];
@@ -235,6 +239,7 @@ pub fn render_mindmap(m: &Mindmap) -> Vec<String> {
 }
 
 /// Render a timeline: each period with its events, grouped by section.
+#[must_use]
 pub fn render_timeline(t: &Timeline) -> Vec<String> {
     if t.entries.is_empty() {
         return vec!["(empty timeline)".to_string()];
@@ -267,6 +272,7 @@ pub fn render_timeline(t: &Timeline) -> Vec<String> {
 }
 
 /// Render a quadrant chart as a plotted grid with axes and quadrant labels.
+#[must_use]
 pub fn render_quadrant(q: &Quadrant) -> Vec<String> {
     let (w, h) = (44usize, 16usize);
     let mut c = Canvas::new();

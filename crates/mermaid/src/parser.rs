@@ -26,6 +26,7 @@ pub enum DiagramKind {
 }
 
 /// Detect the diagram kind from the first meaningful line.
+#[must_use]
 pub fn detect_kind(src: &str) -> DiagramKind {
     for raw in src.lines() {
         let line = raw.trim();
@@ -847,19 +848,28 @@ pub fn parse_class(src: &str) -> ClassDiagram {
     d
 }
 
-fn parse_class_rel(line: &str) -> Option<Relation> {
-    let (main, lbl) = match line.split_once(':') {
-        Some((a, b)) => (a.trim(), b.trim().to_string()),
-        None => (line.trim(), String::new()),
+/// Shared prefix for the two relation grammars: split off the optional `:`
+/// label, tokenise the left side, and locate the relation operator. Returns the
+/// tokens, the operator index, and the raw (untrimmed) label text. The two
+/// callers diverge afterwards in how they pick `from`/`to` and build the label.
+fn split_rel(line: &str, is_op: impl Fn(&str) -> bool) -> Option<(Vec<&str>, usize, &str)> {
+    let (main, label) = match line.split_once(':') {
+        Some((a, b)) => (a.trim(), b.trim()),
+        None => (line.trim(), ""),
     };
     let parts: Vec<&str> = main.split_whitespace().collect();
-    let opi = parts.iter().position(|p| is_class_rel_token(p))?;
+    let opi = parts.iter().position(|p| is_op(p))?;
+    Some((parts, opi, label))
+}
+
+fn parse_class_rel(line: &str) -> Option<Relation> {
+    let (parts, opi, lbl) = split_rel(line, is_class_rel_token)?;
     let from = parts[..opi].iter().rev().find(|p| is_ident(p))?;
     let to = parts[opi + 1..].iter().find(|p| is_ident(p))?;
     let label = if lbl.is_empty() {
         class_kind(parts[opi]).to_string()
     } else {
-        lbl
+        lbl.to_string()
     };
     Some(Relation {
         from: from.trim_matches('"').to_string(),
@@ -950,12 +960,8 @@ fn card_text(card: &str) -> &'static str {
 }
 
 fn parse_er_rel(line: &str) -> Option<Relation> {
-    let (main, verb) = match line.split_once(':') {
-        Some((a, b)) => (a.trim(), b.trim().trim_matches('"').to_string()),
-        None => (line.trim(), String::new()),
-    };
-    let parts: Vec<&str> = main.split_whitespace().collect();
-    let opi = parts.iter().position(|p| is_er_rel_token(p))?;
+    let (parts, opi, verb_raw) = split_rel(line, is_er_rel_token)?;
+    let verb = verb_raw.trim_matches('"');
     let op = parts[opi];
     let dash = op.find("--")?;
     let left = card_text(&op[..dash]);

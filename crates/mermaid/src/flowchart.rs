@@ -68,6 +68,7 @@ const COL_GAP: usize = 3;
 const ROW_GAP: usize = 1;
 
 /// Render a flowchart into canvas lines.
+#[must_use]
 pub fn render_flowchart(fc: &Flowchart) -> Vec<String> {
     let n = fc.nodes.len();
     if n == 0 {

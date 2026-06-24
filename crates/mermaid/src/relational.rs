@@ -50,11 +50,23 @@ fn graph(nodes: &[(&str, &[String])], rels: &[(&str, &str, &str)]) -> Flowchart 
     fc
 }
 
-/// Render a class diagram: a relationship graph with members inside each box.
-pub fn render_class(d: &ClassDiagram) -> Vec<String> {
-    if d.entries.is_empty() {
-        return vec!["(empty class diagram)".to_string()];
+/// Lay out a relationship graph (shared by class and ER diagrams): the box
+/// nodes (name + compartment body) and labelled relations, or an empty-state
+/// line when there are no nodes.
+fn render_relation_graph(
+    nodes: &[(&str, &[String])],
+    rels: &[(&str, &str, &str)],
+    empty: &str,
+) -> Vec<String> {
+    if nodes.is_empty() {
+        return vec![empty.to_string()];
     }
+    render_flowchart(&graph(nodes, rels))
+}
+
+/// Render a class diagram: a relationship graph with members inside each box.
+#[must_use]
+pub fn render_class(d: &ClassDiagram) -> Vec<String> {
     let nodes: Vec<(&str, &[String])> = d
         .entries
         .iter()
@@ -65,14 +77,12 @@ pub fn render_class(d: &ClassDiagram) -> Vec<String> {
         .iter()
         .map(|r| (r.from.as_str(), r.to.as_str(), r.label.as_str()))
         .collect();
-    render_flowchart(&graph(&nodes, &rels))
+    render_relation_graph(&nodes, &rels, "(empty class diagram)")
 }
 
 /// Render an ER diagram: a relationship graph with attributes inside each box.
+#[must_use]
 pub fn render_er(d: &ErDiagram) -> Vec<String> {
-    if d.entries.is_empty() {
-        return vec!["(empty ER diagram)".to_string()];
-    }
     let nodes: Vec<(&str, &[String])> = d
         .entries
         .iter()
@@ -83,7 +93,7 @@ pub fn render_er(d: &ErDiagram) -> Vec<String> {
         .iter()
         .map(|r| (r.from.as_str(), r.to.as_str(), r.label.as_str()))
         .collect();
-    render_flowchart(&graph(&nodes, &rels))
+    render_relation_graph(&nodes, &rels, "(empty ER diagram)")
 }
 
 #[cfg(test)]

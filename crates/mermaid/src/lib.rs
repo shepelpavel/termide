@@ -29,6 +29,7 @@ pub use relational::{render_class, render_er};
 
 /// Render any supported Mermaid source to canvas lines. Unsupported kinds
 /// return `None` so the caller can fall back (e.g. show the source).
+#[must_use]
 pub fn render_to_lines(src: &str) -> Option<Vec<String>> {
     match detect_kind(src) {
         DiagramKind::Sequence => Some(render_sequence(&parse_sequence(src))),

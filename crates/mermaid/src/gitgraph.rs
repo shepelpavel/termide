@@ -32,6 +32,7 @@ fn finish(mut row: Vec<char>, label: &str) -> String {
 }
 
 /// Render a git graph into lines.
+#[must_use]
 pub fn render_gitgraph(g: &GitGraph) -> Vec<String> {
     if g.ops.is_empty() {
         return vec!["(empty git graph)".to_string()];

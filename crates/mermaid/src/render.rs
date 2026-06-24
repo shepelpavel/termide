@@ -8,6 +8,7 @@ use crate::canvas::{label_width, Canvas};
 use crate::parser::{Arrow, ArrowHead, NotePlacement, SeqEvent, Sequence};
 
 /// Lay out a sequence diagram into canvas lines.
+#[must_use]
 pub fn render_sequence(seq: &Sequence) -> Vec<String> {
     if seq.participants.is_empty() {
         return vec!["(empty sequence diagram)".to_string()];
