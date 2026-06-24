@@ -5104,6 +5104,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "termide-mermaid"
+version = "0.26.0"
+
+[[package]]
 name = "termide-modal"
 version = "0.26.0"
 dependencies = [
