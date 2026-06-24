@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **HTML preview panel.** `.html` / `.htm` files open as a rendered read-only view (`F3`) — headings, lists, tables, block quotes, `<pre>`/`<code>`, inline `<kbd>`/`<b>`/`<i>`/`<sub>` styling, links, and image pictograms — with the full viewer UX: movable cursor, text selection, clipboard copy, incremental search (`Ctrl+F`), reload from disk (`Ctrl+R`), and `Ctrl+E` to toggle to the editable source. Unknown tags stay transparent; author CSS/scripts are ignored.
+- **HTML embedded in Markdown now renders.** Raw HTML in `.md` files — centered `<img>` badges, `<details>`/`<summary>`, HTML `<table>`s, and inline tags like `<kbd>` — renders through the same engine instead of appearing as literal angle-bracket text.
+
+### Changed
+- The Markdown and HTML viewers share a new layout engine (`termide-richtext`), driven by a `pulldown-cmark` adapter and an `html5ever` adapter respectively. Markdown rendering is unchanged.
+
 ## [0.27.0] - 2026-06-24
 
 ### Added

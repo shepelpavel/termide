@@ -66,6 +66,7 @@ impl Editor {
         match ext.as_str() {
             "md" | "markdown" => Some(PanelEvent::SwapActiveToMarkdown(path.to_path_buf())),
             "mmd" | "mermaid" => Some(PanelEvent::SwapActiveToMermaid(path.to_path_buf())),
+            "html" | "htm" => Some(PanelEvent::SwapActiveToHtml(path.to_path_buf())),
             _ => None,
         }
     }

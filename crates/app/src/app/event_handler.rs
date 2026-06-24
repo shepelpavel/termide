@@ -89,6 +89,14 @@ impl App {
                 self.event_swap_active_to_mermaid(path)?;
             }
 
+            PanelEvent::ViewHtml(path) => {
+                self.event_view_html(path)?;
+            }
+
+            PanelEvent::SwapActiveToHtml(path) => {
+                self.event_swap_active_to_html(path)?;
+            }
+
             PanelEvent::OpenExternal(path) => {
                 self.event_open_external(path)?;
             }
@@ -513,7 +521,7 @@ impl App {
         // markdown/mermaid preview (switching to source is always for editing).
         let from_preview = matches!(
             self.layout_manager.active_panel().map(|p| p.name()),
-            Some("markdown") | Some("mermaid")
+            Some("markdown") | Some("mermaid") | Some("html")
         );
         let editable = from_preview
             || self
@@ -601,6 +609,37 @@ impl App {
                 self.auto_save_session();
             }
             Err(e) => self.show_error_modal(format!("Failed to open diagram file: {e}")),
+        }
+        Ok(())
+    }
+
+    /// Open an `.html` file in the rendered HTML viewer (read-only).
+    fn event_view_html(&mut self, file_path: PathBuf) -> Result<()> {
+        use termide_panel_html::HtmlPanel;
+
+        // Each open creates its own focused viewer; reuse-in-place is
+        // image-only (see event_view_markdown).
+        self.close_help_panels();
+        match HtmlPanel::new(file_path) {
+            Ok(panel) => {
+                self.add_panel(Box::new(panel));
+                self.auto_save_session();
+            }
+            Err(e) => self.show_error_modal(format!("Failed to open HTML file: {e}")),
+        }
+        Ok(())
+    }
+
+    /// Swap the active panel in place for the rendered HTML preview.
+    fn event_swap_active_to_html(&mut self, file_path: PathBuf) -> Result<()> {
+        use termide_panel_html::HtmlPanel;
+        match HtmlPanel::new(file_path) {
+            Ok(panel) => {
+                self.layout_manager.replace_active_panel(Box::new(panel));
+                self.state.needs_redraw = true;
+                self.auto_save_session();
+            }
+            Err(e) => self.show_error_modal(format!("Failed to open HTML file: {e}")),
         }
         Ok(())
     }

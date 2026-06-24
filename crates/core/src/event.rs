@@ -422,6 +422,12 @@ pub enum PanelEvent {
     /// Swap the active panel in place for the Mermaid diagram view of `path`
     SwapActiveToMermaid(PathBuf),
 
+    /// Open an `.html` file in the rendered HTML viewer (read-only)
+    ViewHtml(PathBuf),
+
+    /// Swap the active panel in place for the rendered HTML view of `path`
+    SwapActiveToHtml(PathBuf),
+
     /// Open file with system default application (xdg-open)
     OpenExternal(PathBuf),
 

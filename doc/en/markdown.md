@@ -39,6 +39,10 @@ Parsed with `pulldown-cmark` and drawn as text pseudographics:
   (text pseudographics) instead of raw source. Unsupported diagram kinds fall
   back to normal code-block highlighting. See [Mermaid diagrams](mermaid.md) for
   the standalone `.mmd` viewer and the list of supported diagram types.
+- Embedded HTML — both block (`<p align>`, `<div>`, `<details>`/`<summary>`,
+  `<table>`, `<img>`) and inline (`<kbd>`, `<b>`, `<sub>`, `<br>`, …) — rendered
+  through the same engine as the standalone [HTML preview](html.md) instead of
+  shown as literal angle-bracket text.
 
 ## Navigation, selection, links
 

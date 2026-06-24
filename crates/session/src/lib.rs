@@ -108,6 +108,12 @@ pub enum SessionPanel {
         /// Path to the `.mmd` file
         path: PathBuf,
     },
+    /// Rendered HTML viewer panel
+    #[serde(rename = "html")]
+    Html {
+        /// Path to the HTML file
+        path: PathBuf,
+    },
     /// Git status panel
     #[serde(rename = "git_status")]
     GitStatus {

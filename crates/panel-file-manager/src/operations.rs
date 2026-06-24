@@ -72,12 +72,17 @@ pub(super) fn determine_file_open_event(
                 return Some(PanelEvent::ViewMermaid(file_path.to_path_buf()));
             }
 
-            // 5. Binary files → hex viewer
+            // 5. HTML → rendered preview
+            if is_html(&entry.name) {
+                return Some(PanelEvent::ViewHtml(file_path.to_path_buf()));
+            }
+
+            // 6. Binary files → hex viewer
             if is_binary_file(file_path) {
                 return Some(PanelEvent::ViewBinary(file_path.to_path_buf()));
             }
 
-            // 6. Text files → read-only editor
+            // 7. Text files → read-only editor
             Some(PanelEvent::ViewFile(file_path.to_path_buf()))
         }
         FileOpenMode::Default => {
@@ -147,6 +152,10 @@ fn is_markdown(filename: &str) -> bool {
 
 fn is_mermaid(filename: &str) -> bool {
     matches!(get_extension(filename).as_str(), "mmd" | "mermaid")
+}
+
+fn is_html(filename: &str) -> bool {
+    matches!(get_extension(filename).as_str(), "html" | "htm")
 }
 
 fn is_source_file(filename: &str) -> bool {

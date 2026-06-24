@@ -5004,6 +5004,7 @@ dependencies = [
  "termide-panel-git-diff",
  "termide-panel-git-log",
  "termide-panel-git-status",
+ "termide-panel-html",
  "termide-panel-image",
  "termide-panel-markdown",
  "termide-panel-mermaid",
@@ -5416,6 +5417,21 @@ dependencies = [
  "termide-theme",
  "termide-ui",
  "termide-ui-render",
+ "unicode-width",
+]
+
+[[package]]
+name = "termide-panel-html"
+version = "0.27.0"
+dependencies = [
+ "anyhow",
+ "crossterm 0.28.1",
+ "ratatui",
+ "termide-core",
+ "termide-html",
+ "termide-modal",
+ "termide-richtext",
+ "termide-ui",
  "unicode-width",
 ]
 
