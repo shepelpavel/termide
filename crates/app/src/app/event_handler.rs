@@ -546,10 +546,11 @@ impl App {
     fn event_view_markdown(&mut self, file_path: PathBuf) -> Result<()> {
         use termide_panel_markdown::MarkdownPanel;
 
-        // Reuse an existing preview if one is open, focusing it.
+        // Reuse an existing preview if one is open, without stealing focus, so
+        // files can be flipped through from the file manager (as for images).
         if let Some(panel) = self
             .layout_manager
-            .focus_and_expand_panel_by_name("markdown")
+            .find_and_expand_panel_by_name("markdown")
         {
             if let Some(md) = panel.as_any_mut().downcast_mut::<MarkdownPanel>() {
                 md.set_file(file_path);
@@ -561,7 +562,7 @@ impl App {
         self.close_help_panels();
         match MarkdownPanel::new(file_path) {
             Ok(panel) => {
-                self.add_panel(Box::new(panel));
+                self.add_panel_without_focus(Box::new(panel));
                 self.auto_save_session();
             }
             Err(e) => self.show_error_modal(format!("Failed to open markdown file: {e}")),
@@ -587,10 +588,9 @@ impl App {
     fn event_view_mermaid(&mut self, file_path: PathBuf) -> Result<()> {
         use termide_panel_mermaid::MermaidPanel;
 
-        if let Some(panel) = self
-            .layout_manager
-            .focus_and_expand_panel_by_name("mermaid")
-        {
+        // Reuse an existing viewer without stealing focus, so diagrams can be
+        // flipped through from the file manager (as for images).
+        if let Some(panel) = self.layout_manager.find_and_expand_panel_by_name("mermaid") {
             if let Some(m) = panel.as_any_mut().downcast_mut::<MermaidPanel>() {
                 m.set_file(file_path);
                 self.state.needs_redraw = true;
@@ -601,7 +601,7 @@ impl App {
         self.close_help_panels();
         match MermaidPanel::new(file_path) {
             Ok(panel) => {
-                self.add_panel(Box::new(panel));
+                self.add_panel_without_focus(Box::new(panel));
                 self.auto_save_session();
             }
             Err(e) => self.show_error_modal(format!("Failed to open diagram file: {e}")),
