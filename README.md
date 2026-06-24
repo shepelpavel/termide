@@ -19,6 +19,8 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 | Git Integration | ✓ | plugin | ✗ | ✗ |
 | Database Viewer | ✓ | plugin | ✗ | ✗ |
 | Hex / Binary Viewer | ✓ | plugin | ✗ | plugin |
+| Markdown Preview | ✓ | plugin | ✗ | ✗ |
+| Diagram Viewer (Mermaid) | ✓ | plugin | ✗ | ✗ |
 | LSP Support | ✓ | plugin | ✓ | plugin |
 | Syntax Highlighting | ✓ | ✓ | ✓ | ✓ |
 | Zero Config | ✓ | ✗ | ✓ | ✓ |
@@ -38,6 +40,8 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 - **Multi-panel Layout** - Vertically split panel groups with adjustable per-panel heights and a one-key fullscreen toggle (`Alt+F11`); smart auto-stacking when the terminal narrows; new panels open after the currently active one
 - **Image Viewer** - Native graphics in Kitty, WezTerm, iTerm2, Ghostty, foot terminals
 - **Hex / Binary Viewer & Editor** - Hex/ASCII view (adaptive 16-byte sections) for binary files, with a byte cursor shown in both zones, drag/shift selection and clipboard copy, ASCII + hex-byte search, and a hex↔text toggle (`Ctrl+L`); `F4` opens it for overwrite editing with a `.bak` backup on save
+- **Markdown Preview** - Rendered read-only view for `.md` / `.markdown` (headings, lists, tables, syntax-highlighted code blocks, clickable links and image pictograms) with cursor navigation, selection and clipboard copy; `Ctrl+E` toggles to the editable source; embedded ```mermaid``` blocks render as diagrams
+- **Mermaid Diagram Viewer** - Render `.mmd` / `.mermaid` files as text pseudographics — flowchart, sequence, state, class, ER, gantt, pie, journey, mindmap, timeline, gitGraph, quadrant; 2D scroll, copy to clipboard, and `Ctrl+E` to edit the source
 - **External Apps** - Open files with system default applications (Shift+Enter)
 - **38 Built-in Themes** - Dark, light, retro, and cinematic themes (Dracula, Nord, Monokai, Solarized, Matrix, Pip-Boy, Blue Sky, Pinky Pie, etc.)
 - **Custom Themes** - Create your own themes in TOML format

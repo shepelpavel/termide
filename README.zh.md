@@ -19,6 +19,8 @@
 | Git 集成 | ✓ | 插件 | ✗ | ✗ |
 | 数据库查看器 | ✓ | 插件 | ✗ | ✗ |
 | 十六进制 / 二进制查看器 | ✓ | 插件 | ✗ | 插件 |
+| Markdown 预览 | ✓ | 插件 | ✗ | ✗ |
+| 图表查看器（Mermaid） | ✓ | 插件 | ✗ | ✗ |
 | LSP 支持 | ✓ | 插件 | ✓ | 插件 |
 | 语法高亮 | ✓ | ✓ | ✓ | ✓ |
 | 零配置 | ✓ | ✗ | ✓ | ✓ |
@@ -38,6 +40,8 @@
 - **多面板布局** - 垂直拆分的面板组，每个面板高度可调，一键全屏切换（`Alt+F11`）；终端变窄时智能自动堆叠
 - **图片查看器** - 在 Kitty、WezTerm、iTerm2、Ghostty、foot 终端中原生渲染图形
 - **十六进制 / 二进制查看与编辑器** - 二进制文件的 hex/ASCII 视图（按 16 字节自适应分段），字节光标在两个区域同时显示，支持拖动/Shift 选择与剪贴板复制、ASCII 与十六进制字节搜索，以及 hex↔文本切换（`Ctrl+L`）；`F4` 以覆盖方式编辑，保存时生成 `.bak` 备份
+- **Markdown 预览** - `.md` / `.markdown` 的只读渲染视图（标题、列表、表格、语法高亮代码块、可点击链接与图片图标），支持光标导航、选择与剪贴板复制；`Ctrl+E` 切换到可编辑源码；内嵌的 ```mermaid``` 代码块渲染为图表
+- **Mermaid 图表查看器** - 将 `.mmd` / `.mermaid` 文件渲染为文本伪图形 —— flowchart、sequence、state、class、ER、gantt、pie、journey、mindmap、timeline、gitGraph、quadrant；二维滚动、复制到剪贴板，`Ctrl+E` 编辑源码
 - **外部应用** - 使用系统默认应用程序打开文件（Shift+Enter）
 - **38 款内置主题** - 暗色、亮色、复古和电影主题（Dracula、Nord、Monokai、Solarized、Matrix、Pip-Boy 等）
 - **自定义主题** - 使用 TOML 格式创建自己的主题

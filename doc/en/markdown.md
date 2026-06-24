@@ -35,6 +35,10 @@ Parsed with `pulldown-cmark` and drawn as text pseudographics:
 - Horizontal rules and links (underlined, clickable).
 - Images as a clickable `🖼` pictogram followed by the alt text (no terminal
   graphics protocol).
+- Embedded ```` ```mermaid ```` code blocks, rendered as the diagram itself
+  (text pseudographics) instead of raw source. Unsupported diagram kinds fall
+  back to normal code-block highlighting. See [Mermaid diagrams](mermaid.md) for
+  the standalone `.mmd` viewer and the list of supported diagram types.
 
 ## Navigation, selection, links
 
