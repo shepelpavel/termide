@@ -349,6 +349,14 @@ impl<'c> Builder<'c> {
                 self.flush_inline(prefix.clone(), prefix);
                 self.push_blank();
             }
+            // A raw HTML block is its own paragraph: flush the accumulated
+            // text and separate it, so a following block (e.g. a heading)
+            // does not merge onto the same line.
+            TagEnd::HtmlBlock => {
+                let prefix = self.context_prefix();
+                self.flush_inline(prefix.clone(), prefix);
+                self.push_blank();
+            }
             TagEnd::BlockQuote(_) => {
                 self.quote_depth = self.quote_depth.saturating_sub(1);
                 if self.quote_depth == 0 {
@@ -672,6 +680,22 @@ mod tests {
     fn heading_has_marker_and_text() {
         let out = render("# Title");
         assert!(out.iter().any(|l| l.contains("# Title")), "{out:?}");
+    }
+
+    #[test]
+    fn html_block_does_not_merge_into_next_heading() {
+        let out = render("<p>Some HTML paragraph.</p>\n\n## A heading\n\nbody\n");
+        // The HTML text and the heading must land on separate lines.
+        assert!(
+            out.iter()
+                .any(|l| l.contains("Some HTML paragraph.") && !l.contains("A heading")),
+            "{out:?}"
+        );
+        assert!(
+            out.iter()
+                .any(|l| l.contains("# A heading") && !l.contains("HTML")),
+            "{out:?}"
+        );
     }
 
     #[test]
