@@ -14,17 +14,17 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 
 | Feature | TermIDE | Vim/Neovim | Helix | Micro |
 |---------|:-------:|:----------:|:-----:|:-----:|
-| Built-in Terminal | ✓ | plugin | ✗ | ✗ |
-| File Manager | ✓ | plugin | ✗ | ✗ |
-| Git Integration | ✓ | plugin | ✗ | ✗ |
-| Database Viewer | ✓ | plugin | ✗ | ✗ |
-| Hex / Binary Viewer | ✓ | plugin | ✗ | plugin |
-| Markdown Preview | ✓ | plugin | ✗ | ✗ |
-| Diagram Viewer (Mermaid) | ✓ | plugin | ✗ | ✗ |
-| LSP Support | ✓ | plugin | ✓ | plugin |
 | Syntax Highlighting | ✓ | ✓ | ✓ | ✓ |
 | Zero Config | ✓ | ✗ | ✓ | ✓ |
 | Resource Monitor | ✓ | ✗ | ✗ | ✗ |
+| LSP Support | ✓ | plugin | ✓ | plugin |
+| Hex / Binary Viewer | ✓ | plugin | ✗ | plugin |
+| Database Viewer | ✓ | plugin | ✗ | ✗ |
+| Markdown Preview | ✓ | plugin | ✗ | ✗ |
+| Diagram Viewer (Mermaid) | ✓ | plugin | ✗ | ✗ |
+| Built-in Terminal | ✓ | plugin | ✗ | ✗ |
+| File Manager | ✓ | plugin | ✗ | ✗ |
+| Git Integration | ✓ | plugin | ✗ | ✗ |
 | Sessions | ✓ | plugin | ✗ | ✗ |
 
 **TermIDE = Editor + File Manager + Terminal in one TUI application.**
