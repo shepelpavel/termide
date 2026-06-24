@@ -5331,6 +5331,7 @@ dependencies = [
  "ratatui",
  "termide-core",
  "termide-highlight",
+ "termide-mermaid",
  "termide-modal",
  "termide-ui",
  "unicode-width",
