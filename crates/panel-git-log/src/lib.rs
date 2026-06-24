@@ -645,7 +645,9 @@ impl GitLogPanel {
             .take(commits_area_height)
         {
             let y = commits_start_y + (i - self.scroll) as u16;
-            let is_selected = i == self.selected && self.current_section == Section::Commits;
+            // Only show the selection cursor while focused (hidden otherwise).
+            let is_selected =
+                is_focused && i == self.selected && self.current_section == Section::Commits;
 
             // Clear line first
             let clear_style = if is_selected {

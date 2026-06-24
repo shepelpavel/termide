@@ -356,7 +356,7 @@ impl Panel for DiagnosticsPanel {
         self.ensure_filtered_cache();
     }
 
-    fn render(&mut self, area: Rect, buf: &mut Buffer, _ctx: &RenderContext) {
+    fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         self.last_height = area.height as usize;
         // Clone theme to avoid borrow conflicts with mutable cache methods
         let theme = self.cached_theme;
@@ -422,7 +422,8 @@ impl Panel for DiagnosticsPanel {
             for (display_idx, orig_idx) in visible_indices {
                 let entry = &self.all_diagnostics[orig_idx];
                 let y = content_top + display_idx as u16;
-                let is_selected = orig_idx == selected_index;
+                // Selection cursor hidden when the panel isn't focused.
+                let is_selected = ctx.is_focused && orig_idx == selected_index;
 
                 // Determine style
                 let (line_style, icon_style) = if is_selected {
@@ -508,7 +509,7 @@ impl Panel for DiagnosticsPanel {
                 content_height,
                 filtered_len,
                 &theme_colors,
-                true, // is_focused
+                ctx.is_focused,
             );
         }
     }

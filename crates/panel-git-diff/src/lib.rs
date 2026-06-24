@@ -772,7 +772,7 @@ impl GitDiffPanel {
 
             // File header line
             if current_line >= self.scroll && y < max_y {
-                let is_selected = file_idx == self.selected_file;
+                let is_selected = is_focused && file_idx == self.selected_file;
                 let is_collapsed = self.collapsed.contains(&file_idx);
 
                 // Use same style for entire line (text + lines) for uniformity

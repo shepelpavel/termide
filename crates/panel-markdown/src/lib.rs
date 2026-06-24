@@ -526,8 +526,10 @@ impl Panel for MarkdownPanel {
             }
         }
 
-        // Cursor cell (only when on a visible line, and not while searching).
-        if self.find_bar.is_none()
+        // Cursor cell (only when focused, on a visible line, and not searching);
+        // an unfocused preview shows no cursor.
+        if ctx.is_focused
+            && self.find_bar.is_none()
             && self.cursor.0 >= self.top
             && self.cursor.0 < self.top + content.height as usize
         {

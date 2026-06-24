@@ -121,6 +121,9 @@ pub struct BinaryPanel {
     hotkeys: HotkeyTable,
     /// Pointer of the last `Arc<Config>` used to build hotkeys.
     last_config_ptr: usize,
+    /// Whether the panel is focused (set each render); the byte cursor is only
+    /// drawn when focused, so an unfocused viewer shows no cursor.
+    focused: bool,
 }
 
 /// Bytes shown per row for the given inner width: as many whole 16-byte
@@ -201,6 +204,7 @@ impl BinaryPanel {
             theme_full: None,
             hotkeys: HotkeyTable::default(),
             last_config_ptr: 0,
+            focused: false,
         };
         panel.set_file(path);
         Ok(panel)
@@ -657,8 +661,8 @@ impl BinaryPanel {
         }
         // The cursor byte is shown inverse in both zones (consistent with the
         // editor's cursor); the active zone also gets BOLD so it's clear which
-        // zone Tab will edit/navigate.
-        if gi == self.cursor {
+        // zone Tab will edit/navigate. Hidden when the panel isn't focused.
+        if gi == self.cursor && self.focused {
             st = st.add_modifier(Modifier::REVERSED);
             if repr == self.zone {
                 st = st.add_modifier(Modifier::BOLD);
@@ -800,6 +804,7 @@ impl Panel for BinaryPanel {
         if area.width == 0 || area.height == 0 {
             return;
         }
+        self.focused = ctx.is_focused;
 
         // Find bar docked at the TOP with a separator below, matching the
         // editor / file manager.

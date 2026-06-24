@@ -307,7 +307,7 @@ impl Panel for OutlinePanel {
         self.vim_mode = config.general.vim_mode;
     }
 
-    fn render(&mut self, area: Rect, buf: &mut Buffer, _ctx: &RenderContext) {
+    fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         self.last_height = area.height as usize;
         let theme = self.cached_theme;
 
@@ -350,7 +350,8 @@ impl Panel for OutlinePanel {
                 }
                 let symbol = &self.symbols[sym_idx];
                 let y = content_top + display_idx as u16;
-                let is_selected = sym_idx == self.selected_index;
+                // Selection cursor hidden when the panel isn't focused.
+                let is_selected = ctx.is_focused && sym_idx == self.selected_index;
 
                 // Determine styles
                 let line_style = if is_selected {
