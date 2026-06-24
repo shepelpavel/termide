@@ -343,6 +343,14 @@ pub trait Panel: Any {
         vec![]
     }
 
+    /// Extra entries this panel contributes to its `[≡]` action menu, as
+    /// `(label, action_id)` pairs appended above the generic move/close items.
+    /// An empty list (the default) adds nothing. A chosen entry is routed back
+    /// via [`Panel::handle_status_action`] using its `action_id`.
+    fn context_menu_items(&self) -> Vec<(String, &'static str)> {
+        vec![]
+    }
+
     /// Check if panel should automatically close.
     ///
     /// Returns true if panel should be closed
