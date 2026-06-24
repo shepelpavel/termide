@@ -59,15 +59,87 @@ pub fn render_gantt(g: &Gantt) -> Vec<String> {
         .max()
         .unwrap_or(0);
 
+    // Column geometry. The chart's left edge is the first tick's dotted
+    // gridline (aligned under the first date), matching every other tick; bars
+    // start at `bar0`, one column past it. Gridlines run the full height —
+    // becoming `┬`/`┴`/`┼` where they cross the top/bottom rulers and the
+    // section divider lines — so each axis reads as one continuous line.
+    let left = name_col + 1;
+    let bar0 = name_col + 2;
+    let step = 13;
+    let end_col = bar0 + chart;
+    let row_width = end_col + 1;
+    // (column, day) for the origin tick and each interior tick.
+    let ticks: Vec<(usize, i64)> = std::iter::once((left, origin))
+        .chain((step..=chart).step_by(step).map(|col| {
+            (
+                bar0 + col,
+                origin + (col as f64 * span / chart as f64).round() as i64,
+            )
+        }))
+        .collect();
+
+    // A chart row: the name/section prefix plus a dotted gridline at each tick
+    // (filled only into otherwise-empty cells, so a wide section header or a
+    // bar is never overwritten).
+    let make_row = |prefix: &str| -> Vec<char> {
+        let mut row = vec![' '; row_width];
+        for (i, ch) in prefix.chars().enumerate() {
+            if i < row_width {
+                row[i] = ch;
+            }
+        }
+        for &(x, _) in &ticks {
+            if row[x] == ' ' {
+                row[x] = '┆';
+            }
+        }
+        row
+    };
+    let finish = |row: Vec<char>| -> String {
+        let s: String = row.into_iter().collect();
+        s.trim_end().to_string()
+    };
+
+    // A full-width horizontal line (top/bottom ruler or section divider),
+    // spanning to the left edge with the given junction where a vertical crosses.
+    let hline = |junction: char| -> String {
+        let mut row = vec!['─'; row_width];
+        for &(c, _) in &ticks {
+            row[c] = junction;
+        }
+        row.into_iter().collect()
+    };
+    let date_row = || -> String {
+        let mut row = vec![' '; row_width + 12];
+        for &(c, day) in &ticks {
+            for (k, ch) in crate::parser::day_to_date(day).chars().enumerate() {
+                if c + k < row.len() {
+                    row[c + k] = ch;
+                }
+            }
+        }
+        finish(row)
+    };
+
     let mut out = Vec::new();
     if !g.title.is_empty() {
         out.push(g.title.clone());
         out.push(String::new());
     }
+
+    // Top axis (duplicated): dates then ruler.
+    out.push(date_row());
+    out.push(hline('┬'));
+
     let mut section = None;
     for t in &g.tasks {
         if section.as_deref() != Some(t.section.as_str()) && !t.section.is_empty() {
-            out.push(format!("▌ {}", t.section));
+            // A divider line between sections (not before the first).
+            if section.is_some() {
+                out.push(hline('┼'));
+            }
+            out.push(finish(make_row(&format!("▌ {}", t.section))));
             section = Some(t.section.clone());
         }
         let offset = (((t.start - origin) as f64) * scale).round() as usize;
@@ -79,45 +151,32 @@ pub fn render_gantt(g: &Gantt) -> Vec<String> {
             TaskStatus::Plain => ('▒', None),
         };
         let pad = " ".repeat(name_col - label_width(&t.name));
-        let lead = " ".repeat(offset);
-        let bar = if let Some(m) = mark {
+        let bar: Vec<char> = if let Some(m) = mark {
             if t.status == TaskStatus::Milestone {
-                m.to_string()
+                vec![m]
             } else {
                 let w = ((t.len as f64 * scale).round() as usize).max(1);
-                format!("{}{}", m, fillc.to_string().repeat(w.saturating_sub(1)))
+                std::iter::once(m)
+                    .chain(std::iter::repeat_n(fillc, w.saturating_sub(1)))
+                    .collect()
             }
         } else {
             let w = ((t.len as f64 * scale).round() as usize).max(1);
-            fillc.to_string().repeat(w)
+            std::iter::repeat_n(fillc, w).collect()
         };
-        out.push(format!("{}{} │{}{}", t.name, pad, lead, bar));
-    }
-
-    // Time axis: a ruler aligned under the bars, ticked every 13 columns and
-    // labelled with calendar dates (`YYYY-MM-DD`).
-    let step = 13;
-    let mut ruler = String::from("└");
-    let mut labels = vec![' '; chart + 12];
-    for col in 0..=chart {
-        let tick = col % step == 0;
-        ruler.push(if tick { '┴' } else { '─' });
-        if tick {
-            let day = origin + (col as f64 * span / chart as f64).round() as i64;
-            for (k, ch) in crate::parser::day_to_date(day).chars().enumerate() {
-                if col + k < labels.len() {
-                    labels[col + k] = ch;
-                }
+        let mut row = make_row(&format!("{}{}", t.name, pad));
+        for (k, ch) in bar.into_iter().enumerate() {
+            let x = bar0 + offset + k;
+            if x < row.len() {
+                row[x] = ch;
             }
         }
+        out.push(finish(row));
     }
-    let label_line: String = labels.into_iter().collect();
-    out.push(format!("{}{ruler}", " ".repeat(name_col + 1)));
-    out.push(format!(
-        "{}{}",
-        " ".repeat(name_col + 2),
-        label_line.trim_end()
-    ));
+
+    // Bottom axis: ruler then dates.
+    out.push(hline('┴'));
+    out.push(date_row());
     out
 }
 
@@ -299,6 +358,28 @@ mod tests {
         let build = out.lines().find(|l| l.contains("Build")).unwrap();
         let lead = |l: &str| l.find(['█', '▓']).unwrap_or(0);
         assert!(lead(build) > lead(spec), "after-dep not offset:\n{out}");
+    }
+
+    #[test]
+    fn gantt_has_dual_axis_and_gridlines() {
+        let src = "gantt\ntitle Plan\nsection Design\nSpec :done, a, 2026-01-01, 4d\nsection Build\nBack :active, b, 2026-02-01, 6d";
+        let lines = render_gantt(&parse_gantt(src));
+        let out = lines.join("\n");
+        // Axis duplicated top (`┬`) and bottom (`┴`), spanning to the left edge.
+        assert!(out.contains('┬') && out.contains('┴'), "no dual ruler:\n{out}");
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.starts_with('─') && l.contains('┬')),
+            "top ruler not full width:\n{out}"
+        );
+        // Vertical gridlines drop through the rows.
+        assert!(out.contains('┆'), "no gridlines:\n{out}");
+        // Sections are split by a divider line, not a blank row.
+        assert!(
+            lines.iter().any(|l| l.starts_with('─') && l.contains('┼')),
+            "no section divider line:\n{out}"
+        );
     }
 
     #[test]

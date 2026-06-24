@@ -52,9 +52,15 @@ impl Rect {
 }
 
 const BOX_H: usize = 3;
-/// Rows between stacked ranks (vertical) — the edge channel. Three rows give a
-/// label its own row, distinct from the row a crossing edge routes along.
+/// Rows between stacked ranks (vertical) when a labelled elbow crosses the gap:
+/// the extra row keeps the label clear of the row a jog routes along.
 const V_CHANNEL: usize = 3;
+/// Rows for a gap that needs one extra row — an unlabelled elbow (room for the
+/// jog) or a labelled straight drop (room for the label beside the line).
+const V_CHANNEL_MID: usize = 2;
+/// Rows for a plain straight drop with no label or crossing: just the
+/// arrowhead, since the box `┬`/`┴` junctions already anchor the connection.
+const V_CHANNEL_TIGHT: usize = 1;
 /// Columns between stacked ranks (horizontal) — room for arrows + labels.
 const H_CHANNEL: usize = 8;
 /// Within-rank spacing.
@@ -192,6 +198,24 @@ pub fn render_flowchart(fc: &Flowchart) -> Vec<String> {
     let col_gap = COL_GAP.max(max_label + 1);
 
     let vertical = fc.direction.vertical();
+    // (from, to, has_label, is_solid) per segment. A gap carrying both a label
+    // and an elbow needs the tallest channel so the label clears the jog row; a
+    // non-solid edge needs at least a line row so its dotted/thick glyph shows.
+    let seg_ends: Vec<(usize, usize, bool, bool)> = segs
+        .iter()
+        .map(|s| {
+            (
+                s.from,
+                s.to,
+                !s.label.is_empty(),
+                matches!(s.line, EdgeLine::Solid),
+            )
+        })
+        .collect();
+    let mut is_dummy = vec![false; ext];
+    for &d in &dummies {
+        is_dummy[d] = true;
+    }
     let rects = layout(
         fc.direction,
         &groups_ext,
@@ -202,28 +226,78 @@ pub fn render_flowchart(fc: &Flowchart) -> Vec<String> {
         max_rank,
         vertical,
         col_gap,
+        &seg_ends,
+        &is_dummy,
     );
 
-    // Per-segment fan position among same-source / same-target siblings.
-    let mut out_cnt = vec![0usize; ext];
-    let mut in_cnt = vec![0usize; ext];
-    let mut out_pos = vec![0usize; segs.len()];
-    let mut in_pos = vec![0usize; segs.len()];
+    // Per-side fan assignment. Edges meeting the same box side (top/bottom for
+    // vertical, left/right for horizontal) share one ordered set of attachment
+    // points — combining the node's exits and entries on that side — so a
+    // back-edge entry never lands on a forward-edge exit column. A node with
+    // exactly two out-edges is a fork: its edges leave the cross sides instead,
+    // so they don't claim a primary-side slot.
+    let mut out_degree = vec![0usize; ext];
+    for s in &segs {
+        out_degree[s.from] += 1;
+    }
+    let cross = |i: usize| {
+        if vertical {
+            rects[i].cx()
+        } else {
+            rects[i].cy()
+        }
+    };
+    let prim = |i: usize| {
+        if vertical {
+            rects[i].top()
+        } else {
+            rects[i].left()
+        }
+    };
+    // sides[node] = [near-side attachments, far-side attachments]; each entry is
+    // (seg index, is_source, the other endpoint's cross coordinate).
+    let mut sides: Vec<[Vec<(usize, bool, usize)>; 2]> =
+        (0..ext).map(|_| [Vec::new(), Vec::new()]).collect();
     for (k, s) in segs.iter().enumerate() {
-        out_pos[k] = out_cnt[s.from];
-        out_cnt[s.from] += 1;
-        in_pos[k] = in_cnt[s.to];
-        in_cnt[s.to] += 1;
+        let forward = prim(s.to) > prim(s.from);
+        // Source exits the far side when the target is further along the axis.
+        if out_degree[s.from] != 2 {
+            sides[s.from][usize::from(forward)].push((k, true, cross(s.to)));
+        }
+        // Target is entered from its near side in that same case.
+        sides[s.to][usize::from(!forward)].push((k, false, cross(s.from)));
+    }
+    let mut out_pos = vec![0usize; segs.len()];
+    let mut out_cnt = vec![1usize; segs.len()];
+    let mut in_pos = vec![0usize; segs.len()];
+    let mut in_cnt = vec![1usize; segs.len()];
+    for node in sides.iter() {
+        for side in node.iter() {
+            let mut list = side.clone();
+            list.sort_by_key(|&(_, _, oc)| oc);
+            let cnt = list.len();
+            for (slot, &(k, is_source, _)) in list.iter().enumerate() {
+                if is_source {
+                    out_pos[k] = slot;
+                    out_cnt[k] = cnt;
+                } else {
+                    in_pos[k] = slot;
+                    in_cnt[k] = cnt;
+                }
+            }
+        }
     }
 
     let mut c = Canvas::new();
     let mut ticks: Vec<(usize, usize, char)> = Vec::new();
+    let mut heads: Vec<(usize, usize, char)> = Vec::new();
     let mut labels: Vec<(usize, usize, String)> = Vec::new();
 
     for (k, s) in segs.iter().enumerate() {
         draw_edge(
             &mut c,
             &mut ticks,
+            &mut heads,
             &mut labels,
             &rects[s.from],
             &rects[s.to],
@@ -233,9 +307,10 @@ pub fn render_flowchart(fc: &Flowchart) -> Vec<String> {
             vertical,
             Fan {
                 op: out_pos[k],
-                ok: out_cnt[s.from],
+                ok: out_cnt[k],
                 ip: in_pos[k],
-                ik: in_cnt[s.to],
+                ik: in_cnt[k],
+                fork: out_degree[s.from] == 2,
             },
         );
     }
@@ -268,6 +343,12 @@ pub fn render_flowchart(fc: &Flowchart) -> Vec<String> {
         }
     }
 
+    // Arrowheads after lines (including dummy pass-throughs) so a sibling edge
+    // sharing the target column can't overwrite a head with its own line.
+    for (x, y, g) in heads {
+        c.put(x, y, g);
+    }
+
     // Edge labels last, so a crossing line never overwrites the text.
     for (x, y, text) in labels {
         c.text(x, y, &text);
@@ -287,10 +368,14 @@ struct Seg {
 
 /// Per-edge fan position among same-source / same-target siblings.
 struct Fan {
+    /// Source-side slot and count (its exit point among that box side's edges).
     op: usize,
     ok: usize,
+    /// Target-side slot and count (its entry point among that box side's edges).
     ip: usize,
     ik: usize,
+    /// The source has exactly two out-edges → they leave the cross sides.
+    fork: bool,
 }
 
 /// Longest-path rank assignment, ignoring back edges (cycle support).
@@ -359,6 +444,8 @@ fn layout(
     max_rank: usize,
     vertical: bool,
     col_gap: usize,
+    seg_ends: &[(usize, usize, bool, bool)],
+    is_dummy: &[bool],
 ) -> Vec<Rect> {
     let n = box_w.len();
 
@@ -369,11 +456,49 @@ fn layout(
         box_h.to_vec()
     };
     let cross_gap = if vertical { col_gap } else { ROW_GAP };
-    let center = assign_cross(groups, &cross_size, cross_gap, preds, succs);
+    // A node is a dummy (thin long-edge waypoint) if no rank lists it as a real
+    // member with a box — detected by the caller and passed via `is_dummy`.
+    let center = assign_cross(groups, &cross_size, cross_gap, preds, succs, is_dummy);
+
+    // Per-gap primary channel (vertical only; horizontal keeps a fixed one):
+    //   - label AND elbow   → V_CHANNEL  (label sits clear of the jog row)
+    //   - label XOR elbow    → V_CHANNEL_MID (one row for the label or the jog)
+    //   - neither (plain drop) → V_CHANNEL_TIGHT (just the arrowhead; the box
+    //     `┬`/`┴` junctions anchor the line, so no `│` row is needed).
+    let mut node_rank = vec![0usize; n];
+    for (r, g) in groups.iter().enumerate() {
+        for &i in g {
+            node_rank[i] = r;
+        }
+    }
+    let mut channel = vec![if vertical { V_CHANNEL_TIGHT } else { H_CHANNEL }; groups.len()];
+    if vertical {
+        let mut has_label = vec![false; groups.len()];
+        let mut has_elbow = vec![false; groups.len()];
+        // A non-solid (dotted/thick) edge needs a line row so its glyph shows,
+        // even when it is an otherwise-tight straight drop.
+        let mut needs_line = vec![false; groups.len()];
+        for &(from, to, lbl, solid) in seg_ends {
+            let gap = node_rank[from].min(node_rank[to]);
+            has_label[gap] |= lbl;
+            let dist = center[from].abs_diff(center[to]);
+            let elbow = dist >= (cross_size[from] + cross_size[to]) / 2;
+            has_elbow[gap] |= elbow;
+            needs_line[gap] |= !solid;
+        }
+        for g in 0..groups.len() {
+            channel[g] = if has_label[g] && has_elbow[g] {
+                V_CHANNEL
+            } else if has_label[g] || has_elbow[g] || needs_line[g] {
+                V_CHANNEL_MID
+            } else {
+                V_CHANNEL_TIGHT
+            };
+        }
+    }
 
     // Primary-axis start of each rank (cumulative; a rank is as tall/wide as
     // its biggest node, so variable-height boxes stack without overlap).
-    let prim_channel = if vertical { V_CHANNEL } else { H_CHANNEL };
     let rank_size: Vec<usize> = groups
         .iter()
         .map(|g| {
@@ -387,7 +512,7 @@ fn layout(
     let mut acc = 0;
     for r in 0..groups.len() {
         rank_start[r] = acc;
-        acc += rank_size[r] + prim_channel;
+        acc += rank_size[r] + channel[r];
     }
 
     let mut rects = vec![
@@ -437,6 +562,7 @@ fn assign_cross(
     gap: usize,
     preds: &[Vec<usize>],
     succs: &[Vec<usize>],
+    is_dummy: &[bool],
 ) -> Vec<usize> {
     let n = size.len();
     let mut center = vec![0i64; n];
@@ -482,6 +608,26 @@ fn assign_cross(
         }
     }
 
+    // Straighten dummy chains: pull each dummy toward its predecessor so a long
+    // edge descends straight from its source and jogs only on its final
+    // segment, instead of drifting toward the target across every rank. Real
+    // nodes keep their barycenter positions; only dummies move, clamped to
+    // their rank's left-to-right order and spacing.
+    for g in groups {
+        let mut prev_right = i64::MIN / 4;
+        for &i in g {
+            let half = (size[i] / 2) as i64;
+            let min_center = prev_right + gap as i64 + half;
+            let desired = if is_dummy[i] && !preds[i].is_empty() {
+                preds[i].iter().map(|&p| center[p]).sum::<i64>() / preds[i].len() as i64
+            } else {
+                center[i]
+            };
+            center[i] = desired.max(min_center);
+            prev_right = center[i] + half;
+        }
+    }
+
     // Shift so the minimum left edge is 0.
     let min_left = (0..n)
         .map(|i| center[i] - (size[i] / 2) as i64)
@@ -524,6 +670,7 @@ fn corner(up: bool, right: bool) -> char {
 fn draw_edge(
     c: &mut Canvas,
     ticks: &mut Ticks,
+    heads: &mut Ticks,
     labels: &mut Vec<(usize, usize, String)>,
     from: &Rect,
     to: &Rect,
@@ -537,7 +684,7 @@ fn draw_edge(
 
     if vertical {
         if from.y == to.y {
-            return side_edge(c, ticks, labels, from, to, line, arrow, label, true);
+            return side_edge(c, ticks, heads, labels, from, to, line, arrow, label, true);
         }
         let down = to.y > from.y;
         let head = if down { '▼' } else { '▲' };
@@ -554,7 +701,7 @@ fn draw_edge(
         let entry_x = to.fan_x(fan.ip, fan.ik);
 
         // Binary fork: the two edges leave the left/right sides of the source.
-        if fan.ok == 2 {
+        if fan.fork {
             let left = to.cx() < from.cx();
             let (outer, border, stick) = if left {
                 (from.left() - 1, from.left(), '┤')
@@ -566,7 +713,7 @@ fn draw_edge(
             c.vline(entry_x, ay.min(ty), ay.max(ty), vch);
             c.put(entry_x, ay, corner(ty < ay, outer > entry_x));
             if arrow {
-                c.put(entry_x, ty, head);
+                heads.push((entry_x, ty, head));
             }
             ticks.push((border, ay, stick));
             ticks.push((entry_x, tgt_b, t_tick));
@@ -590,7 +737,7 @@ fn draw_edge(
             let col = from.cx().clamp(lo, hi);
             c.vline(col, sy.min(ty), sy.max(ty), vch);
             if arrow {
-                c.put(col, ty, head);
+                heads.push((col, ty, head));
             }
             ticks.push((col, src_b, s_tick));
             ticks.push((col, tgt_b, t_tick));
@@ -602,6 +749,18 @@ fn draw_edge(
 
         // General elbow, fanning out from the source's bottom/top edge.
         let sx = from.fan_x(fan.op, fan.ok);
+        // Source exit aligned with the target entry (e.g. a straightened dummy
+        // chain) → a plain drop with no jog or corners.
+        if sx == entry_x {
+            c.vline(sx, sy.min(ty), sy.max(ty), vch);
+            if arrow {
+                heads.push((sx, ty, head));
+            }
+            ticks.push((sx, src_b, s_tick));
+            ticks.push((entry_x, tgt_b, t_tick));
+            label_at(labels, label, sx + 1, sy);
+            return;
+        }
         let mid = (sy + ty) / 2;
         c.vline(sx, sy.min(mid), sy.max(mid), vch);
         c.hline(sx.min(entry_x), sx.max(entry_x), mid, hch);
@@ -612,7 +771,7 @@ fn draw_edge(
         c.put(sx, mid, corner(down, entry_x > sx));
         c.put(entry_x, mid, corner(!down, sx > entry_x));
         if arrow {
-            c.put(entry_x, ty, head);
+            heads.push((entry_x, ty, head));
         }
         ticks.push((sx, src_b, s_tick));
         ticks.push((entry_x, tgt_b, t_tick));
@@ -628,7 +787,7 @@ fn draw_edge(
         label_at(labels, label, lx, sy);
     } else {
         if from.x == to.x {
-            return side_edge(c, ticks, labels, from, to, line, arrow, label, false);
+            return side_edge(c, ticks, heads, labels, from, to, line, arrow, label, false);
         }
         let right = to.x > from.x;
         let head = if right { '▶' } else { '◀' };
@@ -645,7 +804,7 @@ fn draw_edge(
         let entry_y = to.fan_y(fan.ip, fan.ik);
 
         // Binary fork: edges leave the top/bottom sides of the source.
-        if fan.ok == 2 {
+        if fan.fork {
             let up = to.cy() < from.cy();
             let (outer, border, stick) = if up {
                 (from.top() - 1, from.top(), '┴')
@@ -657,7 +816,7 @@ fn draw_edge(
             c.hline(ax.min(tx), ax.max(tx), entry_y, hch);
             c.put(ax, entry_y, corner(outer < entry_y, tx > ax));
             if arrow {
-                c.put(tx, entry_y, head);
+                heads.push((tx, entry_y, head));
             }
             ticks.push((ax, border, stick));
             ticks.push((tgt_b, entry_y, t_tick));
@@ -678,7 +837,7 @@ fn draw_edge(
             let row = from.cy().clamp(lo, hi);
             c.hline(sx.min(tx), sx.max(tx), row, hch);
             if arrow {
-                c.put(tx, row, head);
+                heads.push((tx, row, head));
             }
             ticks.push((src_b, row, s_tick));
             ticks.push((tgt_b, row, t_tick));
@@ -688,6 +847,17 @@ fn draw_edge(
 
         // General elbow, fanning out from the source's right/left edge.
         let sy = from.fan_y(fan.op, fan.ok);
+        // Source exit aligned with the target entry → a plain horizontal run.
+        if sy == entry_y {
+            c.hline(sx.min(tx), sx.max(tx), sy, hch);
+            if arrow {
+                heads.push((tx, sy, head));
+            }
+            ticks.push((src_b, sy, s_tick));
+            ticks.push((tgt_b, sy, t_tick));
+            label_at(labels, label, sx.min(tx) + 1, sy.saturating_sub(1));
+            return;
+        }
         let mid = (sx + tx) / 2;
         c.hline(sx.min(mid), sx.max(mid), sy, hch);
         c.vline(mid, sy.min(entry_y), sy.max(entry_y), vch);
@@ -696,7 +866,7 @@ fn draw_edge(
         c.put(mid, sy, corner(entry_y < sy, sx > mid));
         c.put(mid, entry_y, corner(sy < entry_y, tx > mid));
         if arrow {
-            c.put(tx, entry_y, head);
+            heads.push((tx, entry_y, head));
         }
         ticks.push((src_b, sy, s_tick));
         ticks.push((tgt_b, entry_y, t_tick));
@@ -718,6 +888,7 @@ fn label_at(labels: &mut Vec<(usize, usize, String)>, label: &str, x: usize, y: 
 fn side_edge(
     c: &mut Canvas,
     ticks: &mut Ticks,
+    heads: &mut Ticks,
     labels: &mut Vec<(usize, usize, String)>,
     from: &Rect,
     to: &Rect,
@@ -755,7 +926,7 @@ fn side_edge(
             c.hline(x0, x1, y, hch);
             label_at(labels, label, x0, y.saturating_sub(1));
             if arrow {
-                c.put(if right { x1 } else { x0 }, y, head);
+                heads.push((if right { x1 } else { x0 }, y, head));
             }
             ticks.push((sb, y, st));
             ticks.push((tb, y, tt));
@@ -787,7 +958,7 @@ fn side_edge(
         if y0 <= y1 {
             c.vline(x, y0, y1, vch);
             if arrow {
-                c.put(x, if down { y1 } else { y0 }, head);
+                heads.push((x, if down { y1 } else { y0 }, head));
             }
             ticks.push((x, sb, st));
             ticks.push((x, tb, tt));
@@ -833,6 +1004,39 @@ mod tests {
         let out = render("flowchart TD\nA -.-> B\nB ==> C");
         assert!(out.contains('┊') || out.contains('┄'), "no dotted: {out}");
         assert!(out.contains('┃') || out.contains('━'), "no thick: {out}");
+    }
+
+    #[test]
+    fn straight_edge_is_compact() {
+        // A plain unlabelled drop uses the tightest channel: just the arrowhead
+        // row, with no `│`-only rows (the box `┬`/`┴` junctions anchor it).
+        let lines = render_flowchart(&parse_flowchart("flowchart TD\nA[Start] --> B[End]"));
+        let bars = lines
+            .iter()
+            .filter(|l| !l.is_empty() && l.chars().all(|c| c == '│' || c == ' '))
+            .count();
+        assert_eq!(bars, 0, "expected no bar-only channel rows:\n{lines:#?}");
+        assert!(
+            lines.iter().any(|l| l.contains('▼')),
+            "no arrowhead:\n{lines:#?}"
+        );
+    }
+
+    #[test]
+    fn long_edge_runs_straight() {
+        // A -> C skips a rank (A,B,C stacked), so A->C routes through a dummy.
+        // The dummy is straightened under the source, so the long edge has a
+        // straight vertical run rather than drifting across each rank.
+        let out = render("flowchart TD\nA --> B\nA --> C\nB --> C");
+        // Some row carries two separate vertical runs (the A->C bypass beside
+        // the A->B->C spine), confirming the bypass stays vertical.
+        let two_bars = out
+            .lines()
+            .any(|l| l.chars().filter(|&c| c == '│').count() >= 2);
+        assert!(
+            two_bars,
+            "long edge did not run as a straight bypass:\n{out}"
+        );
     }
 
     #[test]

@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crossterm::event::{KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
-use ratatui::{buffer::Buffer, layout::Rect, style::Style};
+use ratatui::{buffer::Buffer, layout::Rect, style::Modifier, style::Style};
 
 use termide_core::{
     Config, HotkeyTable, KeyChord, Panel, PanelEvent, RenderContext, SegmentKind, SessionPanel,
@@ -257,9 +257,12 @@ impl Panel for MermaidPanel {
             let Some(line) = self.canvas.get(self.scroll_y + i) else {
                 break;
             };
-            // The placeholder's leading note line is dimmed.
+            // The placeholder's leading note line is dimmed; section headers
+            // (gantt/journey `▌ …` rows) are bold.
             let style = if !self.rendered && self.scroll_y + i == 0 {
                 dim
+            } else if line.trim_start().starts_with('▌') {
+                note_style.add_modifier(Modifier::BOLD)
             } else {
                 note_style
             };
