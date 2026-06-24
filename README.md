@@ -18,9 +18,10 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 
 | Feature | TermIDE | Vim/Neovim | Helix | Micro |
 |---------|:-------:|:----------:|:-----:|:-----:|
-| Zero Config | ✓ | ✗ | ✓ | ✓ |
 | LSP Support | ✓ | ✓ | ✓ | plugin |
+| Zero Config | ✓ | ✗ | ✓ | ✓ |
 | Script Automation | ✓ | ✓ | ✗ | plugin |
+| Remote Filesystems (SFTP/FTP) | ✓ | ✓ | ✗ | ✗ |
 | Hex / Binary Viewer | ✓ | plugin | ✗ | plugin |
 | Database Viewer | ✓ | plugin | ✗ | ✗ |
 | Markdown Preview | ✓ | plugin | ✗ | ✗ |
@@ -28,7 +29,6 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 | Image Viewer | ✓ | plugin | ✗ | ✗ |
 | Built-in Terminal | ✓ | plugin | ✗ | ✗ |
 | File Manager | ✓ | plugin | ✗ | ✗ |
-| Remote Filesystems (SFTP/FTP) | ✓ | ✓ | ✗ | ✗ |
 | Background File Operations | ✓ | plugin | ✗ | ✗ |
 | Git Integration | ✓ | plugin | ✗ | ✗ |
 | Sessions | ✓ | plugin | ✗ | ✗ |
