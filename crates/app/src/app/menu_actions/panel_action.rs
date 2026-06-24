@@ -42,16 +42,33 @@ impl App {
 
     /// Build items for the currently-open panel action menu, using the
     /// targeted panel's group index to derive context-dependent filters.
+    /// Panel-specific entries (e.g. "Copy diagram") are prepended above the
+    /// generic move/close items.
     fn panel_action_menu_items(&self) -> Vec<DropdownItem> {
         let group_count = self.layout_manager.panel_groups.len();
         let group_idx = self.state.ui.panel_action_menu.group_idx;
+        let panel_idx = self.state.ui.panel_action_menu.panel_idx;
         let current_group_len = self
             .layout_manager
             .panel_groups
             .get(group_idx)
             .map(|g| g.len())
             .unwrap_or(0);
-        get_panel_action_menu_items(group_count, current_group_len)
+
+        let mut items: Vec<DropdownItem> = self
+            .layout_manager
+            .panel_groups
+            .get(group_idx)
+            .and_then(|g| g.panels().get(panel_idx))
+            .map(|p| {
+                p.context_menu_items()
+                    .into_iter()
+                    .map(|(label, action)| DropdownItem::new(&label, action))
+                    .collect()
+            })
+            .unwrap_or_default();
+        items.extend(get_panel_action_menu_items(group_count, current_group_len));
+        items
     }
 
     /// Activate the panel that the menu was opened for, so actions that
@@ -173,7 +190,17 @@ impl App {
                 "Cannot move panel",
                 self.layout_manager.move_panel_down_in_group(),
             )),
-            _ => None,
+            // Panel-specific entry (e.g. "Copy diagram"): route to the now-active
+            // panel via the same path as a status-bar chip click.
+            other => {
+                let events = self
+                    .layout_manager
+                    .active_panel_mut()
+                    .map(|p| p.handle_status_action(other))
+                    .unwrap_or_default();
+                self.process_panel_events(events)?;
+                None
+            }
         };
 
         if let Some((label, result)) = layout_result {

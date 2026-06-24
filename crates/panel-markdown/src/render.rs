@@ -407,6 +407,20 @@ impl<'c> Builder<'c> {
     fn flush_code_block(&mut self) {
         let code = std::mem::take(&mut self.code_buf);
         let lang = std::mem::take(&mut self.code_lang);
+
+        // A ```mermaid block renders as the diagram itself (reusing the shared
+        // mermaid crate); unsupported diagram kinds fall through to code.
+        if lang.eq_ignore_ascii_case("mermaid") {
+            if let Some(diagram) = termide_mermaid::render_to_lines(&code) {
+                let bar = Style::default().fg(self.colors.disabled);
+                for line in diagram {
+                    let spans = vec![Span::styled("┊ ", bar), Span::styled(line, self.base())];
+                    self.lines.push(Line::from(spans));
+                }
+                return;
+            }
+        }
+
         let mut cache = HighlightCache::new(global_highlighter(), self.is_light, self.colors.fg);
         if !lang.is_empty() {
             cache.set_syntax(&lang);
@@ -696,6 +710,16 @@ mod tests {
         assert!(joined.contains("├"), "no header sep: {out:?}");
         assert!(joined.contains("└"), "no bottom border: {out:?}");
         assert!(joined.contains("A") && joined.contains("B"), "{out:?}");
+    }
+
+    #[test]
+    fn embedded_mermaid_renders_diagram() {
+        let md = "```mermaid\nsequenceDiagram\nA->>B: hi\n```";
+        let out = render(md);
+        let joined = out.join("\n");
+        // The diagram (boxes + arrow), not the raw source line.
+        assert!(joined.contains('┌'), "no diagram boxes: {out:?}");
+        assert!(joined.contains('▶'), "no arrowhead: {out:?}");
     }
 
     #[test]

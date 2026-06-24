@@ -102,6 +102,12 @@ pub enum SessionPanel {
         /// Path to the markdown file
         path: PathBuf,
     },
+    /// Mermaid diagram viewer panel
+    #[serde(rename = "mermaid")]
+    Mermaid {
+        /// Path to the `.mmd` file
+        path: PathBuf,
+    },
     /// Git status panel
     #[serde(rename = "git_status")]
     GitStatus {
