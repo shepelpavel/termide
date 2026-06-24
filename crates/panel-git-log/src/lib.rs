@@ -1222,9 +1222,8 @@ impl Panel for GitLogPanel {
                 return self.view_diff();
             }
             KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                // The reloaded log is self-evident; no lingering status note.
                 self.refresh();
-                let t = termide_i18n::t();
-                self.status_message = Some(t.git_refreshed().to_string());
             }
             _ => {}
         }
