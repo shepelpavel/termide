@@ -67,6 +67,34 @@ sudo mv termide /usr/local/bin/
 
 Now you can run `termide` from anywhere in your terminal.
 
+## Portable Static Binary (Alpine / containers)
+
+Every release also ships a fully static **musl** build that links no shared
+libraries and runs on any Linux distribution, including Alpine and minimal
+containers. The whole project is pure-Rust (rustls + russh + russh-sftp — no
+OpenSSL, no libssh2), so it is the same code, just compiled against musl.
+
+```bash
+wget https://github.com/termide/termide/releases/latest/download/termide-0.27.0-x86_64-unknown-linux-musl.tar.gz
+tar xzf termide-0.27.0-x86_64-unknown-linux-musl.tar.gz
+./termide
+
+# Verify it is fully static — no shared libraries
+ldd ./termide   # → "not a dynamic executable"
+```
+
+To build it yourself (e.g. for a different musl variant), the flake exposes the
+recipe as a derivation:
+
+```bash
+nix build github:termide/termide#termide-static
+./result/bin/termide
+```
+
+The binary can be copied into a container or a stripped Alpine image and runs
+without `musl-dev` or `glibc` installed. (The ARM64 musl build is also what
+[Android / Termux](#android-termux) uses.)
+
 ## Install via Package Manager
 
 ### Debian/Ubuntu (.deb)

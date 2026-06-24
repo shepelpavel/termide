@@ -67,6 +67,35 @@ sudo mv termide /usr/local/bin/
 
 Теперь вы можете запускать `termide` из любого места в терминале.
 
+## Переносимый статический бинарник (Alpine / контейнеры)
+
+С каждым релизом публикуется полностью статическая сборка **musl**: она не
+линкует разделяемых библиотек и работает на любом дистрибутиве Linux, включая
+Alpine и минимальные контейнеры. Весь проект на чистом Rust (rustls + russh +
+russh-sftp — без OpenSSL и libssh2), поэтому это тот же код, просто собранный
+под musl.
+
+```bash
+wget https://github.com/termide/termide/releases/latest/download/termide-0.27.0-x86_64-unknown-linux-musl.tar.gz
+tar xzf termide-0.27.0-x86_64-unknown-linux-musl.tar.gz
+./termide
+
+# Проверка полной статичности — нет разделяемых библиотек
+ldd ./termide   # → "not a dynamic executable"
+```
+
+Чтобы собрать самостоятельно (например, под другой вариант musl), flake
+предоставляет рецепт как деривацию:
+
+```bash
+nix build github:termide/termide#termide-static
+./result/bin/termide
+```
+
+Бинарник можно скопировать в контейнер или урезанный образ Alpine — он работает
+без установленных `musl-dev` или `glibc`. (Сборка ARM64 musl используется и для
+[Android / Termux](#android-termux).)
+
 ## Установка через пакетный менеджер
 
 ### Debian/Ubuntu (.deb)

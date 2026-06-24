@@ -67,6 +67,32 @@ sudo mv termide /usr/local/bin/
 
 现在您可以在终端的任何位置运行 `termide`。
 
+## 便携静态二进制文件（Alpine / 容器）
+
+每个版本都会发布完全静态的 **musl** 构建：它不链接任何共享库，可在任意 Linux
+发行版上运行，包括 Alpine 和精简容器。整个工程是纯 Rust（rustls + russh +
+russh-sftp —— 无 OpenSSL、无 libssh2），因此这与普通构建是相同的代码，只是针对
+musl 编译。
+
+```bash
+wget https://github.com/termide/termide/releases/latest/download/termide-0.27.0-x86_64-unknown-linux-musl.tar.gz
+tar xzf termide-0.27.0-x86_64-unknown-linux-musl.tar.gz
+./termide
+
+# 验证完全静态 —— 无共享库
+ldd ./termide   # → "not a dynamic executable"
+```
+
+如需自行构建（例如针对其他 musl 变体），flake 暴露了相同的派生：
+
+```bash
+nix build github:termide/termide#termide-static
+./result/bin/termide
+```
+
+该二进制文件可拷贝到容器或精简的 Alpine 镜像中，无需安装 `musl-dev` 或 `glibc`
+即可运行。（ARM64 musl 构建也是 [Android / Termux](#android-termux) 所使用的。）
+
 ## 通过包管理器安装
 
 ### Debian/Ubuntu (.deb)

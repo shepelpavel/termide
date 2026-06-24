@@ -248,6 +248,37 @@ cargo build --release
 
 </details>
 
+<details>
+<summary><b>📦 便携静态二进制文件（Alpine / 任意 Linux）</b></summary>
+
+每个版本都会发布完全静态的 musl 构建。它不链接任何共享库，可在任意 Linux
+发行版上运行，包括 Alpine 和精简容器。整个工程是纯 Rust（rustls + russh +
+russh-sftp —— 无 OpenSSL、无 libssh2），因此这与普通构建是相同的代码，只是
+针对 musl 编译。
+
+最简单的方式是从发行版下载预编译的 tarball：
+
+```bash
+wget https://github.com/termide/termide/releases/latest/download/termide-0.27.0-x86_64-unknown-linux-musl.tar.gz
+tar xzf termide-0.27.0-x86_64-unknown-linux-musl.tar.gz
+./termide
+
+# 验证完全静态 —— 无共享库
+ldd ./termide   # → "not a dynamic executable"
+```
+
+如果你想自行构建（例如针对其他 musl 变体），flake 暴露了相同的派生：
+
+```bash
+nix build github:termide/termide#termide-static
+./result/bin/termide
+```
+
+任一二进制文件都可以拷贝到任何地方 —— 容器、精简的 Alpine 镜像、嵌入式设备 ——
+无需安装 musl-dev 或 glibc 即可运行。
+
+</details>
+
 ## 系统要求
 
 - 预编译二进制文件：无额外要求
