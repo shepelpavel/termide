@@ -271,9 +271,11 @@ impl Panel for MermaidPanel {
             buf.set_line(area.x, area.y + i as u16, &l, text_w as u16);
         }
 
+        // Draw the scrollbar on the panel's right border (replacing it), not one
+        // column inside it — otherwise it reads as detached from the edge.
         ScrollBar::render(
             buf,
-            area.x + area.width - 1,
+            ctx.border_right_x.unwrap_or(area.x + area.width - 1),
             area.y,
             area.height,
             self.scroll_y,

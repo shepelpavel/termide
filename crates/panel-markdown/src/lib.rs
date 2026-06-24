@@ -539,10 +539,11 @@ impl Panel for MarkdownPanel {
             }
         }
 
-        // Vertical scrollbar in the reserved gutter (no-op when all fits).
+        // Vertical scrollbar on the panel's right border (replacing it), not one
+        // column inside it — otherwise it reads as detached from the edge.
         ScrollBar::render(
             buf,
-            content.x + content.width - 1,
+            ctx.border_right_x.unwrap_or(content.x + content.width - 1),
             content.y,
             content.height,
             self.top,
