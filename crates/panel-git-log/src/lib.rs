@@ -289,6 +289,17 @@ impl GitLogPanel {
     }
 
     /// Move selection up
+    /// Item count of the currently open selector dropdown (repo or branch).
+    fn open_dropdown_len(&self) -> usize {
+        if self.repo_dropdown_open {
+            self.repo_manager.len()
+        } else if self.branch_dropdown_open {
+            self.branches.len()
+        } else {
+            0
+        }
+    }
+
     fn move_up(&mut self) {
         if self.selected > 0 {
             self.selected -= 1;
@@ -1336,10 +1347,21 @@ impl Panel for GitLogPanel {
                 }
             }
             MouseEventKind::ScrollUp => {
-                self.move_up();
+                if self.repo_dropdown_open || self.branch_dropdown_open {
+                    self.dropdown_cursor = self.dropdown_cursor.saturating_sub(1);
+                } else {
+                    self.move_up();
+                }
             }
             MouseEventKind::ScrollDown => {
-                self.move_down();
+                if self.repo_dropdown_open || self.branch_dropdown_open {
+                    let max = self.open_dropdown_len().saturating_sub(1);
+                    if self.dropdown_cursor < max {
+                        self.dropdown_cursor += 1;
+                    }
+                } else {
+                    self.move_down();
+                }
             }
             _ => {}
         }
@@ -1348,6 +1370,16 @@ impl Panel for GitLogPanel {
 
     fn handle_scroll(&mut self, delta: i32, _panel_area: Rect) -> Vec<PanelEvent> {
         let lines = delta.unsigned_abs() as usize;
+        // While a selector dropdown is open, the wheel scrolls it, not commits.
+        if self.repo_dropdown_open || self.branch_dropdown_open {
+            if delta < 0 {
+                self.dropdown_cursor = self.dropdown_cursor.saturating_sub(lines);
+            } else {
+                let max = self.open_dropdown_len().saturating_sub(1);
+                self.dropdown_cursor = (self.dropdown_cursor + lines).min(max);
+            }
+            return vec![];
+        }
         if delta < 0 {
             // Scroll up - move selection up by delta
             self.selected = self.selected.saturating_sub(lines);
