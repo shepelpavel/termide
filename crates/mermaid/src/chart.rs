@@ -366,11 +366,12 @@ mod tests {
         let lines = render_gantt(&parse_gantt(src));
         let out = lines.join("\n");
         // Axis duplicated top (`┬`) and bottom (`┴`), spanning to the left edge.
-        assert!(out.contains('┬') && out.contains('┴'), "no dual ruler:\n{out}");
         assert!(
-            lines
-                .iter()
-                .any(|l| l.starts_with('─') && l.contains('┬')),
+            out.contains('┬') && out.contains('┴'),
+            "no dual ruler:\n{out}"
+        );
+        assert!(
+            lines.iter().any(|l| l.starts_with('─') && l.contains('┬')),
             "top ruler not full width:\n{out}"
         );
         // Vertical gridlines drop through the rows.
