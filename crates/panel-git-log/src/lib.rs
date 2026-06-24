@@ -609,12 +609,10 @@ impl GitLogPanel {
 
         let theme = self.cached_theme;
 
-        let content_area = Rect {
-            x: area.x + 1,
-            y: area.y + 1,
-            width: area.width.saturating_sub(2),
-            height: area.height.saturating_sub(2),
-        };
+        // Use the full inner area (the host already draws the border): content
+        // fills the panel edge-to-edge, so the selection bar spans the whole
+        // width and no blank row is left at the bottom.
+        let content_area = area;
 
         // Always render header row: [repo ▼] [branch ▼] (branch follows repo with 2-char gap)
         let repo_w = self.render_repo_selector(
@@ -651,7 +649,7 @@ impl GitLogPanel {
 
             // Clear line first
             let clear_style = if is_selected {
-                Style::default().bg(theme.selection_bg)
+                Style::default().bg(theme.fg)
             } else {
                 Style::default().bg(theme.bg)
             };
@@ -682,9 +680,12 @@ impl GitLogPanel {
                         }
                         if let Some(cell) = buf.cell_mut((cx, y)) {
                             cell.set_char(ch);
-                            cell.set_fg(lane_color(&theme, col));
                             if is_selected {
-                                cell.set_bg(theme.selection_bg);
+                                // Cursor row: invert the panel's fg/bg.
+                                cell.set_fg(theme.bg);
+                                cell.set_bg(theme.fg);
+                            } else {
+                                cell.set_fg(lane_color(&theme, col));
                             }
                         }
                     }
@@ -692,9 +693,7 @@ impl GitLogPanel {
                     // ASCII git --graph fallback: diagonals shift columns, so a
                     // single muted colour reads better than per-column tinting.
                     let graph_style = if is_selected {
-                        Style::default()
-                            .fg(theme.selection_fg)
-                            .bg(theme.selection_bg)
+                        Style::default().fg(theme.bg).bg(theme.fg)
                     } else {
                         Style::default().fg(theme.disabled)
                     };
@@ -706,9 +705,7 @@ impl GitLogPanel {
             if !commit.hash.is_empty() && x_pos < max_x {
                 // Hash
                 let hash_style = if is_selected {
-                    Style::default()
-                        .fg(theme.selection_fg)
-                        .bg(theme.selection_bg)
+                    Style::default().fg(theme.bg).bg(theme.fg)
                 } else {
                     Style::default().fg(theme.cursor)
                 };
@@ -727,9 +724,7 @@ impl GitLogPanel {
                 if x_pos < max_x {
                     let author = truncate_right(&commit.author, 15);
                     let author_style = if is_selected {
-                        Style::default()
-                            .fg(theme.selection_fg)
-                            .bg(theme.selection_bg)
+                        Style::default().fg(theme.bg).bg(theme.fg)
                     } else {
                         Style::default().fg(theme.info)
                     };
@@ -741,9 +736,7 @@ impl GitLogPanel {
                 if x_pos < max_x {
                     let date = truncate_right(&commit.date, 12);
                     let date_style = if is_selected {
-                        Style::default()
-                            .fg(theme.selection_fg)
-                            .bg(theme.selection_bg)
+                        Style::default().fg(theme.bg).bg(theme.fg)
                     } else {
                         Style::default().fg(theme.disabled)
                     };
@@ -760,9 +753,7 @@ impl GitLogPanel {
                         commit.message.clone()
                     };
                     let msg_style = if is_selected {
-                        Style::default()
-                            .fg(theme.selection_fg)
-                            .bg(theme.selection_bg)
+                        Style::default().fg(theme.bg).bg(theme.fg)
                     } else {
                         Style::default().fg(theme.fg)
                     };
@@ -903,9 +894,7 @@ impl GitLogPanel {
 
         // Render opening paren
         let paren_style = if is_selected {
-            Style::default()
-                .fg(theme.selection_fg)
-                .bg(theme.selection_bg)
+            Style::default().fg(theme.bg).bg(theme.fg)
         } else {
             Style::default().fg(theme.disabled)
         };
@@ -930,9 +919,7 @@ impl GitLogPanel {
 
             // Determine ref type and color
             let style = if is_selected {
-                Style::default()
-                    .fg(theme.selection_fg)
-                    .bg(theme.selection_bg)
+                Style::default().fg(theme.bg).bg(theme.fg)
             } else {
                 let fg = if ref_part.contains("HEAD") {
                     theme.error
@@ -1336,9 +1323,9 @@ impl Panel for GitLogPanel {
                     }
                 }
 
-                // Commit list click (header takes y_offset=2 rows)
-                let content_y = self.last_area.y + 1;
-                let commits_start_y = content_y + 2;
+                // Commit list click (content fills the inner area; header takes
+                // the first y_offset=2 rows).
+                let commits_start_y = self.last_area.y + 2;
                 if row >= commits_start_y {
                     let clicked_idx = self.scroll + (row - commits_start_y) as usize;
                     if clicked_idx < self.commits.len() {
