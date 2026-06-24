@@ -81,6 +81,14 @@ impl App {
                 self.event_swap_active_to_markdown(path)?;
             }
 
+            PanelEvent::ViewMermaid(path) => {
+                self.event_view_mermaid(path)?;
+            }
+
+            PanelEvent::SwapActiveToMermaid(path) => {
+                self.event_swap_active_to_mermaid(path)?;
+            }
+
             PanelEvent::OpenExternal(path) => {
                 self.event_open_external(path)?;
             }
@@ -502,10 +510,12 @@ impl App {
         use termide_panel_binary::BinaryPanel;
         use termide_panel_editor::{Editor, EditorConfig};
         // Open editable when coming from an editable hex editor, or from the
-        // markdown preview (switching to source is always for editing).
-        let from_markdown =
-            self.layout_manager.active_panel().map(|p| p.name()) == Some("markdown");
-        let editable = from_markdown
+        // markdown/mermaid preview (switching to source is always for editing).
+        let from_preview = matches!(
+            self.layout_manager.active_panel().map(|p| p.name()),
+            Some("markdown") | Some("mermaid")
+        );
+        let editable = from_preview
             || self
                 .layout_manager
                 .active_panel()
@@ -569,6 +579,46 @@ impl App {
                 self.auto_save_session();
             }
             Err(e) => self.show_error_modal(format!("Failed to open markdown file: {e}")),
+        }
+        Ok(())
+    }
+
+    /// Open a `.mmd` file in the Mermaid diagram viewer (read-only).
+    fn event_view_mermaid(&mut self, file_path: PathBuf) -> Result<()> {
+        use termide_panel_mermaid::MermaidPanel;
+
+        if let Some(panel) = self
+            .layout_manager
+            .focus_and_expand_panel_by_name("mermaid")
+        {
+            if let Some(m) = panel.as_any_mut().downcast_mut::<MermaidPanel>() {
+                m.set_file(file_path);
+                self.state.needs_redraw = true;
+                return Ok(());
+            }
+        }
+
+        self.close_help_panels();
+        match MermaidPanel::new(file_path) {
+            Ok(panel) => {
+                self.add_panel(Box::new(panel));
+                self.auto_save_session();
+            }
+            Err(e) => self.show_error_modal(format!("Failed to open diagram file: {e}")),
+        }
+        Ok(())
+    }
+
+    /// Swap the active panel in place for the Mermaid diagram view.
+    fn event_swap_active_to_mermaid(&mut self, file_path: PathBuf) -> Result<()> {
+        use termide_panel_mermaid::MermaidPanel;
+        match MermaidPanel::new(file_path) {
+            Ok(panel) => {
+                self.layout_manager.replace_active_panel(Box::new(panel));
+                self.state.needs_redraw = true;
+                self.auto_save_session();
+            }
+            Err(e) => self.show_error_modal(format!("Failed to open diagram file: {e}")),
         }
         Ok(())
     }

@@ -416,6 +416,12 @@ pub enum PanelEvent {
     /// Swap the active panel in place for the rendered markdown preview of `path`
     SwapActiveToMarkdown(PathBuf),
 
+    /// Open a `.mmd` file in the Mermaid diagram viewer (read-only)
+    ViewMermaid(PathBuf),
+
+    /// Swap the active panel in place for the Mermaid diagram view of `path`
+    SwapActiveToMermaid(PathBuf),
+
     /// Open file with system default application (xdg-open)
     OpenExternal(PathBuf),
 

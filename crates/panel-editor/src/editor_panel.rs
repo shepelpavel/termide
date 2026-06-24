@@ -54,19 +54,19 @@ impl Editor {
         self.render_cache.highlight.set_custom_syntax(custom);
     }
 
-    /// The file path when this editor holds a Markdown source file. Used to make
-    /// the view/edit toggle (Ctrl+E / Edit chip) swap to the rendered preview
-    /// instead of flipping read-only.
-    fn markdown_path(&self) -> Option<PathBuf> {
+    /// The swap event when this editor holds a previewable source file
+    /// (Markdown or Mermaid). Used to make the view/edit toggle (Ctrl+E / Edit
+    /// chip) swap to the rendered view instead of flipping read-only.
+    fn preview_swap_event(&self) -> Option<PanelEvent> {
         let path = self.file_path()?;
         let ext = path
             .extension()
             .and_then(|e| e.to_str())?
             .to_ascii_lowercase();
-        if ext == "md" || ext == "markdown" {
-            Some(path.to_path_buf())
-        } else {
-            None
+        match ext.as_str() {
+            "md" | "markdown" => Some(PanelEvent::SwapActiveToMarkdown(path.to_path_buf())),
+            "mmd" | "mermaid" => Some(PanelEvent::SwapActiveToMermaid(path.to_path_buf())),
+            _ => None,
         }
     }
 }
@@ -286,13 +286,13 @@ impl Panel for Editor {
         // Toggle view (read-only) ↔ edit. For Markdown the same key swaps to the
         // rendered preview instead (source ↔ preview is the view/edit axis).
         if self.hotkeys.matches("viewer_toggle_view", &key) {
-            if let Some(path) = self.markdown_path() {
+            if let Some(ev) = self.preview_swap_event() {
                 if self.buffer_is_modified() {
                     return vec![PanelEvent::ShowMessage(
                         "Save the file before switching to preview".to_string(),
                     )];
                 }
-                return vec![PanelEvent::SwapActiveToMarkdown(path)];
+                return vec![ev];
             }
             self.config.read_only = !self.config.read_only;
             return vec![PanelEvent::NeedsRedraw];
@@ -541,13 +541,13 @@ impl Panel for Editor {
                 vec![PanelEvent::NeedsRedraw]
             }
             "toggle_edit" => {
-                if let Some(path) = self.markdown_path() {
+                if let Some(ev) = self.preview_swap_event() {
                     if self.buffer_is_modified() {
                         return vec![PanelEvent::ShowMessage(
                             "Save the file before switching to preview".to_string(),
                         )];
                     }
-                    return vec![PanelEvent::SwapActiveToMarkdown(path)];
+                    return vec![ev];
                 }
                 self.config.read_only = !self.config.read_only;
                 vec![PanelEvent::NeedsRedraw]

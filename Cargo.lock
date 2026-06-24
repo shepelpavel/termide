@@ -4905,6 +4905,7 @@ dependencies = [
  "termide-panel-git-status",
  "termide-panel-image",
  "termide-panel-markdown",
+ "termide-panel-mermaid",
  "termide-panel-misc",
  "termide-panel-operations",
  "termide-panel-outline",
@@ -5331,6 +5332,19 @@ dependencies = [
  "termide-core",
  "termide-highlight",
  "termide-modal",
+ "termide-ui",
+ "unicode-width",
+]
+
+[[package]]
+name = "termide-panel-mermaid"
+version = "0.26.0"
+dependencies = [
+ "anyhow",
+ "crossterm 0.28.1",
+ "ratatui",
+ "termide-core",
+ "termide-mermaid",
  "termide-ui",
  "unicode-width",
 ]
