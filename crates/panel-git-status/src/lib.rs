@@ -549,6 +549,17 @@ impl GitStatusPanel {
         2 + self.unstaged_item_count() + self.staged_item_count()
     }
 
+    /// Item count of the currently open selector dropdown (repo or branch).
+    fn open_dropdown_len(&self) -> usize {
+        if self.repo_dropdown_open {
+            self.repo_manager.len()
+        } else if self.branch_dropdown_open {
+            self.branches.len()
+        } else {
+            0
+        }
+    }
+
     /// Get selected files from the given section (staged or unstaged).
     fn get_selected_files(&self, staged: bool) -> Vec<PathBuf> {
         match self.get_selection() {
@@ -1339,14 +1350,22 @@ impl Panel for GitStatusPanel {
         let row = event.row;
 
         match event.kind {
-            // Scroll handling - unified scroll for files area
+            // Scroll handling. An open selector dropdown takes the wheel first;
+            // otherwise the files area scrolls.
             MouseEventKind::ScrollUp => {
-                if self.is_in_rect(col, row, self.files_area) {
+                if self.repo_dropdown_open || self.branch_dropdown_open {
+                    self.dropdown_cursor = self.dropdown_cursor.saturating_sub(1);
+                } else if self.is_in_rect(col, row, self.files_area) {
                     self.scroll_offset = self.scroll_offset.saturating_sub(3);
                 }
             }
             MouseEventKind::ScrollDown => {
-                if self.is_in_rect(col, row, self.files_area) {
+                if self.repo_dropdown_open || self.branch_dropdown_open {
+                    let max = self.open_dropdown_len().saturating_sub(1);
+                    if self.dropdown_cursor < max {
+                        self.dropdown_cursor += 1;
+                    }
+                } else if self.is_in_rect(col, row, self.files_area) {
                     let total_lines = self.total_virtual_lines();
                     let max_scroll = total_lines.saturating_sub(self.viewport_height);
                     self.scroll_offset = (self.scroll_offset + 3).min(max_scroll);
@@ -1525,6 +1544,17 @@ impl Panel for GitStatusPanel {
     }
 
     fn handle_scroll(&mut self, delta: i32, _panel_area: Rect) -> Vec<PanelEvent> {
+        // An open selector dropdown takes the wheel first.
+        if self.repo_dropdown_open || self.branch_dropdown_open {
+            let lines = delta.unsigned_abs() as usize;
+            if delta < 0 {
+                self.dropdown_cursor = self.dropdown_cursor.saturating_sub(lines);
+            } else {
+                let max = self.open_dropdown_len().saturating_sub(1);
+                self.dropdown_cursor = (self.dropdown_cursor + lines).min(max);
+            }
+            return vec![];
+        }
         let lines = delta.unsigned_abs() as usize * 3; // 3 lines per scroll unit
         if delta < 0 {
             // Scroll up

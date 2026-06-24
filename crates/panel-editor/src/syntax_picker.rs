@@ -14,6 +14,7 @@ use ratatui::{
 };
 
 use termide_core::ThemeColors;
+use termide_ui::ScrollBar;
 
 /// Sentinel first entry that clears the override (re-detect by extension).
 pub const AUTO_DETECT: &str = "Auto-detect";
@@ -67,6 +68,17 @@ impl SyntaxPicker {
         }
     }
 
+    /// Move the cursor by `delta` rows (negative = up), clamped. Used for the
+    /// mouse wheel, which the host forwards as a coalesced delta.
+    pub fn scroll(&mut self, delta: i32) {
+        let n = delta.unsigned_abs() as usize;
+        if delta < 0 {
+            self.cursor = self.cursor.saturating_sub(n);
+        } else {
+            self.cursor = (self.cursor + n).min(self.items.len().saturating_sub(1));
+        }
+    }
+
     pub fn handle_key(&mut self, key: KeyEvent) -> PickerAction {
         match key.code {
             KeyCode::Up => {
@@ -75,6 +87,22 @@ impl SyntaxPicker {
             }
             KeyCode::Down => {
                 self.down();
+                PickerAction::None
+            }
+            KeyCode::PageUp => {
+                self.scroll(-(MAX_VISIBLE as i32));
+                PickerAction::None
+            }
+            KeyCode::PageDown => {
+                self.scroll(MAX_VISIBLE as i32);
+                PickerAction::None
+            }
+            KeyCode::Home => {
+                self.cursor = 0;
+                PickerAction::None
+            }
+            KeyCode::End => {
+                self.cursor = self.items.len().saturating_sub(1);
                 PickerAction::None
             }
             KeyCode::Enter => PickerAction::Select(self.items[self.cursor].clone()),
@@ -158,6 +186,19 @@ impl SyntaxPicker {
             }
             buf.set_stringn(inner.x, inner.y + row as u16, &label, iw, style);
         }
+
+        // Scrollbar on the right border when the list overflows.
+        ScrollBar::render(
+            buf,
+            rect.x + rect.width - 1,
+            inner.y,
+            visible_rows as u16,
+            scroll,
+            visible_rows,
+            self.items.len(),
+            theme,
+            true,
+        );
     }
 }
 

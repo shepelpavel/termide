@@ -404,6 +404,12 @@ impl Panel for Editor {
     }
 
     fn handle_scroll(&mut self, delta: i32, _panel_area: Rect) -> Vec<PanelEvent> {
+        // The language picker owns the wheel while open (the host forwards
+        // coalesced scroll via this path, not handle_mouse).
+        if let Some(picker) = self.syntax_picker.as_mut() {
+            picker.scroll(delta);
+            return vec![PanelEvent::NeedsRedraw];
+        }
         let lines = delta.unsigned_abs() as usize * 3; // 3 lines per scroll unit
         if delta < 0 {
             // Scroll up - check popups first

@@ -7,6 +7,7 @@ use ratatui::{
 use unicode_width::UnicodeWidthStr;
 
 use termide_core::ThemeColors;
+use termide_ui::ScrollBar;
 
 /// Render a bordered dropdown list overlay directly into the buffer.
 ///
@@ -130,6 +131,19 @@ pub fn render_simple_dropdown(
         }
         buf.set_string(x + 1, item_y, display_item, style);
     }
+
+    // Scrollbar on the right border when the list overflows the visible window.
+    ScrollBar::render(
+        buf,
+        x + width - 1,
+        y + 1,
+        visible_count as u16,
+        scroll_offset,
+        visible_count,
+        items.len(),
+        theme,
+        true,
+    );
 }
 
 #[cfg(test)]
