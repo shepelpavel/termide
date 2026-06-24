@@ -26,6 +26,11 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 | File Manager | ✓ | plugin | ✗ | ✗ |
 | Git Integration | ✓ | plugin | ✗ | ✗ |
 | Sessions | ✓ | plugin | ✗ | ✗ |
+| Multi-panel Layout | ✓ | plugin | ✗ | ✗ |
+| Script Automation | ✓ | plugin | ✗ | plugin |
+| Bookmarks | ✓ | plugin | ✗ | ✗ |
+| Themes | ✓ | ✓ | ✓ | ✓ |
+| UI Localization | ✓ | ✗ | ✗ | ✗ |
 
 **TermIDE = Editor + File Manager + Terminal in one TUI application.**
 
