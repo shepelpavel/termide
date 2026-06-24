@@ -4,9 +4,13 @@
 [![CI](https://github.com/termide/termide/actions/workflows/release.yml/badge.svg)](https://github.com/termide/termide/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-一款跨平台的基于终端的 IDE、文件管理器和虚拟终端，使用 Rust 编写。
+[English](README.md) | **中文** | [Русский](README.ru.md)
+
+一款零配置的终端 IDE，将编辑器、文件管理器和终端合为一体 —— 内置 git、数据库、十六进制、Markdown、图片和 Mermaid 查看器 —— 全部在一个跨平台 TUI 中，使用 Rust 编写。
 
 **[网站](https://termide.github.io)** | **[文档](doc/zh/README.md)** | **[版本发布](https://github.com/termide/termide/releases)** | **[截图](https://ibb.co/album/nPX6p6)**
+
+<p align="center"><img src="assets/screenshots/termide.png" alt="TermIDE — 编辑器、文件管理器、终端和查看器合为一个 TUI" width="900"></p>
 
 ## 为什么选择 TermIDE？
 
@@ -25,14 +29,12 @@
 | 图表查看器（Mermaid） | ✓ | 插件 | ✗ | ✗ |
 | 图片查看器 | ✓ | 插件 | ✗ | ✗ |
 | LSP 支持 | ✓ | 插件 | ✓ | 插件 |
-| 语法高亮 | ✓ | ✓ | ✓ | ✓ |
 | 零配置 | ✓ | ✗ | ✓ | ✓ |
 | 资源监控 | ✓ | ✗ | ✗ | ✗ |
 | 会话管理 | ✓ | 插件 | ✗ | ✗ |
 | 多面板布局 | ✓ | 插件 | ✗ | ✗ |
 | 脚本自动化 | ✓ | 插件 | ✗ | 插件 |
 | 书签 | ✓ | 插件 | ✗ | ✗ |
-| 主题 | ✓ | ✓ | ✓ | ✓ |
 | 界面本地化 | ✓ | ✗ | ✗ | ✗ |
 
 **TermIDE = 编辑器 + 文件管理器 + 终端，集成于一个 TUI 应用程序中。**
@@ -45,7 +47,7 @@
 - **远程文件系统** - 在文件管理器中通过 SFTP / FTP / FTPS 浏览和编辑远程服务器上的文件，在本地与远程面板之间复制 —— 纯 Rust（russh + rustls），无需原生库，可在静态 musl 上运行（`smb://` / `nfs://` 走系统挂载）
 - **后台文件操作** - 复制、移动、上传、下载、删除及批量传输在后台运行，每个操作带进度条、字节/耗时读数，支持暂停 / 恢复 / 取消（操作面板）
 - **集成终端** - 完整的 PTY 支持、VT100 转义序列、鼠标跟踪
-- **Git 集成** - 状态面板、带 ASCII 图形的提交日志、暂存/取消暂存、分支切换、暂存管理（stash）、内联 blame 注解
+- **Git 集成** - 状态面板、带彩色 Unicode 提交图（ASCII 回退）的提交日志、暂存/取消暂存、分支切换、暂存管理（stash）、内联 blame 注解
 - **数据库查看器** - 通过书签 URL 打开的 SQLite / PostgreSQL / MySQL 只读浏览器：带二维单元格光标的表格、服务端单列排序与按列类型感知过滤、滑动窗口分页，以及可复制为 TSV / JSON / INSERT 的整行详情对话框
 - **多面板布局** - 垂直拆分的面板组，每个面板高度可调，一键全屏切换（`Alt+F11`）；终端变窄时智能自动堆叠
 - **图片查看器** - 在 Kitty、WezTerm、iTerm2、Ghostty、foot 终端中原生渲染图形
@@ -53,7 +55,7 @@
 - **Markdown 预览** - `.md` / `.markdown` 的只读渲染视图（标题、列表、表格、语法高亮代码块、可点击链接与图片图标），支持光标导航、选择与剪贴板复制；`Ctrl+E` 切换到可编辑源码；内嵌的 ```mermaid``` 代码块渲染为图表
 - **Mermaid 图表查看器** - 将 `.mmd` / `.mermaid` 文件渲染为文本伪图形 —— flowchart、sequence、state、class、ER、gantt、pie、journey、mindmap、timeline、gitGraph、quadrant；二维滚动、复制到剪贴板，`Ctrl+E` 编辑源码
 - **外部应用** - 使用系统默认应用程序打开文件（Shift+Enter）
-- **38 款内置主题** - 暗色、亮色、复古和电影主题（Dracula、Nord、Monokai、Solarized、Matrix、Pip-Boy 等）
+- **39 款内置主题** - 暗色、亮色、复古和电影主题（Dracula、Nord、Monokai、Solarized、Matrix、Pip-Boy、Norton Commander、Windows 95 等）
 - **自定义主题** - 使用 TOML 格式创建自己的主题
 - **15 种界面语言** - 孟加拉语、中文、英语、法语、德语、印地语、印尼语、日语、韩语、葡萄牙语、俄语、西班牙语、泰语、土耳其语、越南语
 - **会话管理** - 自动保存和恢复面板布局
@@ -334,87 +336,16 @@ nix build github:termide/termide#termide-static
 - **俄文**: [doc/ru/README.md](doc/ru/README.md)
 - **中文**: [doc/zh/README.md](doc/zh/README.md)
 
-### 键盘快捷键（快速参考）
+### 键盘快捷键
 
-> 所有快捷键均可在 `config.toml` 中自定义。参见[配置](#配置)。
+所有快捷键均可在 `config.toml` 中自定义（参见[配置](#配置)）。核心快捷键：
 
-**全局：**
-- `Alt+M` - 切换菜单
-- `Alt+H` - 帮助面板
-- `Alt+Q` - 退出
-- `Alt+←/→` 或 `Alt+A/D` - 切换面板组
-- `Alt+↑/↓` 或 `Alt+W/S` - 在组内导航面板
-- `Alt+1-9` - 按编号跳转到面板
-- `Alt+X` / `Alt+Delete` - 关闭面板
-- `Alt+Backspace` - 切换面板堆叠
-- `Alt+K` / `Shift+F10` - 打开面板操作菜单（`[≡]` 下拉：关闭 / 拆分 / 合并 / 移动）
-- `Alt+PgUp/PgDn` - 在组之间移动面板
-- `Alt+=/-` - 调整组宽度
-- `Alt+/` - 会话菜单
+- **导航：** `Alt+M` 菜单 · `Alt+H` 帮助 · `Alt+Q` 退出 · `Ctrl+P` 命令面板
+- **面板：** `Alt+←/→` 与 `Alt+↑/↓` 在组之间/组内移动 · `Alt+1-9` 跳转面板 · `Alt+K` 面板操作菜单
+- **打开：** `Alt+F` 文件 · `Alt+T` 终端 · `Alt+E` 编辑器 · `Alt+G` Git · `Alt+P` 设置
+- **文件与查看器：** `F3` 预览（Markdown / 图表 / 十六进制 / 图片）· `Ctrl+E` 预览↔源码切换 · `Ctrl+F` 查找 · `Ctrl+R` 从磁盘重载 · `Ctrl+S` 保存
 
-**面板：**
-- `Alt+F` - 文件管理器
-- `Alt+T` - 终端
-- `Alt+E` - 编辑器
-- `Alt+L` - 日志
-- `Alt+G` - Git 状态
-- `Alt+O` - 大纲
-- `Alt+I` - 诊断
-- `Alt+C` - Git 日志
-- `Alt+P` - 打开配置
-
-**文件管理器：**
-- `Ctrl+/` - 打开目录切换器
-- `Ctrl+P` - 命令面板
-- `Ctrl+B` - 添加书签
-- `Enter` - 打开文件/目录
-- `Backspace` - 上级目录
-- `→` / `l` - 展开目录（树形视图）
-- `←` / `h` - 折叠目录（树形视图）
-- `/` - 树内增量搜索
-- `Space` - 文件信息
-- `Insert` - 切换选择（级联到目录内）
-- `Ctrl+A` - 全选
-- `Ctrl+F` - 按名称搜索
-- `Ctrl+Shift+F` - 在内容中搜索
-- `Ctrl+Shift+H` - 在内容中搜索并替换
-- `Ctrl+N` - 新建文件
-- `D` / `F7` - 新建目录
-- `C` / `F5` - 复制
-- `M` / `F6` - 移动
-- `Delete` / `F8` - 删除
-- `F3` - 预览文件
-- `Shift+Enter` - 使用系统应用打开
-- `.` - 切换隐藏文件
-- `Ctrl+G` - 转到路径/URL
-
-**编辑器：**
-- `Ctrl+S` - 保存
-- `Ctrl+Shift+S` - 另存为（带可执行复选框）
-- `Ctrl+Z/Y` - 撤销/重做
-- `Ctrl+F` - 查找
-- `Ctrl+H` - 替换
-- `F3` / `Shift+F3` - 下一个/上一个匹配
-- `Ctrl+/` - 切换注释（行/块）
-- `Ctrl+D` - 复制行
-- `Ctrl+C/X/V` - 复制/剪切/粘贴
-- `Ctrl+Left/Right` - 按单词移动光标
-- `Ctrl+Shift+Left/Right` - 按单词选择
-- `Ctrl+Up/Down` - 跳转到段落/符号边界
-- `Ctrl+Shift+Up/Down` - 选择到段落/符号边界
-
-**Git 状态：**
-- `Tab` - 切换焦点
-- `Ctrl+S` - 暂存选中
-- `Ctrl+U` - 取消暂存选中
-- `Ctrl+R` - 刷新
-
-**Git 日志：**
-- `j/k` 或 `↑/↓` - 浏览提交
-- `Enter` / `d` - 查看差异
-- `c` - 复制提交哈希
-- `g/G` - 第一个/最后一个提交
-- `o` / `Shift+Enter` - 在浏览器中打开提交
+📖 完整的分面板参考（文件管理器、编辑器、git、查看器）：**[doc/zh/keybindings.md](doc/zh/keybindings.md)**。
 
 ## 配置
 
@@ -556,57 +487,8 @@ chmod +x ~/.local/share/termide/scripts/hello.sh
 
 ## 开发
 
-### 项目结构
-
-TermIDE 使用 Cargo workspace，采用模块化 crate 架构：
-
-```
-crates/
-├── app/              # 应用核心、事件处理、面板管理
-├── app-core/         # 核心应用 trait 和类型
-├── app-modal/        # 模态对话框处理
-├── app-panel/        # 面板管理操作
-├── app-session/      # 会话保存/恢复
-├── app-watcher/      # 文件系统监视器集成
-├── buffer/           # 文本缓冲区实现
-├── clipboard/        # 系统剪贴板集成
-├── config/           # 配置管理
-├── core/             # 核心 Panel trait 和类型
-├── file-ops/         # 文件操作（复制、移动、删除、上传、下载）
-├── git/              # Git 集成
-├── highlight/        # 语法高亮（tree-sitter）
-├── i18n/             # 国际化（15 种语言）
-├── keyboard/         # 键盘处理和布局翻译
-├── layout/           # 面板组、拆分布局、全屏预设
-├── logger/           # 日志系统
-├── lsp/              # 语言服务器协议客户端
-├── modal/            # 模态对话框实现
-├── panel-diagnostics/ # LSP 诊断面板
-├── panel-editor/     # 文本编辑器面板
-├── panel-file-manager/ # 文件管理器面板
-├── panel-git-diff/   # Git 差异查看器面板
-├── panel-git-log/    # Git 日志面板
-├── panel-git-status/ # Git 状态面板
-├── panel-image/      # 图片查看器面板
-├── panel-misc/       # 帮助、日志和引用面板
-├── panel-outline/    # 代码大纲面板
-├── panel-operations/ # 后台操作面板
-├── panel-terminal/   # 终端模拟器面板
-├── session/          # 会话持久化
-├── state/            # 应用状态管理
-├── system-monitor/   # CPU/内存/磁盘监控
-├── theme/            # 主题系统和内置主题
-├── ui/               # UI 工具和路径格式化
-├── ui-render/        # UI 渲染（菜单、状态栏、面板）
-├── vfs/              # 虚拟文件系统（SFTP、FTP、SMB）
-└── watcher/          # 文件系统事件监视器
-
-crates/theme/themes/  # 内置主题定义（TOML 文件）
-doc/
-├── en/               # 英文文档
-├── ru/               # 俄文文档
-└── zh/               # 中文文档
-```
+代码库是由模块化 crate 组成的 Cargo workspace。crate 布局、面板系统和事件流程，
+请参见 **[开发者指南](doc/zh/developer-guide.md)** 和 **[架构](doc/zh/architecture.md)**。
 
 ### 构建
 

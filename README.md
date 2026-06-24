@@ -4,6 +4,8 @@
 [![CI](https://github.com/termide/termide/actions/workflows/release.yml/badge.svg)](https://github.com/termide/termide/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
+**English** | [中文](README.zh.md) | [Русский](README.ru.md)
+
 A zero-config terminal IDE that unifies an editor, file manager, and terminal — with built-in git, database, hex, Markdown, image, and Mermaid viewers — in one cross-platform TUI written in Rust.
 
 **[Website](https://termide.github.io)** | **[Documentation](doc/en/README.md)** | **[Releases](https://github.com/termide/termide/releases)** | **[Screenshots](https://ibb.co/album/nPX6p6)**
@@ -16,8 +18,6 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 
 | Feature | TermIDE | Vim/Neovim | Helix | Micro |
 |---------|:-------:|:----------:|:-----:|:-----:|
-| Syntax Highlighting | ✓ | ✓ | ✓ | ✓ |
-| Themes | ✓ | ✓ | ✓ | ✓ |
 | Zero Config | ✓ | ✗ | ✓ | ✓ |
 | LSP Support | ✓ | plugin | ✓ | plugin |
 | Script Automation | ✓ | plugin | ✗ | plugin |
