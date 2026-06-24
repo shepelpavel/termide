@@ -546,20 +546,9 @@ impl App {
     fn event_view_markdown(&mut self, file_path: PathBuf) -> Result<()> {
         use termide_panel_markdown::MarkdownPanel;
 
-        // Reuse an existing preview if one is open, focusing it. (Unlike the
-        // image preview, the markdown/diagram viewers take focus — you open
-        // them to read/scroll, not to flip through an album.)
-        if let Some(panel) = self
-            .layout_manager
-            .focus_and_expand_panel_by_name("markdown")
-        {
-            if let Some(md) = panel.as_any_mut().downcast_mut::<MarkdownPanel>() {
-                md.set_file(file_path);
-                self.state.needs_redraw = true;
-                return Ok(());
-            }
-        }
-
+        // Each open creates its own focused viewer. Reusing a viewer in place
+        // (replacing the open file) is intentionally image-only — that exists
+        // so an album can be flipped through from the file manager.
         self.close_help_panels();
         match MarkdownPanel::new(file_path) {
             Ok(panel) => {
@@ -589,19 +578,8 @@ impl App {
     fn event_view_mermaid(&mut self, file_path: PathBuf) -> Result<()> {
         use termide_panel_mermaid::MermaidPanel;
 
-        // Reuse an existing viewer, focusing it (the diagram viewer takes
-        // focus to read/scroll; only the image preview keeps focus put).
-        if let Some(panel) = self
-            .layout_manager
-            .focus_and_expand_panel_by_name("mermaid")
-        {
-            if let Some(m) = panel.as_any_mut().downcast_mut::<MermaidPanel>() {
-                m.set_file(file_path);
-                self.state.needs_redraw = true;
-                return Ok(());
-            }
-        }
-
+        // Each open creates its own focused viewer; reuse-in-place is
+        // image-only (see event_view_markdown).
         self.close_help_panels();
         match MermaidPanel::new(file_path) {
             Ok(panel) => {
