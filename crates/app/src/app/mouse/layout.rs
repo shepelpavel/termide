@@ -236,6 +236,24 @@ impl App {
             return Ok(());
         }
 
+        // An open menu/submenu dropdown takes the wheel: replay it as Up/Down
+        // key presses through the existing dropdown navigation, reusing each
+        // dropdown's item-count and separator-skipping logic.
+        if self.any_menu_dropdown_open() {
+            use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+            let code = if delta < 0 {
+                KeyCode::Up
+            } else if delta > 0 {
+                KeyCode::Down
+            } else {
+                return Ok(());
+            };
+            for _ in 0..delta.unsigned_abs() {
+                self.handle_key_event(KeyEvent::new(code, KeyModifiers::NONE))?;
+            }
+            return Ok(());
+        }
+
         self.forward_coalesced_scroll_to_panel(mouse, delta)
     }
 

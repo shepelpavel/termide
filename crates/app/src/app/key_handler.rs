@@ -15,6 +15,22 @@ use crate::PanelExt;
 use termide_i18n as i18n;
 
 impl App {
+    /// Whether an app-level dropdown/submenu list is open (the cases the key
+    /// dispatch below routes to). Used so the mouse wheel scrolls the open list
+    /// instead of the panel underneath. The menu bar alone (no submenu) is not
+    /// a scrollable list, so it is excluded.
+    pub(in crate::app) fn any_menu_dropdown_open(&self) -> bool {
+        let ui = &self.state.ui;
+        ui.sessions_submenu.open
+            || ui.tools_submenu.open
+            || ui.commands_submenu.open
+            || ui.stash_submenu.open
+            || ui.bookmarks_submenu.open
+            || ui.panel_action_menu.open
+            || ui.operation_action_menu.open
+            || ui.options_submenu.open
+    }
+
     /// Handle keyboard event
     pub(super) fn handle_key_event(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
         // Raw key — no translation here.

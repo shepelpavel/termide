@@ -93,6 +93,18 @@ impl App {
             // Track scroll timing for throttling heavy operations in Event::Tick
             self.state.last_mouse_scroll = Some(std::time::Instant::now());
             self.state.pending_scroll_render = true;
+            // An open menu/submenu dropdown takes the wheel (replayed as an
+            // Up/Down key press through its existing navigation).
+            if self.any_menu_dropdown_open() {
+                use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+                let code = if matches!(mouse.kind, MouseEventKind::ScrollUp) {
+                    KeyCode::Up
+                } else {
+                    KeyCode::Down
+                };
+                self.handle_key_event(KeyEvent::new(code, KeyModifiers::NONE))?;
+                return Ok(());
+            }
             self.forward_scroll_to_panel_at_cursor(mouse)?;
             return Ok(());
         }
