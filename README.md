@@ -8,7 +8,7 @@ A zero-config terminal IDE that unifies an editor, file manager, and terminal �
 
 **[Website](https://termide.github.io)** | **[Documentation](doc/en/README.md)** | **[Releases](https://github.com/termide/termide/releases)** | **[Screenshots](https://ibb.co/album/nPX6p6)**
 
-<p align="center"><img src="assets/screenshots/editor.png" alt="TermIDE — editor, file manager, terminal and viewers in one TUI" width="900"></p>
+<p align="center"><img src="assets/screenshots/termide.png" alt="TermIDE — editor, file manager, terminal and viewers in one TUI" width="900"></p>
 
 ## Why TermIDE?
 
@@ -28,6 +28,8 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 | Image Viewer | ✓ | plugin | ✗ | ✗ |
 | Built-in Terminal | ✓ | plugin | ✗ | ✗ |
 | File Manager | ✓ | plugin | ✗ | ✗ |
+| Remote Filesystems (SFTP/FTP) | ✓ | plugin | ✗ | ✗ |
+| Background File Operations | ✓ | plugin | ✗ | ✗ |
 | Git Integration | ✓ | plugin | ✗ | ✗ |
 | Sessions | ✓ | plugin | ✗ | ✗ |
 | Multi-panel Layout | ✓ | plugin | ✗ | ✗ |
@@ -42,6 +44,8 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 - **Terminal-based IDE** - Syntax highlighting for 21 languages, word navigation (Ctrl+Left/Right), paragraph/symbol navigation (Ctrl+Up/Down), toggle comment (Ctrl+/), auto-indentation, auto-close brackets
 - **LSP Support** - Code completion, Find References (Shift+F12), Rename Symbol (F4), Go to Definition (Ctrl+Click), diagnostics
 - **Smart File Manager** - Tree view with expandable directories, nested git status, batch operations, file/content search (glob/regex), in-tree incremental search
+- **Remote Filesystems** - Browse and edit files on remote servers from the file manager over SFTP / FTP / FTPS, copying between local and remote panels — pure Rust (russh + rustls), no native libraries, works on static musl (`smb://` / `nfs://` via the OS mount)
+- **Background File Operations** - Copy, move, upload, download, delete and batch transfers run in the background with a per-operation progress bar, byte/elapsed readout, and pause / resume / cancel (Operations panel)
 - **Integrated Terminal** - Full PTY support, VT100 escape sequences, mouse tracking
 - **Git Integration** - Status panel, commit log with a coloured Unicode commit graph (ASCII fallback), staging/unstaging, branch switching, stash management, inline blame
 - **Database Viewer** - Read-only browser for SQLite / PostgreSQL / MySQL opened from a bookmark URL: table grid with a 2D cell cursor, server-side single-column sort and type-aware per-column filtering, sliding-window pagination, and a row-detail dialog that copies as TSV / JSON / INSERT
