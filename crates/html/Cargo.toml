@@ -1,0 +1,16 @@
+[package]
+name = "termide-html"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "HTML to terminal pseudographics renderer for termide (html5ever driving the shared richtext layout engine)"
+
+[dependencies]
+ratatui.workspace = true
+html5ever.workspace = true
+
+# Workspace crates
+termide-core = { path = "../core" }
+termide-richtext = { path = "../richtext" }
