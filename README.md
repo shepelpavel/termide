@@ -4,9 +4,11 @@
 [![CI](https://github.com/termide/termide/actions/workflows/release.yml/badge.svg)](https://github.com/termide/termide/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-A cross-platform terminal-based IDE, file manager, and virtual terminal written in Rust.
+A zero-config terminal IDE that unifies an editor, file manager, and terminal — with built-in git, database, hex, Markdown, image, and Mermaid viewers — in one cross-platform TUI written in Rust.
 
 **[Website](https://termide.github.io)** | **[Documentation](doc/en/README.md)** | **[Releases](https://github.com/termide/termide/releases)** | **[Screenshots](https://ibb.co/album/nPX6p6)**
+
+<p align="center"><img src="assets/screenshots/editor.png" alt="TermIDE — editor, file manager, terminal and viewers in one TUI" width="900"></p>
 
 ## Why TermIDE?
 
@@ -15,9 +17,10 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 | Feature | TermIDE | Vim/Neovim | Helix | Micro |
 |---------|:-------:|:----------:|:-----:|:-----:|
 | Syntax Highlighting | ✓ | ✓ | ✓ | ✓ |
+| Themes | ✓ | ✓ | ✓ | ✓ |
 | Zero Config | ✓ | ✗ | ✓ | ✓ |
-| Resource Monitor | ✓ | ✗ | ✗ | ✗ |
 | LSP Support | ✓ | plugin | ✓ | plugin |
+| Script Automation | ✓ | plugin | ✗ | plugin |
 | Hex / Binary Viewer | ✓ | plugin | ✗ | plugin |
 | Database Viewer | ✓ | plugin | ✗ | ✗ |
 | Markdown Preview | ✓ | plugin | ✗ | ✗ |
@@ -28,10 +31,9 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 | Git Integration | ✓ | plugin | ✗ | ✗ |
 | Sessions | ✓ | plugin | ✗ | ✗ |
 | Multi-panel Layout | ✓ | plugin | ✗ | ✗ |
-| Script Automation | ✓ | plugin | ✗ | plugin |
 | Bookmarks | ✓ | plugin | ✗ | ✗ |
-| Themes | ✓ | ✓ | ✓ | ✓ |
 | UI Localization | ✓ | ✗ | ✗ | ✗ |
+| Resource Monitor | ✓ | ✗ | ✗ | ✗ |
 
 **TermIDE = Editor + File Manager + Terminal in one TUI application.**
 
@@ -41,7 +43,7 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 - **LSP Support** - Code completion, Find References (Shift+F12), Rename Symbol (F4), Go to Definition (Ctrl+Click), diagnostics
 - **Smart File Manager** - Tree view with expandable directories, nested git status, batch operations, file/content search (glob/regex), in-tree incremental search
 - **Integrated Terminal** - Full PTY support, VT100 escape sequences, mouse tracking
-- **Git Integration** - Status panel, commit log with ASCII graph, staging/unstaging, branch switching, stash management, inline blame
+- **Git Integration** - Status panel, commit log with a coloured Unicode commit graph (ASCII fallback), staging/unstaging, branch switching, stash management, inline blame
 - **Database Viewer** - Read-only browser for SQLite / PostgreSQL / MySQL opened from a bookmark URL: table grid with a 2D cell cursor, server-side single-column sort and type-aware per-column filtering, sliding-window pagination, and a row-detail dialog that copies as TSV / JSON / INSERT
 - **Multi-panel Layout** - Vertically split panel groups with adjustable per-panel heights and a one-key fullscreen toggle (`Alt+F11`); smart auto-stacking when the terminal narrows; new panels open after the currently active one
 - **Image Viewer** - Native graphics in Kitty, WezTerm, iTerm2, Ghostty, foot terminals
@@ -49,7 +51,7 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 - **Markdown Preview** - Rendered read-only view for `.md` / `.markdown` (headings, lists, tables, syntax-highlighted code blocks, clickable links and image pictograms) with cursor navigation, selection and clipboard copy; `Ctrl+E` toggles to the editable source; embedded ```mermaid``` blocks render as diagrams
 - **Mermaid Diagram Viewer** - Render `.mmd` / `.mermaid` files as text pseudographics — flowchart, sequence, state, class, ER, gantt, pie, journey, mindmap, timeline, gitGraph, quadrant; 2D scroll, copy to clipboard, and `Ctrl+E` to edit the source
 - **External Apps** - Open files with system default applications (Shift+Enter)
-- **38 Built-in Themes** - Dark, light, retro, and cinematic themes (Dracula, Nord, Monokai, Solarized, Matrix, Pip-Boy, Blue Sky, Pinky Pie, etc.)
+- **39 Built-in Themes** - Dark, light, retro, and cinematic themes (Dracula, Nord, Monokai, Solarized, Matrix, Pip-Boy, Norton Commander, Windows 95, etc.)
 - **Custom Themes** - Create your own themes in TOML format
 - **15 UI Languages** - Bengali, Chinese, English, French, German, Hindi, Indonesian, Japanese, Korean, Portuguese, Russian, Spanish, Thai, Turkish, Vietnamese (missing keys transparently fall back to English)
 - **Session Management** - Auto-save and restore panel layouts
@@ -359,88 +361,16 @@ For detailed documentation, see:
 - **Russian**: [doc/ru/README.md](doc/ru/README.md)
 - **Chinese**: [doc/zh/README.md](doc/zh/README.md)
 
-### Keyboard Shortcuts (Quick Reference)
+### Keyboard Shortcuts
 
-> All shortcuts are customizable in `config.toml`. See [Configuration](#configuration).
+All shortcuts are customizable in `config.toml` (see [Configuration](#configuration)). The essentials:
 
-**Global:**
-- `Alt+M` - Toggle menu
-- `Alt+H` - Help panel
-- `Alt+Q` - Quit
-- `Alt+←/→` or `Alt+A/D` - Switch panel groups
-- `Alt+↑/↓` or `Alt+W/S` - Navigate panels in group
-- `Alt+1-9` - Jump to panel by number
-- `Alt+B` - Add bookmark
-- `Ctrl+P` - Command palette
-- `Alt+X` / `Alt+Delete` - Close panel
-- `Alt+Backspace` - Toggle panel stacking
-- `Alt+K` / `Shift+F10` - Open panel action menu (`[≡]` dropdown: Close / Split / Merge / Move)
-- `Alt+PgUp/PgDn` - Move panel between groups
-- `Alt+=/-` - Resize group width
-- `Alt+/` - Sessions menu
+- **Navigate:** `Alt+M` menu · `Alt+H` help · `Alt+Q` quit · `Ctrl+P` command palette
+- **Panels:** `Alt+←/→` and `Alt+↑/↓` move between/within groups · `Alt+1-9` jump to a panel · `Alt+K` panel action menu
+- **Open:** `Alt+F` Files · `Alt+T` Terminal · `Alt+E` Editor · `Alt+G` Git · `Alt+P` Settings
+- **Files & viewers:** `F3` preview (markdown / diagram / hex / image) · `Ctrl+E` toggle preview ↔ source · `Ctrl+F` find · `Ctrl+R` reload from disk · `Ctrl+S` save
 
-**Panels:**
-- `Alt+F` - File Manager
-- `Alt+T` - Terminal
-- `Alt+E` - Editor
-- `Alt+L` - Journal
-- `Alt+G` - Git Status
-- `Alt+O` - Outline
-- `Alt+I` - Diagnostics
-- `Alt+C` - Git Log
-- `Alt+P` - Open Settings modal (preferences)
-
-**File Manager:**
-- `Ctrl+/` - Open directory switcher
-- `Enter` - Open file/directory
-- `Backspace` - Parent directory
-- `→` / `l` - Expand directory (tree view)
-- `←` / `h` - Collapse directory (tree view)
-- `/` - In-tree incremental search
-- `Space` - File info
-- `Insert` - Toggle selection (cascades into directories)
-- `Ctrl+A` - Select all
-- `Ctrl+F` - Search by name
-- `Ctrl+Shift+F` - Search in contents
-- `Ctrl+Shift+H` - Search & replace in contents
-- `Ctrl+N` - New file
-- `D` / `F7` - New directory
-- `C` / `F5` - Copy
-- `M` / `F6` - Move
-- `Delete` / `F8` - Delete
-- `F3` - Preview file
-- `O` / `Alt+Enter` - Open with system app
-- `.` - Toggle hidden files
-- `Ctrl+G` - Go to path/URL
-
-**Editor:**
-- `Ctrl+S` - Save
-- `Ctrl+Shift+S` - Save As (with executable checkbox)
-- `Ctrl+Z` - Undo
-- `Ctrl+Y` / `Ctrl+Shift+Z` - Redo
-- `Ctrl+F` - Find
-- `Ctrl+H` - Replace
-- `F3` / `Shift+F3` - Next/previous match
-- `Ctrl+/` - Toggle comment (line/block)
-- `Ctrl+D` - Duplicate line
-- `Ctrl+C/X/V` - Copy/Cut/Paste
-- `Ctrl+Left/Right` - Move cursor by word
-- `Ctrl+Shift+Left/Right` - Select by word
-- `Ctrl+Up/Down` - Jump to paragraph/symbol boundary
-- `Ctrl+Shift+Up/Down` - Select to paragraph/symbol boundary
-
-**Git Status:**
-- `Tab` - Switch focus
-- `Ctrl+S` - Stage selected
-- `Ctrl+U` - Unstage selected
-- `Ctrl+R` - Refresh
-
-**Git Log:**
-- `j/k` or `↑/↓` - Navigate commits
-- `Enter` / `d` - View diff
-- `c` - Copy commit hash
-- `g/G` - First/last commit
-- `O` / `Alt+Enter` - Open commit in browser
+📖 Full per-panel reference (file manager, editor, git, viewers): **[doc/en/keybindings.md](doc/en/keybindings.md)**.
 
 ## Configuration
 
@@ -597,58 +527,10 @@ chmod +x ~/.local/share/termide/scripts/hello.sh
 
 ## Development
 
-### Project Structure
-
-TermIDE uses a Cargo workspace with modular crates:
-
-```
-crates/
-├── app/              # Application core, event handling, panel management
-├── app-core/         # Core application traits and types
-├── app-modal/        # Modal dialog handling
-├── app-panel/        # Panel management operations
-├── app-session/      # Session save/restore
-├── app-watcher/      # File system watcher integration
-├── buffer/           # Text buffer implementation
-├── clipboard/        # System clipboard integration
-├── config/           # Configuration management
-├── core/             # Core Panel trait and types
-├── file-ops/         # File operations (copy, move, delete, upload, download)
-├── git/              # Git integration
-├── highlight/        # Syntax highlighting (tree-sitter)
-├── i18n/             # Internationalization (15 languages)
-├── keyboard/         # Keyboard handling and layout translation
-├── layout/           # Panel groups, split layout, fullscreen preset
-├── logger/           # Logging system
-├── lsp/              # Language Server Protocol client
-├── modal/            # Modal dialog implementations
-├── panel-diagnostics/ # LSP diagnostics panel
-├── panel-editor/     # Text editor panel
-├── panel-file-manager/ # File manager panel
-├── panel-git-diff/   # Git diff viewer panel
-├── panel-git-log/    # Git log panel
-├── panel-git-status/ # Git status panel
-├── panel-image/      # Image viewer panel
-├── panel-misc/       # Help and Journal panels
-├── panel-operations/ # Background operations panel
-├── panel-outline/    # Structural code navigation panel
-├── panel-terminal/   # Terminal emulator panel
-├── session/          # Session persistence
-├── state/            # Application state management
-├── system-monitor/   # CPU/RAM/Disk monitoring
-├── theme/            # Theme system and built-in themes
-├── ui/               # UI utilities and path formatting
-├── ui-render/        # UI rendering (menu, status bar, panels)
-├── unicode-width-fix/ # Unicode width corrections
-├── vfs/              # Virtual filesystem (SFTP, FTP, SMB)
-└── watcher/          # File system event watcher
-
-themes/               # Built-in theme definitions (TOML files)
-doc/
-├── en/               # English documentation
-├── ru/               # Russian documentation
-└── zh/               # Chinese documentation
-```
+The codebase is a Cargo workspace of modular crates. For the crate layout,
+panel system, and event flow, see the
+**[Developer Guide](doc/en/developer-guide.md)** and
+**[Architecture](doc/en/architecture.md)**.
 
 ### Building
 
