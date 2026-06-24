@@ -22,6 +22,7 @@ Unlike traditional terminal editors that need extensive plugin configuration, Te
 | Database Viewer | ✓ | plugin | ✗ | ✗ |
 | Markdown Preview | ✓ | plugin | ✗ | ✗ |
 | Diagram Viewer (Mermaid) | ✓ | plugin | ✗ | ✗ |
+| Image Viewer | ✓ | plugin | ✗ | ✗ |
 | Built-in Terminal | ✓ | plugin | ✗ | ✗ |
 | File Manager | ✓ | plugin | ✗ | ✗ |
 | Git Integration | ✓ | plugin | ✗ | ✗ |
