@@ -1,20 +1,17 @@
 [package]
-name = "termide-panel-markdown"
+name = "termide-richtext"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Parser-agnostic rich-text layout engine for termide (styled runs to wrapped ratatui lines)"
 
 [dependencies]
-anyhow.workspace = true
-crossterm.workspace = true
 ratatui.workspace = true
-pulldown-cmark.workspace = true
 unicode-width.workspace = true
 
 # Workspace crates
 termide-core = { path = "../core" }
-termide-richtext = { path = "../richtext" }
-termide-modal = { path = "../modal" }
-termide-ui = { path = "../ui" }
+termide-highlight = { path = "../highlight" }
+termide-mermaid = { path = "../mermaid" }
