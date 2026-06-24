@@ -16,5 +16,6 @@ unicode-width.workspace = true
 # Workspace crates
 termide-core = { path = "../core" }
 termide-richtext = { path = "../richtext" }
+termide-html = { path = "../html" }
 termide-modal = { path = "../modal" }
 termide-ui = { path = "../ui" }

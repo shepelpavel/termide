@@ -8,6 +8,7 @@
 
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use termide_core::ThemeColors;
+use termide_html::HtmlState;
 use termide_richtext::Builder;
 
 pub use termide_richtext::{LinkSpan, Rendered};
@@ -16,17 +17,21 @@ pub use termide_richtext::{LinkSpan, Rendered};
 #[must_use]
 pub fn render_markdown(src: &str, width: u16, colors: &ThemeColors, is_light: bool) -> Rendered {
     let mut b = Builder::new(width, colors, is_light);
+    // Embedded HTML (block and inline) is driven through the shared HTML engine
+    // with a persistent state, so elements that CommonMark splits across events
+    // (e.g. a `<details>` wrapping Markdown) still nest correctly.
+    let mut html = HtmlState::default();
     let mut opts = Options::empty();
     opts.insert(Options::ENABLE_TABLES);
     opts.insert(Options::ENABLE_STRIKETHROUGH);
     opts.insert(Options::ENABLE_TASKLISTS);
     for ev in Parser::new_ext(src, opts) {
-        event(&mut b, ev);
+        event(&mut b, &mut html, ev);
     }
     b.finish()
 }
 
-fn event(b: &mut Builder, ev: Event<'_>) {
+fn event(b: &mut Builder, html: &mut HtmlState, ev: Event<'_>) {
     match ev {
         Event::Start(tag) => start(b, tag),
         Event::End(tag) => end(b, tag),
@@ -36,7 +41,12 @@ fn event(b: &mut Builder, ev: Event<'_>) {
         Event::HardBreak => b.hard_break(),
         Event::Rule => b.rule(),
         Event::TaskListMarker(done) => b.task_marker(done),
-        Event::Html(t) | Event::InlineHtml(t) => b.text(t.trim_end_matches('\n')),
+        // Raw HTML (a block chunk or an inline tag token) renders through the
+        // HTML engine instead of being shown as literal angle-bracket text.
+        Event::Html(t) | Event::InlineHtml(t) => {
+            let toks = termide_html::tokenize(&t);
+            termide_html::drive(b, html, &toks);
+        }
         _ => {}
     }
 }
@@ -252,5 +262,41 @@ mod tests {
             .collect();
         assert!(joined.contains("🖼"), "no icon: {joined:?}");
         assert!(joined.contains("alt text"), "no alt: {joined:?}");
+    }
+
+    #[test]
+    fn inline_html_kbd_is_reverse_styled() {
+        use ratatui::style::Modifier;
+        let out = render_markdown("Press <kbd>Esc</kbd> now", 80, &colors(), false);
+        let span = out
+            .lines
+            .iter()
+            .flat_map(|l| &l.spans)
+            .find(|s| s.content.contains("Esc"))
+            .expect("no Esc span");
+        assert!(
+            span.style.add_modifier.contains(Modifier::REVERSED),
+            "kbd not reversed: {:?}",
+            span.style
+        );
+    }
+
+    #[test]
+    fn block_html_img_renders_as_icon() {
+        // A badge-style centered image, the common README pattern.
+        let out = render("<p align=\"center\"><img src=\"a.png\" alt=\"Logo\"></p>");
+        let joined = out.join("\n");
+        assert!(joined.contains("🖼"), "no icon: {out:?}");
+        assert!(joined.contains("Logo"), "no alt: {out:?}");
+    }
+
+    #[test]
+    fn details_block_split_across_events_renders_both() {
+        // CommonMark splits this into HtmlBlock + Markdown paragraph + HtmlBlock;
+        // the persistent HTML state must keep <details> coherent.
+        let out = render("<details><summary>more</summary>\n\nhidden body\n\n</details>");
+        let joined = out.join("\n");
+        assert!(joined.contains("more"), "no summary: {out:?}");
+        assert!(joined.contains("hidden body"), "no body: {out:?}");
     }
 }
