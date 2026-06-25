@@ -176,6 +176,11 @@ impl HtmlPanel {
     /// honor the `open_links` setting: `External` → browser; `Panel` →
     /// in-place navigation in a fetched view, or a new viewer otherwise.
     fn activate_link(&mut self, href: &str) -> Vec<PanelEvent> {
+        // In-page anchors (`#`, `#section`) and empty links aren't navigable
+        // here — do nothing rather than handing "#" to the system opener.
+        if href.is_empty() || href.starts_with('#') {
+            return vec![];
+        }
         let target = self.resolve(href);
         let is_web = target.starts_with("http://") || target.starts_with("https://");
         if !is_web || self.open_links == LinkOpen::External {
@@ -1098,6 +1103,14 @@ mod tests {
             matches!(evs.as_slice(), [PanelEvent::OpenUrl(_)]),
             "{evs:?}"
         );
+    }
+
+    #[test]
+    fn fragment_links_are_noop() {
+        let mut p = panel_from("<p>x</p>");
+        assert!(p.activate_link("#").is_empty(), "bare anchor");
+        assert!(p.activate_link("#section").is_empty(), "fragment anchor");
+        assert!(p.activate_link("").is_empty(), "empty href");
     }
 
     #[test]
