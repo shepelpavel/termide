@@ -62,9 +62,10 @@ The preview has a movable cursor and supports text selection:
 - Mouse wheel scrolls.
 - **Follow a link** — click it, or press `Enter` with the cursor on it. By
   default links open **in the panel**: a fetched (URL-backed) page navigates in
-  place (relative links resolve against the page URL); from a file-backed view
-  a web link opens in a new viewer. Set `[viewer] open_links = "external"` to
-  open links in the system browser instead.
+  place (relative links resolve against the page URL), a web link from a
+  file-backed view opens in a new viewer, and a link to an **image** opens in
+  the image preview. Set `[viewer] open_links = "external"` to open links in the
+  system browser instead.
 - **`O`** always opens the link under the cursor in the external browser
   (regardless of the setting).
 - **`[` / `]`** (or **`Backspace`** for back) step back / forward through the

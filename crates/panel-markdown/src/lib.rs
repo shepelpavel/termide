@@ -160,8 +160,8 @@ impl MarkdownPanel {
         self.layout_width = 0;
     }
 
-    /// Resolve a link `href` against the current document URL (no-op for
-    /// file-backed viewers or absolute links).
+    /// Resolve a link `href` to an absolute target: against the document URL for
+    /// a fetched page, or against the file's directory for a file-backed view.
     fn resolve(&self, href: &str) -> String {
         if let Some(base) = &self.source_url {
             if let Ok(b) = url::Url::parse(base) {
@@ -169,6 +169,14 @@ impl MarkdownPanel {
                     return joined.to_string();
                 }
             }
+            return href.to_string();
+        }
+        // File-backed: resolve a relative path against the file's directory.
+        if href.contains("://") || std::path::Path::new(href).is_absolute() {
+            return href.to_string();
+        }
+        if let Some(dir) = self.file_path.parent() {
+            return dir.join(href).to_string_lossy().into_owned();
         }
         href.to_string()
     }
@@ -183,17 +191,27 @@ impl MarkdownPanel {
             return vec![];
         }
         let target = self.resolve(href);
-        let is_web = target.starts_with("http://") || target.starts_with("https://");
-        if !is_web || self.open_links == LinkOpen::External {
+        // `O` / the external setting send everything to the system opener.
+        if self.open_links == LinkOpen::External {
             return vec![PanelEvent::OpenExternal(PathBuf::from(target))];
         }
-        if self.source_url.is_some() {
-            self.history.truncate(self.hist_idx + 1);
-            self.history.push(target.clone());
-            self.hist_idx = self.history.len() - 1;
-            vec![PanelEvent::NavigateUrl(target)]
+        let is_web = target.starts_with("http://") || target.starts_with("https://");
+        if is_web {
+            // Web links: fetch and render in the viewer (image responses are
+            // routed to the image preview by the fetch handler).
+            if self.source_url.is_some() {
+                self.history.truncate(self.hist_idx + 1);
+                self.history.push(target.clone());
+                self.hist_idx = self.history.len() - 1;
+                vec![PanelEvent::NavigateUrl(target)]
+            } else {
+                vec![PanelEvent::OpenUrl(target)]
+            }
+        } else if is_image_path(&target) {
+            // Local image → built-in image preview, like an HTML link.
+            vec![PanelEvent::PreviewMedia(PathBuf::from(target))]
         } else {
-            vec![PanelEvent::OpenUrl(target)]
+            vec![PanelEvent::OpenExternal(PathBuf::from(target))]
         }
     }
 
@@ -917,6 +935,19 @@ impl Panel for MarkdownPanel {
     fn get_working_directory(&self) -> Option<PathBuf> {
         self.file_path.parent().map(|p| p.to_path_buf())
     }
+}
+
+/// Whether `path` (or URL) ends in a known raster-image extension.
+fn is_image_path(path: &str) -> bool {
+    let ext = path
+        .rsplit('.')
+        .next()
+        .map(|e| e.to_ascii_lowercase())
+        .unwrap_or_default();
+    matches!(
+        ext.as_str(),
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "ico" | "tiff" | "tif"
+    )
 }
 
 /// Substring of `s` between character indices `[start, end)`.
