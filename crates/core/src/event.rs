@@ -422,6 +422,10 @@ pub enum PanelEvent {
     /// Swap the active panel in place for the Mermaid diagram view of `path`
     SwapActiveToMermaid(PathBuf),
 
+    /// Navigate the active viewer in place to an `http(s)://` URL (a link
+    /// followed inside a fetched page, or a history back/forward step).
+    NavigateUrl(String),
+
     /// Open an `.html` file in the rendered HTML viewer (read-only)
     ViewHtml(PathBuf),
 

@@ -60,8 +60,12 @@ The preview has a movable cursor and supports text selection:
   matching viewer (HTML, Markdown, image, or text) — a quick jump to a sibling
   file, or a basic text-mode browse of a web page (see *Fetching URLs* below).
 - Mouse wheel scrolls.
-- **Click a link** (or press `Enter` with the cursor on it) to open it in the
-  browser; image pictograms open the image URL the same way.
+- **Follow a link** — click it, or press `Enter` with the cursor on it. In a
+  fetched (URL-backed) page this **navigates in place** (relative links resolve
+  against the page URL); in a file-backed view it opens in the external browser.
+- **`O`** always opens the link under the cursor in the external browser.
+- **`Alt+Left` / `Alt+Right`** step back / forward through the page history of a
+  navigated view.
 
 ## Fetching URLs
 
@@ -77,7 +81,9 @@ bounded — this is a reader, not a browser engine:
 - Embedded resources are **not** loaded — `<img>` stays a `🖼` pictogram, so a
   page cannot phone home through the viewer.
 
-URL-loaded views are not restored across sessions. (Relative links and in-panel
-navigation are not wired yet.)
+Links inside a fetched page are followed **in place** (`Enter`/click), with
+relative links resolved against the page URL and `Alt+Left`/`Alt+Right` for
+history; `O` opens a link in the real browser instead. URL-loaded views are not
+restored across sessions.
 
 A file-backed panel persists across sessions and reopens at the same file.

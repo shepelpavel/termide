@@ -89,6 +89,10 @@ impl App {
                 self.event_swap_active_to_mermaid(path)?;
             }
 
+            PanelEvent::NavigateUrl(url) => {
+                self.start_url_fetch_in_place(url);
+            }
+
             PanelEvent::ViewHtml(path) => {
                 self.event_view_html(path)?;
             }

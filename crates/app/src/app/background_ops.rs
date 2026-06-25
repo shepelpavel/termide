@@ -19,12 +19,24 @@ use crate::PanelExt;
 use super::App;
 
 impl App {
-    /// Start a background fetch of `url` (from a viewer's `Ctrl+G`). The blocking
-    /// GET runs on a worker thread; the result is delivered over a channel and
-    /// picked up by [`check_view_fetch`](App::check_view_fetch).
+    /// Start a background fetch of `url` from a viewer's `Ctrl+G`, opening the
+    /// result in a *new* viewer.
     pub(super) fn start_url_fetch(&mut self, url: String) {
+        self.start_fetch(url, false);
+    }
+
+    /// Start a background fetch that replaces the *active* viewer in place
+    /// (a followed link or a history step inside a fetched page).
+    pub(super) fn start_url_fetch_in_place(&mut self, url: String) {
+        self.start_fetch(url, true);
+    }
+
+    /// Spawn the blocking GET on a worker thread; the result is delivered over
+    /// a channel and picked up by [`check_view_fetch`](App::check_view_fetch).
+    fn start_fetch(&mut self, url: String, in_place: bool) {
         let (tx, rx) = std::sync::mpsc::channel();
         self.state.view_fetch_receiver = Some(rx);
+        self.state.view_fetch_in_place = in_place;
         self.state.set_info(format!("Fetching {url}…"));
         std::thread::spawn(move || {
             let _ = tx.send(termide_fetch::fetch(&url));
@@ -40,7 +52,9 @@ impl App {
         match rx.try_recv() {
             Ok(result) => {
                 self.state.view_fetch_receiver = None;
+                let in_place = self.state.view_fetch_in_place;
                 match result {
+                    Ok(fetched) if in_place => self.apply_fetched_in_place(fetched),
                     Ok(fetched) => self.open_fetched(fetched),
                     Err(e) => self.show_error_modal(format!("Fetch failed: {e}")),
                 }
@@ -53,39 +67,94 @@ impl App {
         }
     }
 
-    /// Route a fetched document to the matching viewer by Content-Type.
+    /// Open a fetched document in a new viewer, routed by Content-Type.
     fn open_fetched(&mut self, fetched: termide_fetch::Fetched) {
         let title = fetch_title(&fetched.final_url);
         let url = fetched.final_url.clone();
-        match fetched.content_type.as_str() {
-            "text/html" | "application/xhtml+xml" => {
-                let panel =
-                    termide_panel_html::HtmlPanel::from_source(title, fetched.text(), Some(url));
-                self.add_panel(Box::new(panel));
-            }
-            "text/markdown" | "text/x-markdown" => {
-                let panel = termide_panel_markdown::MarkdownPanel::from_source(
+        match classify(&fetched) {
+            Some(ViewKind::Html(src)) => {
+                self.add_panel(Box::new(termide_panel_html::HtmlPanel::from_source(
                     title,
-                    fetched.text(),
+                    src,
                     Some(url),
-                );
-                self.add_panel(Box::new(panel));
+                )));
             }
-            ct if ct.starts_with("text/")
-                || ct == "application/json"
-                || ct == "application/xml" =>
-            {
-                // Plain text → show verbatim in the HTML viewer via <pre>.
-                let body = format!("<pre>{}</pre>", escape_html(&fetched.text()));
-                let panel = termide_panel_html::HtmlPanel::from_source(title, body, Some(url));
-                self.add_panel(Box::new(panel));
+            Some(ViewKind::Markdown(src)) => {
+                self.add_panel(Box::new(
+                    termide_panel_markdown::MarkdownPanel::from_source(title, src, Some(url)),
+                ));
             }
-            other => {
-                self.show_error_modal(format!("Unsupported content type: {other}"));
+            None => {
+                self.show_error_modal(format!(
+                    "Unsupported content type: {}",
+                    fetched.content_type
+                ));
                 return;
             }
         }
         self.auto_save_session();
+    }
+
+    /// Apply a navigation result to the active viewer in place when its type
+    /// matches the content; otherwise fall back to opening a new viewer (so the
+    /// browsing panel's history isn't clobbered by a type switch).
+    fn apply_fetched_in_place(&mut self, fetched: termide_fetch::Fetched) {
+        let title = fetch_title(&fetched.final_url);
+        let url = fetched.final_url.clone();
+        match classify(&fetched) {
+            Some(ViewKind::Html(src)) => {
+                if let Some(p) = self.layout_manager.active_panel_mut().and_then(|p| {
+                    p.as_any_mut()
+                        .downcast_mut::<termide_panel_html::HtmlPanel>()
+                }) {
+                    p.apply_fetched(title, src, url);
+                    return;
+                }
+                self.add_panel(Box::new(termide_panel_html::HtmlPanel::from_source(
+                    title,
+                    src,
+                    Some(url),
+                )));
+            }
+            Some(ViewKind::Markdown(src)) => {
+                if let Some(p) = self.layout_manager.active_panel_mut().and_then(|p| {
+                    p.as_any_mut()
+                        .downcast_mut::<termide_panel_markdown::MarkdownPanel>()
+                }) {
+                    p.apply_fetched(title, src, url);
+                    return;
+                }
+                self.add_panel(Box::new(
+                    termide_panel_markdown::MarkdownPanel::from_source(title, src, Some(url)),
+                ));
+            }
+            None => self.show_error_modal(format!(
+                "Unsupported content type: {}",
+                fetched.content_type
+            )),
+        }
+    }
+}
+
+/// Which viewer a fetched document maps to, with its source string prepared.
+enum ViewKind {
+    Html(String),
+    Markdown(String),
+}
+
+/// Classify a fetched document by Content-Type. `None` for unsupported types.
+fn classify(fetched: &termide_fetch::Fetched) -> Option<ViewKind> {
+    match fetched.content_type.as_str() {
+        "text/html" | "application/xhtml+xml" => Some(ViewKind::Html(fetched.text())),
+        "text/markdown" | "text/x-markdown" => Some(ViewKind::Markdown(fetched.text())),
+        ct if ct.starts_with("text/") || ct == "application/json" || ct == "application/xml" => {
+            // Plain text → shown verbatim in the HTML viewer via <pre>.
+            Some(ViewKind::Html(format!(
+                "<pre>{}</pre>",
+                escape_html(&fetched.text())
+            )))
+        }
+        _ => None,
     }
 }
 

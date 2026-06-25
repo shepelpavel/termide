@@ -286,6 +286,10 @@ pub struct AppState {
     /// (`Ctrl+G` with an `http(s)://` address). Carries the fetched document
     /// or a human-readable error.
     pub view_fetch_receiver: Option<mpsc::Receiver<Result<termide_fetch::Fetched, String>>>,
+    /// Whether the in-flight `view_fetch_receiver` result should replace the
+    /// active viewer in place (link/history navigation) rather than open a new
+    /// viewer (`Ctrl+G`).
+    pub view_fetch_in_place: bool,
     /// Handle for background git operation (allows cancellation)
     pub git_operation_handle: Option<GitOperationHandle>,
     /// SSH key passphrase entered for git network operations, cached in memory
@@ -428,6 +432,7 @@ impl AppState {
             pending_action: None,
             dir_size_receiver: None,
             view_fetch_receiver: None,
+            view_fetch_in_place: false,
             git_operation_handle: None,
             git_ssh_passphrase: None,
             command_operation_handles: Vec::new(),

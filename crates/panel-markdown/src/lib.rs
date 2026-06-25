@@ -80,9 +80,13 @@ pub struct MarkdownPanel {
     /// Pointer of the last `Arc<Config>` used to build hotkeys.
     last_config_ptr: usize,
     /// Origin URL when the content was fetched (not read from a file). `None`
-    /// for file-backed viewers. Used for the title and (later) base-URL link
-    /// resolution; URL-backed viewers are not persisted across sessions.
+    /// for file-backed viewers. Used for the title, base-URL link resolution,
+    /// and navigation; URL-backed viewers are not persisted across sessions.
     source_url: Option<String>,
+    /// Browsing history (URLs) for an in-panel navigated viewer.
+    history: Vec<String>,
+    /// Current position within `history`.
+    hist_idx: usize,
 }
 
 impl MarkdownPanel {
@@ -114,6 +118,8 @@ impl MarkdownPanel {
             hotkeys: HotkeyTable::default(),
             last_config_ptr: 0,
             source_url: None,
+            history: Vec::new(),
+            hist_idx: 0,
         }
     }
 
@@ -130,8 +136,71 @@ impl MarkdownPanel {
         let mut panel = Self::empty();
         panel.title = title;
         panel.source = source;
+        if let Some(url) = &source_url {
+            panel.history = vec![url.clone()];
+            panel.hist_idx = 0;
+        }
         panel.source_url = source_url;
         panel
+    }
+
+    /// Replace the content in place with a navigated document (link/history
+    /// step). History is managed by the caller's navigation, not here.
+    pub fn apply_fetched(&mut self, title: String, source: String, final_url: String) {
+        self.title = title;
+        self.source = source;
+        self.source_url = Some(final_url);
+        self.top = 0;
+        self.cursor = (0, 0);
+        self.anchor = None;
+        self.matches.clear();
+        self.layout_width = 0;
+    }
+
+    /// Resolve a link `href` against the current document URL (no-op for
+    /// file-backed viewers or absolute links).
+    fn resolve(&self, href: &str) -> String {
+        if let Some(base) = &self.source_url {
+            if let Ok(b) = url::Url::parse(base) {
+                if let Ok(joined) = b.join(href) {
+                    return joined.to_string();
+                }
+            }
+        }
+        href.to_string()
+    }
+
+    /// Follow a link: navigate in place inside a fetched page, else hand the
+    /// (resolved) target to the external opener.
+    fn activate_link(&mut self, href: &str) -> Vec<PanelEvent> {
+        let target = self.resolve(href);
+        let is_web = target.starts_with("http://") || target.starts_with("https://");
+        if is_web && self.source_url.is_some() {
+            self.history.truncate(self.hist_idx + 1);
+            self.history.push(target.clone());
+            self.hist_idx = self.history.len() - 1;
+            vec![PanelEvent::NavigateUrl(target)]
+        } else {
+            vec![PanelEvent::OpenExternal(PathBuf::from(target))]
+        }
+    }
+
+    /// Step back in history, re-fetching the previous page.
+    fn go_back(&mut self) -> Vec<PanelEvent> {
+        if self.hist_idx > 0 {
+            self.hist_idx -= 1;
+            return vec![PanelEvent::NavigateUrl(self.history[self.hist_idx].clone())];
+        }
+        vec![]
+    }
+
+    /// Step forward in history, re-fetching the next page.
+    fn go_forward(&mut self) -> Vec<PanelEvent> {
+        if self.hist_idx + 1 < self.history.len() {
+            self.hist_idx += 1;
+            return vec![PanelEvent::NavigateUrl(self.history[self.hist_idx].clone())];
+        }
+        vec![]
     }
 
     /// Point the panel at a new file, reloading its content.
@@ -647,6 +716,15 @@ impl Panel for MarkdownPanel {
             return vec![PanelEvent::CopyToClipboard(text)];
         }
 
+        // Alt+Left/Right: history back/forward (URL-backed viewers).
+        if key.modifiers.contains(KeyModifiers::ALT) {
+            match key.code {
+                KeyCode::Left => return self.go_back(),
+                KeyCode::Right => return self.go_forward(),
+                _ => {}
+            }
+        }
+
         match key.code {
             KeyCode::Up => self.move_vertical(-1, shift),
             KeyCode::Down | KeyCode::Char('j') => self.move_vertical(1, shift),
@@ -666,8 +744,16 @@ impl Panel for MarkdownPanel {
                 self.move_cursor((last, 0), shift);
             }
             KeyCode::Enter => {
-                if let Some(link) = self.link_under_cursor() {
-                    return vec![PanelEvent::OpenExternal(PathBuf::from(link.url.clone()))];
+                if let Some(url) = self.link_under_cursor().map(|l| l.url.clone()) {
+                    return self.activate_link(&url);
+                }
+                return vec![];
+            }
+            // Open the link under the cursor in the external browser, even when
+            // the viewer would otherwise navigate it in place.
+            KeyCode::Char('o') | KeyCode::Char('O') => {
+                if let Some(url) = self.link_under_cursor().map(|l| l.url.clone()) {
+                    return vec![PanelEvent::OpenExternal(PathBuf::from(self.resolve(&url)))];
                 }
                 return vec![];
             }
@@ -728,11 +814,10 @@ impl Panel for MarkdownPanel {
                 self.cursor = (line_idx, col);
                 self.anchor = None;
                 self.drag_from = Some(self.cursor);
-                if let Some(link) = self.link_at(line_idx, rel_col) {
-                    return vec![
-                        PanelEvent::NeedsRedraw,
-                        PanelEvent::OpenExternal(PathBuf::from(link.url.clone())),
-                    ];
+                if let Some(url) = self.link_at(line_idx, rel_col).map(|l| l.url.clone()) {
+                    let mut evs = vec![PanelEvent::NeedsRedraw];
+                    evs.extend(self.activate_link(&url));
+                    return evs;
                 }
             }
             MouseEventKind::Drag(MouseButton::Left) => {
@@ -901,6 +986,8 @@ mod tests {
             hotkeys: HotkeyTable::default(),
             last_config_ptr: 0,
             source_url: None,
+            history: Vec::new(),
+            hist_idx: 0,
         };
         p.doc = render::render_markdown(src, 80, &p.colors, false);
         p.layout_width = 80;
