@@ -667,6 +667,11 @@ pub enum InputAction {
     /// Go to line number
     GotoLine,
 
+    /// Open a path (or, later, URL) typed in a viewer's "go to" prompt,
+    /// routed to the appropriate viewer by type. Relative paths resolve
+    /// against `base_dir`.
+    ViewPath { base_dir: PathBuf },
+
     /// Save file as (new name)
     SaveFileAs { directory: PathBuf },
 

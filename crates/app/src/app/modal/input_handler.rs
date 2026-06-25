@@ -12,6 +12,63 @@ use termide_i18n as i18n;
 use termide_modal::SaveAsResult;
 
 impl App {
+    /// Open a path typed in a viewer's "go to" prompt, routed to the
+    /// appropriate viewer by type. Relative paths resolve against `base_dir`;
+    /// a leading `~/` expands to the home directory.
+    pub(in crate::app) fn handle_view_path(
+        &mut self,
+        base_dir: PathBuf,
+        value: Box<dyn std::any::Any>,
+    ) -> Result<()> {
+        let Some(input) = value.downcast_ref::<String>() else {
+            return Ok(());
+        };
+        let input = input.trim();
+        if input.is_empty() {
+            return Ok(());
+        }
+
+        // Resolve to an absolute path: `~/…` → home, relative → against base_dir.
+        let path = if let Some(rest) = input.strip_prefix("~/") {
+            match dirs::home_dir() {
+                Some(home) => home.join(rest),
+                None => PathBuf::from(input),
+            }
+        } else {
+            let p = PathBuf::from(input);
+            if p.is_absolute() {
+                p
+            } else {
+                base_dir.join(p)
+            }
+        };
+
+        if !path.exists() {
+            self.show_error_modal(format!("No such path: {}", path.display()));
+            return Ok(());
+        }
+        if path.is_dir() {
+            self.show_error_modal(format!("Not a file: {}", path.display()));
+            return Ok(());
+        }
+
+        // Route by type, mirroring the file manager's View-mode mapping.
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_ascii_lowercase())
+            .unwrap_or_default();
+        match ext.as_str() {
+            "html" | "htm" => self.event_view_html(path),
+            "md" | "markdown" => self.event_view_markdown(path),
+            "mmd" | "mermaid" => self.event_view_mermaid(path),
+            "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "ico" | "tiff" | "tif" => {
+                self.event_preview_media(path)
+            }
+            _ => self.event_view_file(path),
+        }
+    }
+
     /// Handle file creation
     pub(in crate::app) fn handle_create_file(
         &mut self,

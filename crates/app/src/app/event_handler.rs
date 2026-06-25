@@ -378,7 +378,7 @@ impl App {
     }
 
     /// Handle ViewFile event - open file in read-only editor mode
-    fn event_view_file(&mut self, file_path: PathBuf) -> Result<()> {
+    pub(in crate::app) fn event_view_file(&mut self, file_path: PathBuf) -> Result<()> {
         self.close_help_panels();
         let _ = self.open_editor_for_file_readonly(file_path);
         Ok(())
@@ -551,7 +551,7 @@ impl App {
     }
 
     /// Open a markdown file in the rendered preview panel (read-only).
-    fn event_view_markdown(&mut self, file_path: PathBuf) -> Result<()> {
+    pub(in crate::app) fn event_view_markdown(&mut self, file_path: PathBuf) -> Result<()> {
         use termide_panel_markdown::MarkdownPanel;
 
         // Each open creates its own focused viewer. Reusing a viewer in place
@@ -583,7 +583,7 @@ impl App {
     }
 
     /// Open a `.mmd` file in the Mermaid diagram viewer (read-only).
-    fn event_view_mermaid(&mut self, file_path: PathBuf) -> Result<()> {
+    pub(in crate::app) fn event_view_mermaid(&mut self, file_path: PathBuf) -> Result<()> {
         use termide_panel_mermaid::MermaidPanel;
 
         // Each open creates its own focused viewer; reuse-in-place is
@@ -614,7 +614,7 @@ impl App {
     }
 
     /// Open an `.html` file in the rendered HTML viewer (read-only).
-    fn event_view_html(&mut self, file_path: PathBuf) -> Result<()> {
+    pub(in crate::app) fn event_view_html(&mut self, file_path: PathBuf) -> Result<()> {
         use termide_panel_html::HtmlPanel;
 
         // Each open creates its own focused viewer; reuse-in-place is
@@ -685,7 +685,7 @@ impl App {
         Ok(())
     }
 
-    fn event_preview_media(&mut self, file_path: PathBuf) -> Result<()> {
+    pub(in crate::app) fn event_preview_media(&mut self, file_path: PathBuf) -> Result<()> {
         use termide_panel_image::ImagePanel;
 
         let filename = file_path
@@ -1070,6 +1070,9 @@ impl App {
                 // GotoLine is handled directly, not through modal
                 return;
             }
+            termide_core::InputAction::ViewPath { base_dir } => PendingAction::ViewPath {
+                base_dir: base_dir.clone(),
+            },
             termide_core::InputAction::SaveFileAs { directory } => PendingAction::SaveFileAs {
                 directory: directory.clone(),
             },

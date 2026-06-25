@@ -56,6 +56,8 @@ The preview has a movable cursor and supports text selection:
 - **`Ctrl+C`** copies the selection (or the cursor's line when nothing is
   selected) to the clipboard.
 - **`Ctrl+F`** opens incremental search; **`Ctrl+R`** reloads the file from disk.
+- **`Ctrl+G`** prompts for a path and opens it in the matching viewer (HTML,
+  Markdown, image, or text) — a quick way to jump to a sibling file.
 - Mouse wheel scrolls.
 - **Click a link** (or press `Enter` with the cursor on it) to open it in the
   browser; image pictograms open the image URL the same way.

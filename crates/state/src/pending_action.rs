@@ -12,6 +12,9 @@ use crate::batch::BatchOperation;
 pub enum PendingAction {
     /// Create new file in specified directory
     CreateFile { directory: PathBuf },
+    /// Open a path typed in a viewer's "go to" prompt, routed by type.
+    /// Relative paths resolve against `base_dir`.
+    ViewPath { base_dir: PathBuf },
     /// Create new directory in specified directory
     CreateDirectory { directory: PathBuf },
     /// Delete files/directories (one or multiple)

@@ -19,8 +19,8 @@ use ratatui::{buffer::Buffer, layout::Rect, style::Style};
 use unicode_width::UnicodeWidthChar;
 
 use termide_core::{
-    Config, HotkeyTable, KeyChord, Panel, PanelEvent, RenderContext, SegmentKind, SessionPanel,
-    StatusSegment, Theme, ThemeColors, WidthPreference,
+    Config, HotkeyTable, InputAction, KeyChord, Panel, PanelEvent, RenderContext, SegmentKind,
+    SessionPanel, StatusSegment, Theme, ThemeColors, WidthPreference,
 };
 use termide_html::render_html;
 use termide_modal::{FindBar, FindBarAction, FindBarBtn, FindBarConfig, FindField};
@@ -383,6 +383,25 @@ impl HtmlPanel {
         }
     }
 
+    /// Build the "go to path" input request, seeded with this file's directory
+    /// so relative entries resolve naturally.
+    fn goto_path_event(&self) -> PanelEvent {
+        let base = self
+            .file_path
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_default();
+        let mut initial = base.display().to_string();
+        if !initial.is_empty() {
+            initial.push('/');
+        }
+        PanelEvent::ShowInput {
+            prompt: "Go to path".to_string(),
+            initial_value: initial,
+            on_submit: InputAction::ViewPath { base_dir: base },
+        }
+    }
+
     fn handle_find_action(&mut self, action: FindBarAction) -> Vec<PanelEvent> {
         match action {
             FindBarAction::QueryChanged | FindBarAction::Refresh => self.run_search(),
@@ -578,6 +597,11 @@ impl Panel for HtmlPanel {
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let page = (self.viewport_height() as i32 - 1).max(1);
+
+        // Ctrl+G: "go to path" — type a path to open it in the right viewer.
+        if ctrl && key.code == KeyCode::Char('g') {
+            return vec![self.goto_path_event()];
+        }
 
         // Ctrl+R: re-read from disk (pick up external edits), keeping position.
         if ctrl && key.code == KeyCode::Char('r') {
@@ -902,6 +926,26 @@ mod tests {
         let first = p.cursor;
         p.step_match(true);
         assert_ne!(p.cursor, first, "next match should move the cursor");
+    }
+
+    #[test]
+    fn ctrl_g_requests_go_to_path() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut p = panel_from("<p>hi</p>");
+        let evs = p.handle_key(KeyChord::identity(KeyEvent::new(
+            KeyCode::Char('g'),
+            KeyModifiers::CONTROL,
+        )));
+        assert!(
+            matches!(
+                evs.as_slice(),
+                [PanelEvent::ShowInput {
+                    on_submit: InputAction::ViewPath { .. },
+                    ..
+                }]
+            ),
+            "{evs:?}"
+        );
     }
 
     #[test]
