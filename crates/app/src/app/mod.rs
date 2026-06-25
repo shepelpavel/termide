@@ -694,6 +694,9 @@ impl App {
                         // Single-pass: async git status, async dir reload, pending git diff
                         self.check_background_panel_updates();
 
+                        // Deliver a completed viewer URL fetch (Ctrl+G with a URL)
+                        self.check_view_fetch();
+
                         // Check background git operation result (push/pull)
                         self.check_git_operation_result();
 

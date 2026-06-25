@@ -3973,6 +3973,7 @@ version = "0.23.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ef86cd5876211988985292b91c96a8f2d298df24e75989a43a3c73f2d4d8168b"
 dependencies = [
+ "log",
  "once_cell",
  "ring",
  "rustls-pki-types",
@@ -4987,6 +4988,7 @@ dependencies = [
  "termide-clipboard",
  "termide-config",
  "termide-core",
+ "termide-fetch",
  "termide-file-ops",
  "termide-git",
  "termide-highlight",
@@ -5095,6 +5097,14 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
+ "url",
+]
+
+[[package]]
+name = "termide-fetch"
+version = "0.27.0"
+dependencies = [
+ "ureq",
  "url",
 ]
 
@@ -6334,6 +6344,22 @@ checksum = "a739f83872836c82a4f2527d4e54b37007b3de68cafe7edde95fd695968bf4b9"
 dependencies = [
  "num-traits",
  "typenum",
+]
+
+[[package]]
+name = "ureq"
+version = "2.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02d1a66277ed75f640d608235660df48c8e3c19f3b4edb6a263315626cc3c01d"
+dependencies = [
+ "base64",
+ "flate2",
+ "log",
+ "once_cell",
+ "rustls 0.23.40",
+ "rustls-pki-types",
+ "url",
+ "webpki-roots 0.26.11",
 ]
 
 [[package]]

@@ -55,7 +55,8 @@ The preview has a movable cursor and supports text selection:
 - **`Ctrl+C`** copies the selection (or the cursor's line when nothing is
   selected) to the clipboard.
 - **`Ctrl+F`** searches; **`Ctrl+R`** reloads from disk; **`Ctrl+G`** opens a
-  typed path in the matching viewer.
+  typed path or `http(s)://` URL in the matching viewer (see the
+  [HTML preview](html.md) for the URL-fetch policy).
 - Mouse wheel scrolls.
 - **Click a link** (or press `Enter` with the cursor on it) to open it in the
   browser; image pictograms open the image URL the same way.

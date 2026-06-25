@@ -19,6 +19,96 @@ use crate::PanelExt;
 use super::App;
 
 impl App {
+    /// Start a background fetch of `url` (from a viewer's `Ctrl+G`). The blocking
+    /// GET runs on a worker thread; the result is delivered over a channel and
+    /// picked up by [`check_view_fetch`](App::check_view_fetch).
+    pub(super) fn start_url_fetch(&mut self, url: String) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.state.view_fetch_receiver = Some(rx);
+        self.state.set_info(format!("Fetching {url}…"));
+        std::thread::spawn(move || {
+            let _ = tx.send(termide_fetch::fetch(&url));
+        });
+        self.state.needs_redraw = true;
+    }
+
+    /// Poll the in-flight URL fetch, if any, and open the result on completion.
+    pub(super) fn check_view_fetch(&mut self) {
+        let Some(rx) = self.state.view_fetch_receiver.as_ref() else {
+            return;
+        };
+        match rx.try_recv() {
+            Ok(result) => {
+                self.state.view_fetch_receiver = None;
+                match result {
+                    Ok(fetched) => self.open_fetched(fetched),
+                    Err(e) => self.show_error_modal(format!("Fetch failed: {e}")),
+                }
+                self.state.needs_redraw = true;
+            }
+            Err(TryRecvError::Empty) => {}
+            Err(TryRecvError::Disconnected) => {
+                self.state.view_fetch_receiver = None;
+            }
+        }
+    }
+
+    /// Route a fetched document to the matching viewer by Content-Type.
+    fn open_fetched(&mut self, fetched: termide_fetch::Fetched) {
+        let title = fetch_title(&fetched.final_url);
+        let url = fetched.final_url.clone();
+        match fetched.content_type.as_str() {
+            "text/html" | "application/xhtml+xml" => {
+                let panel =
+                    termide_panel_html::HtmlPanel::from_source(title, fetched.text(), Some(url));
+                self.add_panel(Box::new(panel));
+            }
+            "text/markdown" | "text/x-markdown" => {
+                let panel = termide_panel_markdown::MarkdownPanel::from_source(
+                    title,
+                    fetched.text(),
+                    Some(url),
+                );
+                self.add_panel(Box::new(panel));
+            }
+            ct if ct.starts_with("text/")
+                || ct == "application/json"
+                || ct == "application/xml" =>
+            {
+                // Plain text → show verbatim in the HTML viewer via <pre>.
+                let body = format!("<pre>{}</pre>", escape_html(&fetched.text()));
+                let panel = termide_panel_html::HtmlPanel::from_source(title, body, Some(url));
+                self.add_panel(Box::new(panel));
+            }
+            other => {
+                self.show_error_modal(format!("Unsupported content type: {other}"));
+                return;
+            }
+        }
+        self.auto_save_session();
+    }
+}
+
+/// A short display title from a URL: its last path segment, else the host.
+fn fetch_title(url: &str) -> String {
+    let no_scheme = url.split("://").nth(1).unwrap_or(url);
+    no_scheme
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .filter(|s| !s.is_empty())
+        .unwrap_or(no_scheme)
+        .to_string()
+}
+
+/// Minimal HTML text escaping for wrapping plain text in `<pre>`.
+fn escape_html(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+impl App {
     /// Check channel for directory size calculation results
     pub(super) fn check_dir_size_update(&mut self) {
         use termide_panel_file_manager::FileManager;

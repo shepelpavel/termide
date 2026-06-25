@@ -28,6 +28,13 @@ impl App {
             return Ok(());
         }
 
+        // An http(s) address is fetched over the network and opened by
+        // content-type (the viewer-as-browser path).
+        if input.starts_with("http://") || input.starts_with("https://") {
+            self.start_url_fetch(input.to_string());
+            return Ok(());
+        }
+
         // Resolve to an absolute path: `~/…` → home, relative → against base_dir.
         let path = if let Some(rest) = input.strip_prefix("~/") {
             match dirs::home_dir() {

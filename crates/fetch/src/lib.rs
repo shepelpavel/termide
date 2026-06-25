@@ -1,0 +1,179 @@
+//! Minimal, security-bounded HTTP(S) GET for the viewer panels.
+//!
+//! This is deliberately *not* a general HTTP client: it does one thing —
+//! fetch a document for rendering — under a fixed safety policy:
+//!
+//! - **Schemes:** `http` and `https` only.
+//! - **Timeout:** [`TIMEOUT`] for connect and read.
+//! - **Redirects:** at most [`MAX_REDIRECTS`], followed manually so an
+//!   `https` origin is never downgraded to `http`.
+//! - **Body cap:** [`MAX_BODY`] bytes; larger responses are rejected.
+//! - **TLS:** verified via the platform/webpki roots (ureq + rustls); there is
+//!   no switch to disable verification.
+//!
+//! Embedded resources (e.g. `<img>`) are *not* fetched — the viewer renders
+//! images as a pictogram, so a page cannot phone home through this client.
+
+use std::io::Read;
+use std::time::Duration;
+
+/// Connect + read timeout for a request.
+pub const TIMEOUT: Duration = Duration::from_secs(15);
+/// Maximum number of redirects followed before giving up.
+pub const MAX_REDIRECTS: usize = 5;
+/// Maximum response body size accepted, in bytes.
+pub const MAX_BODY: usize = 8 * 1024 * 1024;
+
+/// User-Agent sent with every request.
+const USER_AGENT: &str = concat!("termide/", env!("CARGO_PKG_VERSION"));
+
+/// A successfully fetched document.
+#[derive(Debug, Clone)]
+pub struct Fetched {
+    /// The final URL after following redirects (the document's base URL).
+    pub final_url: String,
+    /// The response `Content-Type` (media type, lowercased, without parameters).
+    pub content_type: String,
+    /// The raw response body (capped at [`MAX_BODY`]).
+    pub body: Vec<u8>,
+}
+
+impl Fetched {
+    /// Body decoded as UTF-8, lossily (good enough for text/* rendering).
+    #[must_use]
+    pub fn text(&self) -> String {
+        String::from_utf8_lossy(&self.body).into_owned()
+    }
+}
+
+/// Whether a redirect from `from` scheme to `to` scheme is permitted. Upgrades
+/// (`http` → `https`) and same-scheme hops are fine; a downgrade
+/// (`https` → `http`) is refused so a secure origin can't be silently
+/// stripped to plaintext.
+fn redirect_allowed(from: &str, to: &str) -> bool {
+    match (from, to) {
+        ("https", "https") => true,
+        ("https", "http") => false,
+        ("http", "https") | ("http", "http") => true,
+        _ => false,
+    }
+}
+
+/// Reject non-`http(s)` schemes early.
+fn scheme_ok(scheme: &str) -> bool {
+    scheme == "http" || scheme == "https"
+}
+
+/// Fetch `raw_url` under the safety policy. Returns a human-readable error
+/// string on any failure (network, policy violation, oversized body, …).
+pub fn fetch(raw_url: &str) -> Result<Fetched, String> {
+    let mut current = url::Url::parse(raw_url).map_err(|e| format!("invalid URL: {e}"))?;
+    if !scheme_ok(current.scheme()) {
+        return Err(format!("unsupported scheme: {}", current.scheme()));
+    }
+
+    // Manual redirect handling (redirects(0)) so each hop's scheme is checked.
+    let agent = ureq::AgentBuilder::new()
+        .timeout(TIMEOUT)
+        .redirects(0)
+        .user_agent(USER_AGENT)
+        .build();
+
+    for _ in 0..=MAX_REDIRECTS {
+        match agent.get(current.as_str()).call() {
+            Ok(resp) => return read_response(&current, resp),
+            Err(ureq::Error::Status(code, resp)) if (300..400).contains(&code) => {
+                let location = resp
+                    .header("location")
+                    .ok_or_else(|| format!("redirect {code} without Location"))?;
+                let next = current
+                    .join(location)
+                    .map_err(|e| format!("bad redirect target: {e}"))?;
+                if !scheme_ok(next.scheme()) || !redirect_allowed(current.scheme(), next.scheme()) {
+                    return Err(format!(
+                        "refused redirect {} -> {}",
+                        current.scheme(),
+                        next.scheme()
+                    ));
+                }
+                current = next;
+            }
+            Err(ureq::Error::Status(code, _)) => {
+                return Err(format!("HTTP {code}"));
+            }
+            Err(ureq::Error::Transport(t)) => {
+                return Err(format!("request failed: {t}"));
+            }
+        }
+    }
+    Err(format!("too many redirects (> {MAX_REDIRECTS})"))
+}
+
+/// Read a 2xx response into a [`Fetched`], enforcing the body-size cap.
+fn read_response(url: &url::Url, resp: ureq::Response) -> Result<Fetched, String> {
+    // media type only, lowercased, parameters (charset, …) dropped.
+    let content_type = resp
+        .content_type()
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+
+    // Read one byte past the cap to detect overflow without trusting
+    // Content-Length.
+    let mut body = Vec::new();
+    resp.into_reader()
+        .take((MAX_BODY as u64) + 1)
+        .read_to_end(&mut body)
+        .map_err(|e| format!("read failed: {e}"))?;
+    if body.len() > MAX_BODY {
+        return Err(format!(
+            "response exceeds {} MiB cap",
+            MAX_BODY / (1024 * 1024)
+        ));
+    }
+
+    Ok(Fetched {
+        final_url: url.to_string(),
+        content_type,
+        body,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_non_http_schemes() {
+        for u in [
+            "file:///etc/passwd",
+            "ftp://h/x",
+            "gopher://h",
+            "data:text/plain,hi",
+        ] {
+            assert!(fetch(u).is_err(), "scheme should be rejected: {u}");
+        }
+        assert!(!scheme_ok("file"));
+        assert!(scheme_ok("http"));
+        assert!(scheme_ok("https"));
+    }
+
+    #[test]
+    fn redirect_downgrade_refused() {
+        assert!(redirect_allowed("http", "https"));
+        assert!(redirect_allowed("https", "https"));
+        assert!(redirect_allowed("http", "http"));
+        assert!(
+            !redirect_allowed("https", "http"),
+            "https->http must be refused"
+        );
+        assert!(!redirect_allowed("https", "ftp"));
+    }
+
+    #[test]
+    fn invalid_url_errors() {
+        assert!(fetch("not a url").is_err());
+    }
+}

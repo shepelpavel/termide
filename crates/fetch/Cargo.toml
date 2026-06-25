@@ -1,0 +1,12 @@
+[package]
+name = "termide-fetch"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Minimal, security-bounded HTTP(S) GET for termide's viewer panels"
+
+[dependencies]
+ureq.workspace = true
+url.workspace = true

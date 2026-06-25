@@ -282,6 +282,10 @@ pub struct AppState {
     pub pending_action: Option<PendingAction>,
     /// Receiver channel for background directory size calculation results
     pub dir_size_receiver: Option<mpsc::Receiver<DirSizeResult>>,
+    /// Receiver for a background URL fetch started from a viewer's go-to-path
+    /// (`Ctrl+G` with an `http(s)://` address). Carries the fetched document
+    /// or a human-readable error.
+    pub view_fetch_receiver: Option<mpsc::Receiver<Result<termide_fetch::Fetched, String>>>,
     /// Handle for background git operation (allows cancellation)
     pub git_operation_handle: Option<GitOperationHandle>,
     /// SSH key passphrase entered for git network operations, cached in memory
@@ -423,6 +427,7 @@ impl AppState {
             active_modal: None,
             pending_action: None,
             dir_size_receiver: None,
+            view_fetch_receiver: None,
             git_operation_handle: None,
             git_ssh_passphrase: None,
             command_operation_handles: Vec::new(),

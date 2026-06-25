@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **`Ctrl+G` "go to path" in the Markdown and HTML viewers.** Type a path to open it in the matching viewer (HTML, Markdown, image, or text), routed by type — a quick jump to a sibling file. (First step toward navigable viewers.)
+- **`Ctrl+G` "go to path / URL" in the Markdown and HTML viewers.** Type a path or an `http(s)://` URL to open it in the matching viewer, routed by type (local files by extension, fetched URLs by `Content-Type`) — a quick jump to a sibling file, or a basic text-mode browse of a web page. URL fetching is security-bounded: http/https only, verified TLS, 15s timeout, ≤5 redirects with no `https→http` downgrade, 8 MiB body cap, and embedded resources (e.g. `<img>`) are never loaded. (Steps toward navigable viewers; relative links and in-panel navigation come next.)
 - **HTML preview panel.** `.html` / `.htm` files open as a rendered read-only view (`F3`) — headings, lists, tables, block quotes, `<pre>`/`<code>`, inline `<kbd>`/`<b>`/`<i>`/`<sub>` styling, links, and image pictograms — with the full viewer UX: movable cursor, text selection, clipboard copy, incremental search (`Ctrl+F`), reload from disk (`Ctrl+R`), and `Ctrl+E` to toggle to the editable source. Unknown tags stay transparent; author CSS/scripts are ignored.
 - **HTML embedded in Markdown now renders.** Raw HTML in `.md` files — centered `<img>` badges, `<details>`/`<summary>`, HTML `<table>`s, and inline tags like `<kbd>` — renders through the same engine instead of appearing as literal angle-bracket text.
 

@@ -56,10 +56,28 @@ The preview has a movable cursor and supports text selection:
 - **`Ctrl+C`** copies the selection (or the cursor's line when nothing is
   selected) to the clipboard.
 - **`Ctrl+F`** opens incremental search; **`Ctrl+R`** reloads the file from disk.
-- **`Ctrl+G`** prompts for a path and opens it in the matching viewer (HTML,
-  Markdown, image, or text) — a quick way to jump to a sibling file.
+- **`Ctrl+G`** prompts for a path **or `http(s)://` URL** and opens it in the
+  matching viewer (HTML, Markdown, image, or text) — a quick jump to a sibling
+  file, or a basic text-mode browse of a web page (see *Fetching URLs* below).
 - Mouse wheel scrolls.
 - **Click a link** (or press `Enter` with the cursor on it) to open it in the
   browser; image pictograms open the image URL the same way.
 
-The panel persists across sessions and reopens at the same file.
+## Fetching URLs
+
+`Ctrl+G` with an `http(s)://` address fetches the document in the background
+and opens it routed by `Content-Type` (HTML → this viewer, Markdown → the
+Markdown viewer, other text → shown verbatim). The fetch is deliberately
+bounded — this is a reader, not a browser engine:
+
+- `http` and `https` only; TLS is verified (no opt-out).
+- 15-second timeout; at most 5 redirects, and an `https` origin is never
+  downgraded to `http`.
+- Responses over 8 MiB are rejected.
+- Embedded resources are **not** loaded — `<img>` stays a `🖼` pictogram, so a
+  page cannot phone home through the viewer.
+
+URL-loaded views are not restored across sessions. (Relative links and in-panel
+navigation are not wired yet.)
+
+A file-backed panel persists across sessions and reopens at the same file.

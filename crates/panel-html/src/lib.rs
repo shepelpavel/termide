@@ -78,13 +78,18 @@ pub struct HtmlPanel {
     hotkeys: HotkeyTable,
     /// Pointer of the last `Arc<Config>` used to build hotkeys.
     last_config_ptr: usize,
+    /// Origin URL when the content was fetched (not read from a file). `None`
+    /// for file-backed viewers. Used for the title and (later) base-URL link
+    /// resolution; URL-backed viewers are not persisted across sessions.
+    source_url: Option<String>,
 }
 
 impl HtmlPanel {
-    /// Open an HTML file in the preview panel.
-    pub fn new(path: PathBuf) -> anyhow::Result<Self> {
-        let mut panel = Self {
-            file_path: path.clone(),
+    /// A blank viewer with no content (file_path empty); fill via `set_file`
+    /// or `from_source`.
+    fn empty() -> Self {
+        Self {
+            file_path: PathBuf::new(),
             title: String::new(),
             source: String::new(),
             error: None,
@@ -107,9 +112,25 @@ impl HtmlPanel {
             is_light: false,
             hotkeys: HotkeyTable::default(),
             last_config_ptr: 0,
-        };
+            source_url: None,
+        }
+    }
+
+    /// Open an HTML file in the preview panel.
+    pub fn new(path: PathBuf) -> anyhow::Result<Self> {
+        let mut panel = Self::empty();
         panel.set_file(path);
         Ok(panel)
+    }
+
+    /// Build a viewer over in-memory `source` (e.g. content fetched over HTTP),
+    /// with `source_url` as its origin. Not read from, nor written to, disk.
+    pub fn from_source(title: String, source: String, source_url: Option<String>) -> Self {
+        let mut panel = Self::empty();
+        panel.title = title;
+        panel.source = source;
+        panel.source_url = source_url;
+        panel
     }
 
     /// Point the panel at a new file, reloading its content.
@@ -768,12 +789,20 @@ impl Panel for HtmlPanel {
     }
 
     fn reload(&mut self) -> anyhow::Result<()> {
+        // URL-backed content has no file to re-read; leave it as-is.
+        if self.source_url.is_some() {
+            return Ok(());
+        }
         let path = self.file_path.clone();
         self.set_file(path);
         Ok(())
     }
 
     fn to_session(&self, _session_dir: &Path) -> Option<SessionPanel> {
+        // Only file-backed viewers persist; fetched URLs are not restored.
+        if self.source_url.is_some() {
+            return None;
+        }
         Some(SessionPanel::Html {
             path: self.file_path.clone(),
         })
@@ -870,6 +899,7 @@ mod tests {
             is_light: false,
             hotkeys: HotkeyTable::default(),
             last_config_ptr: 0,
+            source_url: None,
         };
         p.doc = render_html(src, 80, &p.colors, false);
         p.layout_width = 80;
