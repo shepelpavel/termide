@@ -33,6 +33,9 @@ pub struct LinkSpan {
 pub struct Rendered {
     pub lines: Vec<Line<'static>>,
     pub links: Vec<LinkSpan>,
+    /// Named anchors (`id`/`name` / heading slug) → target line index, for
+    /// fragment navigation (`#section`).
+    pub anchors: Vec<(String, usize)>,
 }
 
 /// A pending table being collected between its start and end.
@@ -88,6 +91,8 @@ pub struct Builder<'c> {
     cur_link: Option<usize>,
     /// Recorded link hit-areas (url ids resolved in `finish`).
     pending_links: Vec<PendingLink>,
+    /// Named anchors → target line index.
+    anchors: Vec<(String, usize)>,
 }
 
 impl<'c> Builder<'c> {
@@ -111,10 +116,30 @@ impl<'c> Builder<'c> {
             urls: Vec::new(),
             cur_link: None,
             pending_links: Vec::new(),
+            anchors: Vec::new(),
         }
     }
 
     // --- accessors for front-ends that compute their own styles -------------
+
+    /// Index of the next line that will be emitted (anchor target position).
+    #[must_use]
+    pub fn current_line(&self) -> usize {
+        self.lines.len()
+    }
+
+    /// Register a named anchor pointing at line `line`.
+    pub fn add_anchor_at(&mut self, id: String, line: usize) {
+        if !id.is_empty() {
+            self.anchors.push((id, line));
+        }
+    }
+
+    /// Register a named anchor at the next line to be emitted.
+    pub fn add_anchor(&mut self, id: String) {
+        let line = self.lines.len();
+        self.add_anchor_at(id, line);
+    }
 
     #[must_use]
     pub fn colors(&self) -> &ThemeColors {
@@ -648,9 +673,17 @@ impl<'c> Builder<'c> {
                 url: self.urls[p.url_id].clone(),
             })
             .collect();
+        // Clamp anchors that fell past the trimmed end to the last line.
+        let last = line_count.saturating_sub(1);
+        let anchors = self
+            .anchors
+            .into_iter()
+            .map(|(id, line)| (id, line.min(last)))
+            .collect();
         Rendered {
             lines: self.lines,
             links,
+            anchors,
         }
     }
 }

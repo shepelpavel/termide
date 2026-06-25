@@ -91,6 +91,9 @@ pub struct MarkdownPanel {
     open_links: LinkOpen,
     /// Where a followed image link opens by default (from config).
     open_images: LinkOpen,
+    /// Fragment to scroll to once content is (re)laid out — set when content
+    /// loads from a URL carrying a `#fragment`.
+    pending_anchor: Option<String>,
 }
 
 impl MarkdownPanel {
@@ -105,6 +108,7 @@ impl MarkdownPanel {
             doc: Rendered {
                 lines: Vec::new(),
                 links: Vec::new(),
+                anchors: Vec::new(),
             },
             layout_width: 0,
             top: 0,
@@ -126,6 +130,7 @@ impl MarkdownPanel {
             hist_idx: 0,
             open_links: LinkOpen::default(),
             open_images: LinkOpen::default(),
+            pending_anchor: None,
         }
     }
 
@@ -145,6 +150,7 @@ impl MarkdownPanel {
         if let Some(url) = &source_url {
             panel.history = vec![url.clone()];
             panel.hist_idx = 0;
+            panel.pending_anchor = url_fragment(url);
         }
         panel.source_url = source_url;
         panel
@@ -155,6 +161,7 @@ impl MarkdownPanel {
     pub fn apply_fetched(&mut self, title: String, source: String, final_url: String) {
         self.title = title;
         self.source = source;
+        self.pending_anchor = url_fragment(&final_url);
         self.source_url = Some(final_url);
         self.top = 0;
         self.cursor = (0, 0);
@@ -188,10 +195,15 @@ impl MarkdownPanel {
     /// honor the `open_links` setting: `External` → browser; `Panel` →
     /// in-place navigation in a fetched view, or a new viewer otherwise.
     fn activate_link(&mut self, href: &str) -> Vec<PanelEvent> {
-        // In-page anchors (`#`, `#section`) and empty links aren't navigable
-        // here — do nothing rather than handing "#" to the system opener.
-        if href.is_empty() || href.starts_with('#') {
+        if href.is_empty() {
             return vec![];
+        }
+        // Same-page anchor: scroll to it (don't hand "#" to the system opener).
+        if let Some(frag) = href.strip_prefix('#') {
+            if !frag.is_empty() {
+                self.scroll_to_anchor(frag);
+            }
+            return vec![PanelEvent::NeedsRedraw];
         }
         let target = self.resolve(href);
         let is_web = target.starts_with("http://") || target.starts_with("https://");
@@ -241,6 +253,16 @@ impl MarkdownPanel {
             return vec![PanelEvent::NavigateUrl(self.history[self.hist_idx].clone())];
         }
         vec![]
+    }
+
+    /// Scroll so the named anchor's line is at the top of the view. No-op if
+    /// the anchor is unknown.
+    fn scroll_to_anchor(&mut self, frag: &str) {
+        if let Some(&(_, line)) = self.doc.anchors.iter().find(|(id, _)| id == frag) {
+            self.top = line.min(self.max_top());
+            self.cursor = (line, 0);
+            self.anchor = None;
+        }
     }
 
     /// Point the panel at a new file, reloading its content.
@@ -303,6 +325,10 @@ impl MarkdownPanel {
         self.clamp_cursor();
         self.run_search(); // re-locate matches against the new wrapping
         self.top = self.top.min(self.max_top());
+        // Jump to a pending `#fragment` now that anchor line indices exist.
+        if let Some(frag) = self.pending_anchor.take() {
+            self.scroll_to_anchor(&frag);
+        }
     }
 
     fn clamp_cursor(&mut self) {
@@ -956,6 +982,13 @@ impl Panel for MarkdownPanel {
     }
 }
 
+/// The `#fragment` part of a URL, if present and non-empty.
+fn url_fragment(url: &str) -> Option<String> {
+    url.split_once('#')
+        .map(|(_, f)| f.to_string())
+        .filter(|f| !f.is_empty())
+}
+
 /// Whether `path` (or URL) ends in a known raster-image extension.
 fn is_image_path(path: &str) -> bool {
     let ext = path
@@ -1031,6 +1064,7 @@ mod tests {
             doc: Rendered {
                 lines: Vec::new(),
                 links: Vec::new(),
+                anchors: Vec::new(),
             },
             layout_width: 0,
             top: 0,
@@ -1052,6 +1086,7 @@ mod tests {
             hist_idx: 0,
             open_links: LinkOpen::Panel,
             open_images: LinkOpen::Panel,
+            pending_anchor: None,
         };
         p.doc = render::render_markdown(src, 80, &p.colors, false);
         p.layout_width = 80;

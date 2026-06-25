@@ -21,22 +21,45 @@ pub fn render_markdown(src: &str, width: u16, colors: &ThemeColors, is_light: bo
     // with a persistent state, so elements that CommonMark splits across events
     // (e.g. a `<details>` wrapping Markdown) still nest correctly.
     let mut html = HtmlState::default();
+    // Heading currently being collected, for generating a fragment anchor
+    // (GitHub-style slug) so a table-of-contents `[x](#heading)` link works.
+    let mut heading: Option<HeadingCap> = None;
     let mut opts = Options::empty();
     opts.insert(Options::ENABLE_TABLES);
     opts.insert(Options::ENABLE_STRIKETHROUGH);
     opts.insert(Options::ENABLE_TASKLISTS);
     for ev in Parser::new_ext(src, opts) {
-        event(&mut b, &mut html, ev);
+        event(&mut b, &mut html, &mut heading, ev);
     }
     b.finish()
 }
 
-fn event(b: &mut Builder, html: &mut HtmlState, ev: Event<'_>) {
+/// A heading being collected between its start and end events.
+struct HeadingCap {
+    /// Line index the heading will occupy (anchor target).
+    line: usize,
+    /// Accumulated heading text, for slug generation.
+    text: String,
+    /// Explicit `{#id}` from the source, if any.
+    explicit_id: Option<String>,
+}
+
+fn event(b: &mut Builder, html: &mut HtmlState, heading: &mut Option<HeadingCap>, ev: Event<'_>) {
     match ev {
-        Event::Start(tag) => start(b, tag),
-        Event::End(tag) => end(b, tag),
-        Event::Text(t) => b.text(&t),
-        Event::Code(t) => b.inline_code(&t),
+        Event::Start(tag) => start(b, heading, tag),
+        Event::End(tag) => end(b, heading, tag),
+        Event::Text(t) => {
+            if let Some(h) = heading.as_mut() {
+                h.text.push_str(&t);
+            }
+            b.text(&t);
+        }
+        Event::Code(t) => {
+            if let Some(h) = heading.as_mut() {
+                h.text.push_str(&t);
+            }
+            b.inline_code(&t);
+        }
         Event::SoftBreak => b.soft_break(),
         Event::HardBreak => b.hard_break(),
         Event::Rule => b.rule(),
@@ -51,10 +74,17 @@ fn event(b: &mut Builder, html: &mut HtmlState, ev: Event<'_>) {
     }
 }
 
-fn start(b: &mut Builder, tag: Tag<'_>) {
+fn start(b: &mut Builder, heading: &mut Option<HeadingCap>, tag: Tag<'_>) {
     match tag {
         Tag::Paragraph => {}
-        Tag::Heading { level, .. } => b.start_heading(heading_depth(level)),
+        Tag::Heading { level, id, .. } => {
+            b.start_heading(heading_depth(level));
+            *heading = Some(HeadingCap {
+                line: b.current_line(),
+                text: String::new(),
+                explicit_id: id.map(|s| s.into_string()),
+            });
+        }
         Tag::BlockQuote(_) => b.start_quote(),
         Tag::CodeBlock(kind) => {
             let lang = match kind {
@@ -81,10 +111,19 @@ fn start(b: &mut Builder, tag: Tag<'_>) {
     }
 }
 
-fn end(b: &mut Builder, tag: TagEnd) {
+fn end(b: &mut Builder, heading: &mut Option<HeadingCap>, tag: TagEnd) {
     match tag {
         TagEnd::Paragraph => b.end_paragraph(),
-        TagEnd::Heading(_) => b.end_heading(),
+        TagEnd::Heading(_) => {
+            if let Some(h) = heading.take() {
+                if let Some(id) = h.explicit_id {
+                    b.add_anchor_at(id, h.line);
+                }
+                let slug = slugify(&h.text);
+                b.add_anchor_at(slug, h.line);
+            }
+            b.end_heading();
+        }
         // A raw HTML block is its own paragraph: flush the accumulated text and
         // separate it, so a following block (e.g. a heading) does not merge
         // onto the same line.
@@ -114,6 +153,27 @@ fn heading_depth(level: HeadingLevel) -> usize {
     }
 }
 
+/// GitHub-style heading slug: lowercase, drop punctuation, spaces → `-`,
+/// collapse and trim hyphens. Used as a fragment anchor so a `[x](#heading)`
+/// table-of-contents link resolves.
+fn slugify(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for ch in text.chars() {
+        if ch.is_alphanumeric() {
+            out.extend(ch.to_lowercase());
+        } else if ch == '_' {
+            out.push('_'); // GitHub keeps underscores
+        } else if ch == ' ' || ch == '-' {
+            // Collapse runs of spaces/hyphens into a single hyphen.
+            if !out.ends_with('-') {
+                out.push('-');
+            }
+        }
+        // All other punctuation is dropped (matches GitHub).
+    }
+    out.trim_matches('-').to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -134,6 +194,16 @@ mod tests {
                     .collect::<String>()
             })
             .collect()
+    }
+
+    #[test]
+    fn heading_generates_slug_anchor() {
+        let r = render_markdown("# Hello, World!\n\ntext", 80, &colors(), false);
+        assert!(
+            r.anchors.iter().any(|(id, _)| id == "hello-world"),
+            "{:?}",
+            r.anchors
+        );
     }
 
     #[test]

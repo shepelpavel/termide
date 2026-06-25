@@ -90,6 +90,9 @@ pub struct HtmlPanel {
     open_links: LinkOpen,
     /// Where a followed image link opens by default (from config).
     open_images: LinkOpen,
+    /// Fragment to scroll to once content is (re)laid out — set when content
+    /// loads from a URL carrying a `#fragment`.
+    pending_anchor: Option<String>,
 }
 
 impl HtmlPanel {
@@ -104,6 +107,7 @@ impl HtmlPanel {
             doc: Rendered {
                 lines: Vec::new(),
                 links: Vec::new(),
+                anchors: Vec::new(),
             },
             layout_width: 0,
             top: 0,
@@ -125,6 +129,7 @@ impl HtmlPanel {
             hist_idx: 0,
             open_links: LinkOpen::default(),
             open_images: LinkOpen::default(),
+            pending_anchor: None,
         }
     }
 
@@ -144,6 +149,7 @@ impl HtmlPanel {
         if let Some(url) = &source_url {
             panel.history = vec![url.clone()];
             panel.hist_idx = 0;
+            panel.pending_anchor = url_fragment(url);
         }
         panel.source_url = source_url;
         panel
@@ -154,6 +160,7 @@ impl HtmlPanel {
     pub fn apply_fetched(&mut self, title: String, source: String, final_url: String) {
         self.title = title;
         self.source = source;
+        self.pending_anchor = url_fragment(&final_url);
         self.source_url = Some(final_url);
         self.top = 0;
         self.cursor = (0, 0);
@@ -187,10 +194,15 @@ impl HtmlPanel {
     /// honor the `open_links` setting: `External` → browser; `Panel` →
     /// in-place navigation in a fetched view, or a new viewer otherwise.
     fn activate_link(&mut self, href: &str) -> Vec<PanelEvent> {
-        // In-page anchors (`#`, `#section`) and empty links aren't navigable
-        // here — do nothing rather than handing "#" to the system opener.
-        if href.is_empty() || href.starts_with('#') {
+        if href.is_empty() {
             return vec![];
+        }
+        // Same-page anchor: scroll to it (don't hand "#" to the system opener).
+        if let Some(frag) = href.strip_prefix('#') {
+            if !frag.is_empty() {
+                self.scroll_to_anchor(frag);
+            }
+            return vec![PanelEvent::NeedsRedraw];
         }
         let target = self.resolve(href);
         let is_web = target.starts_with("http://") || target.starts_with("https://");
@@ -240,6 +252,16 @@ impl HtmlPanel {
             return vec![PanelEvent::NavigateUrl(self.history[self.hist_idx].clone())];
         }
         vec![]
+    }
+
+    /// Scroll so the named anchor's line is at the top of the view. No-op if
+    /// the anchor is unknown.
+    fn scroll_to_anchor(&mut self, frag: &str) {
+        if let Some(&(_, line)) = self.doc.anchors.iter().find(|(id, _)| id == frag) {
+            self.top = line.min(self.max_top());
+            self.cursor = (line, 0);
+            self.anchor = None;
+        }
     }
 
     /// Point the panel at a new file, reloading its content.
@@ -302,6 +324,10 @@ impl HtmlPanel {
         self.clamp_cursor();
         self.run_search(); // re-locate matches against the new wrapping
         self.top = self.top.min(self.max_top());
+        // Jump to a pending `#fragment` now that anchor line indices exist.
+        if let Some(frag) = self.pending_anchor.take() {
+            self.scroll_to_anchor(&frag);
+        }
     }
 
     fn clamp_cursor(&mut self) {
@@ -955,6 +981,13 @@ impl Panel for HtmlPanel {
     }
 }
 
+/// The `#fragment` part of a URL, if present and non-empty.
+fn url_fragment(url: &str) -> Option<String> {
+    url.split_once('#')
+        .map(|(_, f)| f.to_string())
+        .filter(|f| !f.is_empty())
+}
+
 /// Whether `path` (or URL) ends in a known raster-image extension.
 fn is_image_path(path: &str) -> bool {
     let ext = path
@@ -1030,6 +1063,7 @@ mod tests {
             doc: Rendered {
                 lines: Vec::new(),
                 links: Vec::new(),
+                anchors: Vec::new(),
             },
             layout_width: 0,
             top: 0,
@@ -1051,6 +1085,7 @@ mod tests {
             hist_idx: 0,
             open_links: LinkOpen::Panel,
             open_images: LinkOpen::Panel,
+            pending_anchor: None,
         };
         p.doc = render_html(src, 80, &p.colors, false);
         p.layout_width = 80;
@@ -1186,11 +1221,35 @@ mod tests {
     }
 
     #[test]
-    fn fragment_links_are_noop() {
+    fn empty_link_is_noop() {
         let mut p = panel_from("<p>x</p>");
-        assert!(p.activate_link("#").is_empty(), "bare anchor");
-        assert!(p.activate_link("#section").is_empty(), "fragment anchor");
         assert!(p.activate_link("").is_empty(), "empty href");
+    }
+
+    #[test]
+    fn same_page_anchor_scrolls() {
+        let mut html = String::from("<p>top</p>");
+        for i in 0..40 {
+            html.push_str(&format!("<p>line {i}</p>"));
+        }
+        html.push_str("<h2 id=\"target\">Target</h2><p>after</p>");
+        let mut p = panel_from(&html);
+        assert!(
+            p.doc.anchors.iter().any(|(id, _)| id == "target"),
+            "anchor not registered: {:?}",
+            p.doc.anchors
+        );
+        let before = p.top;
+        let evs = p.activate_link("#target");
+        assert!(
+            matches!(evs.as_slice(), [PanelEvent::NeedsRedraw]),
+            "{evs:?}"
+        );
+        assert!(
+            p.top > before,
+            "should scroll down to the anchor (top={}, before={before})",
+            p.top
+        );
     }
 
     #[test]

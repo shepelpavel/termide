@@ -71,6 +71,8 @@ The preview has a movable cursor and supports text selection:
   (regardless of the setting).
 - **`[` / `]`** (or **`Backspace`** for back) step back / forward through the
   page history of a navigated view.
+- **Anchor links** (`#section`) jump within the page (to the matching `id`);
+  `page#section` navigates to the page and then jumps to the anchor.
 
 ## Fetching URLs
 

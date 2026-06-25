@@ -323,6 +323,16 @@ fn open(b: &mut Builder, st: &mut HtmlState, name: &str, attrs: &[(String, Strin
         _ => Close::None,
     };
 
+    // Register a fragment anchor for this element's `id` (or `<a name>`),
+    // pointing at the line where its content begins.
+    let mut anchor = attr(attrs, "id");
+    if anchor.is_empty() && name == "a" {
+        anchor = attr(attrs, "name");
+    }
+    if !anchor.is_empty() {
+        b.add_anchor(anchor);
+    }
+
     if !void {
         st.stack.push(Frame {
             name: name.to_string(),
@@ -513,6 +523,16 @@ mod tests {
         assert!(joined.contains("├"), "no header sep: {out:?}");
         assert!(joined.contains("└"), "no bottom border: {out:?}");
         assert!(joined.contains("A") && joined.contains('1'), "{out:?}");
+    }
+
+    #[test]
+    fn id_attribute_registers_anchor() {
+        let r = render_html("<p>x</p><h2 id=\"sec\">Section</h2>", 80, &colors(), false);
+        assert!(
+            r.anchors.iter().any(|(id, _)| id == "sec"),
+            "{:?}",
+            r.anchors
+        );
     }
 
     #[test]

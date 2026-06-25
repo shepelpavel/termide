@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Anchor-link navigation in the viewers.** Following a `#section` link jumps within the page to the matching `id` (HTML) or heading (Markdown, GitHub-style slugs), and a `page#section` link navigates to the page and then jumps to the anchor.
 - **`Windows ▸ Web` menu entry.** A discoverable way to start text-mode browsing: it opens a URL prompt and shows the page in a viewer. A fetched view shows the URL as its title and a 🌐 globe icon.
 - **Separate "open in panel vs external" settings for pages and images.** `[viewer] open_links` (pages/links) and `[viewer] open_images` (image links), each `panel` (default) or `external`; `O` is still the per-link external override.
 - **Viewer shortcuts in the help panel (`Alt+H` / `F1`).** A new "Viewers" section documents the Markdown/HTML/diagram hotkeys (toggle source, go-to-path/URL, search, reload, copy, follow link, external open, history).

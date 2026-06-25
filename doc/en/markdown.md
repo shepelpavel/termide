@@ -58,7 +58,9 @@ The preview has a movable cursor and supports text selection:
   typed path or `http(s)://` URL in the matching viewer (see the
   [HTML preview](html.md) for the URL-fetch policy).
 - Mouse wheel scrolls.
-- **Click a link** (or press `Enter` with the cursor on it) to open it in the
-  browser; image pictograms open the image URL the same way.
+- **Follow a link** (click or `Enter`): web links open in the viewer by default,
+  image links in the image preview, and `#heading` anchors jump within the page.
+  `O` opens the link externally; `[`/`]` are history back/forward. See the
+  [HTML preview](html.md) for the link-open settings and fetch policy.
 
 The panel persists across sessions and reopens at the same file.
