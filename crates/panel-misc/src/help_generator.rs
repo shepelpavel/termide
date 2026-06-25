@@ -10,6 +10,7 @@ use ratatui::{
 use termide_config::{
     Config, DatabaseKeybindings, EditorKeybindings, FileManagerKeybindings, GitDiffKeybindings,
     GitLogKeybindings, GitStatusKeybindings, GlobalKeybindings, KeyBinding, TerminalKeybindings,
+    ViewerKeybindings,
 };
 use termide_i18n;
 use termide_theme::Theme;
@@ -44,6 +45,7 @@ impl HelpGenerator {
             Self::generate_navigation_section(t),
             Self::generate_file_manager_section(&config.file_manager.keybindings, t),
             Self::generate_editor_section(&config.editor.keybindings, t),
+            Self::generate_viewers_section(&config.viewer.keybindings, t),
             Self::generate_git_status_section(&config.git_status.keybindings, t),
             Self::generate_git_diff_section(&config.git_diff.keybindings, t),
             Self::generate_git_log_section(
@@ -848,6 +850,51 @@ impl HelpGenerator {
     }
 
     /// Generate image viewer keybindings section.
+    fn generate_viewers_section(
+        kb: &ViewerKeybindings,
+        t: &dyn termide_i18n::Translation,
+    ) -> HelpSection {
+        let toggle = Self::format_keys(&kb.toggle_view);
+        let entries = vec![
+            HelpEntry {
+                keys: toggle,
+                description: t.help_desc_viewer_toggle().to_string(),
+            },
+            HelpEntry {
+                keys: "Ctrl+G".to_string(),
+                description: t.help_desc_viewer_goto().to_string(),
+            },
+            HelpEntry {
+                keys: "Ctrl+F".to_string(),
+                description: t.help_desc_viewer_search().to_string(),
+            },
+            HelpEntry {
+                keys: "Ctrl+R".to_string(),
+                description: t.help_desc_viewer_reload().to_string(),
+            },
+            HelpEntry {
+                keys: "Ctrl+C".to_string(),
+                description: t.help_desc_viewer_copy().to_string(),
+            },
+            HelpEntry {
+                keys: "Enter".to_string(),
+                description: t.help_desc_viewer_follow().to_string(),
+            },
+            HelpEntry {
+                keys: "O".to_string(),
+                description: t.help_desc_viewer_external().to_string(),
+            },
+            HelpEntry {
+                keys: "[ / ]".to_string(),
+                description: t.help_desc_viewer_history().to_string(),
+            },
+        ];
+        HelpSection {
+            header: t.help_section_viewers().to_string(),
+            entries,
+        }
+    }
+
     fn generate_image_section(t: &dyn termide_i18n::Translation) -> HelpSection {
         let entries = vec![HelpEntry {
             keys: "q".to_string(),

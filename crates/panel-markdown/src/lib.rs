@@ -87,8 +87,10 @@ pub struct MarkdownPanel {
     history: Vec<String>,
     /// Current position within `history`.
     hist_idx: usize,
-    /// Where a followed link opens by default (from config).
+    /// Where a followed page/link opens by default (from config).
     open_links: LinkOpen,
+    /// Where a followed image link opens by default (from config).
+    open_images: LinkOpen,
 }
 
 impl MarkdownPanel {
@@ -123,6 +125,7 @@ impl MarkdownPanel {
             history: Vec::new(),
             hist_idx: 0,
             open_links: LinkOpen::default(),
+            open_images: LinkOpen::default(),
         }
     }
 
@@ -191,14 +194,21 @@ impl MarkdownPanel {
             return vec![];
         }
         let target = self.resolve(href);
-        // `O` / the external setting send everything to the system opener.
-        if self.open_links == LinkOpen::External {
+        let is_web = target.starts_with("http://") || target.starts_with("https://");
+        let is_image = is_image_path(&target);
+        // Images and pages each follow their own open-where setting; `O` is the
+        // per-action external override (handled by the caller).
+        let mode = if is_image {
+            self.open_images
+        } else {
+            self.open_links
+        };
+        if mode == LinkOpen::External {
             return vec![PanelEvent::OpenExternal(PathBuf::from(target))];
         }
-        let is_web = target.starts_with("http://") || target.starts_with("https://");
         if is_web {
-            // Web links: fetch and render in the viewer (image responses are
-            // routed to the image preview by the fetch handler).
+            // Fetch and render in the viewer; image responses are routed to the
+            // image preview by the fetch handler.
             if self.source_url.is_some() {
                 self.history.truncate(self.hist_idx + 1);
                 self.history.push(target.clone());
@@ -207,8 +217,8 @@ impl MarkdownPanel {
             } else {
                 vec![PanelEvent::OpenUrl(target)]
             }
-        } else if is_image_path(&target) {
-            // Local image → built-in image preview, like an HTML link.
+        } else if is_image {
+            // Local image → built-in image preview.
             vec![PanelEvent::PreviewMedia(PathBuf::from(target))]
         } else {
             vec![PanelEvent::OpenExternal(PathBuf::from(target))]
@@ -545,7 +555,15 @@ impl Panel for MarkdownPanel {
     }
 
     fn title(&self) -> String {
-        self.title.clone()
+        // A fetched page shows its URL; a file-backed view shows the filename.
+        self.source_url
+            .clone()
+            .unwrap_or_else(|| self.title.clone())
+    }
+
+    fn icon(&self) -> Option<&'static str> {
+        // A globe for a fetched web page (matching the bookmark icon).
+        self.source_url.as_ref().map(|_| "🌐")
     }
 
     fn prepare_render(&mut self, theme: &Theme, config: &Arc<Config>) {
@@ -564,6 +582,7 @@ impl Panel for MarkdownPanel {
             t.insert("toggle_view", &config.viewer.keybindings.toggle_view);
             self.hotkeys = t;
             self.open_links = config.viewer.open_links;
+            self.open_images = config.viewer.open_images;
         }
     }
 
@@ -1032,6 +1051,7 @@ mod tests {
             history: Vec::new(),
             hist_idx: 0,
             open_links: LinkOpen::Panel,
+            open_images: LinkOpen::Panel,
         };
         p.doc = render::render_markdown(src, 80, &p.colors, false);
         p.layout_width = 80;

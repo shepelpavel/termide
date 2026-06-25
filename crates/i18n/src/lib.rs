@@ -273,6 +273,15 @@ pub trait Translation: Send + Sync {
     fn help_desc_copy_name(&self) -> &str;
     fn help_desc_close_image(&self) -> &str;
     fn help_desc_vim_panel_nav(&self) -> &str;
+    fn help_section_viewers(&self) -> &str;
+    fn help_desc_viewer_toggle(&self) -> &str;
+    fn help_desc_viewer_goto(&self) -> &str;
+    fn help_desc_viewer_search(&self) -> &str;
+    fn help_desc_viewer_reload(&self) -> &str;
+    fn help_desc_viewer_copy(&self) -> &str;
+    fn help_desc_viewer_follow(&self) -> &str;
+    fn help_desc_viewer_external(&self) -> &str;
+    fn help_desc_viewer_history(&self) -> &str;
 
     // File operation status
     fn status_file_created(&self, name: &str) -> String;
@@ -376,6 +385,8 @@ pub trait Translation: Send + Sync {
     fn tools_diagnostics(&self) -> &str;
     fn tools_operations(&self) -> &str;
     fn tools_outline(&self) -> &str;
+    fn tools_web(&self) -> &str;
+    fn tools_web_prompt(&self) -> &str;
 
     // Options submenu
     fn options_help(&self) -> &str;

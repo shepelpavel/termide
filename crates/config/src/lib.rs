@@ -22,6 +22,7 @@ pub use keybindings::{
     is_go_end, is_go_home, is_move_down, is_move_up, parse_keybinding, DatabaseKeybindings,
     EditorKeybindings, FileManagerKeybindings, GitDiffKeybindings, GitLogKeybindings,
     GitStatusKeybindings, GlobalKeybindings, KeyBinding, ParsedKeyBinding, TerminalKeybindings,
+    ViewerKeybindings,
 };
 pub use settings::{
     Config, CustomLanguage, DatabaseSettings, EditorSettings, FileManagerSettings, GeneralSettings,

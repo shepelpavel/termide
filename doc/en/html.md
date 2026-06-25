@@ -64,8 +64,9 @@ The preview has a movable cursor and supports text selection:
   default links open **in the panel**: a fetched (URL-backed) page navigates in
   place (relative links resolve against the page URL), a web link from a
   file-backed view opens in a new viewer, and a link to an **image** opens in
-  the image preview. Set `[viewer] open_links = "external"` to open links in the
-  system browser instead.
+  the image preview. Two settings choose the default destination —
+  `[viewer] open_links` for pages and `[viewer] open_images` for image links —
+  each `panel` (default) or `external`.
 - **`O`** always opens the link under the cursor in the external browser
   (regardless of the setting).
 - **`[` / `]`** (or **`Backspace`** for back) step back / forward through the
@@ -73,7 +74,9 @@ The preview has a movable cursor and supports text selection:
 
 ## Fetching URLs
 
-`Ctrl+G` with an `http(s)://` address fetches the document in the background
+The **Windows ▸ Web** menu item opens a URL prompt directly (a discoverable
+entry point); `Ctrl+G` in any viewer does the same. `Ctrl+G` with an
+`http(s)://` address fetches the document in the background
 and opens it routed by `Content-Type` (HTML → this viewer, Markdown → the
 Markdown viewer, other text → shown verbatim). The fetch is deliberately
 bounded — this is a reader, not a browser engine:

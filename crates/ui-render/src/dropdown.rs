@@ -294,11 +294,12 @@ pub fn get_tools_items() -> Vec<DropdownItem> {
         DropdownItem::new(t.tools_diagnostics(), "diagnostics"),
         DropdownItem::new(t.tools_operations(), "operations"),
         DropdownItem::new(t.tools_outline(), "outline"),
+        DropdownItem::new(t.tools_web(), "web"),
     ]
 }
 
 /// Number of items in Tools submenu
-pub const TOOLS_SUBMENU_ITEM_COUNT: usize = 9;
+pub const TOOLS_SUBMENU_ITEM_COUNT: usize = 10;
 
 /// Index of Tools submenu items
 pub const TOOLS_SUBMENU_TERMINAL: usize = 0;
@@ -310,6 +311,7 @@ pub const TOOLS_SUBMENU_JOURNAL: usize = 5;
 pub const TOOLS_SUBMENU_DIAGNOSTICS: usize = 6;
 pub const TOOLS_SUBMENU_OPERATIONS: usize = 7;
 pub const TOOLS_SUBMENU_OUTLINE: usize = 8;
+pub const TOOLS_SUBMENU_WEB: usize = 9;
 
 /// Get shell picker submenu items from discovered shells.
 ///

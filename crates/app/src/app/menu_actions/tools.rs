@@ -7,7 +7,7 @@ use super::super::App;
 use termide_ui_render::{
     TOOLS_SUBMENU_DIAGNOSTICS, TOOLS_SUBMENU_EDITOR, TOOLS_SUBMENU_FILES, TOOLS_SUBMENU_GIT_LOG,
     TOOLS_SUBMENU_GIT_STATUS, TOOLS_SUBMENU_JOURNAL, TOOLS_SUBMENU_OPERATIONS,
-    TOOLS_SUBMENU_OUTLINE, TOOLS_SUBMENU_TERMINAL,
+    TOOLS_SUBMENU_OUTLINE, TOOLS_SUBMENU_TERMINAL, TOOLS_SUBMENU_WEB,
 };
 
 impl App {
@@ -149,6 +149,17 @@ impl App {
             TOOLS_SUBMENU_OUTLINE => {
                 self.state.close_menu();
                 self.handle_open_outline()?;
+            }
+            TOOLS_SUBMENU_WEB => {
+                // Open a URL prompt; the entered address is fetched and shown in
+                // a viewer (the discoverable entry point for text-mode browsing).
+                self.state.close_menu();
+                let base = std::env::current_dir().unwrap_or_default();
+                self.event_show_input(
+                    termide_i18n::t().tools_web_prompt().to_string(),
+                    "https://".to_string(),
+                    termide_core::InputAction::ViewPath { base_dir: base },
+                );
             }
             _ => {}
         }

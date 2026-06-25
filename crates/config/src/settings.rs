@@ -298,10 +298,14 @@ pub struct ViewerSettings {
     /// Viewer keyboard shortcuts
     #[serde(default)]
     pub keybindings: ViewerKeybindings,
-    /// Where a followed link opens by default (the built-in panel, or the
+    /// Where a followed page/link opens by default (the built-in panel, or the
     /// external browser). `O` always forces the external browser.
     #[serde(default)]
     pub open_links: LinkOpen,
+    /// Where a followed link to an image opens by default (the built-in image
+    /// preview, or the external viewer).
+    #[serde(default)]
+    pub open_images: LinkOpen,
 }
 
 /// Terminal panel settings.

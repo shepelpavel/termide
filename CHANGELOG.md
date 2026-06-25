@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`Windows ▸ Web` menu entry.** A discoverable way to start text-mode browsing: it opens a URL prompt and shows the page in a viewer. A fetched view shows the URL as its title and a 🌐 globe icon.
+- **Separate "open in panel vs external" settings for pages and images.** `[viewer] open_links` (pages/links) and `[viewer] open_images` (image links), each `panel` (default) or `external`; `O` is still the per-link external override.
+- **Viewer shortcuts in the help panel (`Alt+H` / `F1`).** A new "Viewers" section documents the Markdown/HTML/diagram hotkeys (toggle source, go-to-path/URL, search, reload, copy, follow link, external open, history).
 - **Image links open in the image preview.** Following a link to an image (local file or fetched `image/*` URL) now opens it in the built-in image preview by default, like HTML/Markdown links, instead of always launching an external program. `O` and `[viewer] open_links = "external"` still open it externally.
 - **Bookmarks open in the viewer.** Activating a bookmark now routes by type: HTML / Markdown / Mermaid / image files and `http(s)` web links open in the built-in viewer (honouring `[viewer] open_links`), instead of always launching an external program. Directories, remote paths, SSH, and databases are unchanged.
 - **In-panel navigation for fetched pages.** Following a link (`Enter` or click) opens it in the viewer by default — a fetched page navigates in place (relative links resolve against the page URL), a file-backed view opens a new viewer — with `[`/`]` (or `Backspace`) for back/forward history. `O` always opens the link under the cursor in the external browser. The new `[viewer] open_links` setting (`panel` default, or `external`) chooses the default destination. Viewer shortcuts are matched layout-independently (Cyrillic `х`/`ъ` work as `[`/`]`).

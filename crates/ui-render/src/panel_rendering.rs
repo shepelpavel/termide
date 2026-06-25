@@ -366,7 +366,8 @@ pub fn render_collapsed_panel(
 
     // Buttons: [≡] icon with emoji, or [≡] in unicode mode
     let buttons: std::borrow::Cow<'_, str> = if use_emoji_icons() {
-        format!("[≡] {}", panel_icon(panel.name())).into()
+        let icon = panel.icon().unwrap_or_else(|| panel_icon(panel.name()));
+        format!("[≡] {icon}").into()
     } else {
         std::borrow::Cow::Borrowed("[≡]")
     };
@@ -426,7 +427,8 @@ pub fn render_expanded_panel(
     // Create title: [≡] icon Title (with emoji) or [≡] Title (unicode mode)
     // Smart truncate title to fit within panel width
     let buttons_text = if use_emoji_icons() {
-        format!("[≡] {} ", panel_icon(panel.name()))
+        let icon = panel.icon().unwrap_or_else(|| panel_icon(panel.name()));
+        format!("[≡] {icon} ")
     } else {
         "[≡] ".to_string()
     };

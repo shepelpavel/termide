@@ -247,6 +247,13 @@ pub trait Panel: Any {
     /// Dynamic title for display in the panel header.
     fn title(&self) -> String;
 
+    /// Optional per-instance header icon, overriding the by-name default
+    /// (e.g. a globe for a viewer showing a fetched web page). `None` uses the
+    /// panel-type icon.
+    fn icon(&self) -> Option<&'static str> {
+        None
+    }
+
     /// Prepare panel for rendering (update cached theme/config).
     ///
     /// Called before render() to sync panel's internal state with current app
