@@ -123,10 +123,19 @@ fn read_response(url: &url::Url, resp: ureq::Response) -> Result<Fetched, String
     // Read one byte past the cap to detect overflow without trusting
     // Content-Length.
     let mut body = Vec::new();
-    resp.into_reader()
+    if let Err(e) = resp
+        .into_reader()
         .take((MAX_BODY as u64) + 1)
         .read_to_end(&mut body)
-        .map_err(|e| format!("read failed: {e}"))?;
+    {
+        // Many servers close the TLS connection without a `close_notify`,
+        // which rustls surfaces as `UnexpectedEof` even though the body
+        // arrived in full. Browsers and curl tolerate this; so do we, using
+        // the bytes already read. Any other error is fatal.
+        if e.kind() != std::io::ErrorKind::UnexpectedEof {
+            return Err(format!("read failed: {e}"));
+        }
+    }
     if body.len() > MAX_BODY {
         return Err(format!(
             "response exceeds {} MiB cap",
