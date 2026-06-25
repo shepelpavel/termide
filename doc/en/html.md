@@ -60,12 +60,15 @@ The preview has a movable cursor and supports text selection:
   matching viewer (HTML, Markdown, image, or text) — a quick jump to a sibling
   file, or a basic text-mode browse of a web page (see *Fetching URLs* below).
 - Mouse wheel scrolls.
-- **Follow a link** — click it, or press `Enter` with the cursor on it. In a
-  fetched (URL-backed) page this **navigates in place** (relative links resolve
-  against the page URL); in a file-backed view it opens in the external browser.
-- **`O`** always opens the link under the cursor in the external browser.
-- **`Alt+Left` / `Alt+Right`** step back / forward through the page history of a
-  navigated view.
+- **Follow a link** — click it, or press `Enter` with the cursor on it. By
+  default links open **in the panel**: a fetched (URL-backed) page navigates in
+  place (relative links resolve against the page URL); from a file-backed view
+  a web link opens in a new viewer. Set `[viewer] open_links = "external"` to
+  open links in the system browser instead.
+- **`O`** always opens the link under the cursor in the external browser
+  (regardless of the setting).
+- **`[` / `]`** (or **`Backspace`** for back) step back / forward through the
+  page history of a navigated view.
 
 ## Fetching URLs
 
@@ -82,7 +85,7 @@ bounded — this is a reader, not a browser engine:
   page cannot phone home through the viewer.
 
 Links inside a fetched page are followed **in place** (`Enter`/click), with
-relative links resolved against the page URL and `Alt+Left`/`Alt+Right` for
+relative links resolved against the page URL and `[`/`]` (or `Backspace`) for
 history; `O` opens a link in the real browser instead. URL-loaded views are not
 restored across sessions.
 

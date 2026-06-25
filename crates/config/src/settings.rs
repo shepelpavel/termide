@@ -281,12 +281,27 @@ pub struct DatabaseSettings {
     pub keybindings: DatabaseKeybindings,
 }
 
-/// File viewer panels settings (binary hex viewer, markdown preview).
+/// Where the viewers open a followed link.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LinkOpen {
+    /// Open inside the built-in viewer panel (text-mode browsing). Default.
+    #[default]
+    Panel,
+    /// Open in the system's external browser.
+    External,
+}
+
+/// File viewer panels settings (binary hex viewer, markdown/HTML preview).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ViewerSettings {
     /// Viewer keyboard shortcuts
     #[serde(default)]
     pub keybindings: ViewerKeybindings,
+    /// Where a followed link opens by default (the built-in panel, or the
+    /// external browser). `O` always forces the external browser.
+    #[serde(default)]
+    pub open_links: LinkOpen,
 }
 
 /// Terminal panel settings.

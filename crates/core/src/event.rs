@@ -426,6 +426,10 @@ pub enum PanelEvent {
     /// followed inside a fetched page, or a history back/forward step).
     NavigateUrl(String),
 
+    /// Open an `http(s)://` URL in a new viewer panel (a web link followed from
+    /// a file-backed viewer when links open in the panel).
+    OpenUrl(String),
+
     /// Open an `.html` file in the rendered HTML viewer (read-only)
     ViewHtml(PathBuf),
 

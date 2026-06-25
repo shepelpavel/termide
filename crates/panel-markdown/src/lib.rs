@@ -22,8 +22,8 @@ use unicode_width::UnicodeWidthChar;
 
 use render::{LinkSpan, Rendered};
 use termide_core::{
-    Config, HotkeyTable, InputAction, KeyChord, Panel, PanelEvent, RenderContext, SegmentKind,
-    SessionPanel, StatusSegment, Theme, ThemeColors, WidthPreference,
+    Config, HotkeyTable, InputAction, KeyChord, LinkOpen, Panel, PanelEvent, RenderContext,
+    SegmentKind, SessionPanel, StatusSegment, Theme, ThemeColors, WidthPreference,
 };
 use termide_modal::{FindBar, FindBarAction, FindBarBtn, FindBarConfig, FindField};
 use termide_ui::ScrollBar;
@@ -87,6 +87,8 @@ pub struct MarkdownPanel {
     history: Vec<String>,
     /// Current position within `history`.
     hist_idx: usize,
+    /// Where a followed link opens by default (from config).
+    open_links: LinkOpen,
 }
 
 impl MarkdownPanel {
@@ -120,6 +122,7 @@ impl MarkdownPanel {
             source_url: None,
             history: Vec::new(),
             hist_idx: 0,
+            open_links: LinkOpen::default(),
         }
     }
 
@@ -170,18 +173,22 @@ impl MarkdownPanel {
         href.to_string()
     }
 
-    /// Follow a link: navigate in place inside a fetched page, else hand the
-    /// (resolved) target to the external opener.
+    /// Follow a link. Non-web targets go to the external opener. Web links
+    /// honor the `open_links` setting: `External` → browser; `Panel` →
+    /// in-place navigation in a fetched view, or a new viewer otherwise.
     fn activate_link(&mut self, href: &str) -> Vec<PanelEvent> {
         let target = self.resolve(href);
         let is_web = target.starts_with("http://") || target.starts_with("https://");
-        if is_web && self.source_url.is_some() {
+        if !is_web || self.open_links == LinkOpen::External {
+            return vec![PanelEvent::OpenExternal(PathBuf::from(target))];
+        }
+        if self.source_url.is_some() {
             self.history.truncate(self.hist_idx + 1);
             self.history.push(target.clone());
             self.hist_idx = self.history.len() - 1;
             vec![PanelEvent::NavigateUrl(target)]
         } else {
-            vec![PanelEvent::OpenExternal(PathBuf::from(target))]
+            vec![PanelEvent::OpenUrl(target)]
         }
     }
 
@@ -533,6 +540,7 @@ impl Panel for MarkdownPanel {
             let mut t = HotkeyTable::new();
             t.insert("toggle_view", &config.viewer.keybindings.toggle_view);
             self.hotkeys = t;
+            self.open_links = config.viewer.open_links;
         }
     }
 
@@ -682,6 +690,11 @@ impl Panel for MarkdownPanel {
             };
         }
 
+        // Below the find bar there is no text input, so match shortcuts against
+        // the canonical (layout-normalized) key — `[`/`]`, `o`, `g`, … then work
+        // regardless of the active keyboard layout (e.g. Cyrillic `х`/`ъ`).
+        let key = chord.canonical;
+
         if self.hotkeys.matches("toggle_view", &key) {
             return vec![PanelEvent::SwapActiveToText(self.file_path.clone())];
         }
@@ -716,16 +729,10 @@ impl Panel for MarkdownPanel {
             return vec![PanelEvent::CopyToClipboard(text)];
         }
 
-        // Alt+Left/Right: history back/forward (URL-backed viewers).
-        if key.modifiers.contains(KeyModifiers::ALT) {
-            match key.code {
-                KeyCode::Left => return self.go_back(),
-                KeyCode::Right => return self.go_forward(),
-                _ => {}
-            }
-        }
-
         match key.code {
+            // History back/forward in a navigated view.
+            KeyCode::Char('[') | KeyCode::Backspace => return self.go_back(),
+            KeyCode::Char(']') => return self.go_forward(),
             KeyCode::Up => self.move_vertical(-1, shift),
             KeyCode::Down | KeyCode::Char('j') => self.move_vertical(1, shift),
             KeyCode::Char('k') => self.move_vertical(-1, shift),
@@ -988,6 +995,7 @@ mod tests {
             source_url: None,
             history: Vec::new(),
             hist_idx: 0,
+            open_links: LinkOpen::Panel,
         };
         p.doc = render::render_markdown(src, 80, &p.colors, false);
         p.layout_width = 80;

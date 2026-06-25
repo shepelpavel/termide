@@ -19,8 +19,8 @@ use ratatui::{buffer::Buffer, layout::Rect, style::Style};
 use unicode_width::UnicodeWidthChar;
 
 use termide_core::{
-    Config, HotkeyTable, InputAction, KeyChord, Panel, PanelEvent, RenderContext, SegmentKind,
-    SessionPanel, StatusSegment, Theme, ThemeColors, WidthPreference,
+    Config, HotkeyTable, InputAction, KeyChord, LinkOpen, Panel, PanelEvent, RenderContext,
+    SegmentKind, SessionPanel, StatusSegment, Theme, ThemeColors, WidthPreference,
 };
 use termide_html::render_html;
 use termide_modal::{FindBar, FindBarAction, FindBarBtn, FindBarConfig, FindField};
@@ -86,6 +86,8 @@ pub struct HtmlPanel {
     history: Vec<String>,
     /// Current position within `history`.
     hist_idx: usize,
+    /// Where a followed link opens by default (from config).
+    open_links: LinkOpen,
 }
 
 impl HtmlPanel {
@@ -119,6 +121,7 @@ impl HtmlPanel {
             source_url: None,
             history: Vec::new(),
             hist_idx: 0,
+            open_links: LinkOpen::default(),
         }
     }
 
@@ -169,18 +172,22 @@ impl HtmlPanel {
         href.to_string()
     }
 
-    /// Follow a link: navigate in place inside a fetched page, else hand the
-    /// (resolved) target to the external opener.
+    /// Follow a link. Non-web targets go to the external opener. Web links
+    /// honor the `open_links` setting: `External` → browser; `Panel` →
+    /// in-place navigation in a fetched view, or a new viewer otherwise.
     fn activate_link(&mut self, href: &str) -> Vec<PanelEvent> {
         let target = self.resolve(href);
         let is_web = target.starts_with("http://") || target.starts_with("https://");
-        if is_web && self.source_url.is_some() {
+        if !is_web || self.open_links == LinkOpen::External {
+            return vec![PanelEvent::OpenExternal(PathBuf::from(target))];
+        }
+        if self.source_url.is_some() {
             self.history.truncate(self.hist_idx + 1);
             self.history.push(target.clone());
             self.hist_idx = self.history.len() - 1;
             vec![PanelEvent::NavigateUrl(target)]
         } else {
-            vec![PanelEvent::OpenExternal(PathBuf::from(target))]
+            vec![PanelEvent::OpenUrl(target)]
         }
     }
 
@@ -532,6 +539,7 @@ impl Panel for HtmlPanel {
             let mut t = HotkeyTable::new();
             t.insert("toggle_view", &config.viewer.keybindings.toggle_view);
             self.hotkeys = t;
+            self.open_links = config.viewer.open_links;
         }
     }
 
@@ -681,6 +689,11 @@ impl Panel for HtmlPanel {
             };
         }
 
+        // Below the find bar there is no text input, so match shortcuts against
+        // the canonical (layout-normalized) key — `[`/`]`, `o`, `g`, … then work
+        // regardless of the active keyboard layout (e.g. Cyrillic `х`/`ъ`).
+        let key = chord.canonical;
+
         if self.hotkeys.matches("toggle_view", &key) {
             return vec![PanelEvent::SwapActiveToText(self.file_path.clone())];
         }
@@ -715,16 +728,10 @@ impl Panel for HtmlPanel {
             return vec![PanelEvent::CopyToClipboard(text)];
         }
 
-        // Alt+Left/Right: history back/forward (URL-backed viewers).
-        if key.modifiers.contains(KeyModifiers::ALT) {
-            match key.code {
-                KeyCode::Left => return self.go_back(),
-                KeyCode::Right => return self.go_forward(),
-                _ => {}
-            }
-        }
-
         match key.code {
+            // History back/forward in a navigated view.
+            KeyCode::Char('[') | KeyCode::Backspace => return self.go_back(),
+            KeyCode::Char(']') => return self.go_forward(),
             KeyCode::Up => self.move_vertical(-1, shift),
             KeyCode::Down | KeyCode::Char('j') => self.move_vertical(1, shift),
             KeyCode::Char('k') => self.move_vertical(-1, shift),
@@ -987,6 +994,7 @@ mod tests {
             source_url: None,
             history: Vec::new(),
             hist_idx: 0,
+            open_links: LinkOpen::Panel,
         };
         p.doc = render_html(src, 80, &p.colors, false);
         p.layout_width = 80;
@@ -1081,9 +1089,21 @@ mod tests {
     }
 
     #[test]
-    fn file_backed_link_opens_external() {
-        // source_url is None (file-backed) → external, no in-place navigation.
+    fn file_backed_web_link_opens_new_panel_by_default() {
+        // Default open_links = Panel: a web link from a file-backed view opens
+        // a new viewer (not the external browser, not in place).
         let mut p = panel_from("<p>x</p>");
+        let evs = p.activate_link("https://ex.com");
+        assert!(
+            matches!(evs.as_slice(), [PanelEvent::OpenUrl(_)]),
+            "{evs:?}"
+        );
+    }
+
+    #[test]
+    fn external_setting_opens_browser() {
+        let mut p = panel_from("<p>x</p>");
+        p.open_links = LinkOpen::External;
         let evs = p.activate_link("https://ex.com");
         assert!(
             matches!(evs.as_slice(), [PanelEvent::OpenExternal(_)]),
@@ -1107,6 +1127,24 @@ mod tests {
         assert!(p.go_back().is_empty(), "no history before the first page");
         assert!(
             matches!(p.go_forward().as_slice(), [PanelEvent::NavigateUrl(u)] if u == "https://ex.com/b")
+        );
+    }
+
+    #[test]
+    fn bracket_history_works_on_cyrillic_layout() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut p = HtmlPanel::from_source("p".into(), "x".into(), Some("https://ex.com/a".into()));
+        p.activate_link("https://ex.com/b"); // history [a, b], idx = 1
+                                             // On a Russian layout the `[` key emits 'х'; the normalizer puts '[' in
+                                             // `canonical`, which the viewer matches.
+        let chord = KeyChord {
+            raw: KeyEvent::new(KeyCode::Char('х'), KeyModifiers::NONE),
+            canonical: KeyEvent::new(KeyCode::Char('['), KeyModifiers::NONE),
+        };
+        let evs = p.handle_key(chord);
+        assert!(
+            matches!(evs.as_slice(), [PanelEvent::NavigateUrl(u)] if u == "https://ex.com/a"),
+            "{evs:?}"
         );
     }
 
