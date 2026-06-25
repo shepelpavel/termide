@@ -82,7 +82,7 @@ Menu activation/deactivation and each item can be accessed by mouse click or [ke
   - [Operations](operations.md) — background operations panel
   - Outline — structural code navigation panel
 - `Scripts` — user-defined scripts (with group submenus). Clicking a group header expands the submenu; clicking the same header again collapses it (toggle).
-- `Bookmarks` — saved locations (directories, files, SSH, SFTP). Group behaviour is the same toggle as in Scripts.
+- `Bookmarks` — saved locations (directories, files, SSH, SFTP, web links). Opening one routes by type: directories and remote paths in the file manager, HTML/Markdown/Mermaid/image files and `http(s)` links in the built-in viewer (see [HTML preview](html.md); honours `[viewer] open_links`), other text files in the editor, SSH in a terminal, databases in the DB viewer. Group behaviour is the same toggle as in Scripts.
 - `Options` — settings submenu:
   - Themes — theme selection with live preview
   - Language — UI language with live preview

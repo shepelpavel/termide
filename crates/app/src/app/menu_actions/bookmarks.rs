@@ -523,6 +523,36 @@ impl App {
     }
 
     /// Open a bookmark based on its type
+    /// Open a local path in the rendered viewer when its type is one the
+    /// viewers handle (HTML / Markdown / Mermaid / image). Returns `false` for
+    /// other types so the caller can fall back (editor, external opener).
+    fn open_in_viewer_by_ext(&mut self, path: &str) -> bool {
+        let p = PathBuf::from(path);
+        let ext = p
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_ascii_lowercase())
+            .unwrap_or_default();
+        match ext.as_str() {
+            "html" | "htm" => self.event_view_html(p).is_ok(),
+            "md" | "markdown" => self.event_view_markdown(p).is_ok(),
+            "mmd" | "mermaid" => self.event_view_mermaid(p).is_ok(),
+            "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "ico" | "tiff" | "tif" => {
+                self.event_preview_media(p).is_ok()
+            }
+            _ => false,
+        }
+    }
+
+    /// Hand a path/URL to the system's default application.
+    fn open_path_external(&self, path: &str) {
+        let _ = std::process::Command::new("xdg-open")
+            .arg(path)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+    }
+
     fn open_bookmark(
         &mut self,
         path: &str,
@@ -547,16 +577,28 @@ impl App {
                 self.auto_save_session();
             }
             BookmarkType::TextFile => {
-                // Open in editor
-                let _ = self.open_editor_for_file(PathBuf::from(path));
+                // Rendered types open in the viewer; everything else in the editor.
+                self.close_help_panels();
+                if !self.open_in_viewer_by_ext(path) {
+                    let _ = self.open_editor_for_file(PathBuf::from(path));
+                }
             }
-            BookmarkType::ViewerFile | BookmarkType::HttpLink => {
-                // Open with external viewer
-                let _ = std::process::Command::new("xdg-open")
-                    .arg(path)
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .spawn();
+            BookmarkType::ViewerFile => {
+                // Images open in the image preview; other viewer files externally.
+                self.close_help_panels();
+                if !self.open_in_viewer_by_ext(path) {
+                    self.open_path_external(path);
+                }
+            }
+            BookmarkType::HttpLink => {
+                // Open in the built-in viewer (text-mode browse) unless the user
+                // configured links to open in the system browser.
+                if self.state.config.viewer.open_links == termide_core::LinkOpen::External {
+                    self.open_path_external(path);
+                } else {
+                    self.close_help_panels();
+                    self.start_url_fetch(path.to_string());
+                }
             }
             BookmarkType::SftpPath
             | BookmarkType::FtpPath
